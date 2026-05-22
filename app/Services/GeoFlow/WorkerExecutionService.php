@@ -32,7 +32,9 @@ class WorkerExecutionService
      */
     public function __construct(
         private readonly ApiKeyCrypto $apiKeyCrypto,
-        private readonly KnowledgeChunkSyncService $knowledgeChunkSyncService
+        private readonly KnowledgeChunkSyncService $knowledgeChunkSyncService,
+        private readonly AiGeneratedArticleImageService $aiGeneratedArticleImageService,
+        private readonly GeoArticleContextService $geoArticleContextService
     ) {}
 
     /**
@@ -76,13 +78,15 @@ class WorkerExecutionService
 
         $keyword = (string) ($titleRow->keyword ?? '');
         $knowledgeContext = $this->resolveKnowledgeContext($task, (string) $titleRow->title, $keyword);
-        $contentPrompt = $this->buildContentPrompt((string) $titleRow->title, $keyword, $prompt?->content, $knowledgeContext);
+        $contentPrompt = $this->buildContentPromptForTask($task, (string) $titleRow->title, $keyword, $prompt?->content, $knowledgeContext);
         $generation = $this->generateContentWithModelSelection($task, $contentPrompt);
         $aiModel = $generation['model'];
         $generatedContent = $generation['content'];
-        $imageResult = $this->insertTaskImagesIntoContent($task, $generatedContent);
+        $imageResult = $this->insertTaskImagesIntoContent($task, $generatedContent, $aiModel, (string) $titleRow->title, $keyword);
         $content = $imageResult['content'];
         $selectedImages = $imageResult['images'];
+        $generatedImages = $imageResult['generated_images'] ?? [];
+        $imageError = $imageResult['image_error'] ?? null;
         $excerpt = $this->buildExcerpt($content);
         $workflow = [
             'status' => 'draft',
@@ -162,7 +166,10 @@ class WorkerExecutionService
                 'author_id' => $author?->id,
                 'category_id' => $category?->id,
                 'knowledge_length' => mb_strlen($knowledgeContext, 'UTF-8'),
-                'image_count' => count($selectedImages),
+                'image_mode' => (string) ($task->image_mode ?? 'library'),
+                'image_count' => count($selectedImages) + count($generatedImages),
+                'generated_images' => $generatedImages,
+                'image_error' => $imageError,
                 'model_selection_mode' => (string) ($task->model_selection_mode ?? 'fixed'),
                 'used_model_id' => (int) $aiModel->id,
                 'used_model_name' => (string) $aiModel->name,
@@ -471,6 +478,18 @@ class WorkerExecutionService
      */
     private function buildContentPrompt(string $title, string $keyword, ?string $promptContent, string $knowledgeContext): string
     {
+        return $this->buildContentPromptWithGeoContext($title, $keyword, $promptContent, $knowledgeContext, '');
+    }
+
+    private function buildContentPromptForTask(Task $task, string $title, string $keyword, ?string $promptContent, string $knowledgeContext): string
+    {
+        $geoContext = $this->geoArticleContextService->buildForTask($task, $keyword);
+
+        return $this->buildContentPromptWithGeoContext($title, $keyword, $promptContent, $knowledgeContext, $geoContext);
+    }
+
+    private function buildContentPromptWithGeoContext(string $title, string $keyword, ?string $promptContent, string $knowledgeContext, string $geoContext): string
+    {
         $prompt = trim((string) $promptContent);
         $isFallbackPrompt = false;
         if ($prompt === '') {
@@ -487,6 +506,10 @@ class WorkerExecutionService
 
         if (! $hasExplicitContextVariables) {
             $renderedPrompt = $this->appendSmartPromptContext($renderedPrompt, $title, $keyword, $knowledgeContext);
+        }
+
+        if (trim($geoContext) !== '') {
+            $renderedPrompt = trim($renderedPrompt)."\n\n".trim($geoContext);
         }
 
         return trim($renderedPrompt)."\n\n".$this->finalPromptInstruction($renderedPrompt);
@@ -707,10 +730,38 @@ class WorkerExecutionService
     /**
      * 按任务图片配置插入 Markdown 配图并返回被选中的图片列表。
      *
-     * @return array{content:string,images:list<Image>}
+     * @return array{content:string,images:list<Image>,generated_images?:list<array<string,mixed>>,image_error?:string|null}
      */
-    private function insertTaskImagesIntoContent(Task $task, string $content): array
+    private function insertTaskImagesIntoContent(Task $task, string $content, ?AiModel $chatModel = null, string $title = '', string $keyword = ''): array
     {
+        $imageMode = (string) ($task->image_mode ?? 'library');
+        if ($imageMode === 'none') {
+            return ['content' => $content, 'images' => []];
+        }
+
+        if ($imageMode === 'ai') {
+            try {
+                if (! $chatModel) {
+                    throw new RuntimeException('AI配图缺少正文模型上下文');
+                }
+                $result = $this->aiGeneratedArticleImageService->generateAndInsert($task, $chatModel, $content, $title, $keyword);
+
+                return [
+                    'content' => $result['content'],
+                    'images' => [],
+                    'generated_images' => $result['blocks'],
+                    'image_error' => null,
+                ];
+            } catch (Throwable $exception) {
+                return [
+                    'content' => $content,
+                    'images' => [],
+                    'generated_images' => [],
+                    'image_error' => $exception->getMessage(),
+                ];
+            }
+        }
+
         $libraryId = (int) ($task->image_library_id ?? 0);
         $imageCount = max(0, (int) ($task->image_count ?? 0));
         if ($libraryId <= 0 || $imageCount <= 0) {

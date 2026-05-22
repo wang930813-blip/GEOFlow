@@ -10,23 +10,24 @@
     <title>@isset($pageTitle){{ $pageTitle }} — @endisset{{ $adminBrandName }}</title>
     <script src="{{ asset('js/tailwindcss.play-cdn.js') }}"></script>
     <script src="{{ asset('js/lucide.min.js') }}"></script>
+    <link rel="stylesheet" href="{{ asset('assets/css/admin.css') }}?v={{ filemtime(public_path('assets/css/admin.css')) }}">
     @stack('styles')
 </head>
-<body class="bg-gray-50">
+<body class="admin-ui">
 @include('admin.partials.header', [
     'adminBrandName' => $adminBrandName,
     'adminSiteName' => $adminSiteName ?? $adminBrandName,
     'pageTitle' => $pageTitle ?? '',
     'activeMenu' => $activeMenu ?? '',
 ])
-    <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+    <main class="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
         @if (session('message'))
-            <div class="admin-flash-alert mb-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative">
+            <div class="admin-flash-alert mb-4 border px-4 py-3 relative" style="background: rgba(76, 175, 80, 0.12); border-color: rgba(76, 175, 80, 0.28); color: #2f7d32;">
                 <span class="block sm:inline">{{ session('message') }}</span>
             </div>
         @endif
         @if ($errors->any())
-            <div class="admin-flash-alert mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative">
+            <div class="admin-flash-alert mb-4 border px-4 py-3 relative" style="background: rgba(255, 87, 34, 0.12); border-color: rgba(255, 87, 34, 0.28); color: #d63b1f;">
                 @foreach ($errors->all() as $err)
                     <div>{{ $err }}</div>
                 @endforeach

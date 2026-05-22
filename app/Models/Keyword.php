@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Keyword extends Model
 {
@@ -30,5 +31,10 @@ class Keyword extends Model
     public function library(): BelongsTo
     {
         return $this->belongsTo(KeywordLibrary::class, 'library_id');
+    }
+
+    public function questionVariants(): HasMany
+    {
+        return $this->hasMany(KeywordQuestionVariant::class, 'keyword_id');
     }
 }

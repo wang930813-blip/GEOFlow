@@ -188,7 +188,9 @@ class TaskController extends Controller
                 'ai_model_id' => (string) ($task['ai_model_id'] ?? ''),
                 'author_id' => (string) (($task['author_id'] ?? 0) ?: 0),
                 'image_library_id' => (string) (($task['image_library_id'] ?? '') ?: ''),
+                'image_mode' => (string) ($task['image_mode'] ?? 'library'),
                 'image_count' => (string) ($task['image_count'] ?? 0),
+                'ai_image_model_id' => (string) (($task['ai_image_model_id'] ?? '') ?: ''),
                 'knowledge_base_id' => (string) (($task['knowledge_base_id'] ?? '') ?: ''),
                 'fixed_category_id' => (string) (($task['fixed_category_id'] ?? '') ?: ''),
                 'status' => (string) ($task['status'] ?? 'active'),
@@ -404,6 +406,7 @@ class TaskController extends Controller
         // 直接附带标题数，避免 Blade 层再次查询。
         $titleLibraries = TitleLibrary::query()
             ->select(['id', 'name'])
+            ->with(['keywordLibrary:id,name,company_name'])
             ->selectRaw('(SELECT COUNT(*) FROM titles WHERE titles.library_id = title_libraries.id) AS title_count')
             ->orderByDesc('id')
             ->get()
@@ -412,6 +415,8 @@ class TaskController extends Controller
                     'id' => (int) $row->id,
                     'name' => (string) $row->name,
                     'count' => (int) ($row->title_count ?? 0),
+                    'keyword_library_name' => (string) ($row->keywordLibrary?->name ?? ''),
+                    'company_name' => (string) ($row->keywordLibrary?->company_name ?? ''),
                 ];
             })
             ->all();
@@ -432,6 +437,16 @@ class TaskController extends Controller
                     ->orWhere('model_type', '')
                     ->orWhere('model_type', 'chat');
             })
+            ->orderBy('failover_priority')
+            ->orderByDesc('id')
+            ->get()
+            ->map(static fn (AiModel $row): array => ['id' => (int) $row->id, 'name' => (string) $row->name])
+            ->all();
+
+        $aiImageModels = AiModel::query()
+            ->select(['id', 'name'])
+            ->where('status', 'active')
+            ->where('model_type', 'image')
             ->orderBy('failover_priority')
             ->orderByDesc('id')
             ->get()
@@ -479,6 +494,7 @@ class TaskController extends Controller
             'titleLibraries' => $titleLibraries,
             'prompts' => $prompts,
             'aiModels' => $aiModels,
+            'aiImageModels' => $aiImageModels,
             'imageLibraries' => $imageLibraries,
             'knowledgeBases' => $knowledgeBases,
             'authors' => $authors,
@@ -513,8 +529,10 @@ class TaskController extends Controller
             'prompt_id' => ['required', 'integer', 'min:1'],
             'ai_model_id' => ['required', 'integer', 'min:1'],
             'author_id' => ['nullable', 'integer', 'min:0'],
+            'image_mode' => ['nullable', 'string', 'in:none,library,ai'],
             'image_library_id' => ['nullable', 'integer', 'min:1'],
             'image_count' => ['nullable', 'integer', 'min:0', 'max:5'],
+            'ai_image_model_id' => ['nullable', 'integer', 'min:1'],
             'knowledge_base_id' => ['nullable', 'integer', 'min:1'],
             'fixed_category_id' => ['nullable', 'integer', 'min:1'],
             'status' => ['required', 'string', 'in:active,paused'],
@@ -540,8 +558,10 @@ class TaskController extends Controller
         return [
             'name' => (string) $payload['task_name'],
             'title_library_id' => (int) $payload['title_library_id'],
+            'image_mode' => (string) ($payload['image_mode'] ?? 'library'),
             'image_library_id' => isset($payload['image_library_id']) ? (int) $payload['image_library_id'] : null,
             'image_count' => (int) ($payload['image_count'] ?? 0),
+            'ai_image_model_id' => isset($payload['ai_image_model_id']) ? (int) $payload['ai_image_model_id'] : null,
             'prompt_id' => (int) $payload['prompt_id'],
             'ai_model_id' => (int) $payload['ai_model_id'],
             'author_id' => isset($payload['author_id']) && (int) $payload['author_id'] > 0 ? (int) $payload['author_id'] : null,

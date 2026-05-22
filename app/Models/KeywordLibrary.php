@@ -12,6 +12,11 @@ class KeywordLibrary extends Model
     protected $fillable = [
         'name',
         'description',
+        'company_name',
+        'domain_keyword',
+        'industry',
+        'brand_description',
+        'status',
         'keyword_count',
     ];
 

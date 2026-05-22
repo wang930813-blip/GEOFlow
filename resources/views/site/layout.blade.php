@@ -16,14 +16,14 @@
     <link rel="canonical" href="{{ $canonicalUrl ?? url()->current() }}">
     @stack('head')
     <script src="{{ asset('js/tailwindcss.play-cdn.js') }}"></script>
-    <link rel="stylesheet" href="{{ asset('assets/css/style.css') }}">
-    <link rel="stylesheet" href="{{ asset('assets/css/custom.css') }}">
+    <link rel="stylesheet" href="{{ asset('assets/css/style.css') }}?v={{ filemtime(public_path('assets/css/style.css')) }}">
+    <link rel="stylesheet" href="{{ asset('assets/css/custom.css') }}?v={{ filemtime(public_path('assets/css/custom.css')) }}">
     <script src="{{ asset('js/lucide.min.js') }}"></script>
     @if(!empty($headAnalyticsCode))
         {!! $headAnalyticsCode !!}
     @endif
 </head>
-<body class="bg-white">
+<body class="site-ui bg-white">
     @include('site.partials.header')
     <main>
         @yield('content')

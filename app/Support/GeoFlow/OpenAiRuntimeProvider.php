@@ -62,6 +62,46 @@ final class OpenAiRuntimeProvider
         return $normalized;
     }
 
+    public static function resolveImageBaseUrl(string $apiUrl): string
+    {
+        $normalized = trim($apiUrl);
+        if ($normalized === '') {
+            return '';
+        }
+
+        $normalized = rtrim($normalized, '/');
+        if (preg_match('#/v1/images/generations$#', $normalized) === 1) {
+            return substr($normalized, 0, -strlen('/images/generations'));
+        }
+        if (preg_match('#/images/generations$#', $normalized) === 1) {
+            return substr($normalized, 0, -strlen('/images/generations'));
+        }
+
+        $path = (string) (parse_url($normalized, PHP_URL_PATH) ?? '');
+        if ($path === '' || $path === '/') {
+            return $normalized.'/v1';
+        }
+
+        return $normalized;
+    }
+
+    public static function resolveImageDriver(string $apiUrl, string $modelId = ''): string
+    {
+        $normalized = strtolower(trim($apiUrl));
+        $model = strtolower(trim($modelId));
+        $host = strtolower((string) (parse_url($normalized, PHP_URL_HOST) ?? ''));
+
+        if ($host === 'api.openai.com') {
+            return 'openai';
+        }
+
+        if (str_contains($host, 'api.x.ai') || str_starts_with($model, 'grok')) {
+            return 'xai';
+        }
+
+        return 'openai';
+    }
+
     /**
      * Laravel AI 的 openai driver 默认走 Responses API；多数第三方兼容接口仍只支持 Chat Completions。
      */

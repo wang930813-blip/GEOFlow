@@ -60,7 +60,7 @@
                                     <option value="">{{ $t('task_create.option.select_title_library') }}</option>
                                     @foreach ($formOptions['titleLibraries'] as $library)
                                         <option value="{{ $library['id'] }}" @selected((string) old('title_library_id', (string) ($taskForm['title_library_id'] ?? '')) === (string) $library['id'])>
-                                            {{ $t('task_create.option.library_count', ['name' => $library['name'], 'count' => $library['count']]) }}
+                                            {{ $t('task_create.option.library_count', ['name' => $library['name'], 'count' => $library['count']]) }}{{ ($library['keyword_library_name'] ?? '') !== '' ? ' - GEO: '.(($library['company_name'] ?? '') !== '' ? $library['company_name'] : $library['keyword_library_name']) : '' }}
                                         </option>
                                     @endforeach
                                 </select>
@@ -138,7 +138,16 @@
                     </div>
                     <div class="px-6 py-4">
                         @php($imageCountValue = (string) old('image_count', (string) ($taskForm['image_count'] ?? '1')))
+                        @php($imageModeValue = (string) old('image_mode', (string) ($taskForm['image_mode'] ?? 'library')))
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <label for="image_mode" class="block text-sm font-medium text-gray-700">配图模式</label>
+                                <select name="image_mode" id="image_mode" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                                    <option value="none" @selected($imageModeValue === 'none')>不插入配图</option>
+                                    <option value="library" @selected($imageModeValue === 'library')>使用图片库</option>
+                                    <option value="ai" @selected($imageModeValue === 'ai')>AI 生成配图</option>
+                                </select>
+                            </div>
                             <div>
                                 <label for="image_library_id" class="block text-sm font-medium text-gray-700">{{ $t('task_create.field.image_library') }}</label>
                                 <select name="image_library_id" id="image_library_id" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
@@ -149,6 +158,16 @@
                                         </option>
                                     @endforeach
                                 </select>
+                            </div>
+                            <div>
+                                <label for="ai_image_model_id" class="block text-sm font-medium text-gray-700">AI 图片模型</label>
+                                <select name="ai_image_model_id" id="ai_image_model_id" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                                    <option value="">请选择图片模型</option>
+                                    @foreach (($formOptions['aiImageModels'] ?? []) as $model)
+                                        <option value="{{ $model['id'] }}" @selected((string) old('ai_image_model_id', (string) ($taskForm['ai_image_model_id'] ?? '')) === (string) $model['id'])>{{ $model['name'] }}</option>
+                                    @endforeach
+                                </select>
+                                <p class="mt-1 text-sm text-gray-500">图片模型在“AI 模型管理”中新增，类型选择 Image。</p>
                             </div>
                             <div>
                                 <label for="image_count" class="block text-sm font-medium text-gray-700">{{ $t('task_create.field.image_count') }}</label>
@@ -341,6 +360,8 @@
             }
 
             const imageLibrarySelect = document.getElementById('image_library_id');
+            const imageModeSelect = document.getElementById('image_mode');
+            const aiImageModelSelect = document.getElementById('ai_image_model_id');
             const imageCountSelect = document.getElementById('image_count');
             const needReviewCheckbox = document.getElementById('need_review');
             const publishIntervalInput = document.getElementById('publish_interval');
@@ -355,12 +376,38 @@
                 return;
             }
 
-            function toggleImageCountByLibrary() {
-                if (!imageLibrarySelect.value) {
+            function toggleImageControls() {
+                const mode = imageModeSelect.value || 'library';
+                const usesLibrary = mode === 'library';
+                const usesAi = mode === 'ai';
+
+                imageLibrarySelect.disabled = !usesLibrary;
+                aiImageModelSelect.disabled = !usesAi;
+                imageCountSelect.disabled = mode === 'none';
+                imageLibrarySelect.parentElement.style.opacity = usesLibrary ? '1' : '0.5';
+                aiImageModelSelect.parentElement.style.opacity = usesAi ? '1' : '0.5';
+                imageCountSelect.parentElement.style.opacity = mode === 'none' ? '0.5' : '1';
+                aiImageModelSelect.required = usesAi;
+
+                if (mode === 'none') {
                     imageCountSelect.value = '0';
-                    imageCountSelect.disabled = true;
-                } else {
-                    imageCountSelect.disabled = false;
+                    imageLibrarySelect.value = '';
+                    aiImageModelSelect.value = '';
+                    return;
+                }
+
+                if (usesLibrary) {
+                    aiImageModelSelect.value = '';
+                    if (!imageLibrarySelect.value) {
+                        imageCountSelect.value = '0';
+                    } else if (imageCountSelect.value === '0') {
+                        imageCountSelect.value = '1';
+                    }
+                    return;
+                }
+
+                if (usesAi) {
+                    imageLibrarySelect.value = '';
                     if (imageCountSelect.value === '0') {
                         imageCountSelect.value = '1';
                     }
@@ -401,7 +448,8 @@
                 }
             }
 
-            imageLibrarySelect.addEventListener('change', toggleImageCountByLibrary);
+            imageModeSelect.addEventListener('change', toggleImageControls);
+            imageLibrarySelect.addEventListener('change', toggleImageControls);
             needReviewCheckbox.addEventListener('change', togglePublishInterval);
             articleLimitInput.addEventListener('input', syncDraftLimitMax);
             categoryModeRadios.forEach((radio) => radio.addEventListener('change', handleCategoryModeChange));
@@ -431,6 +479,12 @@
                     return;
                 }
 
+                if (imageModeSelect.value === 'ai' && !aiImageModelSelect.value) {
+                    alert('请选择 AI 图片模型');
+                    event.preventDefault();
+                    return;
+                }
+
                 if (Number(draftLimitInput.value || 0) > Number(articleLimitInput.value || 0)) {
                     alert(@json(__('admin.task_create.error.draft_limit_too_large')));
                     event.preventDefault();
@@ -442,7 +496,7 @@
                 }
             });
 
-            toggleImageCountByLibrary();
+            toggleImageControls();
             togglePublishInterval();
             handleCategoryModeChange();
             syncDraftLimitMax();

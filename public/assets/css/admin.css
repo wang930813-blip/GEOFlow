@@ -1,0 +1,479 @@
+/* GEOFlow admin design system */
+body.admin-ui {
+    --geo-primary: #2a3f54;
+    --geo-primary-dark: #203244;
+    --geo-secondary: #4fc3f7;
+    --geo-secondary-hover: #38b6ee;
+    --geo-accent: #ffc107;
+    --geo-success: #4caf50;
+    --geo-warning: #ff5722;
+    --geo-background: #f5f7fa;
+    --geo-surface: #ffffff;
+    --geo-surface-soft: #f8fafc;
+    --geo-border: #dce3ea;
+    --geo-border-strong: #c8d3df;
+    --geo-text: #212121;
+    --geo-muted: #757575;
+    --geo-on-dark: #ffffff;
+    --geo-shadow: 0 10px 28px rgba(42, 63, 84, 0.08);
+    --geo-shadow-soft: 0 4px 14px rgba(42, 63, 84, 0.06);
+    --geo-focus: 0 0 0 3px rgba(79, 195, 247, 0.28);
+    --geo-radius: 6px;
+    --admin-input-bg: var(--geo-surface);
+    --admin-input-bg-hover: #ffffff;
+    --admin-input-bg-disabled: #eef3f7;
+    --admin-input-border: var(--geo-border);
+    --admin-input-border-hover: var(--geo-border-strong);
+    --admin-input-border-focus: var(--geo-secondary);
+    --admin-input-text: var(--geo-text);
+    --admin-input-placeholder: #9aa7b4;
+    --admin-input-shadow: 0 1px 2px rgba(42, 63, 84, 0.04);
+    --admin-input-focus-shadow: var(--geo-focus);
+    min-height: 100vh;
+    background:
+        radial-gradient(circle at 16% 0%, rgba(79, 195, 247, 0.13), rgba(79, 195, 247, 0) 26rem),
+        linear-gradient(180deg, #f8fbfe 0%, var(--geo-background) 42%, #eef3f8 100%);
+    color: var(--geo-text);
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 14px;
+    line-height: 20px;
+    letter-spacing: 0;
+}
+
+body.admin-ui * {
+    letter-spacing: 0;
+}
+
+body.admin-ui h1,
+body.admin-ui .text-2xl {
+    color: var(--geo-text) !important;
+    font-size: 24px !important;
+    line-height: 32px !important;
+    font-weight: 700 !important;
+}
+
+body.admin-ui h2,
+body.admin-ui h3,
+body.admin-ui .text-lg {
+    color: var(--geo-text) !important;
+    font-weight: 700 !important;
+}
+
+body.admin-ui .text-gray-900,
+body.admin-ui .text-slate-900 {
+    color: var(--geo-text) !important;
+}
+
+body.admin-ui .text-gray-700,
+body.admin-ui .text-slate-700,
+body.admin-ui .text-gray-600,
+body.admin-ui .text-slate-600,
+body.admin-ui .text-gray-500,
+body.admin-ui .text-slate-500 {
+    color: var(--geo-muted) !important;
+}
+
+body.admin-ui a {
+    transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+body.admin-ui a:hover {
+    color: var(--geo-secondary);
+}
+
+body.admin-ui main {
+    padding-top: 24px;
+    padding-bottom: 32px;
+}
+
+body.admin-ui .bg-white,
+body.admin-ui .bg-white\/70,
+body.admin-ui .bg-white\/80,
+body.admin-ui .bg-white\/90 {
+    background-color: var(--geo-surface) !important;
+}
+
+body.admin-ui .bg-gray-50,
+body.admin-ui .bg-slate-50 {
+    background-color: var(--geo-surface-soft) !important;
+}
+
+body.admin-ui .border,
+body.admin-ui .border-gray-100,
+body.admin-ui .border-gray-200,
+body.admin-ui .border-gray-300,
+body.admin-ui .border-slate-200 {
+    border-color: var(--geo-border) !important;
+}
+
+body.admin-ui .shadow,
+body.admin-ui .shadow-sm,
+body.admin-ui .shadow-md,
+body.admin-ui .shadow-lg,
+body.admin-ui .shadow-xl,
+body.admin-ui .shadow-2xl,
+body.admin-ui .ring-1 {
+    box-shadow: var(--geo-shadow-soft) !important;
+}
+
+body.admin-ui .rounded,
+body.admin-ui .rounded-md,
+body.admin-ui .rounded-lg,
+body.admin-ui .rounded-xl,
+body.admin-ui .rounded-2xl,
+body.admin-ui .rounded-3xl {
+    border-radius: var(--geo-radius) !important;
+}
+
+body.admin-ui .divide-gray-100 > :not([hidden]) ~ :not([hidden]),
+body.admin-ui .divide-gray-200 > :not([hidden]) ~ :not([hidden]) {
+    border-color: var(--geo-border) !important;
+}
+
+body.admin-ui .bg-blue-600,
+body.admin-ui .bg-indigo-600,
+body.admin-ui .bg-purple-600,
+body.admin-ui .bg-green-600 {
+    background-color: var(--geo-secondary) !important;
+    color: var(--geo-on-dark) !important;
+}
+
+body.admin-ui .hover\:bg-blue-700:hover,
+body.admin-ui .hover\:bg-indigo-700:hover,
+body.admin-ui .hover\:bg-purple-700:hover,
+body.admin-ui .hover\:bg-green-700:hover {
+    background-color: var(--geo-secondary-hover) !important;
+}
+
+body.admin-ui .bg-slate-800,
+body.admin-ui .bg-gray-900 {
+    background-color: var(--geo-primary) !important;
+}
+
+body.admin-ui .hover\:bg-slate-900:hover,
+body.admin-ui .hover\:bg-black:hover {
+    background-color: var(--geo-primary-dark) !important;
+}
+
+body.admin-ui .text-blue-600,
+body.admin-ui .text-indigo-600,
+body.admin-ui .text-purple-600 {
+    color: #168ac4 !important;
+}
+
+body.admin-ui .text-green-600,
+body.admin-ui .text-green-700,
+body.admin-ui .text-green-800 {
+    color: #2f7d32 !important;
+}
+
+body.admin-ui .text-red-600,
+body.admin-ui .text-red-700,
+body.admin-ui .text-red-800 {
+    color: #d63b1f !important;
+}
+
+body.admin-ui .bg-green-50,
+body.admin-ui .bg-green-100 {
+    background-color: rgba(76, 175, 80, 0.12) !important;
+}
+
+body.admin-ui .bg-blue-50,
+body.admin-ui .bg-blue-100,
+body.admin-ui .bg-indigo-50,
+body.admin-ui .bg-indigo-100,
+body.admin-ui .bg-purple-50,
+body.admin-ui .bg-purple-100 {
+    background-color: rgba(79, 195, 247, 0.14) !important;
+}
+
+body.admin-ui .bg-yellow-50,
+body.admin-ui .bg-yellow-100 {
+    background-color: rgba(255, 193, 7, 0.16) !important;
+}
+
+body.admin-ui .bg-red-50,
+body.admin-ui .bg-red-100 {
+    background-color: rgba(255, 87, 34, 0.12) !important;
+}
+
+body.admin-ui a[class*="px-4"][class*="py-2"],
+body.admin-ui a[class*="px-3"][class*="py-2"],
+body.admin-ui button[class*="px-4"],
+body.admin-ui button[class*="px-3"],
+body.admin-ui button[type="submit"] {
+    min-height: 40px;
+    border-radius: var(--geo-radius) !important;
+    font-weight: 600;
+}
+
+body.admin-ui button:focus-visible,
+body.admin-ui a:focus-visible {
+    outline: none;
+    box-shadow: var(--geo-focus) !important;
+}
+
+body.admin-ui input:not([type]),
+body.admin-ui input[type="text"],
+body.admin-ui input[type="email"],
+body.admin-ui input[type="password"],
+body.admin-ui input[type="number"],
+body.admin-ui input[type="url"],
+body.admin-ui input[type="search"],
+body.admin-ui input[type="tel"],
+body.admin-ui input[type="date"],
+body.admin-ui input[type="time"],
+body.admin-ui input[type="datetime-local"],
+body.admin-ui input[type="month"],
+body.admin-ui input[type="week"],
+body.admin-ui textarea,
+body.admin-ui select {
+    min-height: 36px;
+    box-sizing: border-box;
+    border: 1px solid var(--admin-input-border) !important;
+    border-radius: var(--geo-radius) !important;
+    background-color: var(--admin-input-bg) !important;
+    color: var(--admin-input-text) !important;
+    box-shadow: var(--admin-input-shadow) !important;
+    font-size: 14px;
+    line-height: 20px;
+    transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+
+body.admin-ui input:not([type]),
+body.admin-ui input[type="text"],
+body.admin-ui input[type="email"],
+body.admin-ui input[type="password"],
+body.admin-ui input[type="number"],
+body.admin-ui input[type="url"],
+body.admin-ui input[type="search"],
+body.admin-ui input[type="tel"],
+body.admin-ui input[type="date"],
+body.admin-ui input[type="time"],
+body.admin-ui input[type="datetime-local"],
+body.admin-ui input[type="month"],
+body.admin-ui input[type="week"],
+body.admin-ui select {
+    padding: 8px 12px !important;
+}
+
+body.admin-ui textarea {
+    min-height: 104px;
+    padding: 10px 12px !important;
+    resize: vertical;
+}
+
+body.admin-ui select {
+    padding-right: 32px !important;
+}
+
+body.admin-ui input::placeholder,
+body.admin-ui textarea::placeholder {
+    color: var(--admin-input-placeholder) !important;
+    opacity: 1;
+}
+
+body.admin-ui input:not([type]):hover,
+body.admin-ui input[type="text"]:hover,
+body.admin-ui input[type="email"]:hover,
+body.admin-ui input[type="password"]:hover,
+body.admin-ui input[type="number"]:hover,
+body.admin-ui input[type="url"]:hover,
+body.admin-ui input[type="search"]:hover,
+body.admin-ui input[type="tel"]:hover,
+body.admin-ui input[type="date"]:hover,
+body.admin-ui input[type="time"]:hover,
+body.admin-ui input[type="datetime-local"]:hover,
+body.admin-ui input[type="month"]:hover,
+body.admin-ui input[type="week"]:hover,
+body.admin-ui textarea:hover,
+body.admin-ui select:hover {
+    border-color: var(--admin-input-border-hover) !important;
+    background-color: var(--admin-input-bg-hover) !important;
+}
+
+body.admin-ui input:not([type]):focus,
+body.admin-ui input[type="text"]:focus,
+body.admin-ui input[type="email"]:focus,
+body.admin-ui input[type="password"]:focus,
+body.admin-ui input[type="number"]:focus,
+body.admin-ui input[type="url"]:focus,
+body.admin-ui input[type="search"]:focus,
+body.admin-ui input[type="tel"]:focus,
+body.admin-ui input[type="date"]:focus,
+body.admin-ui input[type="time"]:focus,
+body.admin-ui input[type="datetime-local"]:focus,
+body.admin-ui input[type="month"]:focus,
+body.admin-ui input[type="week"]:focus,
+body.admin-ui textarea:focus,
+body.admin-ui select:focus {
+    border-color: var(--admin-input-border-focus) !important;
+    box-shadow: var(--admin-input-focus-shadow) !important;
+    outline: none !important;
+    --tw-ring-color: transparent !important;
+    --tw-ring-offset-shadow: 0 0 #0000 !important;
+    --tw-ring-shadow: 0 0 #0000 !important;
+}
+
+body.admin-ui input:disabled,
+body.admin-ui textarea:disabled,
+body.admin-ui select:disabled,
+body.admin-ui input[readonly],
+body.admin-ui textarea[readonly] {
+    background-color: var(--admin-input-bg-disabled) !important;
+    color: #8a97a4 !important;
+    cursor: not-allowed;
+}
+
+body.admin-ui input[type="checkbox"],
+body.admin-ui input[type="radio"] {
+    accent-color: var(--geo-secondary);
+    min-height: auto;
+    box-shadow: none !important;
+}
+
+body.admin-ui input[type="search"]::-webkit-search-cancel-button {
+    cursor: pointer;
+}
+
+body.admin-ui table {
+    color: var(--geo-text);
+}
+
+body.admin-ui thead,
+body.admin-ui .bg-gray-50.text-xs,
+body.admin-ui thead.bg-gray-50 {
+    background-color: #edf4fa !important;
+}
+
+body.admin-ui th {
+    color: var(--geo-primary) !important;
+    font-weight: 700 !important;
+}
+
+body.admin-ui tbody tr {
+    transition: background-color 160ms ease;
+}
+
+body.admin-ui tbody tr:hover {
+    background-color: rgba(79, 195, 247, 0.06);
+}
+
+body.admin-ui .admin-flash-alert {
+    border-radius: var(--geo-radius) !important;
+    box-shadow: var(--geo-shadow-soft);
+}
+
+body.admin-ui .editor-textarea {
+    border-radius: var(--geo-radius) !important;
+}
+
+body.admin-ui .admin-locale-select {
+    width: auto;
+    min-height: 0;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+    padding: 0 20px 0 0 !important;
+}
+
+body.admin-ui .admin-locale-select:focus {
+    border-color: transparent !important;
+    box-shadow: none !important;
+}
+
+.admin-topbar {
+    background: linear-gradient(135deg, var(--geo-primary) 0%, #1d3144 100%);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 12px 32px rgba(42, 63, 84, 0.18);
+}
+
+.admin-topbar a,
+.admin-topbar button,
+.admin-topbar select {
+    color: rgba(255, 255, 255, 0.78) !important;
+}
+
+.admin-brand-mark {
+    color: var(--geo-on-dark) !important;
+}
+
+.admin-brand-icon {
+    background: linear-gradient(135deg, var(--geo-secondary), var(--geo-accent));
+    color: var(--geo-primary);
+}
+
+.admin-nav-link {
+    border-radius: var(--geo-radius);
+    color: rgba(255, 255, 255, 0.72) !important;
+}
+
+.admin-nav-link:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+    color: #ffffff !important;
+}
+
+.admin-nav-link.is-active {
+    background-color: rgba(79, 195, 247, 0.18);
+    color: #ffffff !important;
+    box-shadow: inset 0 0 0 1px rgba(79, 195, 247, 0.35);
+}
+
+.admin-nav-link.is-active::before {
+    content: "";
+    width: 3px;
+    height: 18px;
+    border-radius: 999px;
+    background: var(--geo-secondary);
+    display: inline-block;
+    margin-right: 8px;
+}
+
+.admin-user-avatar {
+    background: rgba(79, 195, 247, 0.18);
+    color: var(--geo-secondary);
+}
+
+.admin-menu-panel {
+    border-color: var(--geo-border) !important;
+    box-shadow: var(--geo-shadow) !important;
+    color: var(--geo-text) !important;
+}
+
+.admin-topbar .admin-menu-panel,
+.admin-topbar .admin-menu-panel a,
+.admin-topbar .admin-menu-panel button,
+.admin-topbar .admin-menu-panel div,
+.admin-topbar .admin-menu-panel p,
+.admin-topbar .admin-menu-panel span {
+    color: inherit !important;
+}
+
+.admin-topbar .admin-menu-panel a,
+.admin-topbar .admin-menu-panel button {
+    color: var(--geo-text) !important;
+}
+
+.admin-topbar .admin-menu-panel .text-red-600 {
+    color: #d63b1f !important;
+}
+
+.admin-login-page {
+    background:
+        radial-gradient(circle at 18% 10%, rgba(79, 195, 247, 0.2), rgba(79, 195, 247, 0) 24rem),
+        radial-gradient(circle at 82% 88%, rgba(255, 193, 7, 0.16), rgba(255, 193, 7, 0) 22rem),
+        linear-gradient(135deg, #edf4fa 0%, #f5f7fa 48%, #e9f1f8 100%);
+}
+
+.login-form {
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(18px) saturate(160%);
+    border: 1px solid rgba(220, 227, 234, 0.92);
+    box-shadow: 0 24px 68px rgba(42, 63, 84, 0.14);
+}
+
+.login-badge {
+    background: linear-gradient(135deg, var(--geo-primary), var(--geo-secondary));
+    box-shadow: 0 16px 34px rgba(79, 195, 247, 0.28);
+}

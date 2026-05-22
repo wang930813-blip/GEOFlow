@@ -19,9 +19,9 @@
     <link rel="canonical" href="{{ $canonicalUrl ?? url()->current() }}">
     @stack('head')
     <script src="{{ asset('js/tailwindcss.play-cdn.js') }}"></script>
-    <link rel="stylesheet" href="{{ asset('assets/css/style.css') }}">
-    <link rel="stylesheet" href="{{ asset('assets/css/custom.css') }}">
-    <link rel="stylesheet" href="{{ asset('themes/tdwh-netease-news-en-20260508/theme.css') }}">
+    <link rel="stylesheet" href="{{ asset('assets/css/style.css') }}?v={{ filemtime(public_path('assets/css/style.css')) }}">
+    <link rel="stylesheet" href="{{ asset('themes/tdwh-netease-news-en-20260508/theme.css') }}?v={{ filemtime(public_path('themes/tdwh-netease-news-en-20260508/theme.css')) }}">
+    <link rel="stylesheet" href="{{ asset('assets/css/custom.css') }}?v={{ filemtime(public_path('assets/css/custom.css')) }}">
     <script src="{{ asset('js/lucide.min.js') }}"></script>
     @if(!empty($headAnalyticsCode))
         {!! $headAnalyticsCode !!}
@@ -45,7 +45,7 @@
         {!! json_encode($websiteSchema, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT) !!}
     </script>
 </head>
-<body class="ne-body">
+<body class="site-ui ne-body">
     @include('theme.tdwh-netease-news-en-20260508.partials.header')
     <main class="ne-main">
         @yield('content')

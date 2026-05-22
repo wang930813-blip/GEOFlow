@@ -1,0 +1,122 @@
+<?php
+
+namespace App\Jobs;
+
+use App\Models\GeoInclusionCheckResult;
+use App\Models\GeoInclusionCheckRun;
+use App\Models\Keyword;
+use App\Models\KeywordQuestionVariant;
+use App\Services\GeoFlow\AiSearchPlatformChecker;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Queue\Queueable;
+use Throwable;
+
+class ProcessGeoInclusionCheckJob implements ShouldQueue
+{
+    use Queueable;
+
+    public int $tries = 1;
+
+    public int $timeout = 180;
+
+    public function __construct(
+        public readonly int $runId,
+        public readonly int $keywordId,
+        public readonly int $questionVariantId,
+        public readonly string $platform,
+    ) {}
+
+    /**
+     * @return array<int,string>
+     */
+    public function tags(): array
+    {
+        return [
+            'geo-inclusion',
+            'geo-inclusion-run:'.$this->runId,
+            'keyword:'.$this->keywordId,
+            'platform:'.$this->platform,
+        ];
+    }
+
+    public function handle(AiSearchPlatformChecker $checker): void
+    {
+        $run = GeoInclusionCheckRun::query()->whereKey($this->runId)->firstOrFail();
+        $questionVariant = KeywordQuestionVariant::query()->whereKey($this->questionVariantId)->firstOrFail();
+        $keyword = Keyword::query()->with('library')->whereKey($this->keywordId)->firstOrFail();
+        $library = $keyword->library()->firstOrFail();
+        $question = (string) $questionVariant->question;
+
+        $run->update([
+            'status' => 'running',
+            'started_at' => $run->started_at ?? now(),
+        ]);
+
+        try {
+            $response = $checker->check($this->platform, $question, $library, $keyword);
+
+            GeoInclusionCheckResult::query()->updateOrCreate(
+                [
+                    'run_id' => (int) $run->id,
+                    'question_variant_id' => (int) $questionVariant->id,
+                    'platform' => $this->platform,
+                ],
+                [
+                    'keyword_library_id' => (int) $library->id,
+                    'keyword_id' => (int) $keyword->id,
+                    'question' => $question,
+                    'answer' => $response->answer,
+                    'keyword_hit' => $response->keywordHit,
+                    'brand_hit' => $response->brandHit,
+                    'status' => $response->status,
+                    'error_message' => $response->errorMessage,
+                    'meta' => $response->meta,
+                    'checked_at' => now(),
+                ]
+            );
+
+            $this->markProgress((int) $run->id, failed: false);
+        } catch (Throwable $exception) {
+            GeoInclusionCheckResult::query()->updateOrCreate(
+                [
+                    'run_id' => (int) $run->id,
+                    'question_variant_id' => (int) $questionVariant->id,
+                    'platform' => $this->platform,
+                ],
+                [
+                    'keyword_library_id' => (int) $library->id,
+                    'keyword_id' => (int) $keyword->id,
+                    'question' => $question,
+                    'answer' => null,
+                    'keyword_hit' => false,
+                    'brand_hit' => false,
+                    'status' => 'failed',
+                    'error_message' => $exception->getMessage(),
+                    'meta' => ['checker' => 'job'],
+                    'checked_at' => now(),
+                ]
+            );
+
+            $this->markProgress((int) $run->id, failed: true);
+        }
+    }
+
+    private function markProgress(int $runId, bool $failed): void
+    {
+        $run = GeoInclusionCheckRun::query()->whereKey($runId)->first();
+        if (! $run) {
+            return;
+        }
+
+        $completedChecks = (int) $run->completed_checks + 1;
+        $failedChecks = (int) $run->failed_checks + ($failed ? 1 : 0);
+        $status = $completedChecks >= (int) $run->total_checks ? 'completed' : 'running';
+
+        $run->update([
+            'completed_checks' => $completedChecks,
+            'failed_checks' => $failedChecks,
+            'status' => $status,
+            'completed_at' => $status === 'completed' ? now() : null,
+        ]);
+    }
+}

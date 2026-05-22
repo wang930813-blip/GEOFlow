@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AiModel;
 use App\Models\Article;
 use App\Models\SiteSetting;
+use App\Models\Task;
 use App\Support\AdminWeb;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
@@ -151,7 +152,10 @@ class AiModelController extends Controller
     public function destroy(int $modelId): RedirectResponse
     {
         $model = AiModel::query()->whereKey($modelId)->firstOrFail();
-        $taskCount = $model->tasks()->count();
+        $taskCount = Task::query()
+            ->where('ai_model_id', (int) $model->id)
+            ->orWhere('ai_image_model_id', (int) $model->id)
+            ->count();
         if ($taskCount > 0) {
             return back()->withErrors(__('admin.ai_models.error.in_use', ['count' => $taskCount]));
         }
@@ -226,7 +230,7 @@ class AiModelController extends Controller
 
             return $this->modelTestResponse(
                 true,
-                __('admin.ai_models.test_success', ['type' => $modelType === 'embedding' ? 'Embedding' : 'Chat']),
+                __('admin.ai_models.test_success', ['type' => $modelType === 'embedding' ? 'Embedding' : ($modelType === 'image' ? 'Image' : 'Chat')]),
                 $startedAt,
                 $modelType,
                 $endpoint,
@@ -306,6 +310,7 @@ class AiModelController extends Controller
 
         return $models->map(function (AiModel $model) use ($defaultEmbeddingModelId): array {
             $modelType = $this->normalizeModelType((string) ($model->model_type ?? 'chat'));
+            $imageTaskCount = (int) Task::query()->where('ai_image_model_id', (int) $model->id)->count();
 
             return [
                 'id' => (int) $model->id,
@@ -319,7 +324,7 @@ class AiModelController extends Controller
                 'used_today' => (int) ($model->used_today ?? 0),
                 'total_used' => (int) ($model->total_used ?? 0),
                 'status' => (string) ($model->status ?? 'active'),
-                'task_count' => (int) ($model->task_count ?? 0),
+                'task_count' => (int) ($model->task_count ?? 0) + $imageTaskCount,
                 'article_count' => (int) ($model->article_count ?? 0),
                 'masked_api_key' => $this->maskApiKey((string) ($model->getRawOriginal('api_key') ?? '')),
                 'is_default_embedding' => $modelType === 'embedding' && $defaultEmbeddingModelId === (int) $model->id,
@@ -362,7 +367,7 @@ class AiModelController extends Controller
             'version' => ['nullable', 'string', 'max:50'],
             'api_key' => [$isUpdate ? 'nullable' : 'required', 'string', 'max:500'],
             'model_id' => ['required', 'string', 'max:100'],
-            'model_type' => ['required', 'in:chat,embedding'],
+            'model_type' => ['required', 'in:chat,embedding,image'],
             'api_url' => ['nullable', 'string', 'max:500'],
             'failover_priority' => ['nullable', 'integer', 'min:1'],
             'daily_limit' => ['nullable', 'integer', 'min:0'],
@@ -381,7 +386,7 @@ class AiModelController extends Controller
     {
         $normalized = trim(strtolower($modelType));
 
-        return in_array($normalized, ['chat', 'embedding'], true) ? $normalized : 'chat';
+        return in_array($normalized, ['chat', 'embedding', 'image'], true) ? $normalized : 'chat';
     }
 
     /**
@@ -456,13 +461,19 @@ class AiModelController extends Controller
         $apiUrl = (string) ($model->api_url ?? '');
         $providerBaseUrl = $modelType === 'embedding'
             ? OpenAiRuntimeProvider::resolveEmbeddingBaseUrl($apiUrl)
-            : OpenAiRuntimeProvider::resolveChatBaseUrl($apiUrl);
+            : ($modelType === 'image'
+                ? OpenAiRuntimeProvider::resolveImageBaseUrl($apiUrl)
+                : OpenAiRuntimeProvider::resolveChatBaseUrl($apiUrl));
 
         if ($providerBaseUrl === '') {
             return '';
         }
 
-        return rtrim($providerBaseUrl, '/').($modelType === 'embedding' ? '/embeddings' : '/chat/completions');
+        return rtrim($providerBaseUrl, '/').match ($modelType) {
+            'embedding' => '/embeddings',
+            'image' => '/images/generations',
+            default => '/chat/completions',
+        };
     }
 
     /**
@@ -474,6 +485,15 @@ class AiModelController extends Controller
             return [
                 'model' => $modelName,
                 'input' => 'GEOFlow embedding connection test',
+            ];
+        }
+
+        if ($modelType === 'image') {
+            return [
+                'model' => $modelName,
+                'prompt' => 'A simple clean icon for GEOFlow connection test',
+                'n' => 1,
+                'size' => '1024x1024',
             ];
         }
 
@@ -495,6 +515,12 @@ class AiModelController extends Controller
 
         if ($modelType === 'embedding') {
             return isset($json['data'][0]['embedding']) && is_array($json['data'][0]['embedding']);
+        }
+
+        if ($modelType === 'image') {
+            return isset($json['data'][0]['b64_json'])
+                || isset($json['data'][0]['url'])
+                || isset($json['data'][0]['image']);
         }
 
         return isset($json['choices'][0]['message']['content'])

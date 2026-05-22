@@ -63,6 +63,7 @@
                 <div class="px-6 py-5 space-y-3 text-sm text-gray-700">
                     <p>{{ __('admin.ai_models.type_chat') }}</p>
                     <p>{{ __('admin.ai_models.type_embedding') }}</p>
+                    <p>Image：用于文章自动配图，生成图片后会上传到图床并写入 Markdown。</p>
                     <p>{{ __('admin.ai_models.type_rerank') }}</p>
                     <p>{{ __('admin.ai_models.type_fallback') }}</p>
                 </div>
@@ -105,8 +106,8 @@
                                     <div>
                                         <div class="flex items-center gap-2">
                                             <div class="text-sm font-medium text-gray-900">{{ $model['name'] }}</div>
-                                            <span class="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full {{ $model['model_type'] === 'embedding' ? 'bg-amber-100 text-amber-800' : 'bg-sky-100 text-sky-800' }}">
-                                                {{ $model['model_type'] === 'embedding' ? __('admin.ai_models.type_embedding_option') : __('admin.ai_models.chat') }}
+                                            <span class="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full {{ $model['model_type'] === 'embedding' ? 'bg-amber-100 text-amber-800' : ($model['model_type'] === 'image' ? 'bg-fuchsia-100 text-fuchsia-800' : 'bg-sky-100 text-sky-800') }}">
+                                                {{ $model['model_type'] === 'embedding' ? __('admin.ai_models.type_embedding_option') : ($model['model_type'] === 'image' ? 'Image' : __('admin.ai_models.chat')) }}
                                             </span>
                                             @if ($model['is_default_embedding'])
                                                 <span class="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full bg-emerald-100 text-emerald-800">{{ __('admin.ai_models.embedding_default') }}</span>
@@ -197,6 +198,10 @@
                             <button type="button" onclick="fillPreset('openai_embedding')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">OpenAI Embedding</button>
                             <button type="button" onclick="fillPreset('zhipu_embedding')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">Zhipu Embedding</button>
                         </div>
+                        <label class="block text-sm font-medium text-gray-700 mt-4 mb-2">Quick Image</label>
+                        <div class="flex flex-wrap gap-2">
+                            <button type="button" onclick="fillPreset('openai_image')" class="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50">OpenAI Image</button>
+                        </div>
                         <p class="mt-1 text-xs text-gray-500">{{ __('admin.ai_models.quick_help') }}</p>
                     </div>
 
@@ -216,6 +221,7 @@
                         <select name="model_type" id="model_type" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
                             <option value="chat">{{ __('admin.ai_models.type_chat_option') }}</option>
                             <option value="embedding">{{ __('admin.ai_models.type_embedding_option') }}</option>
+                            <option value="image">Image</option>
                         </select>
                         <p class="mt-1 text-xs text-gray-500">{{ __('admin.ai_models.type_help') }}</p>
                     </div>
@@ -300,6 +306,7 @@
             volcengine_ark: {name: '火山方舟 Chat', version: 'v3', model_id: '', api_url: 'https://ark.cn-beijing.volces.com/api/v3', model_type: 'chat'},
             openai_embedding: {name: 'OpenAI Embedding 3 Small', version: '', model_id: 'text-embedding-3-small', api_url: 'https://api.openai.com', model_type: 'embedding'},
             zhipu_embedding: {name: '智谱 Embedding-3', version: 'v4', model_id: 'embedding-3', api_url: 'https://open.bigmodel.cn/api/paas/v4', model_type: 'embedding'},
+            openai_image: {name: 'OpenAI Image', version: '', model_id: 'gpt-image-1', api_url: 'https://api.openai.com', model_type: 'image'},
         };
 
         function showCreateModelModal() {

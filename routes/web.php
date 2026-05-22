@@ -16,6 +16,7 @@ use App\Http\Controllers\Admin\ArticleController;
 use App\Http\Controllers\Admin\AuthorController;
 use App\Http\Controllers\Admin\CategoryController;
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\GeoReportController;
 use App\Http\Controllers\Admin\ImageLibraryController;
 use App\Http\Controllers\Admin\KeywordLibraryController;
 use App\Http\Controllers\Admin\KnowledgeBaseController;
@@ -67,6 +68,7 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
         Route::post('logout', [AdminAuthController::class, 'logout'])->name('logout');
         Route::post('welcome/dismiss', [AdminWelcomeController::class, 'dismiss'])->name('welcome.dismiss');
         Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
+        Route::get('geo-reports', [GeoReportController::class, 'index'])->name('geo-reports.index');
 
         // 任务管理（Blade 新路径）
         Route::prefix('tasks')->name('tasks.')->group(function () {
@@ -126,7 +128,12 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::post('create', [KeywordLibraryController::class, 'store'])->name('store');
             Route::get('{libraryId}/edit', [KeywordLibraryController::class, 'edit'])->name('edit');
             Route::get('{libraryId}/detail', [KeywordLibraryController::class, 'detail'])->name('detail');
+            Route::post('{libraryId}/inclusion-checks', [KeywordLibraryController::class, 'storeInclusionCheck'])->name('inclusion-checks.store');
             Route::post('{libraryId}/keywords', [KeywordLibraryController::class, 'storeKeyword'])->name('keywords.store');
+            Route::post('{libraryId}/keywords/suggest', [KeywordLibraryController::class, 'suggestKeywords'])->name('keywords.suggest');
+            Route::post('{libraryId}/keywords/bulk-store', [KeywordLibraryController::class, 'bulkStoreKeywords'])->name('keywords.bulk-store');
+            Route::post('{libraryId}/keywords/{keywordId}/questions', [KeywordLibraryController::class, 'storeQuestion'])->name('keywords.questions.store');
+            Route::post('{libraryId}/keywords/{keywordId}/questions/generate', [KeywordLibraryController::class, 'generateQuestions'])->name('keywords.questions.generate');
             Route::post('{libraryId}/keywords/delete', [KeywordLibraryController::class, 'destroyKeywords'])->name('keywords.delete');
             Route::post('{libraryId}/import', [KeywordLibraryController::class, 'importKeywords'])->name('import');
             Route::put('{libraryId}/detail', [KeywordLibraryController::class, 'updateFromDetail'])->name('detail.update');

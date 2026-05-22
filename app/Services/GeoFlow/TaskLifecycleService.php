@@ -81,7 +81,9 @@ class TaskLifecycleService
                 'name' => $normalized['name'],
                 'title_library_id' => $normalized['title_library_id'],
                 'image_library_id' => $normalized['image_library_id'],
+                'image_mode' => $normalized['image_mode'],
                 'image_count' => $normalized['image_count'],
+                'ai_image_model_id' => $normalized['ai_image_model_id'],
                 'prompt_id' => $normalized['prompt_id'],
                 'ai_model_id' => $normalized['ai_model_id'],
                 'need_review' => $normalized['need_review'],
@@ -506,9 +508,57 @@ class TaskLifecycleService
         }
 
         if (array_key_exists('image_count', $data)) {
-            $output['image_count'] = max(0, (int) $data['image_count']);
+            $output['image_count'] = min(5, max(0, (int) $data['image_count']));
         } elseif (! $isUpdate) {
             $output['image_count'] = 0;
+        }
+
+        if (array_key_exists('image_mode', $data)) {
+            $imageMode = trim((string) $data['image_mode']);
+            if (! in_array($imageMode, ['none', 'library', 'ai'], true)) {
+                $fieldErrors['image_mode'] = '图片模式无效';
+            } else {
+                $output['image_mode'] = $imageMode;
+            }
+        } elseif (! $isUpdate) {
+            $output['image_mode'] = 'library';
+        }
+
+        if (array_key_exists('ai_image_model_id', $data)) {
+            $imageModelId = (int) $data['ai_image_model_id'];
+            if ($imageModelId > 0) {
+                $imageModelExists = AiModel::query()
+                    ->whereKey($imageModelId)
+                    ->where('status', 'active')
+                    ->where('model_type', 'image')
+                    ->exists();
+                if ($imageModelExists) {
+                    $output['ai_image_model_id'] = $imageModelId;
+                } else {
+                    $fieldErrors['ai_image_model_id'] = '选择的AI图片模型不存在或未激活';
+                }
+            } else {
+                $output['ai_image_model_id'] = null;
+            }
+        } elseif (! $isUpdate) {
+            $output['ai_image_model_id'] = null;
+        }
+
+        $effectiveImageMode = (string) ($output['image_mode'] ?? ($data['image_mode'] ?? 'library'));
+        if ($effectiveImageMode === 'none') {
+            $output['image_count'] = 0;
+            $output['image_library_id'] = null;
+            $output['ai_image_model_id'] = null;
+        } elseif ($effectiveImageMode === 'library') {
+            $output['ai_image_model_id'] = null;
+        } elseif ($effectiveImageMode === 'ai') {
+            $output['image_library_id'] = null;
+            if ((int) ($output['image_count'] ?? 0) <= 0) {
+                $fieldErrors['image_count'] = 'AI配图模式下至少生成1张图片';
+            }
+            if (($output['ai_image_model_id'] ?? null) === null) {
+                $fieldErrors['ai_image_model_id'] = 'AI配图模式下必须选择图片模型';
+            }
         }
 
         if (array_key_exists('publish_interval', $data)) {

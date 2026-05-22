@@ -27,6 +27,7 @@ abstract class TestCase extends BaseTestCase
     {
         $variables = [
             'APP_ENV' => 'testing',
+            'APP_KEY' => 'base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
             'DB_CONNECTION' => 'sqlite',
             'DB_DATABASE' => ':memory:',
             'DB_URL' => '',

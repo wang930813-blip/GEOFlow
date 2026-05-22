@@ -18,6 +18,7 @@
     $notificationStatus = (string) ($updateState['status'] ?? 'disabled');
     $menu = [
         'dashboard' => ['route' => 'admin.dashboard', 'name' => __('admin.nav.dashboard')],
+        'geo_reports' => ['route' => 'admin.geo-reports.index', 'name' => 'GEO 报表'],
         'tasks' => ['route' => 'admin.tasks.index', 'name' => __('admin.nav.tasks')],
         'articles' => ['route' => 'admin.articles.index', 'name' => __('admin.nav.articles')],
         'materials' => ['route' => 'admin.materials.index', 'name' => __('admin.nav.materials')],
@@ -89,15 +90,20 @@
         $resolvedActive = $subMap[$routeName];
     }
 @endphp
-<nav class="bg-white shadow-sm border-b">
+<nav class="admin-topbar">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex h-16 items-center gap-3 lg:gap-4 min-w-0">
-            <a href="{{ route('admin.dashboard') }}" class="shrink-0 text-lg sm:text-xl font-semibold text-gray-900">{{ $adminBrandName }}</a>
+            <a href="{{ route('admin.dashboard') }}" class="admin-brand-mark shrink-0 inline-flex items-center gap-2 text-lg sm:text-xl font-semibold">
+                <span class="admin-brand-icon flex h-8 w-8 items-center justify-center rounded-md">
+                    <i data-lucide="radar" class="h-4 w-4"></i>
+                </span>
+                <span>{{ $adminBrandName }}</span>
+            </a>
             <nav class="hidden md:flex flex-1 min-w-0 items-center">
                 <div class="flex w-full min-w-0 items-center gap-3 lg:gap-5 overflow-x-auto overscroll-x-contain py-2 -my-2 [scrollbar-width:thin]">
                     @foreach ($menu as $key => $item)
                         <a href="{{ route($item['route']) }}"
-                           class="@if($resolvedActive === $key) text-blue-600 font-medium @else text-gray-500 hover:text-gray-700 @endif shrink-0 whitespace-nowrap text-[15px] transition-colors duration-200">
+                           class="admin-nav-link @if($resolvedActive === $key) is-active font-medium @endif inline-flex shrink-0 items-center whitespace-nowrap px-3 py-2 text-sm transition-colors duration-200">
                             {{ $item['name'] }}
                         </a>
                     @endforeach
@@ -105,14 +111,14 @@
             </nav>
             <div class="flex shrink-0 items-center gap-2 sm:gap-3 ml-auto">
                 <div class="relative">
-                    <button onclick="toggleAdminNotifications()" class="relative rounded-full p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors duration-200" type="button" aria-label="{{ __('admin.header.notifications.label') }}" title="{{ __('admin.header.notifications.label') }}">
+                    <button onclick="toggleAdminNotifications()" class="relative rounded-md p-2 hover:bg-white/10 transition-colors duration-200" type="button" aria-label="{{ __('admin.header.notifications.label') }}" title="{{ __('admin.header.notifications.label') }}">
                         <i data-lucide="bell" class="w-5 h-5"></i>
                         @if($hasVersionUpdate)
                             <span data-update-indicator class="absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-white"></span>
                         @endif
                     </button>
 
-                    <div id="admin-notification-menu" class="hidden absolute right-0 mt-3 w-80 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl z-50">
+                    <div id="admin-notification-menu" class="admin-menu-panel hidden absolute right-0 mt-3 w-80 overflow-hidden rounded-md border bg-white z-50">
                         <div class="border-b border-gray-100 px-4 py-3">
                             <div class="flex items-center justify-between gap-3">
                                 <div class="text-sm font-semibold text-gray-900">{{ __('admin.header.notifications.title') }}</div>
@@ -163,8 +169,8 @@
                         </div>
                     </div>
                 </div>
-                <div class="hidden md:flex items-center rounded-lg border border-gray-200 bg-white px-2 py-1 shadow-sm">
-                    <i data-lucide="languages" class="w-4 h-4 text-gray-400 mr-1.5"></i>
+                <div class="hidden md:flex items-center rounded-md border border-white/15 bg-white/10 px-2 py-1">
+                    <i data-lucide="languages" class="w-4 h-4 mr-1.5"></i>
                     <select
                         class="admin-locale-select appearance-none bg-transparent pr-5 text-sm font-medium text-gray-700 outline-none cursor-pointer"
                         aria-label="{{ __('admin.header.language') }}"
@@ -178,14 +184,14 @@
                     </select>
                 </div>
                 <div class="relative">
-                    <button onclick="toggleUserMenu()" class="flex items-center space-x-1 text-sm text-gray-600 hover:text-gray-900 transition-colors duration-200" type="button">
-                        <div class="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                            <i data-lucide="user" class="w-4 h-4 text-blue-600"></i>
+                    <button onclick="toggleUserMenu()" class="flex items-center space-x-1 text-sm transition-colors duration-200" type="button">
+                        <div class="admin-user-avatar w-8 h-8 rounded-md flex items-center justify-center">
+                            <i data-lucide="user" class="w-4 h-4"></i>
                         </div>
                         <i data-lucide="chevron-down" class="w-4 h-4"></i>
                     </button>
 
-                    <div id="user-menu" class="hidden absolute right-0 mt-2 w-56 bg-white rounded-md shadow-lg py-1 z-50">
+                    <div id="user-menu" class="admin-menu-panel hidden absolute right-0 mt-2 w-56 bg-white rounded-md py-1 z-50">
                         <div class="px-4 py-2 border-b border-gray-100">
                             <div class="text-sm text-gray-700">{{ __('admin.header.welcome', ['name' => $currentAdmin->username ?? '']) }}</div>
                             <div class="text-xs text-gray-400">{{ $adminRoleLabel }}</div>
@@ -227,10 +233,10 @@
     </div>
 
     <div id="mobile-menu" class="hidden md:hidden">
-        <div class="px-2 pt-2 pb-3 space-y-1 sm:px-3 bg-gray-50 border-t">
+        <div class="px-2 pt-2 pb-3 space-y-1 sm:px-3 border-t border-white/10" style="background: #203244;">
             @foreach ($menu as $key => $item)
                 <a href="{{ route($item['route']) }}"
-                   class="@if($resolvedActive === $key) bg-blue-100 text-blue-600 @else text-gray-600 hover:bg-gray-100 @endif block px-3 py-2 rounded-md text-base font-medium transition-colors duration-200">
+                   class="admin-nav-link @if($resolvedActive === $key) is-active @endif block px-3 py-2 rounded-md text-base font-medium transition-colors duration-200">
                     {{ $item['name'] }}
                 </a>
             @endforeach
@@ -238,14 +244,14 @@
     </div>
 </nav>
 <div class="md:hidden fixed top-4 right-4 z-50">
-    <button onclick="toggleMobileMenu()" class="bg-white p-2 rounded-md shadow-md" type="button">
-        <i data-lucide="menu" class="w-5 h-5 text-gray-600"></i>
+    <button onclick="toggleMobileMenu()" class="p-2 rounded-md shadow-md" style="background: #2A3F54;" type="button">
+        <i data-lucide="menu" class="w-5 h-5 text-white"></i>
     </button>
 </div>
 
 <style>
     .admin-locale-select {
-        background-image: linear-gradient(45deg, transparent 50%, #6b7280 50%), linear-gradient(135deg, #6b7280 50%, transparent 50%);
+        background-image: linear-gradient(45deg, transparent 50%, rgba(255,255,255,0.78) 50%), linear-gradient(135deg, rgba(255,255,255,0.78) 50%, transparent 50%);
         background-position: calc(100% - 8px) 52%, calc(100% - 4px) 52%;
         background-size: 4px 4px, 4px 4px;
         background-repeat: no-repeat;

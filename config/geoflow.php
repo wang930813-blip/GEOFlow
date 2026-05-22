@@ -59,6 +59,11 @@ return [
     // 单文件上传最大字节数
     'max_upload_bytes' => (int) env('GEOFLOW_MAX_UPLOAD_BYTES', 2 * 1024 * 1024),
 
+    'image_host' => [
+        'upload_url' => env('IMAGE_HOST_UPLOAD_URL', ''),
+        'token' => env('IMAGE_HOST_TOKEN', ''),
+    ],
+
     // 是否启用 GEOFlow 业务层缓存
     'cache_enabled' => filter_var(env('GEOFLOW_CACHE_ENABLED', true), FILTER_VALIDATE_BOOLEAN),
     // 业务缓存 TTL（秒）

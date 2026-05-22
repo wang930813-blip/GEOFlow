@@ -14,7 +14,9 @@ class Task extends Model
         'name',
         'title_library_id',
         'image_library_id',
+        'image_mode',
         'image_count',
+        'ai_image_model_id',
         'prompt_id',
         'ai_model_id',
         'author_id',
@@ -50,7 +52,9 @@ class Task extends Model
         return [
             'title_library_id' => 'integer',
             'image_library_id' => 'integer',
+            'image_mode' => 'string',
             'image_count' => 'integer',
+            'ai_image_model_id' => 'integer',
             'prompt_id' => 'integer',
             'ai_model_id' => 'integer',
             'author_id' => 'integer',
@@ -95,6 +99,11 @@ class Task extends Model
     public function aiModel(): BelongsTo
     {
         return $this->belongsTo(AiModel::class, 'ai_model_id');
+    }
+
+    public function aiImageModel(): BelongsTo
+    {
+        return $this->belongsTo(AiModel::class, 'ai_image_model_id');
     }
 
     public function author(): BelongsTo
