@@ -23,18 +23,17 @@ use RuntimeException;
 use Throwable;
 
 /**
- * Worker 任务执行器：将队列任务落地为文章记录（占位实现，先打通 worker/队列链路）。
- */
+ * Worker 浠诲姟鎵ц鍣細灏嗛槦鍒椾换鍔¤惤鍦颁负鏂囩珷璁板綍锛堝崰浣嶅疄鐜帮紝鍏堟墦閫?worker/闃熷垪閾捐矾锛夈€? */
 class WorkerExecutionService
 {
     /**
-     * 复用统一 API Key 解密组件，确保 worker 与后台配置端解密行为一致。
-     */
+     * 澶嶇敤缁熶竴 API Key 瑙ｅ瘑缁勪欢锛岀‘淇?worker 涓庡悗鍙伴厤缃瑙ｅ瘑琛屼负涓€鑷淬€?     */
     public function __construct(
         private readonly ApiKeyCrypto $apiKeyCrypto,
         private readonly KnowledgeChunkSyncService $knowledgeChunkSyncService,
         private readonly AiGeneratedArticleImageService $aiGeneratedArticleImageService,
-        private readonly GeoArticleContextService $geoArticleContextService
+        private readonly GeoArticleContextService $geoArticleContextService,
+        private readonly DistributionOrchestrator $distributionOrchestrator
     ) {}
 
     /**
@@ -45,15 +44,17 @@ class WorkerExecutionService
         /** @var Task|null $task */
         $task = Task::query()->find($taskId);
         if (! $task) {
-            throw new RuntimeException('任务不存在');
+            throw new RuntimeException('Task not found');
         }
 
         if (($task->status ?? 'paused') !== 'active' || (int) ($task->schedule_enabled ?? 1) !== 1) {
-            throw new RuntimeException('任务未激活');
+            throw new RuntimeException('Task is not active');
         }
 
         $publishResult = $this->publishDueDraftArticle($task);
         if ($publishResult !== null) {
+            $this->distributionOrchestrator->enqueueForArticle((int) $publishResult['article_id']);
+
             return $publishResult;
         }
 
@@ -100,7 +101,7 @@ class WorkerExecutionService
                 ->lockForUpdate()
                 ->first(['id', 'status', 'schedule_enabled', 'created_count', 'draft_limit', 'article_limit', 'publish_interval', 'next_publish_at']);
             if (! $freshTask || ($freshTask->status ?? 'paused') !== 'active' || (int) ($freshTask->schedule_enabled ?? 1) !== 1) {
-                throw new RuntimeException('任务未激活');
+                throw new RuntimeException('Task is not active');
             }
             $generationBlockReason = $this->getGenerationBlockReason($freshTask, true);
             if ($generationBlockReason !== null) {
@@ -138,8 +139,7 @@ class WorkerExecutionService
                 }
             }
 
-            // 保持与旧逻辑一致：每次任务执行会消耗标题并累加任务计数。
-            Title::query()->whereKey($titleRow->id)->increment('used_count');
+            // 淇濇寔涓庢棫閫昏緫涓€鑷达細姣忔浠诲姟鎵ц浼氭秷鑰楁爣棰樺苟绱姞浠诲姟璁℃暟銆?            Title::query()->whereKey($titleRow->id)->increment('used_count');
             Title::query()->whereKey($titleRow->id)->increment('usage_count');
 
             $taskUpdate = [
@@ -158,7 +158,7 @@ class WorkerExecutionService
         return [
             'article_id' => $articleId,
             'title' => (string) $titleRow->title,
-            'message' => '草稿生成成功',
+            'message' => '鑽夌鐢熸垚鎴愬姛',
             'meta' => [
                 'task_id' => (int) $task->id,
                 'action' => 'generate_draft',
@@ -179,8 +179,7 @@ class WorkerExecutionService
     }
 
     /**
-     * 发布一个已审核草稿。生成与发布解耦后，Worker 每次执行优先释放到期草稿。
-     *
+     * 鍙戝竷涓€涓凡瀹℃牳鑽夌銆傜敓鎴愪笌鍙戝竷瑙ｈ€﹀悗锛學orker 姣忔鎵ц浼樺厛閲婃斁鍒版湡鑽夌銆?     *
      * @return array{article_id:int, title:string, message:string, meta:array<string,mixed>}|null
      */
     private function publishDueDraftArticle(Task $task): ?array
@@ -193,9 +192,9 @@ class WorkerExecutionService
             $freshTask = Task::query()
                 ->whereKey((int) $task->id)
                 ->lockForUpdate()
-                ->first(['id', 'status', 'schedule_enabled', 'publish_interval', 'next_publish_at']);
+                ->first(['id', 'status', 'schedule_enabled', 'publish_interval', 'next_publish_at', 'publish_scope']);
             if (! $freshTask || ($freshTask->status ?? 'paused') !== 'active' || (int) ($freshTask->schedule_enabled ?? 1) !== 1) {
-                throw new RuntimeException('任务未激活');
+                throw new RuntimeException('Task is not active');
             }
 
             if ($freshTask->next_publish_at !== null && $freshTask->next_publish_at->greaterThan(now())) {
@@ -215,7 +214,9 @@ class WorkerExecutionService
                 return null;
             }
 
-            $workflow = ArticleWorkflow::normalizeState('published', (string) ($article->review_status ?: 'approved'));
+            $publishScope = (string) ($freshTask->publish_scope ?? 'local_and_distribution');
+            $targetStatus = $publishScope === 'distribution_only' ? 'private' : 'published';
+            $workflow = ArticleWorkflow::normalizeState($targetStatus, (string) ($article->review_status ?: 'approved'));
             Article::query()->whereKey((int) $article->id)->update([
                 'status' => $workflow['status'],
                 'review_status' => $workflow['review_status'],
@@ -233,7 +234,7 @@ class WorkerExecutionService
             return [
                 'article_id' => (int) $article->id,
                 'title' => (string) $article->title,
-                'message' => '草稿发布成功',
+                'message' => '鑽夌鍙戝竷鎴愬姛',
                 'meta' => [
                     'task_id' => (int) $freshTask->id,
                     'action' => 'publish_draft',
@@ -244,13 +245,12 @@ class WorkerExecutionService
     }
 
     /**
-     * 判断是否允许继续生成草稿。
-     */
+     * 鍒ゆ柇鏄惁鍏佽缁х画鐢熸垚鑽夌銆?     */
     private function getGenerationBlockReason(Task $task, bool $lock = false): ?string
     {
         $articleLimit = max(1, (int) ($task->article_limit ?? $task->draft_limit ?? 10));
         if ((int) ($task->created_count ?? 0) >= $articleLimit) {
-            return '已达到文章总数上限';
+            return '宸茶揪鍒版枃绔犳€绘暟涓婇檺';
         }
 
         $draftLimit = max(1, (int) ($task->draft_limit ?? 10));
@@ -258,11 +258,9 @@ class WorkerExecutionService
             ->where('task_id', (int) $task->id)
             ->where('status', 'draft')
             ->whereNull('deleted_at');
-        // PostgreSQL 不允许在 count(*) 聚合查询上追加 FOR UPDATE。
-        // 这里的并发保护由任务行锁和 task_runs 的单任务串行队列保证，草稿计数不需要再单独加锁。
-
+        // PostgreSQL 涓嶅厑璁稿湪 count(*) 鑱氬悎鏌ヨ涓婅拷鍔?FOR UPDATE銆?        // 杩欓噷鐨勫苟鍙戜繚鎶ょ敱浠诲姟琛岄攣鍜?task_runs 鐨勫崟浠诲姟涓茶闃熷垪淇濊瘉锛岃崏绋胯鏁颁笉闇€瑕佸啀鍗曠嫭鍔犻攣銆?
         if ($draftQuery->count() >= $draftLimit) {
-            return '草稿池已满，等待审核或按间隔发布';
+            return '鑽夌姹犲凡婊★紝绛夊緟瀹℃牳鎴栨寜闂撮殧鍙戝竷';
         }
 
         return null;
@@ -274,13 +272,12 @@ class WorkerExecutionService
     }
 
     /**
-     * 解析并校验任务绑定的 AI 模型（必须是 active + chat）。
-     */
+     * 瑙ｆ瀽骞舵牎楠屼换鍔＄粦瀹氱殑 AI 妯″瀷锛堝繀椤绘槸 active + chat锛夈€?     */
     private function resolveAiModel(Task $task): AiModel
     {
         $aiModelId = (int) ($task->ai_model_id ?? 0);
         if ($aiModelId <= 0) {
-            throw new RuntimeException('任务未配置 AI 模型');
+            throw new RuntimeException('Task AI model is not configured');
         }
 
         $aiModel = AiModel::query()
@@ -294,15 +291,14 @@ class WorkerExecutionService
             ->first();
 
         if (! $aiModel) {
-            throw new RuntimeException('任务 AI 模型不可用');
+            throw new RuntimeException('Task AI model is unavailable');
         }
 
         return $aiModel;
     }
 
     /**
-     * 固定模型只尝试主模型；智能切换按 failover_priority 依次尝试其它 active chat 模型。
-     *
+     * 鍥哄畾妯″瀷鍙皾璇曚富妯″瀷锛涙櫤鑳藉垏鎹㈡寜 failover_priority 渚濇灏濊瘯鍏跺畠 active chat 妯″瀷銆?     *
      * @return array{content:string,model:AiModel,attempts:list<array{model_id:int,model_name:string,status:string,reason:?string}>}
      */
     private function generateContentWithModelSelection(Task $task, string $contentPrompt): array
@@ -346,7 +342,7 @@ class WorkerExecutionService
             throw new RuntimeException($this->buildFailoverErrorMessage($attempts, $lastMessage));
         }
 
-        throw new RuntimeException('AI模型不可用或已达每日限制');
+        throw new RuntimeException('AI妯″瀷涓嶅彲鐢ㄦ垨宸茶揪姣忔棩闄愬埗');
     }
 
     /**
@@ -377,13 +373,13 @@ class WorkerExecutionService
     private function getAiModelUnavailableReason(AiModel $aiModel): ?string
     {
         if (($aiModel->status ?? 'inactive') !== 'active') {
-            return 'AI模型不可用或已达每日限制';
+            return 'AI妯″瀷涓嶅彲鐢ㄦ垨宸茶揪姣忔棩闄愬埗';
         }
 
         $dailyLimit = (int) ($aiModel->daily_limit ?? 0);
         $usedToday = (int) ($aiModel->used_today ?? 0);
         if ($dailyLimit > 0 && $usedToday >= $dailyLimit) {
-            return 'AI模型不可用或已达每日限制';
+            return 'AI妯″瀷涓嶅彲鐢ㄦ垨宸茶揪姣忔棩闄愬埗';
         }
 
         return null;
@@ -410,17 +406,17 @@ class WorkerExecutionService
         $summaries = [];
         foreach ($attempts as $attempt) {
             $reason = trim((string) ($attempt['reason'] ?? ''));
-            $summaries[] = (string) $attempt['model_name'].($reason !== '' ? '（'.$reason.'）' : '');
+            $summaries[] = (string) $attempt['model_name'].($reason !== '' ? ' ('.$reason.')' : '');
         }
 
-        return '智能模型切换已尝试：'.implode('；', $summaries).'。最终失败：'.$lastMessage;
+        return 'Model failover attempted: '.implode(', ', $summaries).'. Final failure: '.$lastMessage;
     }
 
     private function pickTitle(Task $task): Title
     {
         $libraryId = (int) ($task->title_library_id ?? 0);
         if ($libraryId <= 0) {
-            throw new RuntimeException('任务未配置标题库');
+            throw new RuntimeException('Task title library is not configured');
         }
 
         $query = Title::query()->where('library_id', $libraryId);
@@ -437,7 +433,7 @@ class WorkerExecutionService
             ->first();
 
         if (! $title) {
-            throw new RuntimeException((int) ($task->is_loop ?? 0) === 1 ? '没有可用的标题' : '标题库已用尽');
+            throw new RuntimeException((int) ($task->is_loop ?? 0) === 1 ? 'No available title' : 'Title library exhausted');
         }
 
         return $title;
@@ -474,8 +470,7 @@ class WorkerExecutionService
     }
 
     /**
-     * 构造正文提示词：优先精确替换变量；无变量的自定义提示词自动补齐任务上下文。
-     */
+     * 鏋勯€犳鏂囨彁绀鸿瘝锛氫紭鍏堢簿纭浛鎹㈠彉閲忥紱鏃犲彉閲忕殑鑷畾涔夋彁绀鸿瘝鑷姩琛ラ綈浠诲姟涓婁笅鏂囥€?     */
     private function buildContentPrompt(string $title, string $keyword, ?string $promptContent, string $knowledgeContext): string
     {
         return $this->buildContentPromptWithGeoContext($title, $keyword, $promptContent, $knowledgeContext, '');
@@ -493,7 +488,7 @@ class WorkerExecutionService
         $prompt = trim((string) $promptContent);
         $isFallbackPrompt = false;
         if ($prompt === '') {
-            $prompt = "请围绕标题“{$title}”和关键词“{$keyword}”生成一篇结构清晰、语言自然的中文文章。";
+            $prompt = 'Write a clear, structured article based on the provided title and keyword.';
             $isFallbackPrompt = true;
         }
 
@@ -522,8 +517,7 @@ class WorkerExecutionService
     }
 
     /**
-     * 渲染任务上下文变量，兼容 {{Knowledge}} 与 {{knowledge}} 等大小写写法。
-     *
+     * 娓叉煋浠诲姟涓婁笅鏂囧彉閲忥紝鍏煎 {{Knowledge}} 涓?{{knowledge}} 绛夊ぇ灏忓啓鍐欐硶銆?     *
      * @param  array{title:string, keyword:string, knowledge:string}  $context
      */
     private function renderPromptTemplate(string $prompt, array $context): string
@@ -567,16 +561,18 @@ class WorkerExecutionService
 
     private function appendSmartPromptContext(string $prompt, string $title, string $keyword, string $knowledgeContext): string
     {
-        if ($this->isLikelyEnglishPrompt($prompt)) {
+        if (! $this->isLikelyEnglishPrompt($prompt)) {
             $lines = [
-                'Task context:',
-                '- Article title: '.$title,
+                '【任务上下文】',
+                '- 文章标题：'.$title,
             ];
+
             if (trim($keyword) !== '') {
-                $lines[] = '- Core keyword: '.$keyword;
+                $lines[] = '- 核心关键词：'.$keyword;
             }
+
             if (trim($knowledgeContext) !== '') {
-                $lines[] = '- Reference knowledge:';
+                $lines[] = '- 参考知识：';
                 $lines[] = $knowledgeContext;
             }
 
@@ -584,14 +580,16 @@ class WorkerExecutionService
         }
 
         $lines = [
-            '【任务上下文】',
-            '- 文章标题：'.$title,
+            'Task context:',
+            '- Article title: '.$title,
         ];
+
         if (trim($keyword) !== '') {
-            $lines[] = '- 核心关键词：'.$keyword;
+            $lines[] = '- Core keyword: '.$keyword;
         }
+
         if (trim($knowledgeContext) !== '') {
-            $lines[] = '- 参考知识：';
+            $lines[] = '- Reference knowledge:';
             $lines[] = $knowledgeContext;
         }
 
@@ -600,11 +598,11 @@ class WorkerExecutionService
 
     private function finalPromptInstruction(string $prompt): string
     {
-        if ($this->isLikelyEnglishPrompt($prompt)) {
-            return 'Please output only the final article body in Markdown. Do not repeat the prompt or output placeholders.';
+        if (! $this->isLikelyEnglishPrompt($prompt)) {
+            return '请直接输出最终文章正文（Markdown），不要重复提示词、不要输出占位符。';
         }
 
-        return '请直接输出最终文章正文（Markdown），不要重复提示词、不要输出占位符。';
+        return 'Please output only the final article body in Markdown. Do not repeat the prompt or output placeholders.';
     }
 
     private function isLikelyEnglishPrompt(string $prompt): bool
@@ -616,8 +614,7 @@ class WorkerExecutionService
     }
 
     /**
-     * 按任务配置检索知识库上下文并回填到 {{Knowledge}}。
-     */
+     * 鎸変换鍔￠厤缃绱㈢煡璇嗗簱涓婁笅鏂囧苟鍥炲～鍒?{{Knowledge}}銆?     */
     private function resolveKnowledgeContext(Task $task, string $title, string $keyword): string
     {
         $knowledgeBaseId = (int) ($task->knowledge_base_id ?? 0);
@@ -652,8 +649,7 @@ class WorkerExecutionService
     }
 
     /**
-     * 从 knowledge_chunks 中检索相关片段。
-     */
+     * 浠?knowledge_chunks 涓绱㈢浉鍏崇墖娈点€?     */
     private function fetchKnowledgeContextFromChunks(int $knowledgeBaseId, string $query, int $limit, int $maxChars): string
     {
         if (trim($query) !== '') {
@@ -719,8 +715,7 @@ class WorkerExecutionService
     }
 
     /**
-     * 判断 chunk 是否保存了真实 embedding，而不是 fallback hash 向量。
-     */
+     * 鍒ゆ柇 chunk 鏄惁淇濆瓨浜嗙湡瀹?embedding锛岃€屼笉鏄?fallback hash 鍚戦噺銆?     */
     private function chunkHasRealEmbedding(object $row): bool
     {
         return (int) ($row->embedding_model_id ?? 0) > 0
@@ -728,8 +723,7 @@ class WorkerExecutionService
     }
 
     /**
-     * 按任务图片配置插入 Markdown 配图并返回被选中的图片列表。
-     *
+     * 鎸変换鍔″浘鐗囬厤缃彃鍏?Markdown 閰嶅浘骞惰繑鍥炶閫変腑鐨勫浘鐗囧垪琛ㄣ€?     *
      * @return array{content:string,images:list<Image>,generated_images?:list<array<string,mixed>>,image_error?:string|null}
      */
     private function insertTaskImagesIntoContent(Task $task, string $content, ?AiModel $chatModel = null, string $title = '', string $keyword = ''): array
@@ -742,7 +736,7 @@ class WorkerExecutionService
         if ($imageMode === 'ai') {
             try {
                 if (! $chatModel) {
-                    throw new RuntimeException('AI配图缺少正文模型上下文');
+                    throw new RuntimeException('AI image generation requires a chat model context');
                 }
                 $result = $this->aiGeneratedArticleImageService->generateAndInsert($task, $chatModel, $content, $title, $keyword);
 
@@ -798,8 +792,7 @@ class WorkerExecutionService
     }
 
     /**
-     * 按段落间隔插入图片，避免全部堆在文末。
-     *
+     * 鎸夋钀介棿闅旀彃鍏ュ浘鐗囷紝閬垮厤鍏ㄩ儴鍫嗗湪鏂囨湯銆?     *
      * @param  list<string>  $markdownBlocks
      */
     private function insertImagesByParagraphInterval(string $content, array $markdownBlocks): string
@@ -843,18 +836,17 @@ class WorkerExecutionService
     }
 
     /**
-     * 调用任务配置模型生成正文。
-     */
+     * 璋冪敤浠诲姟閰嶇疆妯″瀷鐢熸垚姝ｆ枃銆?     */
     private function generateContent(AiModel $aiModel, string $contentPrompt): string
     {
         $providerUrl = OpenAiRuntimeProvider::resolveChatBaseUrl((string) ($aiModel->api_url ?? ''));
         if ($providerUrl === '') {
-            throw new RuntimeException('AI 模型 API 地址为空');
+            throw new RuntimeException('AI 妯″瀷 API 鍦板潃涓虹┖');
         }
 
         $apiKey = $this->decryptApiKey((string) ($aiModel->getRawOriginal('api_key') ?? ''));
         if ($apiKey === '') {
-            throw new RuntimeException('AI 模型密钥为空');
+            throw new RuntimeException('AI 妯″瀷瀵嗛挜涓虹┖');
         }
 
         $driver = OpenAiRuntimeProvider::resolveChatDriver($providerUrl, (string) ($aiModel->model_id ?? ''));
@@ -864,17 +856,17 @@ class WorkerExecutionService
         try {
             $response = $agent->prompt($contentPrompt, [], $providerName, (string) ($aiModel->model_id ?? ''));
         } catch (Throwable $exception) {
-            throw new RuntimeException('AI 生成失败: '.OpenAiRuntimeProvider::normalizeApiException($exception, $providerUrl), 0, $exception);
+            throw new RuntimeException('AI 鐢熸垚澶辫触: '.OpenAiRuntimeProvider::normalizeApiException($exception, $providerUrl), 0, $exception);
         }
 
         $rawContent = (string) ($response->text ?? '');
         $content = OpenAiRuntimeProvider::normalizeGeneratedText($rawContent);
         if ($content === '') {
             if (OpenAiRuntimeProvider::looksLikeSseCompletionPayload($rawContent)) {
-                throw new RuntimeException('AI 返回空流式响应，未生成正文内容，请重试或检查模型流式输出兼容性');
+                throw new RuntimeException('AI returned an empty streamed response. Please retry or check streaming compatibility.');
             }
 
-            throw new RuntimeException('AI返回空正文');
+            throw new RuntimeException('AI returned empty content');
         }
 
         AiModel::query()->whereKey((int) $aiModel->id)->update([
@@ -887,23 +879,21 @@ class WorkerExecutionService
     }
 
     /**
-     * 从正文提取摘要，避免把完整提示词原文当摘要。
-     */
+     * 浠庢鏂囨彁鍙栨憳瑕侊紝閬垮厤鎶婂畬鏁存彁绀鸿瘝鍘熸枃褰撴憳瑕併€?     */
     private function buildExcerpt(string $content): string
     {
         $plain = preg_replace('/[`#>*_\-\[\]\(\)]/u', ' ', $content) ?: $content;
         $plain = preg_replace('/\s+/u', ' ', $plain) ?: $plain;
         $plain = trim($plain);
         if ($plain === '') {
-            return 'AI 生成内容摘要';
+            return 'AI 鐢熸垚鍐呭鎽樿';
         }
 
         return mb_substr($plain, 0, 180);
     }
 
     /**
-     * 兼容 enc:v1 历史格式解密 API Key。
-     */
+     * 鍏煎 enc:v1 鍘嗗彶鏍煎紡瑙ｅ瘑 API Key銆?     */
     private function decryptApiKey(string $storedApiKey): string
     {
         return $this->apiKeyCrypto->decrypt($storedApiKey);
@@ -1019,8 +1009,7 @@ class WorkerExecutionService
     }
 
     /**
-     * 优先使用 pgvector 执行数据库向量检索，命中则返回候选块。
-     *
+     * 浼樺厛浣跨敤 pgvector 鎵ц鏁版嵁搴撳悜閲忔绱紝鍛戒腑鍒欒繑鍥炲€欓€夊潡銆?     *
      * @return list<array{chunk_index:int,content:string,score:float}>
      */
     private function fetchKnowledgeChunksByPgvector(int $knowledgeBaseId, string $query, int $candidateLimit): array
@@ -1065,8 +1054,7 @@ class WorkerExecutionService
     }
 
     /**
-     * 仅在 PostgreSQL 且 pgvector 可用时启用向量检索。
-     */
+     * 浠呭湪 PostgreSQL 涓?pgvector 鍙敤鏃跺惎鐢ㄥ悜閲忔绱€?     */
     private function canUsePgvectorSearch(): bool
     {
         if (DB::getDriverName() !== 'pgsql') {
@@ -1099,8 +1087,7 @@ class WorkerExecutionService
     }
 
     /**
-     * 从候选块拼装知识上下文，按片段顺序输出。
-     *
+     * 浠庡€欓€夊潡鎷艰鐭ヨ瘑涓婁笅鏂囷紝鎸夌墖娈甸『搴忚緭鍑恒€?     *
      * @param  list<array{chunk_index:int,content:string,score:float}>  $scored
      */
     private function composeKnowledgeContext(array $scored, int $limit, int $maxChars): string
@@ -1123,7 +1110,7 @@ class WorkerExecutionService
             if ($parts !== [] && $nextLength > $maxChars) {
                 continue;
             }
-            $parts[] = '【知识片段'.($index + 1)."】\n".$content;
+            $parts[] = '[Knowledge chunk '.($index + 1).']'."\n".$content;
             $charCount = $nextLength;
         }
 

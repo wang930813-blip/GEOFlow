@@ -1,8 +1,7 @@
 <?php
 
 /**
- * Web 路由：前台与 Blade 管理后台（路径见 config/geoflow.admin_base_path，默认 geo_admin）。
- */
+ * Web 路由：前台与 Blade 管理后台（路径见 config/geoflow.admin_base_path，默�?geo_admin）�? */
 
 use App\Http\Controllers\Admin\AdminActivityLogController;
 use App\Http\Controllers\Admin\AdminAuthController;
@@ -11,11 +10,13 @@ use App\Http\Controllers\Admin\AdminWelcomeController;
 use App\Http\Controllers\Admin\AiModelController;
 use App\Http\Controllers\Admin\AiPromptController;
 use App\Http\Controllers\Admin\AiSpecialPromptController;
+use App\Http\Controllers\Admin\AnalyticsController;
 use App\Http\Controllers\Admin\ApiTokenController;
 use App\Http\Controllers\Admin\ArticleController;
 use App\Http\Controllers\Admin\AuthorController;
 use App\Http\Controllers\Admin\CategoryController;
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\DistributionController;
 use App\Http\Controllers\Admin\GeoReportController;
 use App\Http\Controllers\Admin\ImageLibraryController;
 use App\Http\Controllers\Admin\KeywordLibraryController;
@@ -34,7 +35,7 @@ use App\Http\Controllers\Site\HomeController;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware(['site.locale'])->group(function (): void {
+        Route::middleware(['site.locale', 'site.view_log'])->group(function (): void {
     Route::get('/', [HomeController::class, 'index'])->name('site.home');
     Route::get('/archive', [ArchiveController::class, 'index'])->name('site.archive');
     Route::get('/archive/{year}/{month}', [ArchiveController::class, 'month'])
@@ -46,7 +47,7 @@ Route::middleware(['site.locale'])->group(function (): void {
 
 $adminPrefix = trim((string) config('geoflow.admin_base_path', '/geo_admin'), '/');
 
-Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group(function () {
+        Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group(function () {
     // 通用入口与语言切换
     Route::get('locale/{locale}', [AdminAuthController::class, 'switchLocale'])->name('locale.switch');
 
@@ -62,13 +63,14 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
         Route::post('login', [AdminAuthController::class, 'login'])->name('login.attempt');
     });
 
-    // 后台受保护路由
+    // Protected admin routes
     Route::middleware(['admin.auth', 'admin.activity'])->group(function () {
-        // 会话与首页
+        // Session and dashboard
         Route::post('logout', [AdminAuthController::class, 'logout'])->name('logout');
         Route::post('welcome/dismiss', [AdminWelcomeController::class, 'dismiss'])->name('welcome.dismiss');
         Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
         Route::get('geo-reports', [GeoReportController::class, 'index'])->name('geo-reports.index');
+        Route::get('analytics', [AnalyticsController::class, 'index'])->name('analytics');
 
         // 任务管理（Blade 新路径）
         Route::prefix('tasks')->name('tasks.')->group(function () {
@@ -81,6 +83,28 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::put('{taskId}', [TaskController::class, 'update'])->name('update');
             Route::get('health-check', [TaskController::class, 'healthCheck'])->name('health');
             Route::post('batch/start', [TaskController::class, 'batchAction'])->name('batch');
+        });
+
+        // Distribution management
+        Route::prefix('distribution')->name('distribution.')->group(function () {
+            Route::get('/', [DistributionController::class, 'index'])->name('index');
+            Route::get('create', [DistributionController::class, 'create'])->name('create');
+            Route::post('create', [DistributionController::class, 'store'])->name('store');
+            Route::get('jobs', [DistributionController::class, 'jobs'])->name('jobs');
+            Route::get('jobs/{distributionId}/edit', [DistributionController::class, 'editArticle'])->name('article.edit')->whereNumber('distributionId');
+            Route::put('jobs/{distributionId}', [DistributionController::class, 'updateArticle'])->name('article.update')->whereNumber('distributionId');
+            Route::post('jobs/{distributionId}/delete', [DistributionController::class, 'deleteArticle'])->name('article.delete')->whereNumber('distributionId');
+            Route::post('jobs/{distributionId}/retry', [DistributionController::class, 'retry'])->name('retry')->whereNumber('distributionId');
+            Route::get('{channelId}/edit', [DistributionController::class, 'edit'])->name('edit')->whereNumber('channelId');
+            Route::put('{channelId}', [DistributionController::class, 'update'])->name('update')->whereNumber('channelId');
+            Route::post('{channelId}/pause', [DistributionController::class, 'pause'])->name('pause')->whereNumber('channelId');
+            Route::post('{channelId}/activate', [DistributionController::class, 'activate'])->name('activate')->whereNumber('channelId');
+            Route::post('{channelId}/rotate-secret', [DistributionController::class, 'rotateSecret'])->name('rotate-secret')->whereNumber('channelId');
+            Route::post('{channelId}/reveal-secret', [DistributionController::class, 'revealSecret'])->name('reveal-secret')->whereNumber('channelId');
+            Route::post('{channelId}/download-package', [DistributionController::class, 'downloadPackage'])->name('download-package')->whereNumber('channelId');
+            Route::post('{channelId}/sync-settings', [DistributionController::class, 'syncSettings'])->name('sync-settings')->whereNumber('channelId');
+            Route::get('{channelId}', [DistributionController::class, 'show'])->name('show')->whereNumber('channelId');
+            Route::post('{channelId}/health', [DistributionController::class, 'health'])->name('health')->whereNumber('channelId');
         });
 
         // 文章管理（Blade 新路径）
@@ -100,7 +124,7 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::put('{articleId}', [ArticleController::class, 'update'])->name('update');
         });
 
-        // 栏目管理（保持 geo_admin/categories 路径语义）
+        // Category management
         Route::prefix('categories')->name('categories.')->group(function () {
             Route::get('/', [CategoryController::class, 'index'])->name('index');
             Route::get('create', [CategoryController::class, 'create'])->name('create');
@@ -110,7 +134,7 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::post('{categoryId}/delete', [CategoryController::class, 'destroy'])->name('delete');
         });
 
-        // 素材管理：作者管理
+        // Author management
         Route::prefix('authors')->name('authors.')->group(function () {
             Route::get('/', [AuthorController::class, 'index'])->name('index');
             Route::get('create', [AuthorController::class, 'create'])->name('create');
@@ -121,7 +145,7 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::post('{authorId}/delete', [AuthorController::class, 'destroy'])->name('delete');
         });
 
-        // 素材管理：关键词库管理
+        // Keyword library management
         Route::prefix('keyword-libraries')->name('keyword-libraries.')->group(function () {
             Route::get('/', [KeywordLibraryController::class, 'index'])->name('index');
             Route::get('create', [KeywordLibraryController::class, 'create'])->name('create');
@@ -206,7 +230,7 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
         // AI 配置模块（配置器 / 模型 / 提示词）
         Route::group([], function () {
             Route::get('ai-configurator', [LegacyController::class, 'aiConfigurator'])->name('ai.configurator');
-            Route::prefix('ai-models')->name('ai-models.')->group(function () {
+        Route::prefix('ai-models')->name('ai-models.')->group(function () {
                 Route::get('/', [AiModelController::class, 'index'])->name('index');
                 Route::post('create', [AiModelController::class, 'store'])->name('store');
                 Route::put('{modelId}', [AiModelController::class, 'update'])->name('update');
@@ -241,9 +265,9 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::post('password', [SecuritySettingsController::class, 'updatePassword'])->name('password.update');
         });
 
-        // 超级管理员功能
+        // Super admin routes
         Route::middleware('admin.super')->group(function () {
-            Route::prefix('admin-users')->name('admin-users.')->group(function () {
+        Route::prefix('admin-users')->name('admin-users.')->group(function () {
                 Route::get('/', [AdminUserController::class, 'index'])->name('index');
                 Route::post('create', [AdminUserController::class, 'store'])->name('store');
                 Route::post('{adminId}/update', [AdminUserController::class, 'update'])->name('update');
@@ -251,7 +275,7 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
                 Route::post('{adminId}/delete', [AdminUserController::class, 'destroy'])->name('delete');
             });
             Route::get('admin-activity-logs', [AdminActivityLogController::class, 'index'])->name('admin-activity-logs');
-            Route::prefix('api-tokens')->name('api-tokens.')->group(function () {
+        Route::prefix('api-tokens')->name('api-tokens.')->group(function () {
                 Route::get('/', [ApiTokenController::class, 'index'])->name('index');
                 Route::post('/', [ApiTokenController::class, 'store'])->name('store');
                 Route::post('{tokenId}/revoke', [ApiTokenController::class, 'revoke'])->name('revoke');
