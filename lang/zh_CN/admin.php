@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 return [
     'nav' => [
@@ -1819,6 +1819,8 @@ return [
             'admin_base_path_invalid' => '后台访问路径格式不正确，请使用 3-48 位小写字母、数字、短横线或下划线，且首尾必须是字母或数字',
             'admin_base_path_reserved' => '该后台访问路径与系统路径冲突，请换一个名称',
             'admin_base_path_save_failed' => '后台访问路径保存失败：:message',
+            'public_domain_invalid' => '前台访问域名格式不正确，请填写类似 client.example.com 的域名',
+            'public_domain_taken' => '该前台访问域名已绑定到其他站点',
         ],
         'message' => [
             'saved' => '网站设置更新成功',

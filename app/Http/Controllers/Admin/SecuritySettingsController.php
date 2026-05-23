@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Admin;
 use App\Models\SensitiveWord;
 use App\Support\AdminWeb;
+use App\Support\CurrentSite;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -71,9 +72,11 @@ class SecuritySettingsController extends Controller
                 ->pluck('word')
                 ->all();
 
+            $siteId = app(CurrentSite::class)->id();
             $wordsToInsert = $submittedWords
                 ->reject(static fn (string $word): bool => in_array($word, $existingWords, true))
                 ->map(static fn (string $word): array => [
+                    'site_id' => $siteId,
                     'word' => $word,
                     'created_at' => now(),
                 ])

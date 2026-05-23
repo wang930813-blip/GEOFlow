@@ -3,9 +3,12 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Site;
 use App\Models\SiteSetting;
 use App\Support\AdminBasePathManager;
 use App\Support\AdminWeb;
+use App\Support\CurrentSite;
+use App\Support\SiteDomain;
 use App\Support\Site\SiteSettingsBag;
 use App\Support\Site\SiteThemeCatalog;
 use Illuminate\Http\RedirectResponse;
@@ -31,12 +34,14 @@ class SiteSettingsController extends Controller
     public function index(): View
     {
         $settings = $this->loadSettings();
+        $currentSite = app(CurrentSite::class)->get();
 
         return view('admin.site-settings.index', [
             'pageTitle' => __('admin.site_settings.page_title'),
             'activeMenu' => 'site_settings',
             'adminSiteName' => AdminWeb::siteName(),
             'settings' => $settings,
+            'publicDomain' => (string) ($currentSite?->domain ?? ''),
             'canEditAnalytics' => auth('admin')->user()?->isSuperAdmin() === true,
             'availableThemes' => $this->siteThemeCatalog->all(),
             'homeCarouselSlides' => $this->parseHomeCarouselSlides((string) ($settings['home_carousel_slides'] ?? '[]')),
@@ -57,6 +62,7 @@ class SiteSettingsController extends Controller
             'copyright_info' => ['nullable', 'string', 'max:500'],
             'site_logo' => ['nullable', 'url', 'max:500'],
             'site_favicon' => ['nullable', 'url', 'max:500'],
+            'public_domain' => ['nullable', 'string', 'max:255'],
             'analytics_code' => ['nullable', 'string'],
             'seo_title_template' => ['nullable', 'string', 'max:255'],
             'seo_description_template' => ['nullable', 'string', 'max:255'],
@@ -93,6 +99,22 @@ class SiteSettingsController extends Controller
         $currentAdminBasePath = AdminWeb::basePath();
         $currentSettings = $this->loadSettings();
         $canEditAnalytics = auth('admin')->user()?->isSuperAdmin() === true;
+        $publicDomain = SiteDomain::normalize((string) ($payload['public_domain'] ?? ''));
+        $currentSite = app(CurrentSite::class)->get();
+
+        if ($publicDomain === '' && trim((string) ($payload['public_domain'] ?? '')) !== '') {
+            return back()->withErrors(['public_domain' => __('admin.site_settings.error.public_domain_invalid')])->withInput();
+        }
+
+        if ($currentSite instanceof Site && $publicDomain !== '') {
+            $domainExists = Site::query()
+                ->where('domain', $publicDomain)
+                ->whereKeyNot($currentSite->id)
+                ->exists();
+            if ($domainExists) {
+                return back()->withErrors(['public_domain' => __('admin.site_settings.error.public_domain_taken')])->withInput();
+            }
+        }
 
         $settings = [
             'site_name' => trim((string) $payload['site_name']),
@@ -119,6 +141,11 @@ class SiteSettingsController extends Controller
                 ['setting_key' => $settingKey],
                 ['setting_value' => $settingValue]
             );
+        }
+
+        if ($currentSite instanceof Site) {
+            Site::query()->whereKey($currentSite->id)->update(['domain' => $publicDomain]);
+            $currentSite->forceFill(['domain' => $publicDomain]);
         }
 
         SiteSettingsBag::forget();

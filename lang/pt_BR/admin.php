@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 $base = require __DIR__.'/../en/admin.php';
 
@@ -815,6 +815,8 @@ return array_replace_recursive($base, [
             'admin_base_path_invalid' => 'Rota URL do admin inválida. Use de 3 a 48 letras minúsculas, números, hifens ou sublinhados, e comece/termine com uma letra ou número.',
             'admin_base_path_reserved' => 'Esta rota URL do admin conflita com um caminho do sistema. Escolha outra.',
             'admin_base_path_save_failed' => 'Falha ao salvar a rota URL do admin: :message',
+            'public_domain_invalid' => 'Invalid public domain. Enter a host such as client.example.com.',
+            'public_domain_taken' => 'This public domain is already bound to another site.',
         ],
         'message' => [
             'saved' => 'Configurações do site atualizadas',

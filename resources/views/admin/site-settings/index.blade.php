@@ -52,6 +52,13 @@
                     </div>
 
                     <div class="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                        <label class="block text-sm font-medium text-gray-900 mb-2">前台访问域名</label>
+                        <input type="text" name="public_domain"
+                               value="{{ old('public_domain', $publicDomain ?? '') }}"
+                               class="mb-3 w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                               placeholder="client.example.com">
+                        <p class="mb-4 text-xs leading-5 text-amber-800">用于二级域名前台访问，只填写域名即可，例如 client.example.com。</p>
+
                         <label class="block text-sm font-medium text-gray-900 mb-2">{{ __('admin.site_settings.field_admin_base_path') }}</label>
                         <div class="flex rounded-md shadow-sm">
                             <span class="inline-flex items-center rounded-l-md border border-r-0 border-gray-300 bg-white px-3 text-sm text-gray-500">{{ rtrim(url('/'), '/') }}/</span>

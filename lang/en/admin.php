@@ -1819,6 +1819,8 @@ return [
             'admin_base_path_invalid' => 'Invalid admin URL path. Use 3-48 lowercase letters, numbers, hyphens, or underscores, and start/end with a letter or number.',
             'admin_base_path_reserved' => 'This admin URL path conflicts with a system path. Choose another one.',
             'admin_base_path_save_failed' => 'Failed to save the admin URL path: :message',
+            'public_domain_invalid' => 'Invalid frontend domain. Enter a host such as client.example.com.',
+            'public_domain_taken' => 'This frontend domain is already bound to another site.',
         ],
         'message' => [
             'saved' => 'Site settings updated successfully',

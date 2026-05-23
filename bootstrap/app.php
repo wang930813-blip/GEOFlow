@@ -16,6 +16,7 @@ use App\Http\Middleware\EnsureCurrentSite;
 use App\Http\Middleware\EnsureSuperAdmin;
 use App\Http\Middleware\LogAdminActivity;
 use App\Http\Middleware\RecordSiteViewLog;
+use App\Http\Middleware\ResolveFrontendSiteByDomain;
 use App\Http\Middleware\SiteWebLocale;
 use App\Support\ApiResponse;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -52,6 +53,7 @@ return Application::configure(basePath: dirname(__DIR__))
             // 前台：固定 public_locale（默认 zh_CN）
             'site.locale' => SiteWebLocale::class,
             // 前台：保存访问日志，供数据分析模块统计 PV、路径和爬虫类型
+            'site.domain' => ResolveFrontendSiteByDomain::class,
             'site.view_log' => RecordSiteViewLog::class,
             // Blade 后台：仅超级管理员
             'admin.super' => EnsureSuperAdmin::class,
