@@ -127,7 +127,7 @@ return [
         'not_found_desc' => 'The content you requested does not exist, was removed, or the link is no longer valid.',
     ],
     'footer' => [
-        'copyright' => '© 2026 GEOFlow',
+        'copyright' => '© 2026 策影GEO',
         'version' => 'Version :version',
         'author' => 'Author: Yao Jingang',
         'author_x_profile' => 'Author X Profile',
@@ -1880,7 +1880,7 @@ return [
             'save_failed' => 'Failed to save ad slots',
             'saved' => 'Article detail page ads updated successfully',
         ],
-        'system_name' => 'GEOFlow',
+        'system_name' => '策影GEO',
     ],
     'distribution' => [
         'page_title' => 'Distribution',

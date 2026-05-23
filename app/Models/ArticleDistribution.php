@@ -2,13 +2,17 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToSite;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ArticleDistribution extends Model
 {
+    use BelongsToSite;
+
     protected $fillable = [
+        'site_id',
         'article_id',
         'distribution_channel_id',
         'action',
@@ -27,6 +31,7 @@ class ArticleDistribution extends Model
     {
         return [
             'article_id' => 'integer',
+            'site_id' => 'integer',
             'distribution_channel_id' => 'integer',
             'attempt_count' => 'integer',
             'next_retry_at' => 'datetime',

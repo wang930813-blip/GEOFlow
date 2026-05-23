@@ -25,6 +25,7 @@ use App\Http\Controllers\Admin\LegacyController;
 use App\Http\Controllers\Admin\MaterialsController;
 use App\Http\Controllers\Admin\SecuritySettingsController;
 use App\Http\Controllers\Admin\SiteSettingsController;
+use App\Http\Controllers\Admin\SiteContextController;
 use App\Http\Controllers\Admin\TaskController;
 use App\Http\Controllers\Admin\TitleLibraryController;
 use App\Http\Controllers\Admin\UrlImportController;
@@ -64,9 +65,10 @@ $adminPrefix = trim((string) config('geoflow.admin_base_path', '/geo_admin'), '/
     });
 
     // Protected admin routes
-    Route::middleware(['admin.auth', 'admin.activity'])->group(function () {
+    Route::middleware(['admin.auth', 'admin.site', 'admin.activity'])->group(function () {
         // Session and dashboard
         Route::post('logout', [AdminAuthController::class, 'logout'])->name('logout');
+        Route::post('sites/switch', [SiteContextController::class, 'switch'])->name('sites.switch');
         Route::post('welcome/dismiss', [AdminWelcomeController::class, 'dismiss'])->name('welcome.dismiss');
         Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
         Route::get('geo-reports', [GeoReportController::class, 'index'])->name('geo-reports.index');
@@ -152,11 +154,16 @@ $adminPrefix = trim((string) config('geoflow.admin_base_path', '/geo_admin'), '/
             Route::post('create', [KeywordLibraryController::class, 'store'])->name('store');
             Route::get('{libraryId}/edit', [KeywordLibraryController::class, 'edit'])->name('edit');
             Route::get('{libraryId}/detail', [KeywordLibraryController::class, 'detail'])->name('detail');
+            Route::get('{libraryId}/inclusion-results/export', [KeywordLibraryController::class, 'exportInclusionResults'])->name('inclusion-results.export');
+            Route::get('{libraryId}/inclusion-snapshot', [KeywordLibraryController::class, 'inclusionSnapshot'])->name('inclusion-snapshot');
             Route::post('{libraryId}/inclusion-checks', [KeywordLibraryController::class, 'storeInclusionCheck'])->name('inclusion-checks.store');
             Route::post('{libraryId}/keywords', [KeywordLibraryController::class, 'storeKeyword'])->name('keywords.store');
+            Route::put('{libraryId}/keywords/{keywordId}', [KeywordLibraryController::class, 'updateKeyword'])->name('keywords.update');
             Route::post('{libraryId}/keywords/suggest', [KeywordLibraryController::class, 'suggestKeywords'])->name('keywords.suggest');
             Route::post('{libraryId}/keywords/bulk-store', [KeywordLibraryController::class, 'bulkStoreKeywords'])->name('keywords.bulk-store');
             Route::post('{libraryId}/keywords/{keywordId}/questions', [KeywordLibraryController::class, 'storeQuestion'])->name('keywords.questions.store');
+            Route::put('{libraryId}/keywords/{keywordId}/questions/{questionId}', [KeywordLibraryController::class, 'updateQuestion'])->name('keywords.questions.update');
+            Route::delete('{libraryId}/keywords/{keywordId}/questions/{questionId}', [KeywordLibraryController::class, 'destroyQuestion'])->name('keywords.questions.delete');
             Route::post('{libraryId}/keywords/{keywordId}/questions/generate', [KeywordLibraryController::class, 'generateQuestions'])->name('keywords.questions.generate');
             Route::post('{libraryId}/keywords/delete', [KeywordLibraryController::class, 'destroyKeywords'])->name('keywords.delete');
             Route::post('{libraryId}/import', [KeywordLibraryController::class, 'importKeywords'])->name('import');

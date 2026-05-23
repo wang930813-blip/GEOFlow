@@ -2,17 +2,21 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToSite;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Category extends Model
 {
+    use BelongsToSite;
+
     public const UPDATED_AT = null;
 
     protected $table = 'categories';
 
     protected $fillable = [
         'name',
+        'site_id',
         'slug',
         'description',
         'sort_order',
@@ -22,6 +26,7 @@ class Category extends Model
     {
         return [
             'sort_order' => 'integer',
+            'site_id' => 'integer',
         ];
     }
 

@@ -14,9 +14,9 @@ $updateMetadataUrl = $updateMetadataUrl !== '' ? $updateMetadataUrl : $defaultUp
 return [
 
     // 站点展示名称（页眉、标题等）
-    'site_name' => env('SITE_NAME', 'GEOFlow'),
+    'site_name' => env('SITE_NAME', '策影GEO'),
     // 站点完整/副标题文案
-    'site_full_name' => env('SITE_FULL_NAME', 'GEOFlow'),
+    'site_full_name' => env('SITE_FULL_NAME', '策影GEO'),
     // 站点根 URL，用于生成绝对链接（末尾无斜杠）
     'site_url' => rtrim((string) env('SITE_URL', 'http://localhost'), '/'),
     // SEO 描述

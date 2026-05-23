@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToSite;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class AiModel extends Model
 {
+    use BelongsToSite;
+
     protected $table = 'ai_models';
 
     protected $hidden = [
@@ -15,6 +18,7 @@ class AiModel extends Model
 
     protected $fillable = [
         'name',
+        'site_id',
         'version',
         'api_key',
         'model_id',
@@ -31,6 +35,7 @@ class AiModel extends Model
     {
         return [
             'failover_priority' => 'integer',
+            'site_id' => 'integer',
             'daily_limit' => 'integer',
             'used_today' => 'integer',
             'total_used' => 'integer',

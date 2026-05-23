@@ -2,18 +2,22 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToSite;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Image extends Model
 {
+    use BelongsToSite;
+
     public const UPDATED_AT = null;
 
     protected $table = 'images';
 
     protected $fillable = [
         'library_id',
+        'site_id',
         'filename',
         'original_name',
         'file_name',
@@ -31,6 +35,7 @@ class Image extends Model
     {
         return [
             'library_id' => 'integer',
+            'site_id' => 'integer',
             'file_size' => 'integer',
             'width' => 'integer',
             'height' => 'integer',

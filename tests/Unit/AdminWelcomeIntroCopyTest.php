@@ -11,8 +11,8 @@ class AdminWelcomeIntroCopyTest extends TestCase
         /** @var array<string, array<string, mixed>> $copy */
         $copy = require app_path('Support/AdminWelcome/intro_copy.php');
 
-        $this->assertSame('GEOFlow 2.0 首次部署说明', $copy['zh-CN']['letter']['title']);
-        $this->assertSame('GEOFlow 2.0 First Deployment Guide', $copy['en']['letter']['title']);
+        $this->assertSame('策影GEO 2.0 首次部署说明', $copy['zh-CN']['letter']['title']);
+        $this->assertSame('策影GEO 2.0 First Deployment Guide', $copy['en']['letter']['title']);
         $this->assertStringContainsString('分发管理', $this->flattenCopy($copy['zh-CN']['letter']['blocks']));
         $this->assertStringContainsString('数据分析', $this->flattenCopy($copy['zh-CN']['letter']['blocks']));
         $this->assertStringContainsString('Distribution management', $this->flattenCopy($copy['en']['letter']['blocks']));

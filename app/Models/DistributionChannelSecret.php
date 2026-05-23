@@ -2,12 +2,16 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToSite;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class DistributionChannelSecret extends Model
 {
+    use BelongsToSite;
+
     protected $fillable = [
+        'site_id',
         'distribution_channel_id',
         'key_id',
         'secret_ciphertext',
@@ -20,6 +24,7 @@ class DistributionChannelSecret extends Model
     {
         return [
             'distribution_channel_id' => 'integer',
+            'site_id' => 'integer',
             'scopes' => 'array',
             'last_used_at' => 'datetime',
         ];

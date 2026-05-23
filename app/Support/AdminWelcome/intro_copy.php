@@ -14,7 +14,7 @@ return [
             'changelog_link' => '更新日志',
         ],
         'letter' => [
-            'title' => 'GEOFlow 2.0 首次部署说明',
+            'title' => '策影GEO 2.0 首次部署说明',
             'subtitle' => '这是一份首次登录后的最小闭环检查清单。先确认安全、模型、素材、任务、数据分析和分发链路，再进入批量生产。',
             'blocks' => [
                 [
@@ -23,7 +23,7 @@ return [
                 ],
                 [
                     'type' => 'paragraph',
-                    'content' => 'GEOFlow 2.0 的后台首页已经调整为导航入口：单站点运营用于完成模型、素材、任务、文章、本地站点和用户管理；多站点分发用于管理渠道、目标站点包和远端同步；数据分析用于统一查看内容生产、任务状态、分发结果、访问日志和 AI 爬虫趋势。',
+                    'content' => '策影GEO 2.0 的后台首页已经调整为导航入口：单站点运营用于完成模型、素材、任务、文章、本地站点和用户管理；多站点分发用于管理渠道、目标站点包和远端同步；数据分析用于统一查看内容生产、任务状态、分发结果、访问日志和 AI 爬虫趋势。',
                 ],
                 [
                     'type' => 'heading',
@@ -61,7 +61,7 @@ return [
                 [
                     'type' => 'list',
                     'items' => [
-                        '首页主要承担导航作用，保留三步配置引导，并按单站点运营、多站点分发和配套 Skill 资源组织入口',
+                        '首页主要承担导航作用，保留三步配置引导，并按单站点运营和多站点分发组织入口',
                         '数据分析页集中展示系统总览、单站运营、多站分发和自助日志四类数据',
                         '先用默认时间范围检查趋势图、任务状态、分发队列、访问日志和 AI 爬虫识别是否有数据',
                         '需要排查内容或渠道问题时，优先从数据分析页定位日期、任务、文章和渠道，再回到对应管理页处理',
@@ -69,7 +69,7 @@ return [
                 ],
                 [
                     'type' => 'heading',
-                    'content' => 'GEOFlow 2.0 的分发管理',
+                    'content' => '策影GEO 2.0 的分发管理',
                 ],
                 [
                     'type' => 'list',
@@ -97,7 +97,7 @@ return [
                 ],
                 [
                     'type' => 'heading',
-                    'content' => '你可以用 GEOFlow 2.0 做什么',
+                    'content' => '你可以用 策影GEO 2.0 做什么',
                 ],
                 [
                     'type' => 'list',
@@ -126,7 +126,7 @@ return [
             'changelog_link' => 'Changelog',
         ],
         'letter' => [
-            'title' => 'GEOFlow 2.0 First Deployment Guide',
+            'title' => '策影GEO 2.0 First Deployment Guide',
             'subtitle' => 'Use this as the first-login minimum checklist. Confirm security, models, materials, tasks, analytics, and distribution before bulk production.',
             'blocks' => [
                 [
@@ -135,7 +135,7 @@ return [
                 ],
                 [
                     'type' => 'paragraph',
-                    'content' => 'The GEOFlow 2.0 dashboard now works as a navigation hub: single-site operations cover models, materials, tasks, articles, local site settings, and users; multi-site distribution covers channels, target-site packages, and remote sync; Analytics centralizes production, task, distribution, access-log, and AI-crawler trends.',
+                    'content' => 'The 策影GEO 2.0 dashboard now works as a navigation hub: single-site operations cover models, materials, tasks, articles, local site settings, and users; multi-site distribution covers channels, target-site packages, and remote sync; Analytics centralizes production, task, distribution, access-log, and AI-crawler trends.',
                 ],
                 [
                     'type' => 'heading',
@@ -173,7 +173,7 @@ return [
                 [
                     'type' => 'list',
                     'items' => [
-                        'The dashboard is mainly a navigation hub, keeping the three-step setup guide and grouping entry points by single-site operations, multi-site distribution, and supporting Skills',
+                        'The dashboard is mainly a navigation hub, keeping the three-step setup guide and grouping entry points by single-site operations and multi-site distribution',
                         'Analytics separates system overview, single-site operations, multi-site distribution, and self-service log data',
                         'Start with the default date range and check charts, task status, distribution queue, access logs, and AI crawler recognition',
                         'When debugging content or channel issues, locate the date, task, article, and channel in Analytics first, then return to the matching admin page',
@@ -209,7 +209,7 @@ return [
                 ],
                 [
                     'type' => 'heading',
-                    'content' => 'What GEOFlow 2.0 is for',
+                    'content' => 'What 策影GEO 2.0 is for',
                 ],
                 [
                     'type' => 'list',

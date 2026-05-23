@@ -129,11 +129,11 @@ class AdminUpdateMetadataService
         $cacheKey = 'geoflow:update_metadata:'.sha1($url);
         $ttl = max(60, (int) config('geoflow.update_metadata_cache_ttl_seconds', 86400));
 
-        return Cache::remember($cacheKey, $ttl, function () use ($url): array {
+        return Cache::memo()->remember($cacheKey, $ttl, function () use ($url): array {
             $checkedAt = now()->toDateTimeString();
 
             try {
-                $response = Http::timeout(5)->acceptJson()->get($url);
+                $response = Http::connectTimeout(1)->timeout(2)->acceptJson()->get($url);
             } catch (\Throwable) {
                 return [
                     'status' => 'error',

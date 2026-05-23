@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Events\Admin\KeywordLibraryInclusionUpdated;
 use App\Models\GeoInclusionCheckResult;
 use App\Models\GeoInclusionCheckRun;
 use App\Models\Keyword;
@@ -62,6 +63,7 @@ class ProcessGeoInclusionCheckJob implements ShouldQueue
                     'platform' => $this->platform,
                 ],
                 [
+                    'site_id' => (int) ($run->site_id ?? $library->site_id ?? 0) ?: null,
                     'keyword_library_id' => (int) $library->id,
                     'keyword_id' => (int) $keyword->id,
                     'question' => $question,
@@ -84,6 +86,7 @@ class ProcessGeoInclusionCheckJob implements ShouldQueue
                     'platform' => $this->platform,
                 ],
                 [
+                    'site_id' => (int) ($run->site_id ?? $library->site_id ?? 0) ?: null,
                     'keyword_library_id' => (int) $library->id,
                     'keyword_id' => (int) $keyword->id,
                     'question' => $question,
@@ -118,5 +121,18 @@ class ProcessGeoInclusionCheckJob implements ShouldQueue
             'status' => $status,
             'completed_at' => $status === 'completed' ? now() : null,
         ]);
+
+        try {
+            event(new KeywordLibraryInclusionUpdated(
+                libraryId: (int) $run->keyword_library_id,
+                runId: (int) $run->id,
+                status: $status,
+                completedChecks: $completedChecks,
+                totalChecks: (int) $run->total_checks,
+                failedChecks: $failedChecks,
+            ));
+        } catch (Throwable) {
+            // Realtime updates are best-effort; never fail the check job because WebSocket is unavailable.
+        }
     }
 }

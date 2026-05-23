@@ -16,6 +16,8 @@
     $notificationChangelogUrl = (string) ($changelogLinks[$localeForChangelog] ?? $changelogLinks['zh-CN'] ?? 'https://github.com/yaojingang/GEOFlow/blob/main/docs/CHANGELOG.md');
     $notificationGithubUrl = (string) ($updateLinks['github'] ?? 'https://github.com/yaojingang/GEOFlow');
     $notificationStatus = (string) ($updateState['status'] ?? 'disabled');
+    $currentSite = $currentSite ?? null;
+    $availableSites = collect($availableSites ?? []);
     $menu = [
         'dashboard' => ['route' => 'admin.dashboard', 'name' => __('admin.nav.dashboard')],
         'geo_reports' => ['route' => 'admin.geo-reports.index', 'name' => 'GEO 报表'],
@@ -24,12 +26,7 @@
         'distribution' => ['route' => 'admin.distribution.index', 'name' => __('admin.nav.distribution')],
         'articles' => ['route' => 'admin.articles.index', 'name' => __('admin.nav.articles')],
         'materials' => ['route' => 'admin.materials.index', 'name' => __('admin.nav.materials')],
-        'ai_config' => ['route' => 'admin.ai.configurator', 'name' => __('admin.nav.ai_config')],
-        'site_settings' => ['route' => 'admin.site-settings.index', 'name' => __('admin.nav.site_settings')],
     ];
-    if ($isSuperAdmin) {
-        $menu['admin_users'] = ['route' => 'admin.admin-users.index', 'name' => __('admin.nav.admin_users')];
-    }
     $subMap = [
         'admin.geo-reports.index' => 'geo_reports',
         'admin.analytics' => 'analytics',
@@ -127,7 +124,7 @@
             </nav>
             <div class="flex shrink-0 items-center gap-2 sm:gap-3 ml-auto">
                 <div class="relative">
-                    <button onclick="toggleAdminNotifications()" class="relative rounded-md p-2 hover:bg-white/10 transition-colors duration-200" type="button" aria-label="{{ __('admin.header.notifications.label') }}" title="{{ __('admin.header.notifications.label') }}">
+                    <button onclick="toggleAdminNotifications()" class="relative rounded-md p-2 hover:bg-slate-100 transition-colors duration-200" type="button" aria-label="{{ __('admin.header.notifications.label') }}" title="{{ __('admin.header.notifications.label') }}">
                         <i data-lucide="bell" class="w-5 h-5"></i>
                         @if($hasVersionUpdate)
                             <span data-update-indicator class="absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-white"></span>
@@ -185,7 +182,7 @@
                         </div>
                     </div>
                 </div>
-                <div class="hidden md:flex items-center rounded-md border border-white/15 bg-white/10 px-2 py-1">
+                <div class="hidden md:flex items-center rounded-md border border-slate-200 bg-white px-2 py-1 shadow-sm">
                     <i data-lucide="languages" class="w-4 h-4 mr-1.5"></i>
                     <select
                         class="admin-locale-select appearance-none bg-transparent pr-5 text-sm font-medium text-gray-700 outline-none cursor-pointer"
@@ -212,9 +209,35 @@
                             <div class="text-sm text-gray-700">{{ __('admin.header.welcome', ['name' => $currentAdmin->username ?? '']) }}</div>
                             <div class="text-xs text-gray-400">{{ $adminRoleLabel }}</div>
                         </div>
+                        @if($currentSite)
+                            <div class="border-b border-gray-100 px-4 py-3" data-site-switcher-menu>
+                                <label class="mb-1.5 flex items-center gap-2 text-xs font-medium text-gray-500">
+                                    <i data-lucide="globe-2" class="h-3.5 w-3.5"></i>
+                                    <span>当前站点</span>
+                                </label>
+                                <form method="POST" action="{{ route('admin.sites.switch') }}">
+                                    @csrf
+                                    <select
+                                        name="site_id"
+                                        class="block h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-sm font-medium text-gray-800 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                                        onchange="this.form.submit()"
+                                    >
+                                        @foreach ($availableSites as $site)
+                                            <option value="{{ $site->id }}" @selected((int) $currentSite->id === (int) $site->id)>
+                                                {{ $site->name }}
+                                            </option>
+                                        @endforeach
+                                    </select>
+                                </form>
+                            </div>
+                        @endif
                         <a href="{{ route('admin.dashboard') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
                             <i data-lucide="home" class="w-4 h-4 inline mr-2"></i>
                             {{ __('admin.nav.back_home') }}
+                        </a>
+                        <a href="{{ route('admin.ai.configurator') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                            <i data-lucide="bot" class="w-4 h-4 inline mr-2"></i>
+                            {{ __('admin.nav.ai_config') }}
                         </a>
                         <a href="{{ route('admin.site-settings.index') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
                             <i data-lucide="settings" class="w-4 h-4 inline mr-2"></i>
@@ -249,7 +272,7 @@
     </div>
 
     <div id="mobile-menu" class="hidden md:hidden">
-        <div class="px-2 pt-2 pb-3 space-y-1 sm:px-3 border-t border-white/10" style="background: #203244;">
+        <div class="px-2 pt-2 pb-3 space-y-1 sm:px-3 border-t border-slate-200 bg-white">
             @foreach ($menu as $key => $item)
                 <a href="{{ route($item['route']) }}"
                    class="admin-nav-link @if($resolvedActive === $key) is-active @endif block px-3 py-2 rounded-md text-base font-medium transition-colors duration-200">

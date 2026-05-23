@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToSite;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -9,7 +10,10 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class DistributionChannel extends Model
 {
+    use BelongsToSite;
+
     protected $fillable = [
+        'site_id',
         'name',
         'domain',
         'endpoint_url',
@@ -29,6 +33,7 @@ class DistributionChannel extends Model
     {
         return [
             'created_by_admin_id' => 'integer',
+            'site_id' => 'integer',
             'last_health_checked_at' => 'datetime',
             'site_settings' => 'array',
         ];

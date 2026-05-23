@@ -175,64 +175,13 @@
             </div>
             <div class="px-6 py-4 grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div>
-                    <h4 class="text-sm font-semibold text-gray-900 mb-3">最近批次</h4>
-                    @if (($inclusionRuns ?? collect())->isEmpty())
-                        <div class="text-sm text-gray-500">暂无检测批次</div>
-                    @else
-                        <div class="space-y-2">
-                            @foreach ($inclusionRuns as $run)
-                                <div class="rounded border border-gray-200 px-3 py-2 text-sm">
-                                    <div class="flex items-center justify-between">
-                                        <span class="font-medium text-gray-900">#{{ (int) $run->id }} {{ $run->status }}</span>
-                                        <span class="text-gray-500">{{ optional($run->created_at)->format('Y-m-d H:i') }}</span>
-                                    </div>
-                                    <div class="mt-1 text-xs text-gray-500">
-                                        {{ (int) $run->completed_checks }}/{{ (int) $run->total_checks }} 已完成，失败 {{ (int) $run->failed_checks }}
-                                    </div>
-                                    @if (in_array((string) $run->status, ['pending', 'running'], true))
-                                        <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-100">
-                                            <div class="h-full rounded-full bg-indigo-500 transition-all" style="width: {{ (int) $run->total_checks > 0 ? min(100, round(((int) $run->completed_checks / (int) $run->total_checks) * 100)) : 0 }}%"></div>
-                                        </div>
-                                    @endif
-                                </div>
-                            @endforeach
-                        </div>
-                    @endif
+                    @include('admin.keyword-libraries.partials.inclusion-runs', ['inclusionRuns' => $inclusionRuns ?? collect()])
                 </div>
                 <div>
-                    <h4 class="text-sm font-semibold text-gray-900 mb-3">最近结果</h4>
-                    @if (($inclusionResults ?? collect())->isEmpty())
-                        <div class="text-sm text-gray-500">暂无检测结果</div>
-                    @else
-                        <div class="space-y-2">
-                            @foreach ($inclusionResults as $result)
-                                <div class="rounded border border-gray-200 px-3 py-2 text-sm">
-                                    <div class="flex items-center justify-between gap-3">
-                                        <span class="font-medium text-gray-900">{{ strtoupper((string) $result->platform) }}</span>
-                                        <span class="text-xs text-gray-500">{{ optional($result->checked_at)->format('Y-m-d H:i') }}</span>
-                                    </div>
-                                    <div class="mt-1 text-gray-700 break-all">{{ $result->keyword?->keyword }} / {{ $result->question }}</div>
-                                    <div class="mt-2 flex gap-2 text-xs">
-                                        <span class="rounded px-2 py-1 {{ $result->keyword_hit ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-600' }}">关键词 {{ $result->keyword_hit ? '命中' : '未命中' }}</span>
-                                        <span class="rounded px-2 py-1 {{ $result->brand_hit ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-600' }}">品牌 {{ $result->brand_hit ? '命中' : '未命中' }}</span>
-                                    </div>
-                                </div>
-                            @endforeach
-                        </div>
-                    @endif
+                    @include('admin.keyword-libraries.partials.inclusion-daily-reports', ['library' => $library, 'inclusionDailyReports' => $inclusionDailyReports ?? collect()])
                 </div>
             </div>
         </div>
-
-        @if ($hasRunningInclusionRun)
-            @push('scripts')
-                <script>
-                    window.setTimeout(function () {
-                        window.location.reload();
-                    }, 10000);
-                </script>
-            @endpush
-        @endif
 
         <div class="bg-white shadow rounded-lg">
             <div class="px-6 py-4 border-b border-gray-200">
@@ -278,9 +227,16 @@
                         @foreach ($keywords as $keyword)
                             <div class="group p-3 border border-gray-200 rounded-lg hover:bg-gray-50">
                                 <div class="flex items-start justify-between gap-3">
-                                    <div class="flex items-center space-x-2 min-w-0">
+                                    <div class="flex items-center gap-2 min-w-0 flex-1">
                                         <input type="checkbox" form="batch-form" name="keyword_ids[]" value="{{ (int) $keyword->id }}" class="keyword-checkbox hidden rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50">
-                                        <span class="text-sm font-medium text-gray-900 break-all">{{ $keyword->keyword }}</span>
+                                        <form method="POST" action="{{ route('admin.keyword-libraries.keywords.update', ['libraryId' => (int) $library->id, 'keywordId' => (int) $keyword->id]) }}" class="flex min-w-0 flex-1 items-center gap-2">
+                                            @csrf
+                                            @method('PUT')
+                                            <input type="text" name="keyword" value="{{ $keyword->keyword }}" maxlength="200" class="block min-w-0 flex-1 rounded-md border-gray-300 text-sm font-medium text-gray-900 shadow-sm focus:border-blue-500 focus:ring-blue-500" aria-label="编辑关键词">
+                                            <button type="submit" title="保存关键词" class="shrink-0 rounded-md border border-gray-200 bg-white p-2 text-gray-500 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700">
+                                                <i data-lucide="save" class="w-4 h-4"></i>
+                                            </button>
+                                        </form>
                                     </div>
                                     <button type="button" onclick="deleteKeyword({{ (int) $keyword->id }}, @js($keyword->keyword))" class="text-red-600 hover:text-red-800 opacity-0 group-hover:opacity-100 transition-opacity">
                                         <i data-lucide="x" class="w-4 h-4"></i>
@@ -295,9 +251,25 @@
                                         </button>
                                     </div>
                                     @if ($keyword->questionVariants->isNotEmpty())
-                                        <div class="space-y-1">
-                                            @foreach ($keyword->questionVariants->take(3) as $variant)
-                                                <div class="rounded bg-gray-50 px-2 py-1 text-xs text-gray-700 break-all">{{ $variant->question }}</div>
+                                        <div class="space-y-2">
+                                            @foreach ($keyword->questionVariants as $variant)
+                                                <div class="flex gap-2">
+                                                    <form method="POST" action="{{ route('admin.keyword-libraries.keywords.questions.update', ['libraryId' => (int) $library->id, 'keywordId' => (int) $keyword->id, 'questionId' => (int) $variant->id]) }}" class="flex min-w-0 flex-1 gap-2">
+                                                        @csrf
+                                                        @method('PUT')
+                                                        <input type="text" name="question" value="{{ $variant->question }}" maxlength="500" class="block w-full rounded-md border-gray-300 text-xs text-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500" aria-label="编辑问题变体">
+                                                        <button type="submit" title="保存问题变体" class="shrink-0 rounded-md border border-gray-200 bg-white px-2 py-1 text-gray-500 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700">
+                                                            <i data-lucide="save" class="w-3.5 h-3.5"></i>
+                                                        </button>
+                                                    </form>
+                                                    <form method="POST" action="{{ route('admin.keyword-libraries.keywords.questions.delete', ['libraryId' => (int) $library->id, 'keywordId' => (int) $keyword->id, 'questionId' => (int) $variant->id]) }}" onsubmit="return confirm('确认删除这个问题变体？')" class="shrink-0">
+                                                        @csrf
+                                                        @method('DELETE')
+                                                        <button type="submit" title="删除问题变体" class="rounded-md border border-red-100 bg-white px-2 py-1 text-red-500 hover:border-red-200 hover:bg-red-50 hover:text-red-700">
+                                                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                                                        </button>
+                                                    </form>
+                                                </div>
                                             @endforeach
                                         </div>
                                     @endif
@@ -498,7 +470,71 @@
 @endsection
 
 @push('scripts')
+    <script src="https://js.pusher.com/8.4.0/pusher.min.js"></script>
     <script>
+        const KEYWORD_INCLUSION_REALTIME = @json($inclusionRealtime ?? ['enabled' => false]);
+
+        async function refreshInclusionSnapshot() {
+            if (!KEYWORD_INCLUSION_REALTIME.snapshot_url) {
+                return;
+            }
+
+            try {
+                const response = await fetch(KEYWORD_INCLUSION_REALTIME.snapshot_url, {
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                });
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    return;
+                }
+
+                const runsPanel = document.getElementById('inclusion-runs-panel');
+                if (runsPanel && typeof data.runs_html === 'string') {
+                    runsPanel.outerHTML = data.runs_html;
+                }
+
+                const dailyReportsPanel = document.getElementById('inclusion-daily-reports-panel');
+                if (dailyReportsPanel && typeof data.daily_reports_html === 'string') {
+                    dailyReportsPanel.outerHTML = data.daily_reports_html;
+                }
+
+                if (window.lucide) {
+                    window.lucide.createIcons();
+                }
+            } catch (error) {
+                console.warn('Inclusion snapshot refresh failed', error);
+            }
+        }
+
+        function initKeywordInclusionRealtime() {
+            if (!KEYWORD_INCLUSION_REALTIME.enabled || !KEYWORD_INCLUSION_REALTIME.key || !KEYWORD_INCLUSION_REALTIME.channel || typeof window.Pusher === 'undefined') {
+                return;
+            }
+
+            const pusher = new window.Pusher(KEYWORD_INCLUSION_REALTIME.key, {
+                cluster: 'mt1',
+                wsHost: KEYWORD_INCLUSION_REALTIME.host,
+                wsPort: KEYWORD_INCLUSION_REALTIME.port || 80,
+                wssPort: KEYWORD_INCLUSION_REALTIME.port || 443,
+                forceTLS: KEYWORD_INCLUSION_REALTIME.scheme === 'https',
+                enabledTransports: ['ws', 'wss'],
+                authEndpoint: @js(url('/broadcasting/auth')),
+                auth: {
+                    headers: {
+                        'X-CSRF-TOKEN': @js(csrf_token()),
+                    },
+                },
+            });
+
+            const channel = pusher.subscribe(`private-${KEYWORD_INCLUSION_REALTIME.channel}`);
+            channel.bind('keyword-library.inclusion.updated', () => {
+                refreshInclusionSnapshot();
+            });
+        }
+
         function showAddModal() {
             document.getElementById('add-modal').classList.remove('hidden');
         }
@@ -744,6 +780,8 @@
             document.querySelectorAll('.keyword-checkbox').forEach((checkbox) => {
                 checkbox.addEventListener('change', updateSelectedCount);
             });
+
+            initKeywordInclusionRealtime();
 
             const batchForm = document.getElementById('batch-form');
             if (batchForm) {

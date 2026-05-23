@@ -9,6 +9,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Laravel\Sanctum\HasApiTokens;
@@ -80,6 +81,13 @@ class Admin extends Authenticatable
     public function activityLogs(): HasMany
     {
         return $this->hasMany(AdminActivityLog::class, 'admin_id');
+    }
+
+    public function sites(): BelongsToMany
+    {
+        return $this->belongsToMany(Site::class, 'site_members')
+            ->withPivot('role')
+            ->withTimestamps();
     }
 
     public function articleReviews(): HasMany

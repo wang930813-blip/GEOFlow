@@ -2,15 +2,19 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToSite;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class TitleLibrary extends Model
 {
+    use BelongsToSite;
+
     protected $table = 'title_libraries';
 
     protected $fillable = [
+        'site_id',
         'name',
         'description',
         'title_count',
@@ -26,6 +30,7 @@ class TitleLibrary extends Model
     {
         return [
             'title_count' => 'integer',
+            'site_id' => 'integer',
             'keyword_library_id' => 'integer',
             'ai_model_id' => 'integer',
             'prompt_id' => 'integer',

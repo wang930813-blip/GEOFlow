@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToSite;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -9,9 +10,12 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Task extends Model
 {
+    use BelongsToSite;
+
     protected $table = 'tasks';
 
     protected $fillable = [
+        'site_id',
         'name',
         'title_library_id',
         'image_library_id',
@@ -53,6 +57,7 @@ class Task extends Model
     {
         return [
             'title_library_id' => 'integer',
+            'site_id' => 'integer',
             'image_library_id' => 'integer',
             'image_mode' => 'string',
             'image_count' => 'integer',

@@ -22,7 +22,6 @@ class AdminWelcomeModalService
     {
         $welcomeState = $this->resolveWelcomeState();
         $shouldAutoOpen = $this->prepareAutoOpen($admin, $welcomeState);
-        $admin->refresh();
 
         $copy = ($welcomeState['mode'] ?? 'intro') === 'update'
             ? $this->buildUpdateCopy($welcomeState)

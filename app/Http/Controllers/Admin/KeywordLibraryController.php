@@ -20,7 +20,9 @@ use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
 
 /**
@@ -70,6 +72,85 @@ class KeywordLibraryController extends Controller
             'usageTotal' => $usageTotal,
             'inclusionRuns' => $this->loadInclusionRuns($libraryId),
             'inclusionResults' => $this->loadLatestInclusionResults($libraryId),
+            'inclusionDailyReports' => $this->loadDailyInclusionReports($libraryId),
+            'inclusionRealtime' => $this->inclusionRealtimeConfig($libraryId),
+        ]);
+    }
+
+    public function exportInclusionResults(int $libraryId): StreamedResponse
+    {
+        $library = KeywordLibrary::query()->whereKey($libraryId)->firstOrFail();
+        $filename = sprintf(
+            'geo-inclusion-%d-%s.csv',
+            (int) $library->id,
+            now()->format('YmdHis')
+        );
+
+        return response()->streamDownload(function () use ($libraryId): void {
+            echo "\xEF\xBB\xBF";
+
+            $handle = fopen('php://output', 'w');
+            if ($handle === false) {
+                return;
+            }
+
+            fputcsv($handle, [
+                '日期',
+                '检测时间',
+                '平台',
+                '关键词',
+                '问题',
+                '关键词命中',
+                '品牌命中',
+                '状态',
+                '回答摘要',
+                '错误信息',
+            ]);
+
+            $this->inclusionResultsQuery($libraryId)
+                ->chunk(500, function (Collection $results) use ($handle): void {
+                    foreach ($results as $result) {
+                        $checkedAt = $result->checked_at ?? $result->created_at;
+
+                        fputcsv($handle, [
+                            optional($checkedAt)->format('Y-m-d') ?? '',
+                            optional($checkedAt)->format('Y-m-d H:i:s') ?? '',
+                            $this->platformLabel((string) $result->platform),
+                            (string) ($result->keyword?->keyword ?? ''),
+                            (string) $result->question,
+                            $result->keyword_hit ? '是' : '否',
+                            $result->brand_hit ? '是' : '否',
+                            (string) $result->status,
+                            Str::limit((string) ($result->answer ?? ''), 200, '...'),
+                            (string) ($result->error_message ?? ''),
+                        ]);
+                    }
+                });
+
+            fclose($handle);
+        }, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    public function inclusionSnapshot(int $libraryId): JsonResponse
+    {
+        $library = KeywordLibrary::query()->whereKey($libraryId)->firstOrFail();
+        $inclusionRuns = $this->loadInclusionRuns($libraryId);
+        $inclusionDailyReports = $this->loadDailyInclusionReports($libraryId);
+        $hasRunning = $this->hasRunningInclusionRun($inclusionRuns);
+
+        return response()->json([
+            'success' => true,
+            'has_running' => $hasRunning,
+            'latest_run_id' => (int) optional($inclusionRuns->first())->id,
+            'runs_html' => view('admin.keyword-libraries.partials.inclusion-runs', [
+                'inclusionRuns' => $inclusionRuns,
+            ])->render(),
+            'daily_reports_html' => view('admin.keyword-libraries.partials.inclusion-daily-reports', [
+                'library' => $library,
+                'inclusionDailyReports' => $inclusionDailyReports,
+            ])->render(),
         ]);
     }
 
@@ -167,6 +248,37 @@ class KeywordLibraryController extends Controller
             ->with('message', $message);
     }
 
+    public function updateKeyword(Request $request, int $libraryId, int $keywordId): RedirectResponse
+    {
+        $keywordModel = $this->findKeywordInLibrary($libraryId, $keywordId);
+
+        $payload = $request->validate([
+            'keyword' => ['required', 'string', 'max:200'],
+        ], [
+            'keyword.required' => __('admin.keyword_detail.error.keyword_required'),
+        ]);
+
+        $keyword = trim((string) $payload['keyword']);
+        if ($keyword === '') {
+            return back()->withErrors(__('admin.keyword_detail.error.keyword_required'));
+        }
+
+        $exists = Keyword::query()
+            ->where('library_id', $libraryId)
+            ->where('keyword', $keyword)
+            ->whereKeyNot((int) $keywordModel->id)
+            ->exists();
+        if ($exists) {
+            return back()->withErrors(__('admin.keyword_detail.error.keyword_exists'));
+        }
+
+        $keywordModel->update(['keyword' => $keyword]);
+
+        return redirect()
+            ->route('admin.keyword-libraries.detail', ['libraryId' => $libraryId])
+            ->with('message', '关键词已更新');
+    }
+
     public function suggestKeywords(Request $request, int $libraryId): JsonResponse
     {
         KeywordLibrary::query()->whereKey($libraryId)->firstOrFail();
@@ -215,6 +327,55 @@ class KeywordLibraryController extends Controller
         return redirect()
             ->route('admin.keyword-libraries.detail', ['libraryId' => $libraryId])
             ->with('message', '问题变体已保存');
+    }
+
+    public function updateQuestion(Request $request, int $libraryId, int $keywordId, int $questionId): RedirectResponse
+    {
+        $keyword = $this->findKeywordInLibrary($libraryId, $keywordId);
+        $variant = KeywordQuestionVariant::query()
+            ->where('keyword_id', (int) $keyword->id)
+            ->whereKey($questionId)
+            ->firstOrFail();
+
+        $payload = $request->validate([
+            'question' => ['required', 'string', 'max:500'],
+        ]);
+
+        $question = $this->normalizeQuestion((string) $payload['question']);
+        if ($question === '') {
+            return back()->withErrors('请输入有效的问题变体');
+        }
+
+        $exists = KeywordQuestionVariant::query()
+            ->where('keyword_id', (int) $keyword->id)
+            ->where('question', $question)
+            ->whereKeyNot((int) $variant->id)
+            ->exists();
+        if ($exists) {
+            return back()->withErrors('这个问题变体已经存在');
+        }
+
+        $variant->update(['question' => $question]);
+
+        return redirect()
+            ->route('admin.keyword-libraries.detail', ['libraryId' => $libraryId])
+            ->with('message', '问题变体已更新');
+    }
+
+    public function destroyQuestion(int $libraryId, int $keywordId, int $questionId): RedirectResponse
+    {
+        $keyword = $this->findKeywordInLibrary($libraryId, $keywordId);
+
+        $variant = KeywordQuestionVariant::query()
+            ->where('keyword_id', (int) $keyword->id)
+            ->whereKey($questionId)
+            ->firstOrFail();
+
+        $variant->delete();
+
+        return redirect()
+            ->route('admin.keyword-libraries.detail', ['libraryId' => $libraryId])
+            ->with('message', '问题变体已删除');
     }
 
     public function generateQuestions(Request $request, int $libraryId, int $keywordId): JsonResponse
@@ -675,14 +836,144 @@ class KeywordLibraryController extends Controller
             ->get();
     }
 
+    private function hasRunningInclusionRun(Collection $inclusionRuns): bool
+    {
+        return $inclusionRuns->contains(
+            static fn ($run): bool => in_array((string) $run->status, ['pending', 'running'], true)
+        );
+    }
+
     private function loadLatestInclusionResults(int $libraryId): Collection
+    {
+        return $this->inclusionResultsQuery($libraryId)
+            ->limit(10)
+            ->get();
+    }
+
+    private function loadDailyInclusionReports(int $libraryId): Collection
+    {
+        return $this->inclusionResultsQuery($libraryId)
+            ->limit(200)
+            ->get()
+            ->groupBy(function (GeoInclusionCheckResult $result): string {
+                $checkedAt = $result->checked_at ?? $result->created_at;
+
+                return optional($checkedAt)->format('Y-m-d') ?? '未记录日期';
+            })
+            ->map(function (Collection $results, string $date): array {
+                $runReports = $results
+                    ->groupBy('run_id')
+                    ->map(fn (Collection $runResults): array => $this->buildInclusionRunReport($runResults))
+                    ->sortByDesc(static fn (array $runReport): int => (int) ($runReport['run_id'] ?? 0))
+                    ->values();
+
+                return [
+                    'date' => $date,
+                    'total' => $results->count(),
+                    'keyword_hits' => $results->where('keyword_hit', true)->count(),
+                    'brand_hits' => $results->where('brand_hit', true)->count(),
+                    'matched_keywords' => $this->matchedKeywords($results),
+                    'missed_keywords' => $this->missedKeywords($results),
+                    'platforms' => $this->platformBreakdown($results),
+                    'runs' => $runReports,
+                ];
+            })
+            ->values();
+    }
+
+    private function buildInclusionRunReport(Collection $results): array
+    {
+        /** @var GeoInclusionCheckResult|null $firstResult */
+        $firstResult = $results->first();
+        $run = $firstResult?->run;
+
+        return [
+            'run_id' => (int) ($firstResult?->run_id ?? 0),
+            'status' => (string) ($run?->status ?? $firstResult?->status ?? ''),
+            'created_at' => $run?->created_at,
+            'completed_at' => $run?->completed_at,
+            'total' => $results->count(),
+            'total_checks' => (int) ($run?->total_checks ?? $results->count()),
+            'completed_checks' => (int) ($run?->completed_checks ?? $results->count()),
+            'failed_checks' => (int) ($run?->failed_checks ?? $results->where('status', 'failed')->count()),
+            'keyword_hits' => $results->where('keyword_hit', true)->count(),
+            'brand_hits' => $results->where('brand_hit', true)->count(),
+            'matched_keywords' => $this->matchedKeywords($results),
+            'missed_keywords' => $this->missedKeywords($results),
+            'platforms' => $this->platformBreakdown($results),
+            'results' => $results->values(),
+        ];
+    }
+
+    private function matchedKeywords(Collection $results): Collection
+    {
+        return $results
+            ->filter(static fn (GeoInclusionCheckResult $result): bool => (bool) $result->keyword_hit)
+            ->map(static fn (GeoInclusionCheckResult $result): ?string => $result->keyword?->keyword)
+            ->filter()
+            ->unique()
+            ->values();
+    }
+
+    private function missedKeywords(Collection $results): Collection
+    {
+        return $results
+            ->reject(static fn (GeoInclusionCheckResult $result): bool => (bool) $result->keyword_hit)
+            ->map(static fn (GeoInclusionCheckResult $result): ?string => $result->keyword?->keyword)
+            ->filter()
+            ->unique()
+            ->values();
+    }
+
+    private function platformBreakdown(Collection $results): Collection
+    {
+        return $results
+            ->groupBy('platform')
+            ->map(fn (Collection $items, string $platform): array => [
+                'label' => $this->platformLabel($platform),
+                'total' => $items->count(),
+                'keyword_hits' => $items->where('keyword_hit', true)->count(),
+                'brand_hits' => $items->where('brand_hit', true)->count(),
+            ])
+            ->values();
+    }
+
+    private function inclusionResultsQuery(int $libraryId)
     {
         return GeoInclusionCheckResult::query()
             ->where('keyword_library_id', $libraryId)
-            ->with(['keyword:id,keyword'])
+            ->with(['keyword:id,keyword', 'run:id,status,total_checks,completed_checks,failed_checks,created_at,completed_at'])
             ->orderByDesc('checked_at')
-            ->orderByDesc('id')
-            ->limit(10)
-            ->get();
+            ->orderByDesc('id');
+    }
+
+    private function platformLabel(string $platform): string
+    {
+        return match (strtolower($platform)) {
+            'doubao' => '豆包',
+            'qianwen' => '千问',
+            'deepseek' => 'DeepSeek',
+            default => strtoupper($platform),
+        };
+    }
+
+    /**
+     * @return array{enabled:bool,key:string,host:string,port:int,scheme:string,channel:string,snapshot_url:string}
+     */
+    private function inclusionRealtimeConfig(int $libraryId): array
+    {
+        $reverbApp = config('reverb.apps.apps.0', []);
+        $host = (string) (config('reverb.servers.reverb.hostname') ?: config('app.url'));
+        $parsedHost = parse_url($host, PHP_URL_HOST);
+
+        return [
+            'enabled' => (string) config('broadcasting.default') === 'reverb',
+            'key' => (string) ($reverbApp['key'] ?? ''),
+            'host' => $parsedHost ? (string) $parsedHost : (string) $host,
+            'port' => (int) (config('reverb.apps.apps.0.options.port') ?: 443),
+            'scheme' => (string) (config('reverb.apps.apps.0.options.scheme') ?: 'https'),
+            'channel' => 'admin.keyword-libraries.'.$libraryId,
+            'snapshot_url' => route('admin.keyword-libraries.inclusion-snapshot', ['libraryId' => $libraryId]),
+        ];
     }
 }

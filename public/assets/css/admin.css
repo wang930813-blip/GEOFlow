@@ -1,38 +1,38 @@
 /* GEOFlow admin design system */
 body.admin-ui {
-    --geo-primary: #2a3f54;
-    --geo-primary-dark: #203244;
-    --geo-secondary: #4fc3f7;
-    --geo-secondary-hover: #38b6ee;
-    --geo-accent: #ffc107;
-    --geo-success: #4caf50;
-    --geo-warning: #ff5722;
-    --geo-background: #f5f7fa;
+    --geo-primary: #4f46e5;
+    --geo-primary-dark: #4338ca;
+    --geo-secondary: #0f766e;
+    --geo-secondary-hover: #115e59;
+    --geo-accent: #d97706;
+    --geo-success: #16a34a;
+    --geo-warning: #ea580c;
+    --geo-background: #f8fafc;
     --geo-surface: #ffffff;
-    --geo-surface-soft: #f8fafc;
-    --geo-border: #dce3ea;
-    --geo-border-strong: #c8d3df;
-    --geo-text: #212121;
-    --geo-muted: #757575;
+    --geo-surface-soft: #f1f5f9;
+    --geo-border: #e2e8f0;
+    --geo-border-strong: #cbd5e1;
+    --geo-text: #0f172a;
+    --geo-muted: #64748b;
     --geo-on-dark: #ffffff;
-    --geo-shadow: 0 10px 28px rgba(42, 63, 84, 0.08);
-    --geo-shadow-soft: 0 4px 14px rgba(42, 63, 84, 0.06);
-    --geo-focus: 0 0 0 3px rgba(79, 195, 247, 0.28);
+    --geo-shadow: 0 18px 48px rgba(15, 23, 42, 0.08);
+    --geo-shadow-soft: 0 1px 2px rgba(15, 23, 42, 0.04), 0 10px 28px rgba(15, 23, 42, 0.04);
+    --geo-focus: 0 0 0 3px rgba(79, 70, 229, 0.16);
     --geo-radius: 6px;
     --admin-input-bg: var(--geo-surface);
     --admin-input-bg-hover: #ffffff;
-    --admin-input-bg-disabled: #eef3f7;
+    --admin-input-bg-disabled: #f1f5f9;
     --admin-input-border: var(--geo-border);
     --admin-input-border-hover: var(--geo-border-strong);
     --admin-input-border-focus: var(--geo-secondary);
     --admin-input-text: var(--geo-text);
-    --admin-input-placeholder: #9aa7b4;
-    --admin-input-shadow: 0 1px 2px rgba(42, 63, 84, 0.04);
+    --admin-input-placeholder: #94a3b8;
+    --admin-input-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
     --admin-input-focus-shadow: var(--geo-focus);
     min-height: 100vh;
     background:
-        radial-gradient(circle at 16% 0%, rgba(79, 195, 247, 0.13), rgba(79, 195, 247, 0) 26rem),
-        linear-gradient(180deg, #f8fbfe 0%, var(--geo-background) 42%, #eef3f8 100%);
+        radial-gradient(circle at 50% -18rem, rgba(79, 70, 229, 0.08), rgba(79, 70, 229, 0) 30rem),
+        linear-gradient(180deg, #ffffff 0%, var(--geo-background) 18rem, #f6f8fb 100%);
     color: var(--geo-text);
     font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     font-size: 14px;
@@ -78,7 +78,7 @@ body.admin-ui a {
 }
 
 body.admin-ui a:hover {
-    color: var(--geo-secondary);
+    color: var(--geo-primary);
 }
 
 body.admin-ui main {
@@ -134,7 +134,7 @@ body.admin-ui .bg-blue-600,
 body.admin-ui .bg-indigo-600,
 body.admin-ui .bg-purple-600,
 body.admin-ui .bg-green-600 {
-    background-color: var(--geo-secondary) !important;
+    background-color: var(--geo-primary) !important;
     color: var(--geo-on-dark) !important;
 }
 
@@ -142,40 +142,40 @@ body.admin-ui .hover\:bg-blue-700:hover,
 body.admin-ui .hover\:bg-indigo-700:hover,
 body.admin-ui .hover\:bg-purple-700:hover,
 body.admin-ui .hover\:bg-green-700:hover {
-    background-color: var(--geo-secondary-hover) !important;
+    background-color: var(--geo-primary-dark) !important;
 }
 
 body.admin-ui .bg-slate-800,
 body.admin-ui .bg-gray-900 {
-    background-color: var(--geo-primary) !important;
+    background-color: #111827 !important;
 }
 
 body.admin-ui .hover\:bg-slate-900:hover,
 body.admin-ui .hover\:bg-black:hover {
-    background-color: var(--geo-primary-dark) !important;
+    background-color: #020617 !important;
 }
 
 body.admin-ui .text-blue-600,
 body.admin-ui .text-indigo-600,
 body.admin-ui .text-purple-600 {
-    color: #168ac4 !important;
+    color: var(--geo-primary) !important;
 }
 
 body.admin-ui .text-green-600,
 body.admin-ui .text-green-700,
 body.admin-ui .text-green-800 {
-    color: #2f7d32 !important;
+    color: #15803d !important;
 }
 
 body.admin-ui .text-red-600,
 body.admin-ui .text-red-700,
 body.admin-ui .text-red-800 {
-    color: #d63b1f !important;
+    color: #dc2626 !important;
 }
 
 body.admin-ui .bg-green-50,
 body.admin-ui .bg-green-100 {
-    background-color: rgba(76, 175, 80, 0.12) !important;
+    background-color: #ecfdf5 !important;
 }
 
 body.admin-ui .bg-blue-50,
@@ -184,17 +184,17 @@ body.admin-ui .bg-indigo-50,
 body.admin-ui .bg-indigo-100,
 body.admin-ui .bg-purple-50,
 body.admin-ui .bg-purple-100 {
-    background-color: rgba(79, 195, 247, 0.14) !important;
+    background-color: #eef2ff !important;
 }
 
 body.admin-ui .bg-yellow-50,
 body.admin-ui .bg-yellow-100 {
-    background-color: rgba(255, 193, 7, 0.16) !important;
+    background-color: #fffbeb !important;
 }
 
 body.admin-ui .bg-red-50,
 body.admin-ui .bg-red-100 {
-    background-color: rgba(255, 87, 34, 0.12) !important;
+    background-color: #fef2f2 !important;
 }
 
 body.admin-ui a[class*="px-4"][class*="py-2"],
@@ -327,7 +327,7 @@ body.admin-ui textarea[readonly] {
 
 body.admin-ui input[type="checkbox"],
 body.admin-ui input[type="radio"] {
-    accent-color: var(--geo-secondary);
+    accent-color: var(--geo-primary);
     min-height: auto;
     box-shadow: none !important;
 }
@@ -343,11 +343,11 @@ body.admin-ui table {
 body.admin-ui thead,
 body.admin-ui .bg-gray-50.text-xs,
 body.admin-ui thead.bg-gray-50 {
-    background-color: #edf4fa !important;
+    background-color: #f8fafc !important;
 }
 
 body.admin-ui th {
-    color: var(--geo-primary) !important;
+    color: var(--geo-text) !important;
     font-weight: 700 !important;
 }
 
@@ -356,7 +356,7 @@ body.admin-ui tbody tr {
 }
 
 body.admin-ui tbody tr:hover {
-    background-color: rgba(79, 195, 247, 0.06);
+    background-color: rgba(79, 70, 229, 0.04);
 }
 
 body.admin-ui .admin-flash-alert {
@@ -384,40 +384,46 @@ body.admin-ui .admin-locale-select:focus {
 }
 
 .admin-topbar {
-    background: linear-gradient(135deg, var(--geo-primary) 0%, #1d3144 100%);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow: 0 12px 32px rgba(42, 63, 84, 0.18);
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    background: rgba(255, 255, 255, 0.92);
+    border-bottom: 1px solid var(--geo-border);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    backdrop-filter: blur(18px) saturate(160%);
 }
 
 .admin-topbar a,
 .admin-topbar button,
 .admin-topbar select {
-    color: rgba(255, 255, 255, 0.78) !important;
+    color: var(--geo-muted) !important;
 }
 
 .admin-brand-mark {
-    color: var(--geo-on-dark) !important;
+    color: var(--geo-text) !important;
 }
 
 .admin-brand-icon {
-    background: linear-gradient(135deg, var(--geo-secondary), var(--geo-accent));
+    background: linear-gradient(135deg, #eef2ff, #f8fafc);
+    border: 1px solid #dbe3ff;
     color: var(--geo-primary);
 }
 
 .admin-nav-link {
     border-radius: var(--geo-radius);
-    color: rgba(255, 255, 255, 0.72) !important;
+    color: var(--geo-muted) !important;
+    font-weight: 600;
 }
 
 .admin-nav-link:hover {
-    background-color: rgba(255, 255, 255, 0.08);
-    color: #ffffff !important;
+    background-color: #f1f5f9;
+    color: var(--geo-text) !important;
 }
 
 .admin-nav-link.is-active {
-    background-color: rgba(79, 195, 247, 0.18);
-    color: #ffffff !important;
-    box-shadow: inset 0 0 0 1px rgba(79, 195, 247, 0.35);
+    background-color: #eef2ff;
+    color: var(--geo-primary) !important;
+    box-shadow: inset 0 0 0 1px rgba(79, 70, 229, 0.12);
 }
 
 .admin-nav-link.is-active::before {
@@ -425,14 +431,15 @@ body.admin-ui .admin-locale-select:focus {
     width: 3px;
     height: 18px;
     border-radius: 999px;
-    background: var(--geo-secondary);
+    background: var(--geo-primary);
     display: inline-block;
     margin-right: 8px;
 }
 
 .admin-user-avatar {
-    background: rgba(79, 195, 247, 0.18);
-    color: var(--geo-secondary);
+    background: #eef2ff;
+    border: 1px solid #dbe3ff;
+    color: var(--geo-primary);
 }
 
 .admin-menu-panel {
@@ -456,24 +463,24 @@ body.admin-ui .admin-locale-select:focus {
 }
 
 .admin-topbar .admin-menu-panel .text-red-600 {
-    color: #d63b1f !important;
+    color: #dc2626 !important;
 }
 
 .admin-login-page {
     background:
-        radial-gradient(circle at 18% 10%, rgba(79, 195, 247, 0.2), rgba(79, 195, 247, 0) 24rem),
-        radial-gradient(circle at 82% 88%, rgba(255, 193, 7, 0.16), rgba(255, 193, 7, 0) 22rem),
-        linear-gradient(135deg, #edf4fa 0%, #f5f7fa 48%, #e9f1f8 100%);
+        radial-gradient(circle at 18% 10%, rgba(79, 70, 229, 0.14), rgba(79, 70, 229, 0) 24rem),
+        radial-gradient(circle at 82% 88%, rgba(15, 118, 110, 0.1), rgba(15, 118, 110, 0) 22rem),
+        linear-gradient(135deg, #ffffff 0%, #f8fafc 48%, #eef2ff 100%);
 }
 
 .login-form {
     background: rgba(255, 255, 255, 0.92);
     backdrop-filter: blur(18px) saturate(160%);
-    border: 1px solid rgba(220, 227, 234, 0.92);
-    box-shadow: 0 24px 68px rgba(42, 63, 84, 0.14);
+    border: 1px solid rgba(226, 232, 240, 0.92);
+    box-shadow: 0 24px 68px rgba(15, 23, 42, 0.1);
 }
 
 .login-badge {
-    background: linear-gradient(135deg, var(--geo-primary), var(--geo-secondary));
-    box-shadow: 0 16px 34px rgba(79, 195, 247, 0.28);
+    background: linear-gradient(135deg, var(--geo-primary), #0f766e);
+    box-shadow: 0 16px 34px rgba(79, 70, 229, 0.22);
 }

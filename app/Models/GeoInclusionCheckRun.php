@@ -2,15 +2,19 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToSite;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class GeoInclusionCheckRun extends Model
 {
+    use BelongsToSite;
+
     protected $table = 'geo_inclusion_check_runs';
 
     protected $fillable = [
+        'site_id',
         'keyword_library_id',
         'platforms',
         'status',
@@ -25,6 +29,7 @@ class GeoInclusionCheckRun extends Model
     {
         return [
             'keyword_library_id' => 'integer',
+            'site_id' => 'integer',
             'platforms' => 'array',
             'total_checks' => 'integer',
             'completed_checks' => 'integer',

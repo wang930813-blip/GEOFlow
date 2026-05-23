@@ -2,14 +2,18 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToSite;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Author extends Model
 {
+    use BelongsToSite;
+
     protected $table = 'authors';
 
     protected $fillable = [
+        'site_id',
         'name',
         'bio',
         'email',

@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Models\Admin;
+use App\Models\Site;
 use App\Services\Admin\AdminUpdateMetadataService;
 use App\Services\Admin\AdminWelcomeModalService;
 use App\Services\GeoFlow\ArticleGeoFlowService;
@@ -10,6 +11,7 @@ use App\Services\GeoFlow\HorizonMetricsAdapter;
 use App\Services\GeoFlow\JobQueueService;
 use App\Services\GeoFlow\TaskLifecycleService;
 use App\Services\GeoFlow\TaskMonitoringQueryService;
+use App\Support\CurrentSite;
 use App\View\Composers\SiteLayoutComposer;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
@@ -26,6 +28,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(TaskMonitoringQueryService::class);
         $this->app->singleton(TaskLifecycleService::class);
         $this->app->singleton(ArticleGeoFlowService::class);
+        $this->app->scoped(CurrentSite::class);
     }
 
     /**
@@ -36,15 +39,41 @@ class AppServiceProvider extends ServiceProvider
         View::composer(['site.layout', 'theme.*.layout'], SiteLayoutComposer::class);
 
         View::composer('admin.layouts.app', function ($view): void {
-            $admin = auth('admin')->user();
-            $view->with(
-                'adminWelcomeModalPayload',
-                $admin instanceof Admin ? app(AdminWelcomeModalService::class)->buildModalPayload($admin) : null
-            );
-            $view->with(
-                'adminUpdateNotificationPayload',
-                $admin instanceof Admin ? app(AdminUpdateMetadataService::class)->buildNotificationPayload() : null
-            );
+            $payload = once(function (): array {
+                $admin = auth('admin')->user();
+
+                return [
+                    'adminWelcomeModalPayload' => $admin instanceof Admin
+                        ? app(AdminWelcomeModalService::class)->buildModalPayload($admin)
+                        : null,
+                    'adminUpdateNotificationPayload' => $admin instanceof Admin
+                        ? app(AdminUpdateMetadataService::class)->buildNotificationPayload()
+                        : null,
+                    'currentSite' => app(CurrentSite::class)->get(),
+                    'availableSites' => $admin instanceof Admin
+                        ? $this->availableSitesForAdmin($admin)
+                        : collect(),
+                ];
+            });
+
+            $view->with($payload);
         });
+    }
+
+    private function availableSitesForAdmin(Admin $admin)
+    {
+        $columns = ['sites.id', 'sites.name', 'sites.status'];
+
+        return $admin->isSuperAdmin()
+            ? Site::query()
+                ->select($columns)
+                ->where('status', 'active')
+                ->orderBy('id')
+                ->get()
+            : $admin->sites()
+                ->select($columns)
+                ->where('sites.status', 'active')
+                ->orderBy('sites.id')
+                ->get();
     }
 }

@@ -12,6 +12,7 @@ use App\Http\Middleware\AssignApiRequestId;
 use App\Http\Middleware\AuthenticateAdminWeb;
 use App\Http\Middleware\AuthenticateApiToken;
 use App\Http\Middleware\EnsureApiScope;
+use App\Http\Middleware\EnsureCurrentSite;
 use App\Http\Middleware\EnsureSuperAdmin;
 use App\Http\Middleware\LogAdminActivity;
 use App\Http\Middleware\RecordSiteViewLog;
@@ -46,6 +47,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin.auth' => AuthenticateAdminWeb::class,
             // Blade 后台：session locale
             'admin.locale' => AdminWebLocale::class,
+            // Blade 后台：当前站点上下文
+            'admin.site' => EnsureCurrentSite::class,
             // 前台：固定 public_locale（默认 zh_CN）
             'site.locale' => SiteWebLocale::class,
             // 前台：保存访问日志，供数据分析模块统计 PV、路径和爬虫类型
