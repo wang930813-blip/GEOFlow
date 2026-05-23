@@ -26,6 +26,7 @@ use App\Http\Controllers\Admin\MaterialsController;
 use App\Http\Controllers\Admin\SecuritySettingsController;
 use App\Http\Controllers\Admin\SiteSettingsController;
 use App\Http\Controllers\Admin\SiteContextController;
+use App\Http\Controllers\Admin\SiteManagementController;
 use App\Http\Controllers\Admin\TaskController;
 use App\Http\Controllers\Admin\TitleLibraryController;
 use App\Http\Controllers\Admin\UrlImportController;
@@ -274,6 +275,12 @@ $adminPrefix = trim((string) config('geoflow.admin_base_path', '/geo_admin'), '/
 
         // Super admin routes
         Route::middleware('admin.super')->group(function () {
+            Route::prefix('sites/manage')->name('sites.manage.')->group(function () {
+                Route::get('/', [SiteManagementController::class, 'index'])->name('index');
+                Route::post('/', [SiteManagementController::class, 'store'])->name('store');
+                Route::post('{site}', [SiteManagementController::class, 'update'])->name('update');
+                Route::post('{site}/toggle-status', [SiteManagementController::class, 'toggleStatus'])->name('toggle-status');
+            });
         Route::prefix('admin-users')->name('admin-users.')->group(function () {
                 Route::get('/', [AdminUserController::class, 'index'])->name('index');
                 Route::post('create', [AdminUserController::class, 'store'])->name('store');

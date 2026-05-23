@@ -244,6 +244,10 @@
                             {{ __('admin.nav.system_settings') }}
                         </a>
                         @if ($isSuperAdmin)
+                            <a href="{{ route('admin.sites.manage.index') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                <i data-lucide="globe-2" class="w-4 h-4 inline mr-2"></i>
+                                站点管理
+                            </a>
                             <a href="{{ route('admin.admin-users.index') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
                                 <i data-lucide="users" class="w-4 h-4 inline mr-2"></i>
                                 {{ __('admin.nav.admin_management') }}
