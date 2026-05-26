@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class MediaResource extends Model
 {
@@ -38,6 +39,16 @@ class MediaResource extends Model
     public function submissions(): HasMany
     {
         return $this->hasMany(MediaSubmission::class);
+    }
+
+    public function sitePrices(): HasMany
+    {
+        return $this->hasMany(MediaResourceSitePrice::class);
+    }
+
+    public function currentSitePrice(): HasOne
+    {
+        return $this->hasOne(MediaResourceSitePrice::class);
     }
 
     public function scopeActive(Builder $query): Builder

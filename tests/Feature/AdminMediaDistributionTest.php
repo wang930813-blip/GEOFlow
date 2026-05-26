@@ -7,6 +7,7 @@ use App\Models\Article;
 use App\Models\Author;
 use App\Models\Category;
 use App\Models\MediaResource;
+use App\Models\MediaResourceSitePrice;
 use App\Models\MediaSubmission;
 use App\Models\Site;
 use App\Models\SiteCreditAccount;
@@ -528,6 +529,198 @@ class AdminMediaDistributionTest extends TestCase
         $creditsCsv->assertOk();
         $creditsCsv->assertHeader('content-type', 'text/csv; charset=UTF-8');
         $this->assertStringContainsString('export ledger', $creditsCsv->streamedContent());
+    }
+
+    public function test_site_specific_media_price_is_used_for_submission_and_hidden_from_other_sites(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+        [$superAdmin] = $this->createAdminWithSite('media_site_price_root', 'super_admin');
+        [$admin, $site] = $this->createAdminWithSite('media_site_price_admin', 'admin');
+        [, $otherSite] = $this->createAdminWithSite('media_site_price_other', 'admin');
+        [$article, $resource] = $this->createArticleAndResource($site, 'site-price-article');
+        SiteCreditAccount::query()->create([
+            'site_id' => $site->id,
+            'balance' => '100.00',
+            'frozen_balance' => '0.00',
+            'total_recharged' => '100.00',
+            'total_consumed' => '0.00',
+        ]);
+        Http::fake([
+            '*/api/media/send' => Http::response([
+                'code' => 1,
+                'msg' => 'success',
+                'data' => ['order_nid' => 'site-price-order'],
+            ]),
+        ]);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.media-distribution.resources.site-price', ['resource' => $resource->id]), [
+                'site_id' => $site->id,
+                'sale_price' => '55',
+            ])
+            ->assertRedirect(route('admin.media-distribution.resources.index'));
+
+        $this->assertDatabaseHas('media_resource_site_prices', [
+            'site_id' => $site->id,
+            'media_resource_id' => $resource->id,
+            'sale_price' => '55.00',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => $site->id])
+            ->post(route('admin.media-distribution.submissions.store'), [
+                'article_id' => $article->id,
+                'media_resource_id' => $resource->id,
+            ])
+            ->assertRedirect(route('admin.media-distribution.submissions.index'));
+
+        $submission = MediaSubmission::query()->where('article_id', $article->id)->firstOrFail();
+        $this->assertSame('55.00', $submission->sale_price_snapshot);
+        $this->assertSame('55.00', $submission->points_amount);
+        $this->assertSame('45.00', SiteCreditAccount::query()->where('site_id', $site->id)->value('balance'));
+        $this->assertDatabaseMissing('media_resource_site_prices', [
+            'site_id' => $otherSite->id,
+            'media_resource_id' => $resource->id,
+        ]);
+    }
+
+    public function test_cancelled_and_rejected_orders_refund_consumed_credits_once(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+        [$admin, $site] = $this->createAdminWithSite('media_refund_admin', 'admin');
+        [$article, $resource] = $this->createArticleAndResource($site, 'refund-article');
+        SiteCreditAccount::query()->create([
+            'site_id' => $site->id,
+            'balance' => '12.00',
+            'frozen_balance' => '0.00',
+            'total_recharged' => '100.00',
+            'total_consumed' => '88.00',
+        ]);
+        $submission = MediaSubmission::query()->create([
+            'site_id' => $site->id,
+            'article_id' => $article->id,
+            'media_resource_id' => $resource->id,
+            'source_type' => $resource->source_type,
+            'external_order_nid' => 'refund-order',
+            'title_snapshot' => $article->title,
+            'content_snapshot' => $article->content,
+            'cost_price_snapshot' => '27.00',
+            'sale_price_snapshot' => '88.00',
+            'points_amount' => '88.00',
+            'status' => 'submitted',
+        ]);
+        Http::fake([
+            '*/api/media/cancel_order' => Http::response(['code' => 1, 'msg' => 'cancelled', 'data' => []]),
+            '*/api/media/order_info' => Http::response([
+                'code' => 1,
+                'msg' => 'success',
+                'data' => ['status' => 'rejected', 'reason' => 'not suitable'],
+            ]),
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => $site->id])
+            ->post(route('admin.media-distribution.submissions.cancel', ['submission' => $submission->id]), [
+                'reason' => 'cancel request',
+            ])
+            ->assertRedirect(route('admin.media-distribution.submissions.show', ['submission' => $submission->id]));
+
+        $this->assertSame('100.00', SiteCreditAccount::query()->where('site_id', $site->id)->value('balance'));
+        $this->assertSame(1, \App\Models\SiteCreditLedger::query()->where('submission_id', $submission->id)->where('type', 'refund')->count());
+
+        $submission->forceFill(['status' => 'submitted'])->save();
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => $site->id])
+            ->post(route('admin.media-distribution.submissions.sync', ['submission' => $submission->id]))
+            ->assertRedirect(route('admin.media-distribution.submissions.show', ['submission' => $submission->id]));
+
+        $this->assertSame('100.00', SiteCreditAccount::query()->where('site_id', $site->id)->value('balance'));
+        $this->assertSame(1, \App\Models\SiteCreditLedger::query()->where('submission_id', $submission->id)->where('type', 'refund')->count());
+    }
+
+    public function test_super_admin_can_view_and_export_all_site_consumption_records(): void
+    {
+        [$superAdmin] = $this->createAdminWithSite('media_consumption_root', 'super_admin');
+        [, $siteA] = $this->createAdminWithSite('media_consumption_a', 'admin');
+        [, $siteB] = $this->createAdminWithSite('media_consumption_b', 'admin');
+        [$articleA, $resourceA] = $this->createArticleAndResource($siteA, 'consumption-a');
+        [$articleB, $resourceB] = $this->createArticleAndResource($siteB, 'consumption-b');
+        foreach ([[$siteA, $articleA, $resourceA, 'order-a'], [$siteB, $articleB, $resourceB, 'order-b']] as [$site, $article, $resource, $order]) {
+            $submission = MediaSubmission::query()->create([
+                'site_id' => $site->id,
+                'article_id' => $article->id,
+                'media_resource_id' => $resource->id,
+                'source_type' => $resource->source_type,
+                'external_order_nid' => $order,
+                'title_snapshot' => $article->title,
+                'content_snapshot' => $article->content,
+                'cost_price_snapshot' => '27.00',
+                'sale_price_snapshot' => '88.00',
+                'points_amount' => '88.00',
+                'status' => 'submitted',
+            ]);
+            \App\Models\SiteCreditLedger::query()->create([
+                'site_id' => $site->id,
+                'submission_id' => $submission->id,
+                'type' => 'deduct',
+                'amount' => '-88.00',
+                'balance_after' => '12.00',
+                'frozen_after' => '0.00',
+                'remark' => '媒体投稿扣除',
+                'created_at' => now(),
+            ]);
+        }
+
+        $this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.media-distribution.credits.index'))
+            ->assertOk()
+            ->assertSee($siteA->name)
+            ->assertSee($siteB->name);
+
+        $csv = $this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.media-distribution.credits.consumption-export'));
+
+        $csv->assertOk();
+        $csv->assertHeader('content-type', 'text/csv; charset=UTF-8');
+        $content = $csv->streamedContent();
+        $this->assertStringContainsString($siteA->name, $content);
+        $this->assertStringContainsString($siteB->name, $content);
+        $this->assertStringContainsString('order-a', $content);
+        $this->assertStringContainsString('order-b', $content);
+    }
+
+    public function test_super_admin_can_view_profit_report(): void
+    {
+        [$superAdmin] = $this->createAdminWithSite('media_profit_root', 'super_admin');
+        [, $site] = $this->createAdminWithSite('media_profit_site', 'admin');
+        [$article, $resource] = $this->createArticleAndResource($site, 'profit-article');
+        MediaSubmission::query()->create([
+            'site_id' => $site->id,
+            'article_id' => $article->id,
+            'media_resource_id' => $resource->id,
+            'source_type' => $resource->source_type,
+            'external_order_nid' => 'profit-order',
+            'title_snapshot' => $article->title,
+            'content_snapshot' => $article->content,
+            'cost_price_snapshot' => '27.00',
+            'sale_price_snapshot' => '88.00',
+            'points_amount' => '88.00',
+            'status' => 'published',
+            'submitted_at' => now(),
+        ]);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.media-distribution.reports.profit'))
+            ->assertOk()
+            ->assertSee($site->name)
+            ->assertSee('88.00')
+            ->assertSee('27.00')
+            ->assertSee('61.00');
+
+        $csv = $this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.media-distribution.reports.profit-export'));
+        $csv->assertOk();
+        $this->assertStringContainsString('61.00', $csv->streamedContent());
     }
 
     private function createAdminWithSite(string $username, string $role): array

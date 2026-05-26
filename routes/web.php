@@ -24,6 +24,7 @@ use App\Http\Controllers\Admin\KnowledgeBaseController;
 use App\Http\Controllers\Admin\LegacyController;
 use App\Http\Controllers\Admin\MaterialsController;
 use App\Http\Controllers\Admin\MediaDistribution\CreditController as MediaDistributionCreditController;
+use App\Http\Controllers\Admin\MediaDistribution\ReportController as MediaDistributionReportController;
 use App\Http\Controllers\Admin\MediaDistribution\ResourceController as MediaDistributionResourceController;
 use App\Http\Controllers\Admin\MediaDistribution\SettingController as MediaDistributionSettingController;
 use App\Http\Controllers\Admin\MediaDistribution\SubmissionController as MediaDistributionSubmissionController;
@@ -91,9 +92,13 @@ $adminPrefix = trim((string) config('geoflow.admin_base_path', '/geo_admin'), '/
             Route::post('submissions/{submission}/appeal', [MediaDistributionSubmissionController::class, 'appeal'])->name('submissions.appeal');
             Route::get('credits', [MediaDistributionCreditController::class, 'index'])->name('credits.index');
             Route::get('credits/export', [MediaDistributionCreditController::class, 'export'])->name('credits.export');
+            Route::get('credits/consumption-export', [MediaDistributionCreditController::class, 'consumptionExport'])->name('credits.consumption-export');
             Route::middleware('admin.super')->group(function () {
+                Route::get('reports/profit', [MediaDistributionReportController::class, 'profit'])->name('reports.profit');
+                Route::get('reports/profit/export', [MediaDistributionReportController::class, 'profitExport'])->name('reports.profit-export');
                 Route::post('resources/sync', [MediaDistributionResourceController::class, 'sync'])->name('resources.sync');
                 Route::post('resources/{resource}/price', [MediaDistributionResourceController::class, 'updatePrice'])->name('resources.price');
+                Route::post('resources/{resource}/site-price', [MediaDistributionResourceController::class, 'updateSitePrice'])->name('resources.site-price');
                 Route::post('credits/{site}/recharge', [MediaDistributionCreditController::class, 'recharge'])->name('credits.recharge');
                 Route::post('credits/{site}/adjust', [MediaDistributionCreditController::class, 'adjust'])->name('credits.adjust');
                 Route::get('settings', [MediaDistributionSettingController::class, 'index'])->name('settings.index');

@@ -115,6 +115,17 @@
                                             <input name="sale_price" value="{{ $resource->sale_price }}" class="h-9 w-24 rounded-md border border-slate-200 px-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
                                             <button class="h-9 rounded-md bg-slate-900 px-3 text-xs font-medium text-white hover:bg-slate-700">保存</button>
                                         </form>
+                                        <form method="POST" action="{{ route('admin.media-distribution.resources.site-price', ['resource' => $resource->id]) }}" class="mt-2 flex flex-wrap items-center gap-2">
+                                            @csrf
+                                            <select name="site_id" required class="h-9 rounded-md border border-slate-200 px-2 text-xs outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
+                                                <option value="">站点价</option>
+                                                @foreach ($sites as $site)
+                                                    <option value="{{ $site->id }}">{{ $site->name }}</option>
+                                                @endforeach
+                                            </select>
+                                            <input name="sale_price" class="h-9 w-24 rounded-md border border-slate-200 px-2 text-xs outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" placeholder="专属价">
+                                            <button class="h-9 rounded-md border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50">设置</button>
+                                        </form>
                                     @else
                                         <span class="font-medium text-gray-900">{{ $resource->sale_price }}</span>
                                     @endif

@@ -12,6 +12,16 @@
                     <i data-lucide="download" class="h-4 w-4"></i>
                     导出流水
                 </a>
+                @if ($isSuperAdmin)
+                    <a href="{{ route('admin.media-distribution.credits.consumption-export') }}" class="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                        <i data-lucide="receipt-text" class="h-4 w-4"></i>
+                        导出消耗
+                    </a>
+                    <a href="{{ route('admin.media-distribution.reports.profit') }}" class="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                        <i data-lucide="chart-no-axes-combined" class="h-4 w-4"></i>
+                        利润报表
+                    </a>
+                @endif
                 <a href="{{ route('admin.media-distribution.resources.index') }}" class="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50">
                     <i data-lucide="newspaper" class="h-4 w-4"></i>
                     媒体资源

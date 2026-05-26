@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Admin\MediaDistribution;
 
 use App\Http\Controllers\Controller;
 use App\Models\MediaResource;
+use App\Models\MediaResourceSitePrice;
+use App\Models\Site;
 use App\Services\MediaDistribution\MediaResourceSyncService;
 use App\Support\AdminWeb;
 use Illuminate\Http\RedirectResponse;
@@ -50,6 +52,9 @@ class ResourceController extends Controller
                 ->distinct()
                 ->orderBy('category')
                 ->pluck('category'),
+            'sites' => (bool) auth('admin')->user()?->isSuperAdmin()
+                ? Site::query()->orderBy('id')->get(['id', 'name'])
+                : collect(),
             'sourceType' => $sourceType,
             'search' => (string) $request->query('search', ''),
             'category' => (string) $request->query('category', ''),
@@ -82,6 +87,27 @@ class ResourceController extends Controller
         ]);
 
         return redirect()->route('admin.media-distribution.resources.index')->with('message', '媒体销售价已更新');
+    }
+
+    public function updateSitePrice(Request $request, MediaResource $resource): RedirectResponse
+    {
+        $this->ensureSuperAdmin();
+        $payload = $request->validate([
+            'site_id' => ['required', 'integer', 'exists:sites,id'],
+            'sale_price' => ['required', 'numeric', 'min:0', 'max:999999'],
+        ]);
+
+        MediaResourceSitePrice::query()->updateOrCreate(
+            [
+                'site_id' => (int) $payload['site_id'],
+                'media_resource_id' => (int) $resource->id,
+            ],
+            [
+                'sale_price' => number_format((float) $payload['sale_price'], 2, '.', ''),
+            ]
+        );
+
+        return redirect()->route('admin.media-distribution.resources.index')->with('message', '站点专属媒体价格已更新');
     }
 
     private function ensureSuperAdmin(): void

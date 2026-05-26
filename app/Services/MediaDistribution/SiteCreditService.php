@@ -101,6 +101,13 @@ class SiteCreditService
     public function refundForSubmission(MediaSubmission $submission, ?int $operatorAdminId, string $remark = '媒体投稿失败退回'): SiteCreditAccount
     {
         return DB::transaction(function () use ($submission, $operatorAdminId, $remark): SiteCreditAccount {
+            if (SiteCreditLedger::query()
+                ->where('submission_id', (int) $submission->id)
+                ->where('type', 'refund')
+                ->exists()) {
+                return $this->lockedAccount((int) $submission->site_id);
+            }
+
             $account = $this->lockedAccount((int) $submission->site_id);
             $amountCents = $this->moneyToCents($submission->points_amount);
             $account->forceFill([

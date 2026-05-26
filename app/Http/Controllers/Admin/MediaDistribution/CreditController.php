@@ -119,4 +119,41 @@ class CreditController extends Controller
             'Content-Disposition' => 'attachment; filename="site-credit-ledger.csv"',
         ]);
     }
+
+    public function consumptionExport(): StreamedResponse
+    {
+        abort_unless(auth('admin')->user()?->isSuperAdmin(), 403);
+
+        $query = SiteCreditLedger::query()
+            ->with('site:id,name')
+            ->whereIn('type', ['deduct', 'refund'])
+            ->orderByDesc('id');
+
+        return response()->stream(function () use ($query): void {
+            $out = fopen('php://output', 'w');
+            fputcsv($out, ['ID', '站点', '类型', '变动积分', '余额', '订单号', '文章标题', '备注', '时间']);
+            $query->chunk(200, function ($rows) use ($out): void {
+                foreach ($rows as $row) {
+                    $submission = $row->submission_id
+                        ? \App\Models\MediaSubmission::withoutGlobalScope('current_site')->whereKey((int) $row->submission_id)->first()
+                        : null;
+                    fputcsv($out, [
+                        $row->id,
+                        $row->site?->name,
+                        $row->type,
+                        $row->amount,
+                        $row->balance_after,
+                        $submission?->external_order_nid,
+                        $submission?->title_snapshot,
+                        $row->remark,
+                        $row->created_at?->format('Y-m-d H:i:s'),
+                    ]);
+                }
+            });
+            fclose($out);
+        }, 200, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="site-consumption-records.csv"',
+        ]);
+    }
 }

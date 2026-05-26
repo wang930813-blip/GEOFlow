@@ -5,6 +5,7 @@ namespace App\Services\MediaDistribution;
 use App\Models\Admin;
 use App\Models\Article;
 use App\Models\MediaResource;
+use App\Models\MediaResourceSitePrice;
 use App\Models\MediaSubmission;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -28,9 +29,10 @@ class MediaSubmissionService
             throw new RuntimeException('文章内容不能为空');
         }
 
-        $this->credits->ensureSufficient((int) $article->site_id, $resource->sale_price);
+        $salePrice = $this->salePriceForSite($resource, (int) $article->site_id);
+        $this->credits->ensureSufficient((int) $article->site_id, $salePrice);
 
-        $submission = DB::transaction(function () use ($article, $resource, $admin, $remark): MediaSubmission {
+        $submission = DB::transaction(function () use ($article, $resource, $admin, $remark, $salePrice): MediaSubmission {
             return MediaSubmission::query()->create([
                 'site_id' => (int) $article->site_id,
                 'article_id' => (int) $article->id,
@@ -39,8 +41,8 @@ class MediaSubmissionService
                 'title_snapshot' => (string) $article->title,
                 'content_snapshot' => $this->contentAsHtml((string) $article->content),
                 'cost_price_snapshot' => $resource->cost_price,
-                'sale_price_snapshot' => $resource->sale_price,
-                'points_amount' => $resource->sale_price,
+                'sale_price_snapshot' => $salePrice,
+                'points_amount' => $salePrice,
                 'status' => 'submitting',
                 'remark' => $remark,
                 'submitted_by_admin_id' => (int) $admin->id,
@@ -93,6 +95,7 @@ class MediaSubmissionService
         $status = $this->normalizeStatus((string) ($data['status'] ?? $data['order_status'] ?? ''));
         $url = (string) ($data['url'] ?? $data['link'] ?? $data['published_url'] ?? '');
 
+        $previousStatus = (string) $submission->status;
         $submission->forceFill([
             'status' => $status !== '' ? $status : $submission->status,
             'published_url' => $url !== '' ? $url : $submission->published_url,
@@ -100,6 +103,11 @@ class MediaSubmissionService
             'last_synced_at' => now(),
             'raw_status_response' => $response,
         ])->save();
+
+        if (in_array((string) $submission->status, ['rejected', 'cancelled'], true)
+            && ! in_array($previousStatus, ['rejected', 'cancelled'], true)) {
+            $this->credits->refundForSubmission($submission, null, '媒体订单'.$submission->status.'自动退回');
+        }
 
         return $submission;
     }
@@ -156,6 +164,7 @@ class MediaSubmissionService
             'cancelled_at' => now(),
             'raw_cancel_response' => $response,
         ])->save();
+        $this->credits->refundForSubmission($submission, null, '媒体订单取消退回');
 
         return $submission;
     }
@@ -188,6 +197,16 @@ class MediaSubmissionService
     private function contentAsHtml(string $content): string
     {
         return str_contains($content, '<') ? $content : nl2br(e($content));
+    }
+
+    private function salePriceForSite(MediaResource $resource, int $siteId): string
+    {
+        $sitePrice = MediaResourceSitePrice::query()
+            ->where('media_resource_id', (int) $resource->id)
+            ->where('site_id', $siteId)
+            ->value('sale_price');
+
+        return number_format((float) ($sitePrice ?? $resource->sale_price), 2, '.', '');
     }
 
     private function normalizeStatus(string $status): string
