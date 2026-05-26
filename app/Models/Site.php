@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\SiteDefaultContentPromptService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -22,6 +23,13 @@ class Site extends Model
             'owner_admin_id' => 'integer',
             'settings' => 'array',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::created(function (Site $site): void {
+            app(SiteDefaultContentPromptService::class)->ensureForSiteId((int) $site->id);
+        });
     }
 
     public function owner(): BelongsTo

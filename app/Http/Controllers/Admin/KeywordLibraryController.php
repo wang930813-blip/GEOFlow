@@ -453,6 +453,41 @@ class KeywordLibraryController extends Controller
             ->with('message', '收录检测任务已创建，共 '.$totalChecks.' 个检测项');
     }
 
+    public function pauseInclusionRun(int $libraryId, int $run): RedirectResponse
+    {
+        $library = KeywordLibrary::query()->whereKey($libraryId)->firstOrFail();
+        $checkRun = GeoInclusionCheckRun::query()
+            ->where('keyword_library_id', (int) $library->id)
+            ->whereKey($run)
+            ->firstOrFail();
+
+        if (in_array((string) $checkRun->status, ['pending', 'running'], true)) {
+            $checkRun->update([
+                'status' => 'paused',
+                'completed_at' => null,
+            ]);
+        }
+
+        return redirect()
+            ->route('admin.keyword-libraries.detail', ['libraryId' => $libraryId])
+            ->with('message', '检测任务已暂停');
+    }
+
+    public function destroyInclusionRun(int $libraryId, int $run): RedirectResponse
+    {
+        $library = KeywordLibrary::query()->whereKey($libraryId)->firstOrFail();
+        $checkRun = GeoInclusionCheckRun::query()
+            ->where('keyword_library_id', (int) $library->id)
+            ->whereKey($run)
+            ->firstOrFail();
+
+        $checkRun->delete();
+
+        return redirect()
+            ->route('admin.keyword-libraries.detail', ['libraryId' => $libraryId])
+            ->with('message', '检测任务已删除');
+    }
+
     /**
      * 在详情页中删除关键词（支持单条/批量）。
      */

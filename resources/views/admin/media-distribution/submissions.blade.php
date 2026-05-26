@@ -59,7 +59,7 @@
         <section class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
             <div class="mb-4">
                 <h2 class="text-lg font-semibold text-gray-900">批量投稿</h2>
-                <p class="text-sm text-gray-500">选择多篇文章投到同一个媒体，按每篇文章分别扣减积分。</p>
+                <p class="text-sm text-gray-500">选择多篇文章和多个媒体，系统会按每篇文章 × 每个媒体分别创建投稿订单并扣减积分。</p>
             </div>
             <form method="POST" action="{{ route('admin.media-distribution.submissions.bulk-store') }}" class="grid grid-cols-1 gap-4 lg:grid-cols-12">
                 @csrf
@@ -73,10 +73,9 @@
                 </div>
                 <div class="lg:col-span-4">
                     <label class="mb-1 block text-sm font-medium text-gray-700">媒体</label>
-                    <select name="media_resource_id" required class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
-                        <option value="">选择媒体</option>
+                    <select name="media_resource_ids[]" multiple required size="5" class="block w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
                         @foreach ($resources as $resource)
-                            <option value="{{ $resource->id }}" @selected($selectedResourceId === (int) $resource->id)>{{ $resource->title }} · {{ $resource->sale_price }} 积分</option>
+                            <option value="{{ $resource->id }}" @selected(in_array((int) $resource->id, $selectedResourceIds ?? [], true))>{{ $resource->title }} · {{ $resource->sale_price }} 积分</option>
                         @endforeach
                     </select>
                 </div>

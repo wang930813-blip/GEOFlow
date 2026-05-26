@@ -5,6 +5,8 @@ namespace Tests\Feature;
 use App\Models\Article;
 use App\Models\Author;
 use App\Models\Category;
+use App\Models\Site;
+use App\Support\CurrentSite;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Tests\TestCase;
@@ -63,7 +65,37 @@ class SiteViewLogTest extends TestCase
         Carbon::setTestNow();
     }
 
-    private function publishedArticle(): Article
+    public function test_front_views_are_saved_with_resolved_site_id(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-05-21 12:10:00'));
+
+        $site = Site::query()->create([
+            'name' => 'Alpha Site',
+            'domain' => 'alpha.test',
+            'status' => 'active',
+        ]);
+        app(CurrentSite::class)->set($site);
+        $article = $this->publishedArticle('alpha-domain-article');
+        app(CurrentSite::class)->set(null);
+
+        $this->withServerVariables([
+            'REMOTE_ADDR' => '198.51.100.77',
+        ])
+            ->get('http://alpha.test/article/'.$article->slug)
+            ->assertOk();
+
+        $this->assertDatabaseHas('view_logs', [
+            'site_id' => (int) $site->id,
+            'article_id' => (int) $article->id,
+            'path' => '/article/'.$article->slug,
+            'route_name' => 'site.article',
+            'created_at' => '2026-05-21 12:10:00',
+        ]);
+
+        Carbon::setTestNow();
+    }
+
+    private function publishedArticle(string $slug = 'log-test-article'): Article
     {
         $author = Author::query()->create([
             'name' => '日志作者',
@@ -78,7 +110,7 @@ class SiteViewLogTest extends TestCase
 
         return Article::query()->create([
             'title' => '日志测试文章',
-            'slug' => 'log-test-article',
+            'slug' => $slug,
             'excerpt' => '摘要',
             'content' => '正文',
             'category_id' => (int) $category->id,

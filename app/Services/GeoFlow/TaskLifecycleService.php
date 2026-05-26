@@ -107,6 +107,7 @@ class TaskLifecycleService
 
             if ($normalized['status'] === 'active') {
                 TaskSchedule::query()->create([
+                    'site_id' => (int) ($task->site_id ?? 0) > 0 ? (int) $task->site_id : null,
                     'task_id' => $taskId,
                     'next_run_time' => now()->addMinute(),
                 ]);

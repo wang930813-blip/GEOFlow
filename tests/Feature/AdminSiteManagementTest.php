@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Admin;
+use App\Models\Prompt;
 use App\Models\Site;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -38,13 +39,20 @@ class AdminSiteManagementTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_super_admin_can_create_site_with_domain_and_members(): void
+    public function test_super_admin_can_create_site_with_domain_members_and_default_content_prompts(): void
     {
         $this->withoutMiddleware(ValidateCsrfToken::class);
 
         $superAdmin = $this->createAdmin('platform_creator', 'super_admin');
         $owner = $this->createAdmin('client_owner', 'admin');
         $member = $this->createAdmin('client_editor', 'admin');
+        $defaultPromptNames = Prompt::withoutGlobalScope('current_site')
+            ->whereNull('site_id')
+            ->where('type', 'content')
+            ->pluck('name')
+            ->all();
+
+        $this->assertCount(4, $defaultPromptNames);
 
         $this->actingAs($superAdmin, 'admin')
             ->post(route('admin.sites.manage.store'), [
@@ -70,6 +78,15 @@ class AdminSiteManagementTest extends TestCase
             'admin_id' => $member->id,
             'role' => 'admin',
         ]);
+
+        $createdPrompts = Prompt::withoutGlobalScope('current_site')
+            ->where('site_id', $site->id)
+            ->where('type', 'content')
+            ->whereIn('name', $defaultPromptNames)
+            ->pluck('name')
+            ->all();
+
+        $this->assertEqualsCanonicalizing($defaultPromptNames, $createdPrompts);
     }
 
     public function test_super_admin_can_update_site_and_toggle_status(): void

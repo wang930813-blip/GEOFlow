@@ -97,6 +97,7 @@ $adminPrefix = trim((string) config('geoflow.admin_base_path', '/geo_admin'), '/
                 Route::get('reports/profit', [MediaDistributionReportController::class, 'profit'])->name('reports.profit');
                 Route::get('reports/profit/export', [MediaDistributionReportController::class, 'profitExport'])->name('reports.profit-export');
                 Route::post('resources/sync', [MediaDistributionResourceController::class, 'sync'])->name('resources.sync');
+                Route::post('resources/price-multiplier', [MediaDistributionResourceController::class, 'updatePriceMultiplier'])->name('resources.price-multiplier');
                 Route::post('resources/{resource}/price', [MediaDistributionResourceController::class, 'updatePrice'])->name('resources.price');
                 Route::post('resources/{resource}/site-price', [MediaDistributionResourceController::class, 'updateSitePrice'])->name('resources.site-price');
                 Route::post('credits/{site}/recharge', [MediaDistributionCreditController::class, 'recharge'])->name('credits.recharge');
@@ -188,6 +189,8 @@ $adminPrefix = trim((string) config('geoflow.admin_base_path', '/geo_admin'), '/
             Route::get('{libraryId}/inclusion-results/export', [KeywordLibraryController::class, 'exportInclusionResults'])->name('inclusion-results.export');
             Route::get('{libraryId}/inclusion-snapshot', [KeywordLibraryController::class, 'inclusionSnapshot'])->name('inclusion-snapshot');
             Route::post('{libraryId}/inclusion-checks', [KeywordLibraryController::class, 'storeInclusionCheck'])->name('inclusion-checks.store');
+            Route::post('{libraryId}/inclusion-runs/{run}/pause', [KeywordLibraryController::class, 'pauseInclusionRun'])->name('inclusion-runs.pause');
+            Route::delete('{libraryId}/inclusion-runs/{run}', [KeywordLibraryController::class, 'destroyInclusionRun'])->name('inclusion-runs.destroy');
             Route::post('{libraryId}/keywords', [KeywordLibraryController::class, 'storeKeyword'])->name('keywords.store');
             Route::put('{libraryId}/keywords/{keywordId}', [KeywordLibraryController::class, 'updateKeyword'])->name('keywords.update');
             Route::post('{libraryId}/keywords/suggest', [KeywordLibraryController::class, 'suggestKeywords'])->name('keywords.suggest');
@@ -211,6 +214,7 @@ $adminPrefix = trim((string) config('geoflow.admin_base_path', '/geo_admin'), '/
             Route::get('{libraryId}/edit', [TitleLibraryController::class, 'edit'])->name('edit');
             Route::get('{libraryId}/detail', [TitleLibraryController::class, 'detail'])->name('detail');
             Route::post('{libraryId}/titles', [TitleLibraryController::class, 'storeTitle'])->name('titles.store');
+            Route::put('{libraryId}/titles/{titleId}', [TitleLibraryController::class, 'updateTitle'])->name('titles.update');
             Route::post('{libraryId}/titles/delete', [TitleLibraryController::class, 'destroyTitles'])->name('titles.delete');
             Route::post('{libraryId}/import', [TitleLibraryController::class, 'importTitles'])->name('import');
             Route::get('{libraryId}/ai-generate', [TitleLibraryController::class, 'aiGenerate'])->name('ai-generate');

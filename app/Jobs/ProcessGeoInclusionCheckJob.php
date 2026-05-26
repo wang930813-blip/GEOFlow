@@ -42,7 +42,11 @@ class ProcessGeoInclusionCheckJob implements ShouldQueue
 
     public function handle(AiSearchPlatformChecker $checker): void
     {
-        $run = GeoInclusionCheckRun::query()->whereKey($this->runId)->firstOrFail();
+        $run = GeoInclusionCheckRun::query()->whereKey($this->runId)->first();
+        if (! $run || (string) $run->status === 'paused') {
+            return;
+        }
+
         $questionVariant = KeywordQuestionVariant::query()->whereKey($this->questionVariantId)->firstOrFail();
         $keyword = Keyword::query()->with('library')->whereKey($this->keywordId)->firstOrFail();
         $library = $keyword->library()->firstOrFail();
@@ -108,6 +112,9 @@ class ProcessGeoInclusionCheckJob implements ShouldQueue
     {
         $run = GeoInclusionCheckRun::query()->whereKey($runId)->first();
         if (! $run) {
+            return;
+        }
+        if ((string) $run->status === 'paused') {
             return;
         }
 

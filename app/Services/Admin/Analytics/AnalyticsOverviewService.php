@@ -17,6 +17,7 @@ use App\Models\TaskRun;
 use App\Models\Title;
 use App\Models\TitleLibrary;
 use App\Models\UrlImportJob;
+use App\Support\CurrentSite;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -460,9 +461,15 @@ class AnalyticsOverviewService
             return 0;
         }
 
-        return (int) DB::table('view_logs')
-            ->whereDate('created_at', $today)
-            ->count();
+        $query = DB::table('view_logs')
+            ->whereDate('created_at', $today);
+
+        $siteId = app(CurrentSite::class)->id();
+        if ($siteId !== null && Schema::hasColumn('view_logs', 'site_id')) {
+            $query->where('site_id', $siteId);
+        }
+
+        return (int) $query->count();
     }
 
     /**

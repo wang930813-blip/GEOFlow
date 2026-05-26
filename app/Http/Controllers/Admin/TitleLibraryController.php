@@ -267,6 +267,44 @@ class TitleLibraryController extends Controller
     /**
      * 批量导入标题（支持“标题|关键词”格式）。
      */
+    public function updateTitle(Request $request, int $libraryId, int $titleId): RedirectResponse
+    {
+        $library = TitleLibrary::query()->whereKey($libraryId)->firstOrFail();
+
+        $payload = $request->validate([
+            'title' => ['required', 'string', 'max:500'],
+            'keyword' => ['nullable', 'string', 'max:200'],
+        ], [
+            'title.required' => __('admin.title_detail.error.title_required'),
+        ]);
+
+        $titleText = trim((string) $payload['title']);
+        if ($titleText === '') {
+            return back()->withErrors(__('admin.title_detail.error.title_required'));
+        }
+
+        $exists = Title::query()
+            ->where('library_id', $libraryId)
+            ->where('title', $titleText)
+            ->whereKeyNot($titleId)
+            ->exists();
+        if ($exists) {
+            return back()->withErrors(__('admin.title_detail.error.title_exists'));
+        }
+
+        $title = Title::query()
+            ->where('library_id', $libraryId)
+            ->whereKey($titleId)
+            ->firstOrFail();
+        $title->update([
+            'title' => $titleText,
+            'keyword' => trim((string) ($payload['keyword'] ?? '')),
+        ]);
+
+        return redirect()->route('admin.title-libraries.detail', ['libraryId' => (int) $library->id])
+            ->with('message', __('admin.title_detail.message.update_success'));
+    }
+
     public function importTitles(Request $request, int $libraryId): RedirectResponse
     {
         $library = TitleLibrary::query()->whereKey($libraryId)->firstOrFail();

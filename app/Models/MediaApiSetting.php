@@ -10,6 +10,7 @@ class MediaApiSetting extends Model
         'api_base_url',
         'api_key_ciphertext',
         'status',
+        'price_multiplier',
         'last_checked_at',
         'last_error_message',
     ];
@@ -21,6 +22,7 @@ class MediaApiSetting extends Model
     protected function casts(): array
     {
         return [
+            'price_multiplier' => 'decimal:2',
             'last_checked_at' => 'datetime',
         ];
     }

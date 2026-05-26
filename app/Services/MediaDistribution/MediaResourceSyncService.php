@@ -2,6 +2,7 @@
 
 namespace App\Services\MediaDistribution;
 
+use App\Models\MediaApiSetting;
 use App\Models\MediaResource;
 
 class MediaResourceSyncService
@@ -14,6 +15,7 @@ class MediaResourceSyncService
     public function syncAll(): array
     {
         $count = 0;
+        $multiplier = (float) (MediaApiSetting::query()->orderByDesc('id')->value('price_multiplier') ?? 1);
 
         foreach ([MediaResource::SOURCE_WEBSITE, MediaResource::SOURCE_ZI_MEDIA] as $sourceType) {
             foreach ($this->client->listResources($sourceType) as $row) {
@@ -36,9 +38,7 @@ class MediaResourceSyncService
                     'raw_payload' => $row,
                     'last_synced_at' => now(),
                 ]);
-                if (! $resource->exists || (float) $resource->sale_price <= 0) {
-                    $resource->sale_price = $costPrice;
-                }
+                $resource->sale_price = $this->multiplyMoney($costPrice, $multiplier);
                 $resource->save();
                 $count++;
             }
@@ -50,5 +50,10 @@ class MediaResourceSyncService
     private function normalizeMoney(mixed $value): string
     {
         return number_format(max(0, (float) $value), 2, '.', '');
+    }
+
+    private function multiplyMoney(string $value, float $multiplier): string
+    {
+        return number_format(max(0, (float) $value * $multiplier), 2, '.', '');
     }
 }

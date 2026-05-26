@@ -6,6 +6,7 @@ use App\Models\Admin;
 use App\Models\Article;
 use App\Models\Author;
 use App\Models\Category;
+use App\Models\MediaApiSetting;
 use App\Models\MediaResource;
 use App\Models\MediaResourceSitePrice;
 use App\Models\MediaSubmission;
@@ -141,6 +142,38 @@ class AdminMediaDistributionTest extends TestCase
             'balance_after' => '175.00',
         ]);
         $this->assertSame('88.00', $resource->fresh()->sale_price);
+    }
+
+    public function test_super_admin_can_apply_media_price_multiplier_to_all_resources(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+        [$superAdmin] = $this->createAdminWithSite('media_multiplier_root', 'super_admin');
+        $first = MediaResource::query()->create([
+            'source_type' => 'website_media',
+            'external_resource_id' => 'multiplier-1',
+            'title' => 'Multiplier One',
+            'status' => 'active',
+            'cost_price' => '10.00',
+            'sale_price' => '10.00',
+        ]);
+        $second = MediaResource::query()->create([
+            'source_type' => 'zi_media',
+            'external_resource_id' => 'multiplier-2',
+            'title' => 'Multiplier Two',
+            'status' => 'active',
+            'cost_price' => '20.00',
+            'sale_price' => '20.00',
+        ]);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.media-distribution.resources.price-multiplier'), [
+                'price_multiplier' => '1.5',
+            ])
+            ->assertRedirect(route('admin.media-distribution.resources.index'));
+
+        $this->assertSame('15.00', $first->fresh()->sale_price);
+        $this->assertSame('30.00', $second->fresh()->sale_price);
+        $this->assertSame('1.50', MediaApiSetting::query()->firstOrFail()->price_multiplier);
     }
 
     public function test_standard_admin_can_submit_article_and_sync_order_status_with_site_credits(): void
@@ -450,6 +483,61 @@ class AdminMediaDistributionTest extends TestCase
         Http::assertSentCount(2);
     }
 
+    public function test_admin_can_select_multiple_media_resources_then_bulk_submit_multiple_articles(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+        [$admin, $site] = $this->createAdminWithSite('media_bulk_matrix_admin', 'admin');
+        [$articleA, $resourceA] = $this->createArticleAndResource($site, 'bulk-matrix-a');
+        [$articleB, $resourceB] = $this->createArticleAndResource($site, 'bulk-matrix-b');
+        SiteCreditAccount::query()->create([
+            'site_id' => $site->id,
+            'balance' => '500.00',
+            'frozen_balance' => '0.00',
+            'total_recharged' => '500.00',
+            'total_consumed' => '0.00',
+        ]);
+        Http::fake([
+            '*/api/media/send' => Http::response([
+                'code' => 1,
+                'msg' => 'success',
+                'data' => ['order_nid' => 'bulk-matrix-order'],
+            ]),
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => $site->id])
+            ->get(route('admin.media-distribution.resources.index'))
+            ->assertOk()
+            ->assertSee('bulk-media-submit-form', false)
+            ->assertSee('name="media_resource_ids[]"', false)
+            ->assertSee('批量投稿');
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => $site->id])
+            ->get(route('admin.media-distribution.submissions.index', [
+                'media_resource_ids' => [$resourceA->id, $resourceB->id],
+            ]))
+            ->assertOk()
+            ->assertSee('name="media_resource_ids[]"', false)
+            ->assertSee('value="'.(int) $resourceA->id.'" selected', false)
+            ->assertSee('value="'.(int) $resourceB->id.'" selected', false);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => $site->id])
+            ->post(route('admin.media-distribution.submissions.bulk-store'), [
+                'article_ids' => [$articleA->id, $articleB->id],
+                'media_resource_ids' => [$resourceA->id, $resourceB->id],
+                'remark' => 'bulk matrix',
+            ])
+            ->assertRedirect(route('admin.media-distribution.submissions.index'));
+
+        $this->assertSame(4, MediaSubmission::query()->count());
+        $this->assertSame(2, MediaSubmission::query()->where('media_resource_id', $resourceA->id)->count());
+        $this->assertSame(2, MediaSubmission::query()->where('media_resource_id', $resourceB->id)->count());
+        $this->assertSame('148.00', SiteCreditAccount::query()->where('site_id', $site->id)->value('balance'));
+        Http::assertSentCount(4);
+    }
+
     public function test_media_resources_support_status_category_and_price_filters(): void
     {
         [$admin] = $this->createAdminWithSite('media_filter_admin', 'admin');
@@ -471,6 +559,13 @@ class AdminMediaDistributionTest extends TestCase
             'cost_price' => '10.00',
             'sale_price' => '30.00',
         ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.media-distribution.resources.index'))
+            ->assertOk()
+            ->assertSee('Finance Media')
+            ->assertDontSee('Travel Media')
+            ->assertSee('<option value="active" selected>可投稿</option>', false);
 
         $this->actingAs($admin, 'admin')
             ->get(route('admin.media-distribution.resources.index', [
@@ -523,19 +618,24 @@ class AdminMediaDistributionTest extends TestCase
         $this->actingAs($superAdmin, 'admin')
             ->get(route('admin.media-distribution.resources.index'))
             ->assertOk()
-            ->assertSee('资源ID')
-            ->assertSee('筛选1')
-            ->assertSee('新闻源')
+            ->assertSee('class="w-56 max-w-56 px-5 py-4 align-top text-sm text-gray-600"', false)
+            ->assertSee('class="truncate"', false)
+            ->assertSee('whitespace-nowrap', false)
+            ->assertSeeInOrder(['PC权重', '出稿率', '移动权重', '接口状态'])
             ->assertSee('PC权重')
             ->assertSee('7')
             ->assertSee('移动权重')
             ->assertSee('6')
             ->assertSee('出稿率')
             ->assertSee('95%')
-            ->assertSee('平均发布时间')
-            ->assertSee('3600')
             ->assertSee('可接单')
-            ->assertSee('27.00');
+            ->assertSee('27.00')
+            ->assertSee('专属价设置')
+            ->assertDontSee('资源ID')
+            ->assertDontSee('筛选1')
+            ->assertDontSee('新闻源')
+            ->assertDontSee('平均发布时间')
+            ->assertDontSee('3600');
     }
 
     public function test_super_admin_can_export_media_submissions_and_credit_ledger_csv(): void

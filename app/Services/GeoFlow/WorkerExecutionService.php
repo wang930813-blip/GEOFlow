@@ -99,7 +99,7 @@ class WorkerExecutionService
             $freshTask = Task::query()
                 ->whereKey((int) $task->id)
                 ->lockForUpdate()
-                ->first(['id', 'status', 'schedule_enabled', 'created_count', 'draft_limit', 'article_limit', 'publish_interval', 'next_publish_at']);
+                ->first(['id', 'site_id', 'status', 'schedule_enabled', 'created_count', 'draft_limit', 'article_limit', 'publish_interval', 'next_publish_at']);
             if (! $freshTask || ($freshTask->status ?? 'paused') !== 'active' || (int) ($freshTask->schedule_enabled ?? 1) !== 1) {
                 throw new RuntimeException('Task is not active');
             }
@@ -107,8 +107,10 @@ class WorkerExecutionService
             if ($generationBlockReason !== null) {
                 throw new RuntimeException($generationBlockReason);
             }
+            $siteId = (int) ($freshTask->site_id ?: $task->site_id);
 
             $article = Article::query()->create([
+                'site_id' => $siteId > 0 ? $siteId : null,
                 'title' => (string) $titleRow->title,
                 'slug' => ArticleWorkflow::generateUniqueSlug((string) $titleRow->title),
                 'excerpt' => $excerpt,
@@ -128,6 +130,7 @@ class WorkerExecutionService
             if ($selectedImages !== []) {
                 foreach ($selectedImages as $position => $image) {
                     ArticleImage::query()->create([
+                        'site_id' => $siteId > 0 ? $siteId : null,
                         'article_id' => (int) $article->id,
                         'image_id' => (int) $image->id,
                         'position' => $position,
@@ -192,7 +195,7 @@ class WorkerExecutionService
             $freshTask = Task::query()
                 ->whereKey((int) $task->id)
                 ->lockForUpdate()
-                ->first(['id', 'status', 'schedule_enabled', 'publish_interval', 'next_publish_at', 'publish_scope']);
+                ->first(['id', 'site_id', 'status', 'schedule_enabled', 'publish_interval', 'next_publish_at', 'publish_scope']);
             if (! $freshTask || ($freshTask->status ?? 'paused') !== 'active' || (int) ($freshTask->schedule_enabled ?? 1) !== 1) {
                 throw new RuntimeException('Task is not active');
             }

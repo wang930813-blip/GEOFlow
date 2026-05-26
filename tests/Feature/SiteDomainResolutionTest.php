@@ -38,6 +38,23 @@ class SiteDomainResolutionTest extends TestCase
             ->assertDontSee('Beta Public Name');
     }
 
+    public function test_frontend_assets_are_root_relative_on_custom_domain(): void
+    {
+        $this->createSiteWithArticle('Alpha Site', 'alpha.example.test', 'Alpha Article', 'alpha-article');
+
+        $this->get('http://alpha.example.test/')
+            ->assertOk()
+            ->assertSee('src="/js/tailwindcss.play-cdn.js"', false)
+            ->assertSee('href="/assets/css/style.css?', false)
+            ->assertSee('href="/themes/toutiao-news-20260426/theme.css?', false)
+            ->assertSee('href="/assets/css/custom.css?', false)
+            ->assertSee('src="/js/lucide.min.js"', false)
+            ->assertSee('src="/assets/js/main.js"', false)
+            ->assertSee('src="/themes/toutiao-news-20260426/theme.js"', false)
+            ->assertDontSee('http://localhost:18080/js', false)
+            ->assertDontSee('http://127.0.0.1/js', false);
+    }
+
     public function test_frontend_returns_not_found_for_unbound_host_when_domains_exist(): void
     {
         $this->createSiteWithArticle('Alpha Site', 'alpha.example.test', 'Alpha Article', 'alpha-article');

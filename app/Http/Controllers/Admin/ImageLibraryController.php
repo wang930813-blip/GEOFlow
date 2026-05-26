@@ -7,8 +7,11 @@ use App\Models\ArticleImage;
 use App\Models\Image;
 use App\Models\ImageLibrary;
 use App\Models\Task;
+use App\Services\GeoFlow\ExternalImageHostClient;
 use App\Support\AdminWeb;
+use App\Support\GeoFlow\ImageUrlNormalizer;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -24,6 +27,8 @@ use Illuminate\View\View;
 class ImageLibraryController extends Controller
 {
     private const DETAIL_PER_PAGE = 24;
+
+    public function __construct(private readonly ExternalImageHostClient $imageHostClient) {}
 
     /**
      * 列表页。
@@ -91,7 +96,7 @@ class ImageLibraryController extends Controller
     /**
      * 上传多张图片到指定图片库。
      */
-    public function uploadImages(Request $request, int $libraryId): RedirectResponse
+    public function uploadImages(Request $request, int $libraryId): RedirectResponse|JsonResponse
     {
         $library = ImageLibrary::query()->whereKey($libraryId)->firstOrFail();
 
@@ -108,17 +113,25 @@ class ImageLibraryController extends Controller
         /** @var array<int, UploadedFile> $uploadedFiles */
         $uploadedFiles = $request->file('images', []);
         if ($uploadedFiles === []) {
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => __('admin.image_detail.error.select_images'),
+                ], 422);
+            }
+
             return back()->withErrors(__('admin.image_detail.error.select_images'));
         }
 
         $uploadedCount = 0;
         $skippedCount = 0;
         $uploadErrors = [];
-        DB::transaction(function () use ($uploadedFiles, $libraryId, &$uploadedCount, &$skippedCount, &$uploadErrors): void {
+        $createdImages = [];
+        DB::transaction(function () use ($uploadedFiles, $libraryId, &$uploadedCount, &$skippedCount, &$uploadErrors, &$createdImages): void {
             foreach ($uploadedFiles as $uploadedFile) {
                 try {
                     $stored = $this->storeUploadedImageFile($uploadedFile);
-                    Image::query()->create([
+                    $image = Image::query()->create([
                         'library_id' => $libraryId,
                         'filename' => $stored['filename'],
                         'original_name' => $stored['original_name'],
@@ -132,6 +145,7 @@ class ImageLibraryController extends Controller
                         'used_count' => 0,
                         'usage_count' => 0,
                     ]);
+                    $createdImages[] = $image;
                     $uploadedCount++;
                 } catch (\Throwable $exception) {
                     $skippedCount++;
@@ -149,15 +163,43 @@ class ImageLibraryController extends Controller
 
         if ($uploadedCount <= 0) {
             $firstError = trim((string) ($uploadErrors[0] ?? ''));
-
-            return back()->withErrors($firstError !== ''
+            $message = $firstError !== ''
                 ? __('admin.image_detail.error.upload_failed_detail', ['message' => $firstError])
-                : __('admin.image_detail.error.upload_none'));
+                : __('admin.image_detail.error.upload_none');
+
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $message,
+                    'errors' => $uploadErrors,
+                ], 422);
+            }
+
+            return back()->withErrors($message);
         }
 
         $message = __('admin.image_detail.message.upload_success', ['count' => $uploadedCount]);
         if ($skippedCount > 0) {
             $message .= __('admin.image_detail.message.upload_skipped', ['count' => $skippedCount]);
+        }
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'uploaded_count' => $uploadedCount,
+                'skipped_count' => $skippedCount,
+                'total_images' => Image::query()->where('library_id', $libraryId)->count(),
+                'images' => collect($createdImages)->map(fn (Image $image): array => [
+                    'id' => (int) $image->id,
+                    'url' => ImageUrlNormalizer::toPublicUrl((string) $image->file_path),
+                    'original_name' => (string) $image->original_name,
+                    'file_size' => (int) $image->file_size,
+                    'mime_type' => (string) $image->mime_type,
+                    'width' => (int) $image->width,
+                    'height' => (int) $image->height,
+                ])->values()->all(),
+            ]);
         }
 
         return redirect()->route('admin.image-libraries.detail', ['libraryId' => $libraryId])->with('message', $message);
@@ -447,42 +489,31 @@ class ImageLibraryController extends Controller
      */
     private function storeUploadedImageFile(UploadedFile $file): array
     {
-        $uploadDirectory = 'images/'.date('Y/m');
-        $extension = strtolower($file->getClientOriginalExtension() ?: $file->extension() ?: 'jpg');
-        $filename = bin2hex(random_bytes(16)).'.'.$extension;
-        $directory = 'uploads/'.$uploadDirectory;
-        if (! Storage::disk('public')->exists($directory) && ! Storage::disk('public')->makeDirectory($directory)) {
-            throw new \RuntimeException('创建图片上传目录失败：storage/app/public/'.$directory);
+        $realPath = $file->getRealPath();
+        if (! is_string($realPath) || ! is_file($realPath)) {
+            throw new \RuntimeException('图片上传临时文件不可访问');
         }
 
-        $storedRelativePath = Storage::disk('public')->putFileAs($directory, $file, $filename);
-        if (! is_string($storedRelativePath) || $storedRelativePath === '') {
-            throw new \RuntimeException('保存图片失败');
+        $binary = file_get_contents($realPath);
+        if (! is_string($binary) || $binary === '') {
+            throw new \RuntimeException('无法读取图片上传内容');
         }
 
-        if (! Storage::disk('public')->exists($storedRelativePath)) {
-            throw new \RuntimeException('图片文件写入后未找到：storage/app/public/'.$storedRelativePath);
-        }
-
-        $targetPath = Storage::disk('public')->path($storedRelativePath);
-        if (! is_file($targetPath)) {
-            throw new \RuntimeException('图片文件路径不可访问：'.$targetPath);
-        }
-
-        $fileSize = filesize($targetPath);
-        if ($fileSize === false) {
-            throw new \RuntimeException('无法读取图片文件大小：'.$targetPath);
-        }
-
-        $imageInfo = @getimagesize($targetPath) ?: [0, 0, null, null, 'mime' => (string) $file->getMimeType()];
+        $mimeType = (string) ($file->getMimeType() ?: 'application/octet-stream');
+        $originalName = (string) $file->getClientOriginalName();
+        $imageInfo = @getimagesize($realPath) ?: [0, 0, null, null, 'mime' => $mimeType];
+        $uploaded = $this->imageHostClient->upload($binary, $mimeType, $originalName);
+        $key = trim((string) ($uploaded['key'] ?? ''));
+        $uploadedPath = parse_url((string) $uploaded['url'], PHP_URL_PATH);
+        $filename = basename($key !== '' ? $key : (is_string($uploadedPath) && $uploadedPath !== '' ? $uploadedPath : $originalName));
 
         return [
             'filename' => $filename,
             'file_name' => $filename,
-            'original_name' => (string) $file->getClientOriginalName(),
-            'file_path' => 'storage/'.$storedRelativePath,
-            'file_size' => (int) $fileSize,
-            'mime_type' => (string) ($imageInfo['mime'] ?? $file->getMimeType() ?? ''),
+            'original_name' => $originalName,
+            'file_path' => (string) $uploaded['url'],
+            'file_size' => (int) ($uploaded['size'] ?? strlen($binary)),
+            'mime_type' => (string) ($uploaded['mime_type'] ?? $imageInfo['mime'] ?? $mimeType),
             'width' => (int) ($imageInfo[0] ?? 0),
             'height' => (int) ($imageInfo[1] ?? 0),
         ];

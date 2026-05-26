@@ -19,7 +19,7 @@ use Throwable;
 
 class SubmissionController extends Controller
 {
-    public function index(): View
+    public function index(Request $request): View
     {
         $admin = auth('admin')->user();
         $isSuperAdmin = (bool) $admin?->isSuperAdmin();
@@ -32,6 +32,14 @@ class SubmissionController extends Controller
             ->orderByDesc('id')
             ->paginate(20);
 
+        $selectedResourceIds = collect((array) $request->query('media_resource_ids', []))
+            ->push($request->query('media_resource_id'))
+            ->map(static fn (mixed $id): int => (int) $id)
+            ->filter(static fn (int $id): bool => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+
         return view('admin.media-distribution.submissions', [
             'pageTitle' => '媒体投稿订单',
             'activeMenu' => 'media_distribution',
@@ -39,7 +47,8 @@ class SubmissionController extends Controller
             'submissions' => $submissions,
             'articles' => Article::query()->select(['id', 'title'])->whereNull('deleted_at')->orderByDesc('id')->limit(100)->get(),
             'resources' => MediaResource::query()->active()->orderBy('sale_price')->limit(200)->get(),
-            'selectedResourceId' => (int) request('media_resource_id', 0),
+            'selectedResourceId' => $selectedResourceIds[0] ?? 0,
+            'selectedResourceIds' => $selectedResourceIds,
             'account' => $account,
             'isSuperAdmin' => $isSuperAdmin,
         ]);
@@ -70,20 +79,42 @@ class SubmissionController extends Controller
         $payload = $request->validate([
             'article_ids' => ['required', 'array', 'min:1', 'max:50'],
             'article_ids.*' => ['integer', 'min:1'],
-            'media_resource_id' => ['required', 'integer', 'min:1'],
+            'media_resource_id' => ['nullable', 'integer', 'min:1'],
+            'media_resource_ids' => ['nullable', 'array', 'max:50'],
+            'media_resource_ids.*' => ['integer', 'min:1'],
             'remark' => ['nullable', 'string', 'max:1000'],
         ]);
 
-        $resource = MediaResource::query()->whereKey((int) $payload['media_resource_id'])->firstOrFail();
+        $resourceIds = collect((array) ($payload['media_resource_ids'] ?? []))
+            ->push($payload['media_resource_id'] ?? null)
+            ->map(static fn (mixed $id): int => (int) $id)
+            ->filter(static fn (int $id): bool => $id > 0)
+            ->unique()
+            ->values();
+        if ($resourceIds->isEmpty()) {
+            return back()->withErrors('请选择至少一个媒体')->withInput();
+        }
+
+        $resources = MediaResource::query()
+            ->whereIn('id', $resourceIds->all())
+            ->get()
+            ->keyBy('id');
         $created = 0;
         $errors = [];
         foreach (array_unique(array_map('intval', $payload['article_ids'])) as $articleId) {
-            try {
-                $article = Article::query()->whereKey($articleId)->firstOrFail();
-                $submissions->submit($article, $resource, auth('admin')->user(), trim((string) ($payload['remark'] ?? '')));
-                $created++;
-            } catch (Throwable $e) {
-                $errors[] = '#'.$articleId.' '.$e->getMessage();
+            foreach ($resourceIds as $resourceId) {
+                try {
+                    $article = Article::query()->whereKey($articleId)->firstOrFail();
+                    $resource = $resources->get($resourceId);
+                    if (! $resource instanceof MediaResource) {
+                        throw new \RuntimeException('媒体不存在: #'.$resourceId);
+                    }
+
+                    $submissions->submit($article, $resource, auth('admin')->user(), trim((string) ($payload['remark'] ?? '')));
+                    $created++;
+                } catch (Throwable $e) {
+                    $errors[] = '#'.$articleId.' / 媒体#'.$resourceId.' '.$e->getMessage();
+                }
             }
         }
 
@@ -93,7 +124,7 @@ class SubmissionController extends Controller
 
         return redirect()
             ->route('admin.media-distribution.submissions.index')
-            ->with('message', '批量投稿已提交 '.$created.' 篇'.($errors !== [] ? '，失败 '.count($errors).' 篇' : ''));
+            ->with('message', '批量投稿已提交 '.$created.' 个订单'.($errors !== [] ? '，失败 '.count($errors).' 个' : ''));
     }
 
     public function show(int $submission): View

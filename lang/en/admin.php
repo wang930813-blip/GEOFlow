@@ -1473,6 +1473,7 @@ return [
         ],
         'message' => [
             'add_success' => 'Title added successfully',
+            'update_success' => 'Title updated successfully',
             'delete_success' => 'Title deleted successfully',
             'import_success' => 'Imported :count titles successfully',
             'import_skip' => ', skipped :count duplicate titles',

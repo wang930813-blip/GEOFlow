@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\Article;
+use App\Support\CurrentSite;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -31,6 +32,7 @@ class RecordSiteViewLog
 
         try {
             DB::table('view_logs')->insert([
+                ...$this->siteColumn(),
                 'article_id' => $this->resolveArticleId($request, $response),
                 'source' => 'local',
                 'method' => strtoupper((string) $request->method()),
@@ -47,6 +49,18 @@ class RecordSiteViewLog
         }
 
         return $response;
+    }
+
+    /**
+     * @return array<string, int|null>
+     */
+    private function siteColumn(): array
+    {
+        if (! Schema::hasColumn('view_logs', 'site_id')) {
+            return [];
+        }
+
+        return ['site_id' => app(CurrentSite::class)->id()];
     }
 
     private function resolveArticleId(Request $request, Response $response): ?int

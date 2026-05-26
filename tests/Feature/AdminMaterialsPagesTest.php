@@ -9,6 +9,8 @@ use App\Models\ImageLibrary;
 use App\Models\KeywordLibrary;
 use App\Models\KnowledgeBase;
 use App\Models\Prompt;
+use App\Models\Site;
+use App\Models\Title;
 use App\Models\TitleLibrary;
 use App\Models\UrlImportJob;
 use App\Models\UrlImportJobLog;
@@ -16,6 +18,7 @@ use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -950,6 +953,100 @@ class AdminMaterialsPagesTest extends TestCase
         ])->assertSessionHasErrors();
     }
 
+    public function test_admin_can_bulk_delete_and_edit_titles_from_detail_page(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'materials_title_edit_admin',
+            'password' => 'secret-123',
+            'email' => 'materials-title-edit-admin@example.com',
+            'display_name' => 'Materials Title Edit Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'Title Test Site',
+            'status' => 'active',
+        ]);
+        $site->members()->attach((int) $admin->id, ['role' => 'owner']);
+
+        $titleLibrary = TitleLibrary::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Title Library C',
+            'description' => 'desc',
+            'title_count' => 3,
+            'generation_type' => 'manual',
+            'generation_rounds' => 1,
+            'is_ai_generated' => 0,
+        ]);
+        $titleA = Title::query()->create([
+            'site_id' => (int) $site->id,
+            'library_id' => (int) $titleLibrary->id,
+            'title' => 'Original title A',
+            'keyword' => 'alpha',
+            'is_ai_generated' => false,
+            'used_count' => 0,
+            'usage_count' => 0,
+        ]);
+        $titleB = Title::query()->create([
+            'site_id' => (int) $site->id,
+            'library_id' => (int) $titleLibrary->id,
+            'title' => 'Original title B',
+            'keyword' => 'beta',
+            'is_ai_generated' => false,
+            'used_count' => 0,
+            'usage_count' => 0,
+        ]);
+        $titleC = Title::query()->create([
+            'site_id' => (int) $site->id,
+            'library_id' => (int) $titleLibrary->id,
+            'title' => 'Original title C',
+            'keyword' => 'gamma',
+            'is_ai_generated' => false,
+            'used_count' => 0,
+            'usage_count' => 0,
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.title-libraries.detail', ['libraryId' => (int) $titleLibrary->id]))
+            ->assertOk()
+            ->assertSee('bulk-delete-titles-form', false)
+            ->assertSee('name="title_ids[]"', false)
+            ->assertSee('editTitle(', false);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->put(route('admin.title-libraries.titles.update', [
+                'libraryId' => (int) $titleLibrary->id,
+                'titleId' => (int) $titleA->id,
+            ]), [
+                'title' => 'Updated title A',
+                'keyword' => 'updated-alpha',
+            ])
+            ->assertRedirect(route('admin.title-libraries.detail', ['libraryId' => (int) $titleLibrary->id]));
+
+        $this->assertDatabaseHas('titles', [
+            'id' => (int) $titleA->id,
+            'title' => 'Updated title A',
+            'keyword' => 'updated-alpha',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.title-libraries.titles.delete', ['libraryId' => (int) $titleLibrary->id]), [
+                'title_ids' => [(int) $titleB->id, (int) $titleC->id],
+            ])
+            ->assertRedirect(route('admin.title-libraries.detail', ['libraryId' => (int) $titleLibrary->id]));
+
+        $this->assertDatabaseMissing('titles', ['id' => (int) $titleB->id]);
+        $this->assertDatabaseMissing('titles', ['id' => (int) $titleC->id]);
+        $this->assertDatabaseHas('title_libraries', [
+            'id' => (int) $titleLibrary->id,
+            'title_count' => 1,
+        ]);
+    }
+
     public function test_admin_can_upload_image_and_knowledge_file_from_detail_flow(): void
     {
         Storage::fake('public');
@@ -996,6 +1093,133 @@ class AdminMaterialsPagesTest extends TestCase
 
         $this->assertDatabaseHas('knowledge_bases', [
             'name' => '上传知识库',
+        ]);
+    }
+
+    public function test_admin_image_library_upload_uses_configured_external_image_host(): void
+    {
+        Config::set('geoflow.image_host.upload_url', 'https://files.example.com/api/upload');
+        Config::set('geoflow.image_host.token', 'secret-token');
+        Http::fake([
+            'https://files.example.com/api/upload' => Http::response([
+                'success' => true,
+                'data' => [
+                    'key' => '2026-05-26/banner.png',
+                    'url' => 'https://cdn.example.com/2026-05-26/banner.png',
+                    'size' => 4567,
+                    'mimeType' => 'image/png',
+                ],
+            ]),
+        ]);
+
+        $admin = Admin::query()->create([
+            'username' => 'materials_remote_upload_admin',
+            'password' => 'secret-123',
+            'email' => 'materials-remote-upload-admin@example.com',
+            'display_name' => 'Materials Remote Upload Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'Remote Upload Site',
+            'status' => 'active',
+        ]);
+        $site->members()->attach((int) $admin->id, ['role' => 'owner']);
+
+        $imageLibrary = ImageLibrary::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Remote Image Library',
+            'description' => 'desc',
+            'image_count' => 0,
+            'used_task_count' => 0,
+        ]);
+
+        $image = UploadedFile::fake()->image('banner.png', 120, 80);
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.image-libraries.images.upload', ['libraryId' => (int) $imageLibrary->id]), [
+                'images' => [$image],
+            ])
+            ->assertRedirect(route('admin.image-libraries.detail', ['libraryId' => (int) $imageLibrary->id]));
+
+        $this->assertDatabaseHas('images', [
+            'library_id' => (int) $imageLibrary->id,
+            'original_name' => 'banner.png',
+            'file_name' => 'banner.png',
+            'file_path' => 'https://cdn.example.com/2026-05-26/banner.png',
+            'file_size' => 4567,
+            'mime_type' => 'image/png',
+            'width' => 120,
+            'height' => 80,
+        ]);
+        $this->assertDatabaseHas('image_libraries', [
+            'id' => (int) $imageLibrary->id,
+            'image_count' => 1,
+        ]);
+        Http::assertSent(function ($request): bool {
+            return $request->url() === 'https://files.example.com/api/upload'
+                && $request->hasHeader('Authorization', 'Bearer secret-token');
+        });
+    }
+
+    public function test_admin_image_library_ajax_upload_returns_json_without_redirect(): void
+    {
+        Config::set('geoflow.image_host.upload_url', 'https://files.example.com/api/upload');
+        Config::set('geoflow.image_host.token', 'secret-token');
+        Http::fake([
+            'https://files.example.com/api/upload' => Http::response([
+                'success' => true,
+                'data' => [
+                    'key' => '2026-05-26/ajax-banner.png',
+                    'url' => 'https://cdn.example.com/2026-05-26/ajax-banner.png',
+                    'size' => 7890,
+                    'mimeType' => 'image/png',
+                ],
+            ]),
+        ]);
+
+        $admin = Admin::query()->create([
+            'username' => 'materials_ajax_upload_admin',
+            'password' => 'secret-123',
+            'email' => 'materials-ajax-upload-admin@example.com',
+            'display_name' => 'Materials Ajax Upload Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'Ajax Upload Site',
+            'status' => 'active',
+        ]);
+        $site->members()->attach((int) $admin->id, ['role' => 'owner']);
+
+        $imageLibrary = ImageLibrary::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Ajax Image Library',
+            'description' => 'desc',
+            'image_count' => 0,
+            'used_task_count' => 0,
+        ]);
+
+        $image = UploadedFile::fake()->image('ajax-banner.png', 320, 180);
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.image-libraries.images.upload', ['libraryId' => (int) $imageLibrary->id]), [
+                'images' => [$image],
+            ], [
+                'HTTP_ACCEPT' => 'application/json',
+                'HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('uploaded_count', 1)
+            ->assertJsonPath('images.0.url', 'https://cdn.example.com/2026-05-26/ajax-banner.png');
+
+        $this->assertDatabaseHas('images', [
+            'library_id' => (int) $imageLibrary->id,
+            'original_name' => 'ajax-banner.png',
+            'file_path' => 'https://cdn.example.com/2026-05-26/ajax-banner.png',
         ]);
     }
 }

@@ -113,6 +113,89 @@ class AdminGeoInclusionCheckPhaseTwoTest extends TestCase
         $this->assertSame(1, GeoInclusionCheckResult::query()->count());
     }
 
+    public function test_admin_can_pause_and_delete_inclusion_check_run(): void
+    {
+        $admin = $this->createAdmin('inclusion_run_ops_admin');
+        $site = $this->createSiteForAdmin($admin);
+        $library = $this->createLibraryWithQuestion((int) $site->id);
+        $run = GeoInclusionCheckRun::query()->create([
+            'site_id' => (int) $site->id,
+            'keyword_library_id' => (int) $library->id,
+            'platforms' => ['doubao'],
+            'status' => 'running',
+            'total_checks' => 3,
+            'completed_checks' => 1,
+            'failed_checks' => 0,
+        ]);
+        GeoInclusionCheckResult::query()->create([
+            'site_id' => (int) $site->id,
+            'run_id' => (int) $run->id,
+            'keyword_library_id' => (int) $library->id,
+            'keyword_id' => (int) $library->keywords()->firstOrFail()->id,
+            'question_variant_id' => (int) $library->keywords()->firstOrFail()->questionVariants()->firstOrFail()->id,
+            'platform' => 'doubao',
+            'question' => 'Which tools improve AI search visibility?',
+            'answer' => 'Acme is mentioned.',
+            'keyword_hit' => true,
+            'brand_hit' => true,
+            'status' => 'success',
+            'checked_at' => now(),
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.keyword-libraries.inclusion-runs.pause', [
+                'libraryId' => (int) $library->id,
+                'run' => (int) $run->id,
+            ]))
+            ->assertRedirect(route('admin.keyword-libraries.detail', ['libraryId' => (int) $library->id]));
+
+        $this->assertSame('paused', $run->fresh()->status);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->delete(route('admin.keyword-libraries.inclusion-runs.destroy', [
+                'libraryId' => (int) $library->id,
+                'run' => (int) $run->id,
+            ]))
+            ->assertRedirect(route('admin.keyword-libraries.detail', ['libraryId' => (int) $library->id]));
+
+        $this->assertDatabaseMissing('geo_inclusion_check_runs', ['id' => (int) $run->id]);
+        $this->assertDatabaseMissing('geo_inclusion_check_results', ['run_id' => (int) $run->id]);
+    }
+
+    public function test_paused_inclusion_check_job_does_not_call_checker_or_write_result(): void
+    {
+        $library = $this->createLibraryWithQuestion();
+        $keyword = $library->keywords()->firstOrFail();
+        $question = $keyword->questionVariants()->firstOrFail();
+        $run = GeoInclusionCheckRun::query()->create([
+            'keyword_library_id' => (int) $library->id,
+            'platforms' => ['doubao'],
+            'status' => 'paused',
+            'total_checks' => 1,
+            'completed_checks' => 0,
+            'failed_checks' => 0,
+        ]);
+
+        $this->app->bind(AiSearchPlatformChecker::class, static fn () => new class implements AiSearchPlatformChecker {
+            public function check(string $platform, string $question, KeywordLibrary $library, Keyword $keyword): AiSearchCheckResponse
+            {
+                throw new \RuntimeException('Checker should not run for paused inclusion checks.');
+            }
+        });
+
+        (new ProcessGeoInclusionCheckJob(
+            runId: (int) $run->id,
+            keywordId: (int) $keyword->id,
+            questionVariantId: (int) $question->id,
+            platform: 'doubao'
+        ))->handle($this->app->make(AiSearchPlatformChecker::class));
+
+        $this->assertSame('paused', $run->fresh()->status);
+        $this->assertSame(0, GeoInclusionCheckResult::query()->where('run_id', (int) $run->id)->count());
+    }
+
     public function test_keyword_library_detail_groups_inclusion_results_by_day(): void
     {
         $admin = $this->createAdmin('daily_report_admin');

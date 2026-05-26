@@ -20,6 +20,7 @@ use App\Models\Title;
 use App\Models\TitleLibrary;
 use App\Models\UrlImportJob;
 use App\Support\AdminWeb;
+use App\Support\CurrentSite;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -119,9 +120,12 @@ class DashboardController extends Controller
             $out['today_tasks'] = (int) Task::query()
                 ->whereDate('created_at', $today)
                 ->count();
-            $out['today_views'] = (int) DB::table('view_logs')
-                ->whereDate('created_at', $today)
-                ->count();
+            $todayViewsQuery = DB::table('view_logs')->whereDate('created_at', $today);
+            $siteId = app(CurrentSite::class)->id();
+            if ($siteId !== null && Schema::hasColumn('view_logs', 'site_id')) {
+                $todayViewsQuery->where('site_id', $siteId);
+            }
+            $out['today_views'] = (int) $todayViewsQuery->count();
         } catch (\Throwable) {
             // ignore
         }

@@ -1473,6 +1473,7 @@ return [
         ],
         'message' => [
             'add_success' => '标题添加成功',
+            'update_success' => '标题更新成功',
             'delete_success' => '标题删除成功',
             'import_success' => '成功导入 :count 个标题',
             'import_skip' => '，跳过 :count 个重复标题',

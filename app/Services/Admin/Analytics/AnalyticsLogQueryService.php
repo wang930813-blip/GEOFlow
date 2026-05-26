@@ -2,6 +2,7 @@
 
 namespace App\Services\Admin\Analytics;
 
+use App\Support\CurrentSite;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -91,6 +92,11 @@ class AnalyticsLogQueryService
         $query = DB::table('view_logs')
             ->leftJoin('articles as a', 'view_logs.article_id', '=', 'a.id')
             ->whereBetween('view_logs.created_at', [$filter->start(), $filter->end()]);
+
+        $siteId = app(CurrentSite::class)->id();
+        if ($siteId !== null && Schema::hasColumn('view_logs', 'site_id')) {
+            $query->where('view_logs.site_id', $siteId);
+        }
 
         if ($filter->articleId !== null) {
             $query->where('view_logs.article_id', $filter->articleId);

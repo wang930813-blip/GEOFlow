@@ -11,6 +11,7 @@ use App\Http\Middleware\AdminWebLocale;
 use App\Http\Middleware\AssignApiRequestId;
 use App\Http\Middleware\AuthenticateAdminWeb;
 use App\Http\Middleware\AuthenticateApiToken;
+use App\Http\Middleware\AutoFollowRedirectBody;
 use App\Http\Middleware\EnsureApiScope;
 use App\Http\Middleware\EnsureCurrentSite;
 use App\Http\Middleware\EnsureSuperAdmin;
@@ -45,6 +46,10 @@ return Application::configure(basePath: dirname(__DIR__))
                 | Request::HEADER_X_FORWARDED_PROTO
                 | Request::HEADER_X_FORWARDED_PREFIX
         );
+
+        $middleware->web(append: [
+            AutoFollowRedirectBody::class,
+        ]);
 
         $middleware->alias([
             // 生成/透传 X-Request-Id，并写入响应头

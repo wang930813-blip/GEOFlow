@@ -9,8 +9,12 @@ use App\Models\ArticleDistribution;
 use App\Models\Author;
 use App\Models\Category;
 use App\Models\DistributionChannel;
+use App\Models\Site;
 use App\Models\Task;
 use App\Models\TaskRun;
+use App\Services\Admin\Analytics\AnalyticsFilter;
+use App\Services\Admin\Analytics\AnalyticsLogQueryService;
+use App\Support\CurrentSite;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -193,10 +197,12 @@ class AdminAnalyticsPageTest extends TestCase
 
         $this->ensureViewLogsTable();
         $fixtures = $this->contentFixtures();
+        $site = app(CurrentSite::class)->get();
         $admin = $this->admin();
 
         DB::table('view_logs')->insert([
             [
+                'site_id' => (int) $site->id,
                 'article_id' => (int) $fixtures['article']->id,
                 'method' => 'GET',
                 'path' => '/article/analytics-hot-article',
@@ -207,6 +213,7 @@ class AdminAnalyticsPageTest extends TestCase
                 'created_at' => Carbon::parse('2026-05-20 10:00:00'),
             ],
             [
+                'site_id' => (int) $site->id,
                 'article_id' => (int) $fixtures['article']->id,
                 'method' => 'GET',
                 'path' => '/article/analytics-hot-article',
@@ -217,6 +224,7 @@ class AdminAnalyticsPageTest extends TestCase
                 'created_at' => Carbon::parse('2026-05-21 11:00:00'),
             ],
             [
+                'site_id' => (int) $site->id,
                 'article_id' => (int) $fixtures['article']->id,
                 'method' => 'GET',
                 'path' => '/article/analytics-hot-article',
@@ -227,6 +235,7 @@ class AdminAnalyticsPageTest extends TestCase
                 'created_at' => Carbon::parse('2026-05-21 11:30:00'),
             ],
             [
+                'site_id' => (int) $site->id,
                 'article_id' => (int) $fixtures['article']->id,
                 'method' => 'GET',
                 'path' => '/article/analytics-hot-article',
@@ -237,6 +246,7 @@ class AdminAnalyticsPageTest extends TestCase
                 'created_at' => Carbon::parse('2026-05-01 11:00:00'),
             ],
             [
+                'site_id' => (int) $site->id,
                 'article_id' => null,
                 'method' => 'GET',
                 'path' => '/',
@@ -284,6 +294,76 @@ class AdminAnalyticsPageTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_local_log_analytics_are_scoped_to_current_site(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-05-21 12:00:00'));
+
+        $this->ensureViewLogsTable();
+        $site = Site::query()->create([
+            'name' => 'Analytics Site A',
+            'status' => 'active',
+        ]);
+        $otherSite = Site::query()->create([
+            'name' => 'Analytics Site B',
+            'status' => 'active',
+        ]);
+
+        DB::table('view_logs')->insert([
+            [
+                'site_id' => (int) $site->id,
+                'article_id' => null,
+                'method' => 'GET',
+                'path' => '/',
+                'route_name' => 'site.home',
+                'status_code' => 200,
+                'ip_address' => '127.0.0.10',
+                'user_agent' => 'Mozilla/5.0',
+                'created_at' => Carbon::parse('2026-05-21 10:00:00'),
+            ],
+            [
+                'site_id' => (int) $site->id,
+                'article_id' => null,
+                'method' => 'GET',
+                'path' => '/about',
+                'route_name' => 'site.page',
+                'status_code' => 200,
+                'ip_address' => '127.0.0.11',
+                'user_agent' => 'ChatGPT-User/1.0',
+                'created_at' => Carbon::parse('2026-05-21 11:00:00'),
+            ],
+            [
+                'site_id' => (int) $otherSite->id,
+                'article_id' => null,
+                'method' => 'GET',
+                'path' => '/other',
+                'route_name' => 'site.home',
+                'status_code' => 404,
+                'ip_address' => '127.0.0.12',
+                'user_agent' => 'Googlebot/2.1',
+                'created_at' => Carbon::parse('2026-05-21 11:30:00'),
+            ],
+        ]);
+
+        app(CurrentSite::class)->set($site);
+
+        $summary = app(AnalyticsLogQueryService::class)->summary(AnalyticsFilter::fromRequest([
+            'preset' => 'custom',
+            'date_from' => '2026-05-21',
+            'date_to' => '2026-05-21',
+            'log_source' => 'local',
+            'traffic_type' => 'all',
+        ]));
+
+        $this->assertSame(2, $summary['kpis']['pv']);
+        $this->assertSame(2, $summary['kpis']['unique_ip']);
+        $this->assertSame(1, $summary['kpis']['ai_bot_pv']);
+        $this->assertSame(0, $summary['kpis']['errors']);
+        $this->assertEqualsCanonicalizing(['/', '/about'], array_column($summary['top_paths'], 'path'));
+
+        app(CurrentSite::class)->set(null);
+        Carbon::setTestNow();
+    }
+
     public function test_analytics_charts_use_compact_three_point_date_axis(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-05-21 12:00:00'));
@@ -306,7 +386,7 @@ class AdminAnalyticsPageTest extends TestCase
 
     private function admin(): Admin
     {
-        return Admin::query()->create([
+        $admin = Admin::query()->create([
             'username' => 'analytics_admin',
             'password' => 'secret-123',
             'email' => 'analytics-admin@example.com',
@@ -314,6 +394,15 @@ class AdminAnalyticsPageTest extends TestCase
             'role' => 'super_admin',
             'status' => 'active',
         ]);
+
+        $site = app(CurrentSite::class)->get();
+        if ($site instanceof Site) {
+            $site->members()->syncWithoutDetaching([
+                $admin->id => ['role' => 'owner'],
+            ]);
+        }
+
+        return $admin;
     }
 
     /**
@@ -321,6 +410,8 @@ class AdminAnalyticsPageTest extends TestCase
      */
     private function contentFixtures(): array
     {
+        $this->ensureAnalyticsSiteContext();
+
         $author = Author::query()->create([
             'name' => '分析作者',
             'slug' => 'analytics-author',
@@ -433,6 +524,22 @@ class AdminAnalyticsPageTest extends TestCase
         ];
     }
 
+    private function ensureAnalyticsSiteContext(): Site
+    {
+        $current = app(CurrentSite::class)->get();
+        if ($current instanceof Site) {
+            return $current;
+        }
+
+        $site = Site::query()->create([
+            'name' => 'Analytics Fixture Site',
+            'status' => 'active',
+        ]);
+        app(CurrentSite::class)->set($site);
+
+        return $site;
+    }
+
     private function ensureViewLogsTable(): void
     {
         if (Schema::hasTable('view_logs')) {
@@ -443,6 +550,7 @@ class AdminAnalyticsPageTest extends TestCase
 
         Schema::create('view_logs', function (Blueprint $table): void {
             $table->id();
+            $table->foreignId('site_id')->nullable()->constrained('sites')->cascadeOnDelete();
             $table->unsignedBigInteger('article_id')->nullable();
             $table->string('method', 16)->default('GET');
             $table->string('path', 2048)->default('');

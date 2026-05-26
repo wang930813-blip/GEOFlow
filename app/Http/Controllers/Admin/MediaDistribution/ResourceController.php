@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin\MediaDistribution;
 
 use App\Http\Controllers\Controller;
+use App\Models\MediaApiSetting;
 use App\Models\MediaResource;
 use App\Models\MediaResourceSitePrice;
 use App\Models\Site;
@@ -32,8 +33,9 @@ class ResourceController extends Controller
         if (filled($request->query('category'))) {
             $query->where('category', (string) $request->query('category'));
         }
-        if (in_array((string) $request->query('status'), ['active', 'inactive'], true)) {
-            $query->where('status', (string) $request->query('status'));
+        $status = (string) $request->query('status', 'active');
+        if (in_array($status, ['active', 'inactive'], true)) {
+            $query->where('status', $status);
         }
         if (is_numeric($request->query('min_price'))) {
             $query->where('sale_price', '>=', (float) $request->query('min_price'));
@@ -41,6 +43,8 @@ class ResourceController extends Controller
         if (is_numeric($request->query('max_price'))) {
             $query->where('sale_price', '<=', (float) $request->query('max_price'));
         }
+
+        $setting = MediaApiSetting::query()->orderByDesc('id')->first();
 
         return view('admin.media-distribution.resources', [
             'pageTitle' => '分发媒体',
@@ -58,9 +62,10 @@ class ResourceController extends Controller
             'sourceType' => $sourceType,
             'search' => (string) $request->query('search', ''),
             'category' => (string) $request->query('category', ''),
-            'status' => (string) $request->query('status', ''),
+            'status' => $status,
             'minPrice' => (string) $request->query('min_price', ''),
             'maxPrice' => (string) $request->query('max_price', ''),
+            'priceMultiplier' => number_format((float) ($setting?->price_multiplier ?? 1), 2, '.', ''),
             'isSuperAdmin' => (bool) auth('admin')->user()?->isSuperAdmin(),
         ]);
     }
@@ -87,6 +92,34 @@ class ResourceController extends Controller
         ]);
 
         return redirect()->route('admin.media-distribution.resources.index')->with('message', '媒体销售价已更新');
+    }
+
+    public function updatePriceMultiplier(Request $request): RedirectResponse
+    {
+        $this->ensureSuperAdmin();
+        $payload = $request->validate([
+            'price_multiplier' => ['required', 'numeric', 'min:0', 'max:9999'],
+        ]);
+        $multiplier = (float) $payload['price_multiplier'];
+
+        $setting = MediaApiSetting::query()->orderByDesc('id')->first() ?? new MediaApiSetting();
+        $setting->price_multiplier = number_format($multiplier, 2, '.', '');
+        $setting->save();
+
+        MediaResource::query()
+            ->select(['id', 'cost_price'])
+            ->orderBy('id')
+            ->chunkById(200, function ($resources) use ($multiplier): void {
+                foreach ($resources as $resource) {
+                    $resource->forceFill([
+                        'sale_price' => number_format(max(0, (float) $resource->cost_price * $multiplier), 2, '.', ''),
+                    ])->save();
+                }
+            });
+
+        return redirect()
+            ->route('admin.media-distribution.resources.index')
+            ->with('message', '积分价倍率已应用到全部媒体资源');
     }
 
     public function updateSitePrice(Request $request, MediaResource $resource): RedirectResponse

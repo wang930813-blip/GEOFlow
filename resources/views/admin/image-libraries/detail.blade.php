@@ -47,7 +47,7 @@
             </div>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <div id="image-stats" class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
             <div class="bg-white overflow-hidden shadow rounded-lg">
                 <div class="p-5">
                     <div class="flex items-center">
@@ -138,7 +138,7 @@
             </div>
         </div>
 
-        <div class="bg-white shadow rounded-lg">
+        <div id="image-list-card" class="bg-white shadow rounded-lg">
             <div class="px-6 py-4 border-b border-gray-200">
                 <div class="flex items-center justify-between">
                     <h3 class="text-lg font-medium text-gray-900">
@@ -384,20 +384,32 @@
             }
         }
 
-        document.querySelectorAll('.image-checkbox').forEach((checkbox) => {
-            checkbox.addEventListener('change', function () {
-                const imageItem = this.closest('.image-item');
-                if (this.checked) {
-                    imageItem?.classList.add('selected');
-                } else {
-                    imageItem?.classList.remove('selected');
+        function bindImageCheckboxes() {
+            document.querySelectorAll('.image-checkbox').forEach((checkbox) => {
+                if (checkbox.dataset.bound === '1') {
+                    return;
                 }
-                updateSelectedCount();
+                checkbox.dataset.bound = '1';
+                checkbox.addEventListener('change', function () {
+                    const imageItem = this.closest('.image-item');
+                    if (this.checked) {
+                        imageItem?.classList.add('selected');
+                    } else {
+                        imageItem?.classList.remove('selected');
+                    }
+                    updateSelectedCount();
+                });
             });
-        });
+        }
 
-        const batchForm = document.getElementById('batch-form');
-        if (batchForm) {
+        bindImageCheckboxes();
+
+        function bindBatchForm() {
+            const batchForm = document.getElementById('batch-form');
+            if (!batchForm || batchForm.dataset.bound === '1') {
+                return;
+            }
+            batchForm.dataset.bound = '1';
             batchForm.addEventListener('submit', function (event) {
                 const selected = document.querySelectorAll('.image-checkbox:checked').length;
                 if (selected === 0) {
@@ -411,6 +423,8 @@
                 }
             });
         }
+
+        bindBatchForm();
 
         const uploadArea = document.getElementById('upload-area');
         const fileInput = document.getElementById('images');
@@ -506,20 +520,77 @@
             setSelectedFiles(this.files);
         });
 
-        uploadForm?.addEventListener('submit', function (event) {
+        function setUploadButtonLoading(isLoading) {
+            if (!uploadBtn) {
+                return;
+            }
+
+            uploadBtn.disabled = isLoading;
+            uploadBtn.innerHTML = isLoading
+                ? '<i data-lucide="loader-2" class="w-4 h-4 mr-2 inline animate-spin"></i>' + @json(__('admin.image_detail.uploading'))
+                : '<i data-lucide="upload" class="w-4 h-4 mr-2 inline"></i>' + @json(__('admin.button.upload'));
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+        }
+
+        async function refreshImageSections() {
+            const response = await fetch(window.location.href, {
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'text/html',
+                },
+                credentials: 'same-origin',
+            });
+            if (!response.ok) {
+                throw new Error('图片列表刷新失败');
+            }
+
+            const html = await response.text();
+            const documentFragment = new DOMParser().parseFromString(html, 'text/html');
+            ['image-stats', 'image-list-card'].forEach((id) => {
+                const fresh = documentFragment.getElementById(id);
+                const current = document.getElementById(id);
+                if (fresh && current) {
+                    current.replaceWith(fresh);
+                }
+            });
+            bindImageCheckboxes();
+            bindBatchForm();
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+        }
+
+        uploadForm?.addEventListener('submit', async function (event) {
+            event.preventDefault();
             const selectedFiles = fileInput?.files ? fileInput.files.length : 0;
             if (selectedFiles === 0) {
-                event.preventDefault();
                 alert(@json(__('admin.image_detail.error.select_images')));
                 return;
             }
 
-            if (uploadBtn) {
-                uploadBtn.disabled = true;
-                uploadBtn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 mr-2 inline animate-spin"></i>' + @json(__('admin.image_detail.uploading'));
-                if (typeof lucide !== 'undefined') {
-                    lucide.createIcons();
+            setUploadButtonLoading(true);
+            try {
+                const response = await fetch(uploadForm.action, {
+                    method: 'POST',
+                    body: new FormData(uploadForm),
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json',
+                    },
+                    credentials: 'same-origin',
+                });
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok || payload.success !== true) {
+                    throw new Error(payload.message || '图片上传失败');
                 }
+
+                hideUploadModal();
+                await refreshImageSections();
+            } catch (error) {
+                alert(error instanceof Error ? error.message : '图片上传失败');
+                setUploadButtonLoading(false);
             }
         });
 
