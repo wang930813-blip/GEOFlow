@@ -1,6 +1,9 @@
 ARG PHP_CLI_IMAGE=php:8.4-cli-bookworm
+ARG PHPREDIS_VERSION=6.3.0
 
 FROM ${PHP_CLI_IMAGE}
+
+ARG PHPREDIS_VERSION
 
 WORKDIR /var/www/html
 
@@ -35,7 +38,21 @@ RUN apt-get update \
         pdo_sqlite \
         pcntl \
         zip \
-    && pecl install redis \
+    && (pecl install redis-${PHPREDIS_VERSION} \
+        || ( \
+            echo "pecl redis download failed; falling back to GitHub source"; \
+            curl -fsSL --retry 5 --retry-delay 3 \
+                "https://github.com/phpredis/phpredis/archive/refs/tags/${PHPREDIS_VERSION}.tar.gz" \
+                -o /tmp/phpredis.tar.gz; \
+            mkdir -p /usr/src/php/ext/redis; \
+            tar -xzf /tmp/phpredis.tar.gz -C /usr/src/php/ext/redis --strip-components=1; \
+            cd /usr/src/php/ext/redis; \
+            phpize; \
+            ./configure; \
+            make -j"$(nproc)"; \
+            make install; \
+            rm -rf /tmp/phpredis.tar.gz /usr/src/php/ext/redis \
+        )) \
     && docker-php-ext-enable redis \
     && rm -rf /var/lib/apt/lists/*
 
