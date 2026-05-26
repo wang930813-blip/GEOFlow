@@ -484,6 +484,60 @@ class AdminMediaDistributionTest extends TestCase
             ->assertDontSee('Travel Media');
     }
 
+    public function test_media_resource_list_shows_external_api_fields(): void
+    {
+        [$superAdmin] = $this->createAdminWithSite('media_field_root', 'super_admin');
+        MediaResource::query()->create([
+            'source_type' => 'website_media',
+            'external_resource_id' => '73880',
+            'title' => '中华网生活',
+            'remarks' => '图片版权默认删',
+            'case_link' => 'https://example.com/case.html',
+            'category' => '综合',
+            'status' => 'active',
+            'cost_price' => '27.00',
+            'sale_price' => '88.00',
+            'raw_payload' => [
+                'resource_id' => 73880,
+                'title' => '中华网生活',
+                'remarks' => '图片版权默认删',
+                'case_link' => 'https://example.com/case.html',
+                'field_1' => '新闻源',
+                'field_2' => '可带联系方式',
+                'field_3' => '综合门户',
+                'field_4' => '收录稳定',
+                'field_5' => '可发品牌稿',
+                'field_6' => '不可改稿',
+                'field_7' => '周末可发',
+                'field_8' => '不包新闻源',
+                'field_9' => '限正规稿件',
+                'pc_weigh' => '7',
+                'wap_weigh' => '6',
+                'publish_rate' => '95%',
+                'publish_time' => 3600,
+                'status' => 1,
+                'price' => '27.00',
+            ],
+        ]);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.media-distribution.resources.index'))
+            ->assertOk()
+            ->assertSee('资源ID')
+            ->assertSee('筛选1')
+            ->assertSee('新闻源')
+            ->assertSee('PC权重')
+            ->assertSee('7')
+            ->assertSee('移动权重')
+            ->assertSee('6')
+            ->assertSee('出稿率')
+            ->assertSee('95%')
+            ->assertSee('平均发布时间')
+            ->assertSee('3600')
+            ->assertSee('可接单')
+            ->assertSee('27.00');
+    }
+
     public function test_super_admin_can_export_media_submissions_and_credit_ledger_csv(): void
     {
         [$superAdmin] = $this->createAdminWithSite('media_export_root', 'super_admin');

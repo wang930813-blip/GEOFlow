@@ -63,4 +63,26 @@ class MediaResource extends Model
             default => '网站媒体',
         };
     }
+    /**
+     * @param  list<string>|string  $keys
+     */
+    public function apiField(array|string $keys, string $default = '-'): string
+    {
+        $payload = is_array($this->raw_payload) ? $this->raw_payload : [];
+        foreach ((array) $keys as $key) {
+            $value = data_get($payload, $key);
+            if ($value !== null && trim((string) $value) !== '') {
+                return (string) $value;
+            }
+        }
+
+        return $default;
+    }
+
+    public function apiStatusLabel(): string
+    {
+        $status = $this->apiField('status', $this->status === 'active' ? '1' : '0');
+
+        return (string) $status === '1' ? '可接单' : '不接单';
+    }
 }

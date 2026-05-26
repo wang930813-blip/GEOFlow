@@ -1,6 +1,26 @@
 @extends('admin.layouts.app')
 
 @section('content')
+    @php
+        $apiFieldGroups = [
+            ['资源ID', 'resource_id'],
+            ['筛选1', 'field_1'],
+            ['筛选2', 'field_2'],
+            ['筛选3', 'field_3'],
+            ['筛选4', 'field_4'],
+            ['筛选5', 'field_5'],
+            ['筛选6', 'field_6'],
+            ['筛选7', 'field_7'],
+            ['筛选8', 'field_8'],
+            ['筛选9', 'field_9'],
+            ['PC权重', ['pc_weigh', 'pc_weight']],
+            ['移动权重', ['wap_weigh', 'wap_weight']],
+            ['出稿率', 'publish_rate'],
+            ['平均发布时间', 'publish_time'],
+            ['接口状态', 'status_label'],
+            ['媒体价格', 'price'],
+        ];
+    @endphp
     <div class="space-y-6">
         <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
@@ -86,6 +106,7 @@
                         <tr>
                             <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">媒体</th>
                             <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">备注</th>
+                            <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">接口字段</th>
                             @if ($isSuperAdmin)
                                 <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">成本价</th>
                             @endif
@@ -105,6 +126,19 @@
                                     @endif
                                 </td>
                                 <td class="max-w-md px-5 py-4 align-top text-sm text-gray-600">{{ $resource->remarks }}</td>
+                                <td class="min-w-[28rem] px-5 py-4 align-top">
+                                    <div class="grid grid-cols-1 gap-2 text-xs text-slate-600 sm:grid-cols-2">
+                                        @foreach ($apiFieldGroups as [$label, $key])
+                                            @php
+                                                $value = $key === 'status_label' ? $resource->apiStatusLabel() : $resource->apiField($key);
+                                            @endphp
+                                            <div class="rounded-md border border-slate-100 bg-slate-50 px-2 py-1">
+                                                <span class="font-medium text-slate-500">{{ $label }}：</span>
+                                                <span class="text-slate-900">{{ $value }}</span>
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                </td>
                                 @if ($isSuperAdmin)
                                     <td class="px-5 py-4 align-top text-sm text-gray-700">{{ $resource->cost_price }}</td>
                                 @endif
@@ -141,7 +175,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="{{ $isSuperAdmin ? 6 : 5 }}" class="px-5 py-10 text-center text-sm text-gray-500">暂无媒体资源，请先同步。</td>
+                                <td colspan="{{ $isSuperAdmin ? 7 : 6 }}" class="px-5 py-10 text-center text-sm text-gray-500">暂无媒体资源，请先同步。</td>
                             </tr>
                         @endforelse
                     </tbody>
