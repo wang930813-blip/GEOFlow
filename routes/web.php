@@ -23,6 +23,10 @@ use App\Http\Controllers\Admin\KeywordLibraryController;
 use App\Http\Controllers\Admin\KnowledgeBaseController;
 use App\Http\Controllers\Admin\LegacyController;
 use App\Http\Controllers\Admin\MaterialsController;
+use App\Http\Controllers\Admin\MediaDistribution\CreditController as MediaDistributionCreditController;
+use App\Http\Controllers\Admin\MediaDistribution\ResourceController as MediaDistributionResourceController;
+use App\Http\Controllers\Admin\MediaDistribution\SettingController as MediaDistributionSettingController;
+use App\Http\Controllers\Admin\MediaDistribution\SubmissionController as MediaDistributionSubmissionController;
 use App\Http\Controllers\Admin\SecuritySettingsController;
 use App\Http\Controllers\Admin\SiteSettingsController;
 use App\Http\Controllers\Admin\SiteContextController;
@@ -75,6 +79,22 @@ $adminPrefix = trim((string) config('geoflow.admin_base_path', '/geo_admin'), '/
         Route::get('geo-reports', [GeoReportController::class, 'index'])->name('geo-reports.index');
         Route::get('analytics', [AnalyticsController::class, 'index'])->name('analytics');
 
+        Route::prefix('media-distribution')->name('media-distribution.')->group(function () {
+            Route::get('resources', [MediaDistributionResourceController::class, 'index'])->name('resources.index');
+            Route::get('submissions', [MediaDistributionSubmissionController::class, 'index'])->name('submissions.index');
+            Route::post('submissions', [MediaDistributionSubmissionController::class, 'store'])->name('submissions.store');
+            Route::get('submissions/{submission}', [MediaDistributionSubmissionController::class, 'show'])->name('submissions.show');
+            Route::post('submissions/{submission}/sync', [MediaDistributionSubmissionController::class, 'sync'])->name('submissions.sync');
+            Route::get('credits', [MediaDistributionCreditController::class, 'index'])->name('credits.index');
+            Route::middleware('admin.super')->group(function () {
+                Route::post('resources/sync', [MediaDistributionResourceController::class, 'sync'])->name('resources.sync');
+                Route::post('resources/{resource}/price', [MediaDistributionResourceController::class, 'updatePrice'])->name('resources.price');
+                Route::post('credits/{site}/recharge', [MediaDistributionCreditController::class, 'recharge'])->name('credits.recharge');
+                Route::post('credits/{site}/adjust', [MediaDistributionCreditController::class, 'adjust'])->name('credits.adjust');
+                Route::get('settings', [MediaDistributionSettingController::class, 'index'])->name('settings.index');
+                Route::post('settings', [MediaDistributionSettingController::class, 'update'])->name('settings.update');
+            });
+        });
         // 任务管理（Blade 新路径）
         Route::prefix('tasks')->name('tasks.')->group(function () {
             Route::get('/', [TaskController::class, 'index'])->name('index');

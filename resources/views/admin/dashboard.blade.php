@@ -2,6 +2,7 @@
 
 @section('content')
     @php
+        $isSuperAdminDashboard = auth('admin')->user()?->isSuperAdmin() ?? false;
         $singleSiteCards = [
             [
                 'title' => __('admin.dashboard.navigation.ai_config_title'),
@@ -74,33 +75,33 @@
 
         $multiSiteCards = [
             [
-                'title' => __('admin.dashboard.navigation.distribution_channels_title'),
-                'desc' => __('admin.dashboard.navigation.distribution_channels_desc'),
-                'href' => route('admin.distribution.index'),
-                'icon' => 'radio-tower',
+                'title' => '分发媒体',
+                'desc' => '同步媒体资源、设置销售价并把文章投稿到网站媒体或第三方自媒体。',
+                'href' => route('admin.media-distribution.resources.index'),
+                'icon' => 'newspaper',
                 'tone' => 'text-blue-600 bg-blue-50',
             ],
             [
-                'title' => __('admin.dashboard.navigation.create_channel_title'),
-                'desc' => __('admin.dashboard.navigation.create_channel_desc'),
-                'href' => route('admin.distribution.create'),
-                'icon' => 'square-plus',
+                'title' => '投稿订单',
+                'desc' => '查看媒体投稿进度、同步第三方订单状态和发布链接。',
+                'href' => route('admin.media-distribution.submissions.index'),
+                'icon' => 'send',
                 'tone' => 'text-emerald-600 bg-emerald-50',
             ],
             [
-                'title' => __('admin.dashboard.navigation.distribution_jobs_title'),
-                'desc' => __('admin.dashboard.navigation.distribution_jobs_desc'),
-                'href' => route('admin.distribution.jobs'),
-                'icon' => 'list-checks',
+                'title' => '站点积分',
+                'desc' => '查看站点积分余额、冻结金额和投稿消耗流水。',
+                'href' => route('admin.media-distribution.credits.index'),
+                'icon' => 'coins',
                 'tone' => 'text-orange-600 bg-orange-50',
             ],
-            [
-                'title' => __('admin.dashboard.navigation.remote_content_title'),
-                'desc' => __('admin.dashboard.navigation.remote_content_desc'),
-                'href' => route('admin.distribution.jobs'),
-                'icon' => 'file-pen-line',
+            $isSuperAdminDashboard ? [
+                'title' => '接口配置',
+                'desc' => '配置开放平台 API Key 和接口地址，仅超级管理员可操作。',
+                'href' => route('admin.media-distribution.settings.index'),
+                'icon' => 'settings',
                 'tone' => 'text-rose-600 bg-rose-50',
-            ],
+            ] : null,
             [
                 'title' => __('admin.dashboard.navigation.create_task_title'),
                 'desc' => __('admin.dashboard.navigation.create_task_desc'),
@@ -116,6 +117,7 @@
                 'tone' => 'text-violet-600 bg-violet-50',
             ],
         ];
+        $multiSiteCards = array_values(array_filter($multiSiteCards));
     @endphp
 
     <div class="px-4 sm:px-0">
