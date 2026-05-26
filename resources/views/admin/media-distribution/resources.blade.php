@@ -33,7 +33,7 @@
         </div>
 
         <form method="GET" action="{{ route('admin.media-distribution.resources.index') }}" class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-            <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
+            <div class="grid grid-cols-1 gap-4 md:grid-cols-6">
                 <div>
                     <label class="mb-1 block text-sm font-medium text-gray-700">媒体类型</label>
                     <select name="source_type" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
@@ -42,9 +42,33 @@
                         <option value="zi_media" @selected($sourceType === 'zi_media')>第三方自媒体</option>
                     </select>
                 </div>
+                <div>
+                    <label class="mb-1 block text-sm font-medium text-gray-700">分类</label>
+                    <select name="category" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
+                        <option value="">全部</option>
+                        @foreach ($categories as $item)
+                            <option value="{{ $item }}" @selected($category === $item)>{{ $item }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="mb-1 block text-sm font-medium text-gray-700">状态</label>
+                    <select name="status" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
+                        <option value="">全部</option>
+                        <option value="active" @selected($status === 'active')>可投稿</option>
+                        <option value="inactive" @selected($status === 'inactive')>不可用</option>
+                    </select>
+                </div>
                 <div class="md:col-span-2">
                     <label class="mb-1 block text-sm font-medium text-gray-700">搜索媒体</label>
                     <input name="search" value="{{ $search }}" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" placeholder="输入媒体名称">
+                </div>
+                <div>
+                    <label class="mb-1 block text-sm font-medium text-gray-700">积分价</label>
+                    <div class="grid grid-cols-2 gap-2">
+                        <input name="min_price" value="{{ $minPrice }}" class="h-10 rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" placeholder="最低">
+                        <input name="max_price" value="{{ $maxPrice }}" class="h-10 rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" placeholder="最高">
+                    </div>
                 </div>
                 <div class="flex items-end">
                     <button type="submit" class="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50">

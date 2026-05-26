@@ -11,6 +11,7 @@ use App\Support\AdminWeb;
 use App\Support\CurrentSite;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use Illuminate\View\View;
 
 class CreditController extends Controller
@@ -80,5 +81,42 @@ class CreditController extends Controller
         }
 
         return redirect()->route('admin.media-distribution.credits.index')->with('message', '站点积分已调整');
+    }
+
+    public function export(): StreamedResponse
+    {
+        $isSuperAdmin = (bool) auth('admin')->user()?->isSuperAdmin();
+        $query = SiteCreditLedger::query()
+            ->with('site:id,name')
+            ->when(! $isSuperAdmin, fn ($query) => $query->where('site_id', app(CurrentSite::class)->id()))
+            ->orderByDesc('id');
+
+        return response()->stream(function () use ($query, $isSuperAdmin): void {
+            $out = fopen('php://output', 'w');
+            fputcsv($out, $isSuperAdmin
+                ? ['ID', '站点', '类型', '变动积分', '余额', '冻结', '备注', '时间']
+                : ['ID', '类型', '变动积分', '余额', '冻结', '备注', '时间']);
+            $query->chunk(200, function ($rows) use ($out, $isSuperAdmin): void {
+                foreach ($rows as $row) {
+                    $data = [
+                        $row->id,
+                        $row->type,
+                        $row->amount,
+                        $row->balance_after,
+                        $row->frozen_after,
+                        $row->remark,
+                        $row->created_at?->format('Y-m-d H:i:s'),
+                    ];
+                    if ($isSuperAdmin) {
+                        array_splice($data, 1, 0, [$row->site?->name]);
+                    }
+                    fputcsv($out, $data);
+                }
+            });
+            fclose($out);
+        }, 200, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="site-credit-ledger.csv"',
+        ]);
     }
 }

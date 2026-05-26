@@ -43,6 +43,28 @@ class MediaDistributionClient
     }
 
     /**
+     * @return array<string,mixed>
+     */
+    public function cancelOrder(string $sourceType, string $orderNid, string $reason): array
+    {
+        return $this->post($sourceType, 'cancel_order', [
+            'order_nid' => $orderNid,
+            'reason' => $reason,
+        ]);
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    public function rejection(string $sourceType, string $orderNid, string $content): array
+    {
+        return $this->post($sourceType, 'rejection', [
+            'order_nid' => $orderNid,
+            'content' => $content,
+        ]);
+    }
+
+    /**
      * @param  array<string,string>  $payload
      * @return array<string,mixed>
      */

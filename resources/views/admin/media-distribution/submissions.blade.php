@@ -7,10 +7,16 @@
                 <h1 class="text-2xl font-bold text-gray-900">媒体投稿订单</h1>
                 <p class="mt-1 text-sm text-gray-600">选择当前站点文章投稿到媒体资源，投稿会消耗站点积分。</p>
             </div>
-            <a href="{{ route('admin.media-distribution.resources.index') }}" class="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                <i data-lucide="newspaper" class="h-4 w-4"></i>
-                媒体资源
-            </a>
+            <div class="flex flex-wrap gap-2">
+                <a href="{{ route('admin.media-distribution.submissions.export') }}" class="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                    <i data-lucide="download" class="h-4 w-4"></i>
+                    导出订单
+                </a>
+                <a href="{{ route('admin.media-distribution.resources.index') }}" class="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                    <i data-lucide="newspaper" class="h-4 w-4"></i>
+                    媒体资源
+                </a>
+            </div>
         </div>
 
         <section class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
@@ -36,7 +42,7 @@
                     <select name="media_resource_id" required class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
                         <option value="">选择媒体</option>
                         @foreach ($resources as $resource)
-                            <option value="{{ $resource->id }}">{{ $resource->title }} · {{ $resource->sale_price }} 积分</option>
+                            <option value="{{ $resource->id }}" @selected($selectedResourceId === (int) $resource->id)>{{ $resource->title }} · {{ $resource->sale_price }} 积分</option>
                         @endforeach
                     </select>
                 </div>
@@ -46,6 +52,40 @@
                 </div>
                 <div class="flex items-end lg:col-span-1">
                     <button type="submit" class="inline-flex h-10 w-full items-center justify-center rounded-md bg-indigo-600 px-4 text-sm font-medium text-white hover:bg-indigo-700">投稿</button>
+                </div>
+            </form>
+        </section>
+
+        <section class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+            <div class="mb-4">
+                <h2 class="text-lg font-semibold text-gray-900">批量投稿</h2>
+                <p class="text-sm text-gray-500">选择多篇文章投到同一个媒体，按每篇文章分别扣减积分。</p>
+            </div>
+            <form method="POST" action="{{ route('admin.media-distribution.submissions.bulk-store') }}" class="grid grid-cols-1 gap-4 lg:grid-cols-12">
+                @csrf
+                <div class="lg:col-span-5">
+                    <label class="mb-1 block text-sm font-medium text-gray-700">文章</label>
+                    <select name="article_ids[]" multiple required size="5" class="block w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
+                        @foreach ($articles as $article)
+                            <option value="{{ $article->id }}">{{ $article->title }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="lg:col-span-4">
+                    <label class="mb-1 block text-sm font-medium text-gray-700">媒体</label>
+                    <select name="media_resource_id" required class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
+                        <option value="">选择媒体</option>
+                        @foreach ($resources as $resource)
+                            <option value="{{ $resource->id }}" @selected($selectedResourceId === (int) $resource->id)>{{ $resource->title }} · {{ $resource->sale_price }} 积分</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="lg:col-span-2">
+                    <label class="mb-1 block text-sm font-medium text-gray-700">备注</label>
+                    <input name="remark" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" placeholder="选填">
+                </div>
+                <div class="flex items-end lg:col-span-1">
+                    <button type="submit" class="inline-flex h-10 w-full items-center justify-center rounded-md bg-slate-900 px-4 text-sm font-medium text-white hover:bg-slate-700">提交</button>
                 </div>
             </form>
         </section>

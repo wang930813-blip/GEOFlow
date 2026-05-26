@@ -7,10 +7,16 @@
                 <h1 class="text-2xl font-bold text-gray-900">媒体积分管理</h1>
                 <p class="mt-1 text-sm text-gray-600">每个站点独立积分，媒体投稿按积分价 1:1 消耗。</p>
             </div>
-            <a href="{{ route('admin.media-distribution.resources.index') }}" class="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                <i data-lucide="newspaper" class="h-4 w-4"></i>
-                媒体资源
-            </a>
+            <div class="flex flex-wrap gap-2">
+                <a href="{{ route('admin.media-distribution.credits.export') }}" class="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                    <i data-lucide="download" class="h-4 w-4"></i>
+                    导出流水
+                </a>
+                <a href="{{ route('admin.media-distribution.resources.index') }}" class="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                    <i data-lucide="newspaper" class="h-4 w-4"></i>
+                    媒体资源
+                </a>
+            </div>
         </div>
 
         <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">

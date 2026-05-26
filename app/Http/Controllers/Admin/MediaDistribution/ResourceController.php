@@ -27,14 +27,35 @@ class ResourceController extends Controller
         if (filled($request->query('search'))) {
             $query->where('title', 'like', '%'.(string) $request->query('search').'%');
         }
+        if (filled($request->query('category'))) {
+            $query->where('category', (string) $request->query('category'));
+        }
+        if (in_array((string) $request->query('status'), ['active', 'inactive'], true)) {
+            $query->where('status', (string) $request->query('status'));
+        }
+        if (is_numeric($request->query('min_price'))) {
+            $query->where('sale_price', '>=', (float) $request->query('min_price'));
+        }
+        if (is_numeric($request->query('max_price'))) {
+            $query->where('sale_price', '<=', (float) $request->query('max_price'));
+        }
 
         return view('admin.media-distribution.resources', [
             'pageTitle' => '分发媒体',
             'activeMenu' => 'media_distribution',
             'adminSiteName' => AdminWeb::siteName(),
             'resources' => $query->paginate(20)->withQueryString(),
+            'categories' => MediaResource::query()
+                ->where('category', '<>', '')
+                ->distinct()
+                ->orderBy('category')
+                ->pluck('category'),
             'sourceType' => $sourceType,
             'search' => (string) $request->query('search', ''),
+            'category' => (string) $request->query('category', ''),
+            'status' => (string) $request->query('status', ''),
+            'minPrice' => (string) $request->query('min_price', ''),
+            'maxPrice' => (string) $request->query('max_price', ''),
             'isSuperAdmin' => (bool) auth('admin')->user()?->isSuperAdmin(),
         ]);
     }

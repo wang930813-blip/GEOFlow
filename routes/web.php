@@ -82,10 +82,15 @@ $adminPrefix = trim((string) config('geoflow.admin_base_path', '/geo_admin'), '/
         Route::prefix('media-distribution')->name('media-distribution.')->group(function () {
             Route::get('resources', [MediaDistributionResourceController::class, 'index'])->name('resources.index');
             Route::get('submissions', [MediaDistributionSubmissionController::class, 'index'])->name('submissions.index');
+            Route::get('submissions/export', [MediaDistributionSubmissionController::class, 'export'])->name('submissions.export');
+            Route::post('submissions/bulk', [MediaDistributionSubmissionController::class, 'bulkStore'])->name('submissions.bulk-store');
             Route::post('submissions', [MediaDistributionSubmissionController::class, 'store'])->name('submissions.store');
             Route::get('submissions/{submission}', [MediaDistributionSubmissionController::class, 'show'])->name('submissions.show');
             Route::post('submissions/{submission}/sync', [MediaDistributionSubmissionController::class, 'sync'])->name('submissions.sync');
+            Route::post('submissions/{submission}/cancel', [MediaDistributionSubmissionController::class, 'cancel'])->name('submissions.cancel');
+            Route::post('submissions/{submission}/appeal', [MediaDistributionSubmissionController::class, 'appeal'])->name('submissions.appeal');
             Route::get('credits', [MediaDistributionCreditController::class, 'index'])->name('credits.index');
+            Route::get('credits/export', [MediaDistributionCreditController::class, 'export'])->name('credits.export');
             Route::middleware('admin.super')->group(function () {
                 Route::post('resources/sync', [MediaDistributionResourceController::class, 'sync'])->name('resources.sync');
                 Route::post('resources/{resource}/price', [MediaDistributionResourceController::class, 'updatePrice'])->name('resources.price');

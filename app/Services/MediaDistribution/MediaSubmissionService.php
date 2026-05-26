@@ -104,6 +104,87 @@ class MediaSubmissionService
         return $submission;
     }
 
+    /**
+     * @return array{synced:int,failed:int}
+     */
+    public function syncPending(int $limit = 100): array
+    {
+        $synced = 0;
+        $failed = 0;
+
+        MediaSubmission::withoutGlobalScope('current_site')
+            ->whereIn('status', ['submitting', 'submitted', 'publishing', 'appealing'])
+            ->where('external_order_nid', '<>', '')
+            ->orderBy('last_synced_at')
+            ->orderBy('id')
+            ->limit(max(1, min($limit, 500)))
+            ->get()
+            ->each(function (MediaSubmission $submission) use (&$synced, &$failed): void {
+                try {
+                    $this->syncStatus($submission);
+                    $synced++;
+                } catch (\Throwable $e) {
+                    $failed++;
+                    $submission->forceFill([
+                        'last_error_message' => $e->getMessage(),
+                        'last_synced_at' => now(),
+                    ])->save();
+                }
+            });
+
+        return ['synced' => $synced, 'failed' => $failed];
+    }
+
+    public function cancel(MediaSubmission $submission, string $reason): MediaSubmission
+    {
+        if ((string) $submission->external_order_nid === '') {
+            throw new RuntimeException('投稿订单缺少第三方订单号');
+        }
+        if (in_array($submission->status, ['published', 'cancelled'], true)) {
+            throw new RuntimeException('当前订单状态不能取消');
+        }
+
+        $response = $this->client->cancelOrder(
+            (string) $submission->source_type,
+            (string) $submission->external_order_nid,
+            $reason
+        );
+
+        $submission->forceFill([
+            'status' => 'cancelled',
+            'cancel_reason' => $reason,
+            'cancelled_at' => now(),
+            'raw_cancel_response' => $response,
+        ])->save();
+
+        return $submission;
+    }
+
+    public function appeal(MediaSubmission $submission, string $content): MediaSubmission
+    {
+        if ((string) $submission->external_order_nid === '') {
+            throw new RuntimeException('投稿订单缺少第三方订单号');
+        }
+        if (! in_array($submission->status, ['rejected', 'failed'], true)) {
+            throw new RuntimeException('仅失败或拒稿订单可以申诉');
+        }
+
+        $response = $this->client->rejection(
+            (string) $submission->source_type,
+            (string) $submission->external_order_nid,
+            $content
+        );
+
+        $submission->forceFill([
+            'status' => 'appealing',
+            'appeal_content' => $content,
+            'appealed_at' => now(),
+            'raw_appeal_response' => $response,
+        ])->save();
+
+        return $submission;
+    }
+
     private function contentAsHtml(string $content): string
     {
         return str_contains($content, '<') ? $content : nl2br(e($content));

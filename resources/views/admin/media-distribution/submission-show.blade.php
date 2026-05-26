@@ -58,5 +58,21 @@
             <h2 class="text-lg font-semibold text-gray-900">投稿备注</h2>
             <p class="mt-3 text-sm text-gray-600">{{ $submission->remark ?: '无' }}</p>
         </div>
+
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <form method="POST" action="{{ route('admin.media-distribution.submissions.cancel', ['submission' => $submission->id]) }}" class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+                @csrf
+                <h2 class="text-lg font-semibold text-gray-900">取消订单</h2>
+                <textarea name="reason" required rows="3" class="mt-3 block w-full rounded-md border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" placeholder="填写取消原因">{{ $submission->cancel_reason }}</textarea>
+                <button class="mt-3 inline-flex h-10 items-center rounded-md border border-red-200 bg-red-50 px-4 text-sm font-medium text-red-700 hover:bg-red-100">提交取消</button>
+            </form>
+
+            <form method="POST" action="{{ route('admin.media-distribution.submissions.appeal', ['submission' => $submission->id]) }}" class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+                @csrf
+                <h2 class="text-lg font-semibold text-gray-900">订单申诉</h2>
+                <textarea name="content" required rows="3" class="mt-3 block w-full rounded-md border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" placeholder="填写申诉内容">{{ $submission->appeal_content }}</textarea>
+                <button class="mt-3 inline-flex h-10 items-center rounded-md bg-slate-900 px-4 text-sm font-medium text-white hover:bg-slate-700">提交申诉</button>
+            </form>
+        </div>
     </div>
 @endsection
