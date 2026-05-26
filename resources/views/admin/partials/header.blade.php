@@ -15,7 +15,6 @@
     $changelogLinks = is_array($updateLinks['changelog'] ?? null) ? $updateLinks['changelog'] : [];
     $notificationChangelogUrl = (string) ($changelogLinks[$localeForChangelog] ?? $changelogLinks['zh-CN'] ?? 'https://github.com/yaojingang/GEOFlow/blob/main/docs/CHANGELOG.md');
     $notificationGithubUrl = (string) ($updateLinks['github'] ?? 'https://github.com/yaojingang/GEOFlow');
-    $notificationStatus = (string) ($updateState['status'] ?? 'disabled');
     $currentSite = $currentSite ?? null;
     $availableSites = collect($availableSites ?? []);
     $menu = [
@@ -144,25 +143,21 @@
                 </div>
             </nav>
             <div class="flex shrink-0 items-center gap-2 sm:gap-3 ml-auto">
-                <div class="relative">
-                    <button onclick="toggleAdminNotifications()" class="relative rounded-md p-2 hover:bg-slate-100 transition-colors duration-200" type="button" aria-label="{{ __('admin.header.notifications.label') }}" title="{{ __('admin.header.notifications.label') }}">
-                        <i data-lucide="bell" class="w-5 h-5"></i>
-                        @if($hasVersionUpdate)
+                @if($hasVersionUpdate)
+                    <div class="relative">
+                        <button onclick="toggleAdminNotifications()" class="relative rounded-md p-2 hover:bg-slate-100 transition-colors duration-200" type="button" aria-label="{{ __('admin.header.notifications.label') }}" title="{{ __('admin.header.notifications.label') }}">
+                            <i data-lucide="bell" class="w-5 h-5"></i>
                             <span data-update-indicator class="absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-white"></span>
-                        @endif
-                    </button>
+                        </button>
 
-                    <div id="admin-notification-menu" class="admin-menu-panel hidden absolute right-0 mt-3 w-80 overflow-hidden rounded-md border bg-white z-50">
-                        <div class="border-b border-gray-100 px-4 py-3">
-                            <div class="flex items-center justify-between gap-3">
-                                <div class="text-sm font-semibold text-gray-900">{{ __('admin.header.notifications.title') }}</div>
-                                @if($hasVersionUpdate)
+                        <div id="admin-notification-menu" class="admin-menu-panel hidden absolute right-0 mt-3 w-80 overflow-hidden rounded-md border bg-white z-50">
+                            <div class="border-b border-gray-100 px-4 py-3">
+                                <div class="flex items-center justify-between gap-3">
+                                    <div class="text-sm font-semibold text-gray-900">{{ __('admin.header.notifications.title') }}</div>
                                     <span class="inline-flex items-center rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600">{{ __('admin.header.notifications.badge_new') }}</span>
-                                @endif
+                                </div>
                             </div>
-                        </div>
-                        <div class="px-4 py-4">
-                            @if($hasVersionUpdate)
+                            <div class="px-4 py-4">
                                 <div class="text-sm font-semibold text-gray-900">
                                     {{ __('admin.header.notifications.update_available', ['version' => (string) ($updateState['latest_version'] ?? '')]) }}
                                 </div>
@@ -170,39 +165,29 @@
                                 @if($updateSummary !== '')
                                     <p class="mt-2 text-sm leading-6 text-gray-600">{{ $updateSummary }}</p>
                                 @endif
-                            @elseif($notificationStatus === 'current')
-                                <div class="text-sm font-semibold text-gray-900">{{ __('admin.header.notifications.up_to_date') }}</div>
-                                <p class="mt-2 text-sm leading-6 text-gray-600">{{ __('admin.header.notifications.no_update_desc') }}</p>
-                            @elseif($notificationStatus === 'disabled')
-                                <div class="text-sm font-semibold text-gray-900">{{ __('admin.header.notifications.disabled') }}</div>
-                                <p class="mt-2 text-sm leading-6 text-gray-600">{{ __('admin.header.notifications.disabled_desc') }}</p>
-                            @else
-                                <div class="text-sm font-semibold text-gray-900">{{ __('admin.header.notifications.unavailable') }}</div>
-                                <p class="mt-2 text-sm leading-6 text-gray-600">{{ __('admin.header.notifications.unavailable_desc') }}</p>
-                            @endif
+                                <div class="mt-4 space-y-1 rounded-xl bg-gray-50 px-3 py-3 text-xs text-gray-500">
+                                    <div>{{ __('admin.header.notifications.current_version', ['version' => (string) ($updateState['current_version'] ?? config('geoflow.app_version', '2.0'))]) }}</div>
+                                    @if(!empty($updateState['latest_version']))
+                                        <div>{{ __('admin.header.notifications.latest_version', ['version' => (string) $updateState['latest_version']]) }}</div>
+                                    @endif
+                                    <div>{{ __('admin.header.notifications.daily_check') }}</div>
+                                    @if(!empty($updateState['checked_at']))
+                                        <div>{{ __('admin.header.notifications.checked_at', ['time' => (string) $updateState['checked_at']]) }}</div>
+                                    @endif
+                                </div>
 
-                            <div class="mt-4 space-y-1 rounded-xl bg-gray-50 px-3 py-3 text-xs text-gray-500">
-                                <div>{{ __('admin.header.notifications.current_version', ['version' => (string) ($updateState['current_version'] ?? config('geoflow.app_version', '2.0'))]) }}</div>
-                                @if(!empty($updateState['latest_version']))
-                                    <div>{{ __('admin.header.notifications.latest_version', ['version' => (string) $updateState['latest_version']]) }}</div>
-                                @endif
-                                <div>{{ __('admin.header.notifications.daily_check') }}</div>
-                                @if(!empty($updateState['checked_at']))
-                                    <div>{{ __('admin.header.notifications.checked_at', ['time' => (string) $updateState['checked_at']]) }}</div>
-                                @endif
-                            </div>
-
-                            <div class="mt-4 flex flex-wrap gap-2">
-                                <a href="{{ $notificationChangelogUrl }}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-700">
-                                    {{ __('admin.header.notifications.view_changelog') }}
-                                </a>
-                                <a href="{{ $notificationGithubUrl }}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50">
-                                    {{ __('admin.header.notifications.open_github') }}
-                                </a>
+                                <div class="mt-4 flex flex-wrap gap-2">
+                                    <a href="{{ $notificationChangelogUrl }}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-700">
+                                        {{ __('admin.header.notifications.view_changelog') }}
+                                    </a>
+                                    <a href="{{ $notificationGithubUrl }}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50">
+                                        {{ __('admin.header.notifications.open_github') }}
+                                    </a>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
+                @endif
                 <div class="hidden md:flex items-center rounded-md border border-slate-200 bg-white px-2 py-1 shadow-sm">
                     <i data-lucide="languages" class="w-4 h-4 mr-1.5"></i>
                     <select
@@ -330,12 +315,14 @@
         }
     }
 
-    function toggleAdminNotifications() {
-        const menu = document.getElementById('admin-notification-menu');
-        if (menu) {
-            menu.classList.toggle('hidden');
+    @if($hasVersionUpdate)
+        function toggleAdminNotifications() {
+            const menu = document.getElementById('admin-notification-menu');
+            if (menu) {
+                menu.classList.toggle('hidden');
+            }
         }
-    }
+    @endif
 
     function toggleMobileMenu() {
         const menu = document.getElementById('mobile-menu');
@@ -347,13 +334,17 @@
     document.addEventListener('click', function (event) {
         const userMenu = document.getElementById('user-menu');
         const mobileMenu = document.getElementById('mobile-menu');
-        const notificationMenu = document.getElementById('admin-notification-menu');
+        @if($hasVersionUpdate)
+            const notificationMenu = document.getElementById('admin-notification-menu');
+        @endif
         if (userMenu && !event.target.closest('[onclick="toggleUserMenu()"]') && !userMenu.contains(event.target)) {
             userMenu.classList.add('hidden');
         }
-        if (notificationMenu && !event.target.closest('[onclick="toggleAdminNotifications()"]') && !notificationMenu.contains(event.target)) {
-            notificationMenu.classList.add('hidden');
-        }
+        @if($hasVersionUpdate)
+            if (notificationMenu && !event.target.closest('[onclick="toggleAdminNotifications()"]') && !notificationMenu.contains(event.target)) {
+                notificationMenu.classList.add('hidden');
+            }
+        @endif
         if (mobileMenu && !event.target.closest('[onclick="toggleMobileMenu()"]') && !mobileMenu.contains(event.target)) {
             mobileMenu.classList.add('hidden');
         }

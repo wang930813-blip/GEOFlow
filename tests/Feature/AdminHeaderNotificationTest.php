@@ -54,6 +54,25 @@ class AdminHeaderNotificationTest extends TestCase
             ->assertSee('测试更新摘要');
     }
 
+    public function test_admin_header_hides_update_notification_when_update_check_is_disabled(): void
+    {
+        Cache::flush();
+
+        config([
+            'geoflow.update_check_enabled' => false,
+        ]);
+
+        $admin = $this->createAdmin('disabled_update_admin');
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.dashboard'))
+            ->assertOk()
+            ->assertDontSee('admin-notification-menu', false)
+            ->assertDontSee(__('admin.header.notifications.label'))
+            ->assertDontSee(__('admin.header.notifications.disabled'))
+            ->assertDontSee(__('admin.header.notifications.disabled_desc'));
+    }
+
     private function createAdmin(string $username = 'header_admin'): Admin
     {
         return Admin::query()->create([
