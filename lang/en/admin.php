@@ -1629,6 +1629,7 @@ return [
         'dimensions_label' => 'Dimensions',
         'size_label' => 'Size',
         'url_label' => 'Image URL',
+        'copy_url' => 'Copy URL',
         'uploading' => 'Uploading...',
         'error' => [
             'select_images' => 'Please choose images to upload',

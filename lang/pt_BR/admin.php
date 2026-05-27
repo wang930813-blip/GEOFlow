@@ -1633,6 +1633,7 @@ return array_replace_recursive($base, [
         'dimensions_label' => 'Dimensões',
         'size_label' => 'Tamanho',
         'url_label' => 'URL da Imagem',
+        'copy_url' => 'Copiar URL',
         'uploading' => 'Enviando...',
         'error' => [
             'select_images' => 'Escolha imagens para enviar',

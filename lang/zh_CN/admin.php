@@ -1629,6 +1629,7 @@ return [
         'dimensions_label' => '尺寸',
         'size_label' => '大小',
         'url_label' => '图片 URL',
+        'copy_url' => '复制 URL',
         'uploading' => '上传中...',
         'error' => [
             'select_images' => '请选择要上传的图片',

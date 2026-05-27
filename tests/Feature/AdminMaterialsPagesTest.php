@@ -829,13 +829,21 @@ class AdminMaterialsPagesTest extends TestCase
             'role' => 'admin',
             'status' => 'active',
         ]);
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'Materials Detail Site',
+            'status' => 'active',
+        ]);
+        $site->members()->attach((int) $admin->id, ['role' => 'owner']);
 
         $keywordLibrary = KeywordLibrary::query()->create([
+            'site_id' => (int) $site->id,
             'name' => '关键词库A',
             'description' => 'desc',
             'keyword_count' => 0,
         ]);
         $titleLibrary = TitleLibrary::query()->create([
+            'site_id' => (int) $site->id,
             'name' => '标题库A',
             'description' => 'desc',
             'title_count' => 0,
@@ -844,12 +852,14 @@ class AdminMaterialsPagesTest extends TestCase
             'is_ai_generated' => 0,
         ]);
         $imageLibrary = ImageLibrary::query()->create([
+            'site_id' => (int) $site->id,
             'name' => '图片库A',
             'description' => 'desc',
             'image_count' => 0,
             'used_task_count' => 0,
         ]);
         Image::query()->create([
+            'site_id' => (int) $site->id,
             'library_id' => (int) $imageLibrary->id,
             'filename' => 'demo.png',
             'original_name' => 'demo.png',
@@ -864,6 +874,7 @@ class AdminMaterialsPagesTest extends TestCase
             'usage_count' => 0,
         ]);
         $knowledgeBase = KnowledgeBase::query()->create([
+            'site_id' => (int) $site->id,
             'name' => '知识库A',
             'description' => 'desc',
             'content' => '知识内容',
@@ -876,19 +887,24 @@ class AdminMaterialsPagesTest extends TestCase
         ]);
 
         $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
             ->get(route('admin.keyword-libraries.detail', ['libraryId' => (int) $keywordLibrary->id]))
             ->assertOk()
             ->assertSee($keywordLibrary->name);
         $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
             ->get(route('admin.title-libraries.detail', ['libraryId' => (int) $titleLibrary->id]))
             ->assertOk()
             ->assertSee($titleLibrary->name);
         $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
             ->get(route('admin.image-libraries.detail', ['libraryId' => (int) $imageLibrary->id]))
             ->assertOk()
             ->assertSee($imageLibrary->name)
-            ->assertSee('storage/uploads/images/demo.png');
+            ->assertSee('storage/uploads/images/demo.png')
+            ->assertSee('复制 URL');
         $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
             ->get(route('admin.knowledge-bases.detail', ['knowledgeBaseId' => (int) $knowledgeBase->id]))
             ->assertOk()
             ->assertSee(__('admin.knowledge_detail.heading'));
