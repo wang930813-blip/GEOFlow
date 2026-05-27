@@ -89,6 +89,7 @@ return [
         'csrf_failed' => 'CSRF validation failed',
         'processing' => 'Processing...',
         'copied' => 'Copied to clipboard',
+        'copy_failed' => 'Copy failed. Please copy the URL manually.',
         'csrf_invalid' => 'CSRF validation failed',
         'success' => 'Success',
         'error' => 'Error',
@@ -320,6 +321,7 @@ return [
         'filters' => [
             'title' => 'Filters and Search',
             'task' => 'Task',
+            'category' => 'Article Category',
             'status' => 'Publish Status',
             'review_status' => 'Review Status',
             'author' => 'Author',
@@ -328,6 +330,7 @@ return [
             'search' => 'Search',
             'search_placeholder' => 'Search title or content...',
             'all_tasks' => 'All Tasks',
+            'all_categories' => 'All Article Categories',
             'all_status' => 'All Publish Statuses',
             'all_review' => 'All Review Results',
             'all_authors' => 'All Authors',

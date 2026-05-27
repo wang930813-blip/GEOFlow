@@ -14,13 +14,16 @@ use App\Models\Title;
 use App\Models\TitleLibrary;
 use App\Models\UrlImportJob;
 use App\Models\UrlImportJobLog;
+use App\Jobs\ProcessUrlImportJob;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
+use RuntimeException;
 use Tests\TestCase;
 
 /**
@@ -285,7 +288,7 @@ class AdminMaterialsPagesTest extends TestCase
             'created_by' => 'url_import_admin',
         ]);
 
-        $job = UrlImportJob::query()->firstOrFail();
+        $job = UrlImportJob::withoutGlobalScope('current_site')->firstOrFail();
         $this->actingAs($admin, 'admin')
             ->get(route('admin.url-import.show', ['jobId' => (int) $job->id]))
             ->assertOk()
@@ -323,6 +326,79 @@ class AdminMaterialsPagesTest extends TestCase
             ->assertSessionHasErrors('ai_model');
 
         $this->assertDatabaseCount('url_import_jobs', 0);
+    }
+
+    public function test_url_import_run_dispatches_queue_job_when_queue_is_async(): void
+    {
+        Config::set('queue.default', 'redis');
+        Queue::fake();
+
+        $admin = Admin::query()->create([
+            'username' => 'url_import_queue_admin',
+            'password' => 'secret-123',
+            'email' => 'url-import-queue@example.com',
+            'display_name' => 'Url Import Queue Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $this->createReadyUrlImportAiModel();
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.url-import.store'), [
+                'url' => 'example.test/report',
+                'outputs' => ['knowledge', 'keywords', 'titles'],
+            ])
+            ->assertRedirect();
+
+        $job = UrlImportJob::withoutGlobalScope('current_site')->firstOrFail();
+
+        $this->actingAs($admin, 'admin')
+            ->postJson(route('admin.url-import.run', ['jobId' => (int) $job->id]))
+            ->assertOk()
+            ->assertJsonPath('status', 'running')
+            ->assertJsonPath('current_step', 'queued')
+            ->assertJsonPath('result_ready', false);
+
+        Queue::assertPushedOn('geoflow', ProcessUrlImportJob::class, function (ProcessUrlImportJob $queuedJob) use ($job): bool {
+            return $queuedJob->jobId === (int) $job->id;
+        });
+
+        $this->assertDatabaseHas('url_import_jobs', [
+            'id' => (int) $job->id,
+            'status' => 'running',
+            'current_step' => 'queued',
+        ]);
+        $this->assertNotNull($job->refresh()->started_at);
+    }
+
+    public function test_url_import_queue_failure_marks_job_failed(): void
+    {
+        $job = UrlImportJob::query()->create([
+            'url' => 'https://example.test/report',
+            'normalized_url' => 'https://example.test/report',
+            'source_domain' => 'example.test',
+            'page_title' => '',
+            'status' => 'running',
+            'current_step' => 'fetch',
+            'progress_percent' => 10,
+            'options_json' => '{}',
+            'result_json' => '',
+            'error_message' => '',
+            'created_by' => 'tester',
+            'started_at' => now(),
+        ]);
+
+        (new ProcessUrlImportJob((int) $job->id))->failed(new RuntimeException('worker crashed'));
+
+        $job->refresh();
+        $this->assertSame('failed', $job->status);
+        $this->assertSame('worker crashed', $job->error_message);
+        $this->assertNotNull($job->finished_at);
+        $this->assertDatabaseHas('url_import_job_logs', [
+            'job_id' => (int) $job->id,
+            'step' => 'fetch',
+            'level' => 'error',
+        ]);
     }
 
     public function test_admin_can_run_and_commit_url_import_job(): void
@@ -400,7 +476,7 @@ class AdminMaterialsPagesTest extends TestCase
             ])
             ->assertRedirect();
 
-        $job = UrlImportJob::query()->firstOrFail();
+        $job = UrlImportJob::withoutGlobalScope('current_site')->firstOrFail();
 
         $this->actingAs($admin, 'admin')
             ->postJson(route('admin.url-import.run', ['jobId' => (int) $job->id]))
@@ -548,7 +624,7 @@ class AdminMaterialsPagesTest extends TestCase
             ])
             ->assertRedirect();
 
-        $job = UrlImportJob::query()->firstOrFail();
+        $job = UrlImportJob::withoutGlobalScope('current_site')->firstOrFail();
         $this->actingAs($admin, 'admin')
             ->postJson(route('admin.url-import.run', ['jobId' => (int) $job->id]))
             ->assertOk()
@@ -608,7 +684,7 @@ class AdminMaterialsPagesTest extends TestCase
             ])
             ->assertRedirect();
 
-        $job = UrlImportJob::query()->firstOrFail();
+        $job = UrlImportJob::withoutGlobalScope('current_site')->firstOrFail();
 
         $this->actingAs($admin, 'admin')
             ->postJson(route('admin.url-import.run', ['jobId' => (int) $job->id]))
@@ -666,7 +742,7 @@ class AdminMaterialsPagesTest extends TestCase
             ])
             ->assertRedirect();
 
-        $job = UrlImportJob::query()->firstOrFail();
+        $job = UrlImportJob::withoutGlobalScope('current_site')->firstOrFail();
 
         $this->actingAs($admin, 'admin')
             ->postJson(route('admin.url-import.run', ['jobId' => (int) $job->id]))
@@ -739,7 +815,7 @@ class AdminMaterialsPagesTest extends TestCase
             ])
             ->assertRedirect();
 
-        $job = UrlImportJob::query()->firstOrFail();
+        $job = UrlImportJob::withoutGlobalScope('current_site')->firstOrFail();
 
         $this->actingAs($admin, 'admin')
             ->postJson(route('admin.url-import.run', ['jobId' => (int) $job->id]))
@@ -804,7 +880,7 @@ class AdminMaterialsPagesTest extends TestCase
             ])
             ->assertRedirect();
 
-        $job = UrlImportJob::query()->firstOrFail();
+        $job = UrlImportJob::withoutGlobalScope('current_site')->firstOrFail();
 
         $this->actingAs($admin, 'admin')
             ->postJson(route('admin.url-import.run', ['jobId' => (int) $job->id]))
@@ -908,6 +984,54 @@ class AdminMaterialsPagesTest extends TestCase
             ->get(route('admin.knowledge-bases.detail', ['knowledgeBaseId' => (int) $knowledgeBase->id]))
             ->assertOk()
             ->assertSee(__('admin.knowledge_detail.heading'));
+    }
+
+    public function test_image_library_copy_url_button_exposes_full_image_url_for_clipboard(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'materials_copy_url_admin',
+            'password' => 'secret-123',
+            'email' => 'materials-copy-url-admin@example.com',
+            'display_name' => 'Materials Copy URL Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'Copy URL Site',
+            'status' => 'active',
+        ]);
+        $site->members()->attach((int) $admin->id, ['role' => 'owner']);
+
+        $imageLibrary = ImageLibrary::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Copy URL Image Library',
+            'description' => 'desc',
+            'image_count' => 1,
+            'used_task_count' => 0,
+        ]);
+        Image::query()->create([
+            'site_id' => (int) $site->id,
+            'library_id' => (int) $imageLibrary->id,
+            'filename' => 'copy-demo.png',
+            'original_name' => 'copy-demo.png',
+            'file_name' => 'copy-demo.png',
+            'file_path' => 'https://cdn.example.com/assets/copy-demo.png?token=abc123',
+            'file_size' => 1024,
+            'mime_type' => 'image/png',
+            'width' => 100,
+            'height' => 100,
+            'tags' => '',
+            'used_count' => 0,
+            'usage_count' => 0,
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.image-libraries.detail', ['libraryId' => (int) $imageLibrary->id]))
+            ->assertOk()
+            ->assertSee('data-copy-image-url="https://cdn.example.com/assets/copy-demo.png?token=abc123"', false)
+            ->assertSee('data-copy-label', false);
     }
 
     public function test_admin_can_manage_keyword_and_title_details(): void

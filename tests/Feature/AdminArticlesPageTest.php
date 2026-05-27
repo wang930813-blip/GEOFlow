@@ -278,6 +278,72 @@ class AdminArticlesPageTest extends TestCase
             ->assertSee('value="2026/05/27"', false);
     }
 
+    public function test_article_list_can_be_filtered_by_category(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'articles_category_filter_admin',
+            'password' => 'secret-123',
+            'email' => 'articles-category-filter@example.com',
+            'display_name' => 'Articles Category Filter Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'Article Category Filter Site',
+            'status' => 'active',
+        ]);
+        $site->members()->attach((int) $admin->id, ['role' => 'owner']);
+        $selectedCategory = Category::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Selected Category',
+            'slug' => 'selected-category',
+        ]);
+        $otherCategory = Category::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Other Category',
+            'slug' => 'other-category',
+        ]);
+        $author = Author::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Category Filter Author',
+        ]);
+
+        Article::query()->create([
+            'site_id' => (int) $site->id,
+            'title' => 'Selected Category Article',
+            'slug' => 'selected-category-article',
+            'excerpt' => 'Selected',
+            'content' => 'Selected category content',
+            'category_id' => $selectedCategory->id,
+            'author_id' => $author->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+        ]);
+        Article::query()->create([
+            'site_id' => (int) $site->id,
+            'title' => 'Other Category Article',
+            'slug' => 'other-category-article',
+            'excerpt' => 'Other',
+            'content' => 'Other category content',
+            'category_id' => $otherCategory->id,
+            'author_id' => $author->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.articles.index', [
+                'category_id' => (int) $selectedCategory->id,
+            ]))
+            ->assertOk()
+            ->assertSee('name="category_id"', false)
+            ->assertSee('Selected Category Article')
+            ->assertDontSee('Other Category Article')
+            ->assertSee('value="'.((int) $selectedCategory->id).'" selected', false);
+    }
+
     public function test_admin_brand_stays_geoflow_when_public_site_name_changes(): void
     {
         $admin = Admin::query()->create([

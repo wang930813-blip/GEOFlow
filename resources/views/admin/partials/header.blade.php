@@ -293,14 +293,14 @@
     </div>
 </nav>
 <div class="md:hidden fixed top-4 right-4 z-50">
-    <button onclick="toggleMobileMenu()" class="p-2 rounded-md shadow-md" style="background: #2A3F54;" type="button">
+    <button onclick="toggleMobileMenu()" class="admin-mobile-menu-button p-2 rounded-md shadow-md" type="button" aria-label="{{ __('admin.nav.dashboard') }}">
         <i data-lucide="menu" class="w-5 h-5 text-white"></i>
     </button>
 </div>
 
 <style>
     .admin-locale-select {
-        background-image: linear-gradient(45deg, transparent 50%, rgba(255,255,255,0.78) 50%), linear-gradient(135deg, rgba(255,255,255,0.78) 50%, transparent 50%);
+        background-image: linear-gradient(45deg, transparent 50%, rgba(201,209,220,0.86) 50%), linear-gradient(135deg, rgba(201,209,220,0.86) 50%, transparent 50%);
         background-position: calc(100% - 8px) 52%, calc(100% - 4px) 52%;
         background-size: 4px 4px, 4px 4px;
         background-repeat: no-repeat;

@@ -52,7 +52,12 @@ if [ "${COMPOSER_NEED_POST_INSTALL}" = "true" ]; then
   composer dump-autoload --optimize --no-interaction
 fi
 
-mkdir -p storage/app/public storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs
+mkdir -p storage/app/private/uploads/knowledge storage/app/public storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs
+if id www-data >/dev/null 2>&1; then
+  chown -R www-data:www-data bootstrap/cache storage
+  chmod -R ug+rwX bootstrap/cache storage
+fi
+
 if [ ! -e public/storage ]; then
   php artisan storage:link --force --no-interaction
 fi

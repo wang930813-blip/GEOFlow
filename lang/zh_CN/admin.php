@@ -89,6 +89,7 @@ return [
         'csrf_failed' => 'CSRF验证失败',
         'processing' => '处理中...',
         'copied' => '已复制到剪贴板',
+        'copy_failed' => '复制失败，请手动复制 URL',
         'csrf_invalid' => 'CSRF 验证失败',
         'success' => '成功',
         'error' => '错误',
@@ -320,6 +321,7 @@ return [
         'filters' => [
             'title' => '筛选和搜索',
             'task' => '任务',
+            'category' => '文章分类',
             'status' => '发布状态',
             'review_status' => '审核结果',
             'author' => '作者',
@@ -328,6 +330,7 @@ return [
             'search' => '搜索',
             'search_placeholder' => '搜索标题或内容...',
             'all_tasks' => '所有任务',
+            'all_categories' => '所有文章分类',
             'all_status' => '所有发布状态',
             'all_review' => '所有审核结果',
             'all_authors' => '所有作者',

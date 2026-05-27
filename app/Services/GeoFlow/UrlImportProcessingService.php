@@ -12,6 +12,7 @@ use App\Models\Title;
 use App\Models\TitleLibrary;
 use App\Models\UrlImportJob;
 use App\Models\UrlImportJobLog;
+use App\Support\CurrentSite;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
 use DOMDocument;
@@ -81,9 +82,9 @@ final class UrlImportProcessingService
     /**
      * @return Collection<int, AiModel>
      */
-    private function assertAnalysisModelsReady(): Collection
+    private function assertAnalysisModelsReady(?int $siteId = null): Collection
     {
-        $models = $this->resolveAnalysisModels();
+        $models = $this->resolveAnalysisModels($siteId);
         if ($models->isEmpty()) {
             throw new \RuntimeException(__('admin.url_import.error.ai_model_required'));
         }
@@ -421,7 +422,7 @@ final class UrlImportProcessingService
         $libraryName = $this->safeName($title !== '' ? $title : (string) $job->source_domain);
         $pageJson = $this->buildPageJson($parsed, $job);
 
-        $models = $this->assertAnalysisModelsReady();
+        $models = $this->assertAnalysisModelsReady((int) ($job->site_id ?? 0) ?: null);
         $errors = [];
 
         foreach ($models as $model) {
@@ -539,9 +540,18 @@ final class UrlImportProcessingService
     /**
      * @return Collection<int, AiModel>
      */
-    private function resolveAnalysisModels(): Collection
+    private function resolveAnalysisModels(?int $siteId = null): Collection
     {
+        $siteId ??= app(CurrentSite::class)->id();
+
         return AiModel::query()
+            ->withoutGlobalScope('current_site')
+            ->when($siteId !== null && $siteId > 0, function ($query) use ($siteId): void {
+                $query->where(function ($siteQuery) use ($siteId): void {
+                    $siteQuery->where('site_id', $siteId)
+                        ->orWhereNull('site_id');
+                });
+            })
             ->where('status', 'active')
             ->where(function ($query): void {
                 $query->whereNull('model_type')
@@ -552,6 +562,9 @@ final class UrlImportProcessingService
                 $query->whereNull('daily_limit')
                     ->orWhere('daily_limit', 0)
                     ->orWhereColumn('used_today', '<', 'daily_limit');
+            })
+            ->when($siteId !== null && $siteId > 0, function ($query) use ($siteId): void {
+                $query->orderByRaw('CASE WHEN site_id = ? THEN 0 WHEN site_id IS NULL THEN 1 ELSE 2 END', [$siteId]);
             })
             ->orderBy('failover_priority')
             ->orderBy('id')
@@ -625,7 +638,7 @@ final class UrlImportProcessingService
 
         /** @var AiModel $model */
         $model = $runtime['model'];
-        AiModel::query()->whereKey((int) $model->id)->update([
+        AiModel::query()->withoutGlobalScope('current_site')->whereKey((int) $model->id)->update([
             'used_today' => DB::raw('COALESCE(used_today,0)+1'),
             'total_used' => DB::raw('COALESCE(total_used,0)+1'),
             'updated_at' => now(),

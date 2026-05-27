@@ -89,13 +89,15 @@ class WorkerExecutionService
         $generatedImages = $imageResult['generated_images'] ?? [];
         $imageError = $imageResult['image_error'] ?? null;
         $excerpt = $this->buildExcerpt($content);
+        $generatedKeywords = $this->generateArticleKeywords($task, $aiModel, $content, (string) $titleRow->title, $keyword);
+        $generatedDescription = $this->generateArticleDescription($task, $aiModel, $content, (string) $titleRow->title, $keyword, $excerpt);
         $workflow = [
             'status' => 'draft',
             'review_status' => (int) ($task->need_review ?? 1) === 1 ? 'pending' : 'approved',
             'published_at' => null,
         ];
 
-        $articleId = DB::transaction(function () use ($task, $titleRow, $author, $category, $keyword, $content, $excerpt, $workflow, $selectedImages): int {
+        $articleId = DB::transaction(function () use ($task, $titleRow, $author, $category, $keyword, $generatedKeywords, $generatedDescription, $content, $excerpt, $workflow, $selectedImages): int {
             $freshTask = Task::query()
                 ->whereKey((int) $task->id)
                 ->lockForUpdate()
@@ -119,8 +121,8 @@ class WorkerExecutionService
                 'author_id' => $author?->id,
                 'task_id' => (int) $task->id,
                 'original_keyword' => $keyword,
-                'keywords' => $keyword,
-                'meta_description' => mb_substr($excerpt, 0, 120),
+                'keywords' => $generatedKeywords,
+                'meta_description' => $generatedDescription,
                 'status' => $workflow['status'],
                 'review_status' => $workflow['review_status'],
                 'is_ai_generated' => 1,
@@ -465,11 +467,27 @@ class WorkerExecutionService
 
     private function pickCategory(Task $task): ?Category
     {
+        $siteId = (int) ($task->site_id ?? 0);
+
         if (($task->category_mode ?? 'smart') === 'fixed' && (int) ($task->fixed_category_id ?? 0) > 0) {
-            return Category::query()->find((int) $task->fixed_category_id);
+            $fixedQuery = Category::withoutGlobalScope('current_site')
+                ->whereKey((int) $task->fixed_category_id);
+            if ($siteId > 0) {
+                $fixedQuery->where('site_id', $siteId);
+            }
+
+            $category = $fixedQuery->first();
+            if ($category instanceof Category) {
+                return $category;
+            }
         }
 
-        return Category::query()->orderBy('sort_order')->orderBy('id')->first();
+        $query = Category::withoutGlobalScope('current_site');
+        if ($siteId > 0) {
+            $query->where('site_id', $siteId);
+        }
+
+        return $query->orderBy('sort_order')->orderBy('id')->first();
     }
 
     /**
@@ -840,6 +858,239 @@ class WorkerExecutionService
 
     /**
      * 璋冪敤浠诲姟閰嶇疆妯″瀷鐢熸垚姝ｆ枃銆?     */
+    private function generateArticleKeywords(Task $task, AiModel $aiModel, string $content, string $title, string $keyword): string
+    {
+        $fallback = trim($keyword);
+        if ((int) ($task->auto_keywords ?? 1) !== 1) {
+            return $fallback;
+        }
+
+        $prompt = $this->latestSpecialPromptContent($task, 'keyword');
+        if ($prompt === '') {
+            return $fallback;
+        }
+
+        try {
+            $generated = $this->generateContent($aiModel, $this->renderSpecialPromptTemplate($prompt, $content, $title, $keyword));
+
+            return $this->normalizeGeneratedKeywords($generated, $fallback);
+        } catch (Throwable) {
+            return $fallback;
+        }
+    }
+
+    private function generateArticleDescription(Task $task, AiModel $aiModel, string $content, string $title, string $keyword, string $excerpt): string
+    {
+        $fallback = mb_substr(trim($excerpt), 0, 120);
+        if ((int) ($task->auto_description ?? 1) !== 1) {
+            return $fallback;
+        }
+
+        $prompt = $this->latestSpecialPromptContent($task, 'description');
+        if ($prompt === '') {
+            return $fallback;
+        }
+
+        try {
+            $generated = $this->generateContent($aiModel, $this->renderSpecialPromptTemplate($prompt, $content, $title, $keyword));
+
+            return $this->normalizeGeneratedDescription($generated, $fallback);
+        } catch (Throwable) {
+            return $fallback;
+        }
+    }
+
+    private function latestSpecialPromptContent(Task $task, string $type): string
+    {
+        $siteId = (int) ($task->site_id ?? 0);
+
+        if ($siteId > 0) {
+            $sitePrompt = Prompt::withoutGlobalScope('current_site')
+                ->select(['id', 'content'])
+                ->where('type', $type)
+                ->where('site_id', $siteId)
+                ->orderByDesc('updated_at')
+                ->orderByDesc('id')
+                ->first();
+
+            if ($sitePrompt && trim((string) $sitePrompt->content) !== '') {
+                return trim((string) $sitePrompt->content);
+            }
+        }
+
+        $globalPrompt = Prompt::withoutGlobalScope('current_site')
+            ->select(['id', 'content'])
+            ->where('type', $type)
+            ->where(function ($query): void {
+                $query->whereNull('site_id')->orWhere('site_id', 0);
+            })
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->first();
+
+        return $globalPrompt ? trim((string) $globalPrompt->content) : '';
+    }
+
+    private function renderSpecialPromptTemplate(string $prompt, string $content, string $title, string $keyword): string
+    {
+        $context = [
+            'content' => $content,
+            'title' => $title,
+            'keyword' => $keyword,
+        ];
+
+        $renderedPrompt = preg_replace_callback('/\{\{#if\s+([A-Za-z_][A-Za-z0-9_]*)\s*\}\}(.*?)\{\{\/if\}\}/su', function (array $matches) use ($context): string {
+            $name = (string) ($matches[1] ?? '');
+            if (! $this->isKnownSpecialPromptContextName($name)) {
+                return (string) ($matches[0] ?? '');
+            }
+
+            $value = $this->specialPromptContextValue($name, $context);
+
+            return trim($value) !== '' ? (string) ($matches[2] ?? '') : '';
+        }, $prompt) ?? $prompt;
+
+        return preg_replace_callback('/\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/u', function (array $matches) use ($context): string {
+            $name = (string) ($matches[1] ?? '');
+            $value = $this->specialPromptContextValue($name, $context);
+
+            return $value !== '' || $this->isKnownSpecialPromptContextName($name) ? $value : (string) ($matches[0] ?? '');
+        }, $renderedPrompt) ?? $renderedPrompt;
+    }
+
+    /**
+     * @param  array{content:string,title:string,keyword:string}  $context
+     */
+    private function specialPromptContextValue(string $name, array $context): string
+    {
+        return match (mb_strtolower($name, 'UTF-8')) {
+            'content' => $context['content'],
+            'title' => $context['title'],
+            'keyword' => $context['keyword'],
+            default => '',
+        };
+    }
+
+    private function isKnownSpecialPromptContextName(string $name): bool
+    {
+        return in_array(mb_strtolower($name, 'UTF-8'), ['content', 'title', 'keyword'], true);
+    }
+
+    private function normalizeGeneratedKeywords(string $generated, string $fallback): string
+    {
+        $keywords = $this->extractKeywordList($this->stripCodeFence($generated));
+        if ($keywords === []) {
+            return $fallback;
+        }
+
+        return mb_substr(implode("\u{3001}", array_slice($keywords, 0, 10)), 0, 500);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function extractKeywordList(string $text): array
+    {
+        $text = trim($text);
+        if ($text === '') {
+            return [];
+        }
+
+        $decoded = json_decode($text, true);
+        if (json_last_error() === JSON_ERROR_NONE) {
+            if (is_array($decoded) && array_is_list($decoded)) {
+                return $this->cleanKeywordParts($decoded);
+            }
+
+            if (is_array($decoded)) {
+                foreach (['keywords', 'keyword', 'tags', 'meta_keywords'] as $key) {
+                    if (array_key_exists($key, $decoded)) {
+                        $value = $decoded[$key];
+
+                        return $this->cleanKeywordParts(is_array($value) ? $value : [(string) $value]);
+                    }
+                }
+            }
+        }
+
+        $parts = preg_split('/[\r\n,;\|\x{FF0C}\x{3001}\x{FF1B}]+/u', $text) ?: [];
+
+        return $this->cleanKeywordParts($parts);
+    }
+
+    /**
+     * @param  iterable<mixed>  $parts
+     * @return list<string>
+     */
+    private function cleanKeywordParts(iterable $parts): array
+    {
+        $keywords = [];
+        $seen = [];
+        foreach ($parts as $part) {
+            if (is_array($part)) {
+                $part = implode(' ', array_filter($part, static fn (mixed $value): bool => is_scalar($value)));
+            }
+
+            if (! is_scalar($part)) {
+                continue;
+            }
+
+            $keyword = trim((string) $part);
+            $keyword = preg_replace('/^\s*(?:[-*]|\d+[\.)\x{3001}]|\x{2022})\s*/u', '', $keyword) ?? $keyword;
+            $keyword = preg_replace('/^\s*(?:keywords?|tags?|meta\s*keywords?|关键词|关键字|标签)\s*[:：]\s*/iu', '', $keyword) ?? $keyword;
+            $keyword = preg_replace('/^[\s"\'`“”‘’\[\]【】()（）<>《》:：,，;；.。!！?？|｜\/\\\\]+|[\s"\'`“”‘’\[\]【】()（）<>《》:：,，;；.。!！?？|｜\/\\\\]+$/u', '', $keyword) ?? $keyword;
+            $keyword = preg_replace('/\s+/u', ' ', trim($keyword)) ?? $keyword;
+
+            if ($keyword === '') {
+                continue;
+            }
+
+            $key = mb_strtolower($keyword, 'UTF-8');
+            if (isset($seen[$key])) {
+                continue;
+            }
+
+            $seen[$key] = true;
+            $keywords[] = mb_substr($keyword, 0, 80);
+        }
+
+        return $keywords;
+    }
+
+    private function normalizeGeneratedDescription(string $generated, string $fallback): string
+    {
+        $text = $this->stripCodeFence($generated);
+        $decoded = json_decode($text, true);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+            foreach (['description', 'meta_description', 'summary', 'excerpt'] as $key) {
+                if (isset($decoded[$key]) && is_scalar($decoded[$key])) {
+                    $text = (string) $decoded[$key];
+                    break;
+                }
+            }
+        }
+
+        $text = trim($text);
+        $text = preg_replace('/^\s*(?:description|meta\s*description|summary|excerpt|摘要|描述)\s*[:：]\s*/iu', '', $text) ?? $text;
+        $text = preg_replace('/^[\s"\'`“”‘’]+|[\s"\'`“”‘’]+$/u', '', $text) ?? $text;
+        $text = preg_replace('/\s+/u', ' ', trim($text)) ?? $text;
+
+        return $text !== '' ? mb_substr($text, 0, 500) : $fallback;
+    }
+
+    private function stripCodeFence(string $text): string
+    {
+        $text = trim($text);
+        if (preg_match('/^```(?:[A-Za-z0-9_-]+)?\s*(.*?)\s*```$/su', $text, $matches) === 1) {
+            return trim((string) ($matches[1] ?? ''));
+        }
+
+        return $text;
+    }
+
+    /**
+     * Generate content with the selected task model.
+     */
     private function generateContent(AiModel $aiModel, string $contentPrompt): string
     {
         $providerUrl = OpenAiRuntimeProvider::resolveChatBaseUrl((string) ($aiModel->api_url ?? ''));

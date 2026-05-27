@@ -38,10 +38,7 @@ class MediaDistributionClient
 
         for ($page = 1; $page <= $maxPages; $page++) {
             try {
-                $data = $this->post($sourceType, 'media_list', [
-                    'page' => (string) $page,
-                    'page_size' => (string) $pageSize,
-                ]);
+                $data = $this->post($sourceType, 'media_list', $this->paginationPayload($page, $pageSize));
             } catch (ConnectionException $exception) {
                 throw new MediaDistributionException('媒体资源同步第 '.$page.' 页请求失败：'.$exception->getMessage(), previous: $exception);
             }
@@ -63,6 +60,22 @@ class MediaDistributionClient
                 break;
             }
         }
+    }
+
+    /**
+     * @return array<string,string>
+     */
+    private function paginationPayload(int $page, int $pageSize): array
+    {
+        return [
+            'page' => (string) $page,
+            'p' => (string) $page,
+            'page_size' => (string) $pageSize,
+            'pageSize' => (string) $pageSize,
+            'pagesize' => (string) $pageSize,
+            'per_page' => (string) $pageSize,
+            'limit' => (string) $pageSize,
+        ];
     }
 
     /**
@@ -129,10 +142,7 @@ class MediaDistributionClient
             throw new MediaDistributionException('媒体接口请求失败：HTTP '.$response->status());
         }
 
-        $json = $response->json();
-        if (! is_array($json)) {
-            throw new MediaDistributionException('媒体接口返回格式不正确');
-        }
+        $json = $this->decodeResponseBody($response->body());
 
         $code = (string) ($json['code'] ?? '1');
         if (! in_array($code, ['1', '200', 'success'], true)) {
@@ -140,6 +150,38 @@ class MediaDistributionClient
         }
 
         return $json;
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function decodeResponseBody(string $body): array
+    {
+        $normalized = trim($this->stripUtf8Bom($body));
+        $json = json_decode($normalized, true);
+
+        if (is_string($json)) {
+            $nested = trim($this->stripUtf8Bom($json));
+            $json = json_decode($nested, true);
+        }
+
+        if (! is_array($json)) {
+            throw new MediaDistributionException('媒体接口返回格式不正确：'.$this->responseExcerpt($normalized));
+        }
+
+        return $json;
+    }
+
+    private function stripUtf8Bom(string $body): string
+    {
+        return str_starts_with($body, "\xEF\xBB\xBF") ? substr($body, 3) : $body;
+    }
+
+    private function responseExcerpt(string $body): string
+    {
+        $excerpt = trim(preg_replace('/\s+/', ' ', $body) ?? '');
+
+        return $excerpt === '' ? '空响应' : substr($excerpt, 0, 200);
     }
 
     private function path(string $sourceType, string $action): string

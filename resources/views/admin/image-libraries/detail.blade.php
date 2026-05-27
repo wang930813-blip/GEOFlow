@@ -210,7 +210,7 @@
                                         <a href="{{ $imageUrl }}" target="_blank" rel="noopener noreferrer" class="min-w-0 flex-1 truncate text-xs text-blue-600 hover:text-blue-800" title="{{ $imageUrl }}">
                                             {{ $imageUrl }}
                                         </a>
-                                        <button type="button" onclick="copyImageUrl(this, @js($imageUrl))" class="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-gray-200 bg-white px-2 text-[11px] font-medium text-gray-600 hover:border-purple-200 hover:bg-purple-50 hover:text-purple-700" title="{{ $copyUrlLabel }}">
+                                        <button type="button" data-copy-image-url="{{ $imageUrl }}" class="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-gray-200 bg-white px-2 text-[11px] font-medium text-gray-600 hover:border-purple-200 hover:bg-purple-50 hover:text-purple-700" title="{{ $copyUrlLabel }}">
                                             <i data-lucide="copy" class="h-3.5 w-3.5"></i>
                                             <span data-copy-label>{{ $copyUrlLabel }}</span>
                                         </button>
@@ -323,7 +323,7 @@
                         <div class="text-xs font-medium text-gray-500">{{ $urlLabel }}</div>
                         <div class="mt-1 flex items-start gap-2">
                             <a id="image-url" href="#" target="_blank" rel="noopener noreferrer" class="min-w-0 flex-1 break-all text-sm text-blue-600 hover:text-blue-800"></a>
-                            <button type="button" onclick="copyImageUrl(this, document.getElementById('image-url')?.textContent || '')" class="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border border-gray-200 bg-white px-2 text-xs font-medium text-gray-600 hover:border-purple-200 hover:bg-purple-50 hover:text-purple-700" title="{{ $copyUrlLabel }}">
+                            <button type="button" id="image-modal-copy-url" data-copy-image-url="" class="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border border-gray-200 bg-white px-2 text-xs font-medium text-gray-600 hover:border-purple-200 hover:bg-purple-50 hover:text-purple-700" title="{{ $copyUrlLabel }}">
                                 <i data-lucide="copy" class="h-4 w-4"></i>
                                 <span data-copy-label>{{ $copyUrlLabel }}</span>
                             </button>
@@ -367,11 +367,49 @@
                 imageUrl.href = url;
                 imageUrl.textContent = url;
             }
+            const copyButton = document.getElementById('image-modal-copy-url');
+            if (copyButton) {
+                copyButton.dataset.copyImageUrl = url;
+            }
             document.getElementById('image-modal').classList.remove('hidden');
         }
 
         function hideImageModal() {
             document.getElementById('image-modal').classList.add('hidden');
+        }
+
+        async function copyTextToClipboard(value) {
+            if (navigator.clipboard && window.isSecureContext) {
+                try {
+                    await navigator.clipboard.writeText(value);
+                    return true;
+                } catch (error) {
+                    // Fall back below for browsers that expose the API but deny permission.
+                }
+            }
+
+            const textarea = document.createElement('textarea');
+            textarea.value = value;
+            textarea.setAttribute('readonly', 'readonly');
+            textarea.style.position = 'fixed';
+            textarea.style.top = '0';
+            textarea.style.left = '-9999px';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.focus();
+            textarea.select();
+            textarea.setSelectionRange(0, textarea.value.length);
+
+            let copied = false;
+            try {
+                copied = document.execCommand('copy');
+            } catch (error) {
+                copied = false;
+            } finally {
+                textarea.remove();
+            }
+
+            return copied;
         }
 
         async function copyImageUrl(trigger, url) {
@@ -380,18 +418,10 @@
                 return;
             }
 
-            if (navigator.clipboard && window.isSecureContext) {
-                await navigator.clipboard.writeText(value);
-            } else {
-                const textarea = document.createElement('textarea');
-                textarea.value = value;
-                textarea.setAttribute('readonly', 'readonly');
-                textarea.style.position = 'fixed';
-                textarea.style.left = '-9999px';
-                document.body.appendChild(textarea);
-                textarea.select();
-                document.execCommand('copy');
-                textarea.remove();
+            const copied = await copyTextToClipboard(value);
+            if (!copied) {
+                alert(@json(__('admin.message.copy_failed')));
+                return;
             }
 
             const label = trigger?.querySelector('[data-copy-label]');
@@ -407,6 +437,16 @@
                 trigger.disabled = false;
             }, 1200);
         }
+
+        document.addEventListener('click', function (event) {
+            const trigger = event.target.closest('[data-copy-image-url]');
+            if (!trigger) {
+                return;
+            }
+
+            event.preventDefault();
+            copyImageUrl(trigger, trigger.dataset.copyImageUrl || '');
+        });
 
         function toggleBatchActions() {
             const batchActions = document.getElementById('batch-actions');

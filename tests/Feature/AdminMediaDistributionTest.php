@@ -187,6 +187,74 @@ class AdminMediaDistributionTest extends TestCase
         $this->assertNotNull($run->completed_at);
     }
 
+    public function test_media_resource_sync_sends_pagination_aliases_when_fetching_more_than_default_remote_page(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+        [$superAdmin] = $this->createAdminWithSite('media_paged_alias_root_admin', 'super_admin');
+
+        $firstPage = [];
+        for ($i = 1; $i <= 200; $i++) {
+            $firstPage[] = [
+                'resource_id' => 82000 + $i,
+                'title' => 'Alias Paged Media '.$i,
+                'status' => 1,
+                'price' => '10.00',
+            ];
+        }
+
+        $secondPage = [];
+        for ($i = 1; $i <= 50; $i++) {
+            $secondPage[] = [
+                'resource_id' => 83000 + $i,
+                'title' => 'Alias Paged Media Continued '.$i,
+                'status' => 1,
+                'price' => '12.00',
+            ];
+        }
+
+        Http::fake([
+            '*/api/media/media_list' => function ($request) use ($firstPage, $secondPage) {
+                $payload = $this->httpRequestPayload($request);
+                $page = (int) ($payload['p'] ?? 1);
+
+                return Http::response([
+                    'code' => 1,
+                    'msg' => 'success',
+                    'data' => $page === 2 ? $secondPage : $firstPage,
+                ]);
+            },
+            '*/api/zi_media_api/media_list' => Http::response([
+                'code' => 1,
+                'msg' => 'success',
+                'data' => [],
+            ]),
+        ]);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.media-distribution.settings.update'), [
+                'api_base_url' => 'http://8.138.187.158:8082',
+                'api_key' => 'test-api-key',
+                'status' => 'active',
+            ])
+            ->assertRedirect(route('admin.media-distribution.settings.index'));
+
+        $run = MediaResourceSyncRun::query()->create([
+            'status' => 'pending',
+            'started_by_admin_id' => (int) $superAdmin->id,
+        ]);
+
+        (new ProcessMediaResourceSyncJob((int) $run->id))
+            ->handle(app(\App\Services\MediaDistribution\MediaResourceSyncService::class));
+
+        $this->assertDatabaseHas('media_resources', [
+            'source_type' => 'website_media',
+            'external_resource_id' => '83050',
+            'title' => 'Alias Paged Media Continued 50',
+        ]);
+        $this->assertSame(250, MediaResource::query()->where('source_type', 'website_media')->count());
+        $this->assertSame(250, (int) $run->fresh()->total_synced);
+    }
+
     public function test_super_admin_can_recharge_site_credits_and_update_media_sale_price(): void
     {
         $this->withoutMiddleware(ValidateCsrfToken::class);
@@ -1137,5 +1205,25 @@ class AdminMediaDistributionTest extends TestCase
         ]);
 
         return [$article, $resource];
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function httpRequestPayload($request): array
+    {
+        $data = $request->data();
+        $payload = [];
+
+        foreach ($data as $key => $value) {
+            if (is_array($value) && array_key_exists('name', $value)) {
+                $payload[(string) $value['name']] = $value['contents'] ?? '';
+                continue;
+            }
+
+            $payload[(string) $key] = $value;
+        }
+
+        return $payload;
     }
 }

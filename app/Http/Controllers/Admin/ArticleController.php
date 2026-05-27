@@ -47,6 +47,7 @@ class ArticleController extends Controller
             'stats' => $isTrashView ? $this->loadTrashStats() : $this->loadStats(),
             'filters' => $filters,
             'tasks' => $this->loadTaskOptions(),
+            'categories' => $this->loadCategoryOptions(),
             'authors' => $this->loadAuthorOptions(),
             'articlesI18n' => $this->articlesI18n(),
             'isTrashView' => $isTrashView,
@@ -331,6 +332,7 @@ class ArticleController extends Controller
      *     task_id: int,
      *     status: string,
      *     review_status: string,
+     *     category_id: int,
      *     author_id: int,
      *     date_from: string,
      *     date_to: string,
@@ -356,6 +358,7 @@ class ArticleController extends Controller
             'task_id' => max(0, (int) $request->query('task_id', 0)),
             'status' => $status,
             'review_status' => $reviewStatus,
+            'category_id' => max(0, (int) $request->query('category_id', 0)),
             'author_id' => max(0, (int) $request->query('author_id', 0)),
             'date_from' => $this->normalizeDateFilter((string) $request->query('date_from', '')),
             'date_to' => $this->normalizeDateFilter((string) $request->query('date_to', '')),
@@ -392,6 +395,7 @@ class ArticleController extends Controller
      *     task_id: int,
      *     status: string,
      *     review_status: string,
+     *     category_id: int,
      *     author_id: int,
      *     date_from: string,
      *     date_to: string,
@@ -424,6 +428,10 @@ class ArticleController extends Controller
 
         if ($filters['task_id'] > 0) {
             $query->where('task_id', $filters['task_id']);
+        }
+
+        if ($filters['category_id'] > 0) {
+            $query->where('category_id', $filters['category_id']);
         }
 
         if (($filters['trashed'] ?? false) === false && $filters['status'] !== '') {
@@ -512,6 +520,26 @@ class ArticleController extends Controller
                 ->map(fn (Task $task): array => [
                     'id' => (int) $task->id,
                     'name' => (string) $task->name,
+                ])
+                ->all();
+        } catch (QueryException) {
+            return [];
+        }
+    }
+
+    /**
+     * @return array<int, array{id: int, name: string}>
+     */
+    private function loadCategoryOptions(): array
+    {
+        try {
+            return Category::query()
+                ->select(['id', 'name'])
+                ->orderBy('name')
+                ->get()
+                ->map(fn (Category $category): array => [
+                    'id' => (int) $category->id,
+                    'name' => (string) $category->name,
                 ])
                 ->all();
         } catch (QueryException) {

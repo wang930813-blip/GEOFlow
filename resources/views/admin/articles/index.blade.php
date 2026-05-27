@@ -5,6 +5,7 @@
     $selectedTaskId = (int) ($filters['task_id'] ?? 0);
     $selectedStatus = (string) ($filters['status'] ?? '');
     $selectedReviewStatus = (string) ($filters['review_status'] ?? '');
+    $selectedCategoryId = (int) ($filters['category_id'] ?? 0);
     $selectedAuthorId = (int) ($filters['author_id'] ?? 0);
     $selectedDateFrom = str_replace('-', '/', (string) ($filters['date_from'] ?? ''));
     $selectedDateTo = str_replace('-', '/', (string) ($filters['date_to'] ?? ''));
@@ -161,13 +162,22 @@
                     @if($isTrashView)
                         <input type="hidden" name="trashed" value="1">
                     @endif
-                    <div class="grid grid-cols-1 md:grid-cols-6 gap-4">
+                    <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7">
                         <div>
                             <label class="block text-sm font-medium text-gray-700">{{ __('admin.articles.filters.task') }}</label>
                             <select name="task_id" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
                                 <option value="">{{ __('admin.articles.filters.all_tasks') }}</option>
                                 @foreach($tasks as $task)
                                     <option value="{{ (int) $task['id'] }}" @selected($selectedTaskId === (int) $task['id'])>{{ $task['name'] }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">{{ __('admin.articles.filters.category') }}</label>
+                            <select name="category_id" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                                <option value="">{{ __('admin.articles.filters.all_categories') }}</option>
+                                @foreach($categories as $category)
+                                    <option value="{{ (int) $category['id'] }}" @selected($selectedCategoryId === (int) $category['id'])>{{ $category['name'] }}</option>
                                 @endforeach
                             </select>
                         </div>
