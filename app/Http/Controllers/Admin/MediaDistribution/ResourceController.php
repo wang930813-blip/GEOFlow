@@ -27,13 +27,26 @@ class ResourceController extends Controller
         if ($sourceType !== '') {
             $query->where('source_type', $sourceType);
         }
-        if (filled($request->query('search'))) {
-            $query->where('title', 'like', '%'.(string) $request->query('search').'%');
+        $search = trim((string) $request->query('search', ''));
+        if ($search !== '') {
+            $like = '%'.$this->escapeLike(mb_strtolower($search)).'%';
+            $rawPayloadSearchSqls = $this->rawPayloadSearchSqls($query->getModel()->getConnection()->getDriverName());
+            $query->where(function ($builder) use ($like, $rawPayloadSearchSqls): void {
+                $builder
+                    ->whereRaw('LOWER(title) LIKE ?', [$like])
+                    ->orWhereRaw('LOWER(external_resource_id) LIKE ?', [$like])
+                    ->orWhereRaw('LOWER(category) LIKE ?', [$like])
+                    ->orWhereRaw('LOWER(COALESCE(remarks, \'\')) LIKE ?', [$like])
+                    ->orWhereRaw('LOWER(case_link) LIKE ?', [$like]);
+                foreach ($rawPayloadSearchSqls as $rawPayloadSearchSql) {
+                    $builder->orWhereRaw($rawPayloadSearchSql, [$like]);
+                }
+            });
         }
         if (filled($request->query('category'))) {
             $query->where('category', (string) $request->query('category'));
         }
-        $status = (string) $request->query('status', 'active');
+        $status = $request->query->has('status') ? (string) $request->query('status', '') : 'active';
         if (in_array($status, ['active', 'inactive'], true)) {
             $query->where('status', $status);
         }
@@ -60,7 +73,7 @@ class ResourceController extends Controller
                 ? Site::query()->orderBy('id')->get(['id', 'name'])
                 : collect(),
             'sourceType' => $sourceType,
-            'search' => (string) $request->query('search', ''),
+            'search' => $search,
             'category' => (string) $request->query('category', ''),
             'status' => $status,
             'minPrice' => (string) $request->query('min_price', ''),
@@ -148,5 +161,33 @@ class ResourceController extends Controller
         if (! auth('admin')->user()?->isSuperAdmin()) {
             throw ValidationException::withMessages(['permission' => '仅超级管理员可执行该操作']);
         }
+    }
+
+    private function escapeLike(string $value): string
+    {
+        return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $value);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function rawPayloadSearchSqls(string $driver): array
+    {
+        $keys = ['title', 'media_name', 'name', 'site_name', 'account_name', 'category', 'field', 'remarks', 'remark'];
+
+        $sql = [];
+        foreach ($keys as $key) {
+            $sql[] = match ($driver) {
+                'mysql' => "LOWER(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(raw_payload, '$.".$key."')), '')) LIKE ?",
+                'pgsql' => "LOWER(COALESCE(raw_payload->>'".$key."', '')) LIKE ?",
+                default => "LOWER(COALESCE(json_extract(raw_payload, '$.".$key."'), '')) LIKE ?",
+            };
+        }
+
+        $sql[] = $driver === 'mysql'
+            ? 'LOWER(COALESCE(CAST(raw_payload AS CHAR), \'\')) LIKE ?'
+            : 'LOWER(COALESCE(CAST(raw_payload AS TEXT), \'\')) LIKE ?';
+
+        return $sql;
     }
 }

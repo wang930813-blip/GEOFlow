@@ -21,7 +21,7 @@ class MediaResourceSyncService
             foreach ($this->client->listResources($sourceType) as $row) {
                 $resource = MediaResource::query()->firstOrNew([
                     'source_type' => $sourceType,
-                    'external_resource_id' => (string) ($row['resource_id'] ?? ''),
+                    'external_resource_id' => $this->firstFilled($row, ['resource_id', 'id', 'nid']),
                 ]);
                 if ((string) $resource->external_resource_id === '') {
                     continue;
@@ -29,10 +29,10 @@ class MediaResourceSyncService
 
                 $costPrice = $this->normalizeMoney($row['price'] ?? 0);
                 $resource->fill([
-                    'title' => trim((string) ($row['title'] ?? '')),
-                    'category' => trim((string) ($row['category'] ?? $row['field'] ?? '')),
-                    'remarks' => trim((string) ($row['remarks'] ?? '')),
-                    'case_link' => trim((string) ($row['case_link'] ?? '')),
+                    'title' => $this->firstFilled($row, ['title', 'media_name', 'name', 'site_name', 'account_name'], (string) $resource->external_resource_id),
+                    'category' => $this->firstFilled($row, ['category', 'field', 'type_name', 'class_name']),
+                    'remarks' => $this->firstFilled($row, ['remarks', 'remark', 'description', 'desc']),
+                    'case_link' => $this->firstFilled($row, ['case_link', 'case_url', 'url', 'link']),
                     'status' => ((string) ($row['status'] ?? '1')) === '1' ? 'active' : 'inactive',
                     'cost_price' => $costPrice,
                     'raw_payload' => $row,
@@ -55,5 +55,21 @@ class MediaResourceSyncService
     private function multiplyMoney(string $value, float $multiplier): string
     {
         return number_format(max(0, (float) $value * $multiplier), 2, '.', '');
+    }
+
+    /**
+     * @param  array<string,mixed>  $row
+     * @param  list<string>  $keys
+     */
+    private function firstFilled(array $row, array $keys, string $default = ''): string
+    {
+        foreach ($keys as $key) {
+            $value = $row[$key] ?? null;
+            if ($value !== null && trim((string) $value) !== '') {
+                return trim((string) $value);
+            }
+        }
+
+        return $default;
     }
 }

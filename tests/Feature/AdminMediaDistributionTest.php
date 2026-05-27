@@ -568,6 +568,13 @@ class AdminMediaDistributionTest extends TestCase
             ->assertSee('<option value="active" selected>可投稿</option>', false);
 
         $this->actingAs($admin, 'admin')
+            ->get(route('admin.media-distribution.resources.index').'?status=')
+            ->assertOk()
+            ->assertSee('Finance Media')
+            ->assertSee('Travel Media')
+            ->assertSee('<option value="" selected', false);
+
+        $this->actingAs($admin, 'admin')
             ->get(route('admin.media-distribution.resources.index', [
                 'category' => 'finance',
                 'status' => 'active',
@@ -577,6 +584,106 @@ class AdminMediaDistributionTest extends TestCase
             ->assertOk()
             ->assertSee('Finance Media')
             ->assertDontSee('Travel Media');
+    }
+
+    public function test_media_resource_search_matches_synced_media_name_aliases(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+        [$superAdmin] = $this->createAdminWithSite('media_search_root', 'super_admin');
+
+        Http::fake([
+            '*/api/media/media_list' => Http::response([
+                'code' => 1,
+                'msg' => 'success',
+                'data' => [
+                    [
+                        'resource_id' => 81001,
+                        'media_name' => 'Hong An Network',
+                        'remarks' => 'synced without title key',
+                        'status' => 1,
+                        'price' => '18.00',
+                    ],
+                ],
+            ]),
+            '*/api/zi_media_api/media_list' => Http::response([
+                'code' => 1,
+                'msg' => 'success',
+                'data' => [],
+            ]),
+        ]);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.media-distribution.settings.update'), [
+                'api_base_url' => 'http://8.138.187.158:8082',
+                'api_key' => 'test-api-key',
+                'status' => 'active',
+            ])
+            ->assertRedirect(route('admin.media-distribution.settings.index'));
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.media-distribution.resources.sync'))
+            ->assertRedirect(route('admin.media-distribution.resources.index'));
+
+        $this->assertDatabaseHas('media_resources', [
+            'external_resource_id' => '81001',
+            'title' => 'Hong An Network',
+        ]);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.media-distribution.resources.index', [
+                'search' => 'Hong An',
+            ]))
+            ->assertOk()
+            ->assertSee('Hong An Network');
+    }
+
+    public function test_media_resource_search_matches_legacy_raw_payload_media_name(): void
+    {
+        [$admin] = $this->createAdminWithSite('media_raw_search_admin', 'admin');
+
+        MediaResource::query()->create([
+            'source_type' => 'website_media',
+            'external_resource_id' => 'legacy-81001',
+            'title' => 'Legacy Payload Resource',
+            'status' => 'active',
+            'cost_price' => '18.00',
+            'sale_price' => '27.00',
+            'raw_payload' => [
+                'media_name' => 'Legacy Hong An Network',
+            ],
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.media-distribution.resources.index', [
+                'search' => 'Legacy Hong',
+            ]))
+            ->assertOk()
+            ->assertSee('Legacy Payload Resource');
+    }
+
+    public function test_media_resource_search_matches_chinese_media_name_in_raw_payload(): void
+    {
+        [$admin] = $this->createAdminWithSite('media_chinese_search_admin', 'admin');
+
+        MediaResource::query()->create([
+            'source_type' => 'website_media',
+            'external_resource_id' => 'hong-an',
+            'title' => '未映射标题',
+            'status' => 'active',
+            'cost_price' => '19.00',
+            'sale_price' => '28.50',
+            'raw_payload' => [
+                'media_name' => '红安网',
+                'field' => '新闻资讯',
+            ],
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.media-distribution.resources.index', [
+                'search' => '红安',
+            ]))
+            ->assertOk()
+            ->assertSee('未映射标题');
     }
 
     public function test_media_resource_list_shows_external_api_fields(): void

@@ -81,7 +81,7 @@
                 <div>
                     <label class="mb-1 block text-sm font-medium text-gray-700">状态</label>
                     <select name="status" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
-                        <option value="">全部</option>
+                        <option value="" @selected($status === '')>全部</option>
                         <option value="active" @selected($status === 'active')>可投稿</option>
                         <option value="inactive" @selected($status === 'inactive')>不可用</option>
                     </select>
