@@ -357,12 +357,34 @@ class ArticleController extends Controller
             'status' => $status,
             'review_status' => $reviewStatus,
             'author_id' => max(0, (int) $request->query('author_id', 0)),
-            'date_from' => trim((string) $request->query('date_from', '')),
-            'date_to' => trim((string) $request->query('date_to', '')),
+            'date_from' => $this->normalizeDateFilter((string) $request->query('date_from', '')),
+            'date_to' => $this->normalizeDateFilter((string) $request->query('date_to', '')),
             'search' => trim((string) $request->query('search', '')),
             'per_page' => min(100, max(10, (int) $request->query('per_page', 20) ?: 20)),
             'trashed' => $request->boolean('trashed'),
         ];
+    }
+
+    private function normalizeDateFilter(string $value): string
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return '';
+        }
+
+        if (preg_match('/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})$/', $value, $matches) !== 1) {
+            return '';
+        }
+
+        $year = (int) $matches[1];
+        $month = (int) $matches[2];
+        $day = (int) $matches[3];
+
+        if (! checkdate($month, $day, $year)) {
+            return '';
+        }
+
+        return sprintf('%04d-%02d-%02d', $year, $month, $day);
     }
 
     /**

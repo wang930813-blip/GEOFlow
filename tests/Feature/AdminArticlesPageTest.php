@@ -8,6 +8,7 @@ use App\Models\ArticleDistribution;
 use App\Models\Author;
 use App\Models\Category;
 use App\Models\DistributionChannel;
+use App\Models\Site;
 use App\Models\SiteSetting;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -111,14 +112,23 @@ class AdminArticlesPageTest extends TestCase
             'role' => 'admin',
             'status' => 'active',
         ]);
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'Article Badges Site',
+            'status' => 'active',
+        ]);
+        $site->members()->attach((int) $admin->id, ['role' => 'owner']);
         $category = Category::query()->create([
+            'site_id' => (int) $site->id,
             'name' => '科技资讯',
             'slug' => 'tech',
         ]);
         $author = Author::query()->create([
+            'site_id' => (int) $site->id,
             'name' => 'GEOFlow',
         ]);
         Article::query()->create([
+            'site_id' => (int) $site->id,
             'title' => '后台标签展示文章',
             'slug' => 'admin-badges-article',
             'excerpt' => '摘要',
@@ -133,6 +143,7 @@ class AdminArticlesPageTest extends TestCase
         ]);
 
         $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
             ->get(route('admin.articles.index'))
             ->assertOk()
             ->assertSee(__('admin.articles.badge.hot'))
@@ -149,20 +160,30 @@ class AdminArticlesPageTest extends TestCase
             'role' => 'admin',
             'status' => 'active',
         ]);
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'Article Distribution Site',
+            'status' => 'active',
+        ]);
+        $site->members()->attach((int) $admin->id, ['role' => 'owner']);
         $category = Category::query()->create([
+            'site_id' => (int) $site->id,
             'name' => '分发分类',
             'slug' => 'distribution-category',
         ]);
         $author = Author::query()->create([
+            'site_id' => (int) $site->id,
             'name' => 'GEOFlow',
         ]);
         $channel = DistributionChannel::query()->create([
+            'site_id' => (int) $site->id,
             'name' => '目标站点',
             'domain' => 'target.example.com',
             'endpoint_url' => 'https://target.example.com/geoflow/agent',
             'status' => 'active',
         ]);
         $article = Article::query()->create([
+            'site_id' => (int) $site->id,
             'title' => '分发状态展示文章',
             'slug' => 'distribution-status-article',
             'excerpt' => '摘要',
@@ -174,6 +195,7 @@ class AdminArticlesPageTest extends TestCase
             'published_at' => now(),
         ]);
         ArticleDistribution::query()->create([
+            'site_id' => (int) $site->id,
             'article_id' => $article->id,
             'distribution_channel_id' => $channel->id,
             'action' => 'publish',
@@ -182,9 +204,78 @@ class AdminArticlesPageTest extends TestCase
         ]);
 
         $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
             ->get(route('admin.articles.index'))
             ->assertOk()
             ->assertSee(__('admin.distribution.article_status.synced'));
+    }
+
+    public function test_article_date_filters_display_slash_format_and_accept_slash_input(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'articles_date_filter_admin',
+            'password' => 'secret-123',
+            'email' => 'articles-date-filter@example.com',
+            'display_name' => 'Articles Date Filter Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'Article Date Filter Site',
+            'status' => 'active',
+        ]);
+        $site->members()->attach((int) $admin->id, ['role' => 'owner']);
+        $category = Category::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Date Filter Category',
+            'slug' => 'date-filter-category',
+        ]);
+        $author = Author::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Date Filter Author',
+        ]);
+
+        $insideArticle = Article::query()->create([
+            'site_id' => (int) $site->id,
+            'title' => 'Inside Date Range Article',
+            'slug' => 'inside-date-range-article',
+            'excerpt' => 'Inside',
+            'content' => 'Inside content',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+        ]);
+        $insideArticle->created_at = '2026-05-27 10:00:00';
+        $insideArticle->save();
+
+        $outsideArticle = Article::query()->create([
+            'site_id' => (int) $site->id,
+            'title' => 'Outside Date Range Article',
+            'slug' => 'outside-date-range-article',
+            'excerpt' => 'Outside',
+            'content' => 'Outside content',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+        ]);
+        $outsideArticle->created_at = '2026-05-25 10:00:00';
+        $outsideArticle->save();
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.articles.index', [
+                'date_from' => '2026/05/27',
+                'date_to' => '2026/05/27',
+            ]))
+            ->assertOk()
+            ->assertSee('Inside Date Range Article')
+            ->assertDontSee('Outside Date Range Article')
+            ->assertSee('name="date_from"', false)
+            ->assertSee('placeholder="yyyy/mm/dd"', false)
+            ->assertSee('value="2026/05/27"', false);
     }
 
     public function test_admin_brand_stays_geoflow_when_public_site_name_changes(): void

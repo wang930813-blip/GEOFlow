@@ -6,8 +6,8 @@
     $selectedStatus = (string) ($filters['status'] ?? '');
     $selectedReviewStatus = (string) ($filters['review_status'] ?? '');
     $selectedAuthorId = (int) ($filters['author_id'] ?? 0);
-    $selectedDateFrom = (string) ($filters['date_from'] ?? '');
-    $selectedDateTo = (string) ($filters['date_to'] ?? '');
+    $selectedDateFrom = str_replace('-', '/', (string) ($filters['date_from'] ?? ''));
+    $selectedDateTo = str_replace('-', '/', (string) ($filters['date_to'] ?? ''));
     $selectedSearch = (string) ($filters['search'] ?? '');
     $selectedPerPage = (int) ($filters['per_page'] ?? 20);
     $selectedTaskName = '';
@@ -203,11 +203,17 @@
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700">{{ __('admin.articles.filters.date_from') }}</label>
-                            <input type="date" name="date_from" value="{{ $selectedDateFrom }}" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                            <div class="relative mt-1">
+                                <input type="text" name="date_from" value="{{ $selectedDateFrom }}" inputmode="numeric" pattern="\d{4}/\d{1,2}/\d{1,2}" placeholder="yyyy/mm/dd" class="block w-full rounded-md border-gray-300 pr-10 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                                <i data-lucide="calendar-days" class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"></i>
+                            </div>
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700">{{ __('admin.articles.filters.date_to') }}</label>
-                            <input type="date" name="date_to" value="{{ $selectedDateTo }}" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                            <div class="relative mt-1">
+                                <input type="text" name="date_to" value="{{ $selectedDateTo }}" inputmode="numeric" pattern="\d{4}/\d{1,2}/\d{1,2}" placeholder="yyyy/mm/dd" class="block w-full rounded-md border-gray-300 pr-10 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                                <i data-lucide="calendar-days" class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"></i>
+                            </div>
                         </div>
                     </div>
                     <div class="flex items-end space-x-4">
