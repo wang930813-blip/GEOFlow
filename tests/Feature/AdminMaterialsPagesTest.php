@@ -1032,6 +1032,8 @@ class AdminMaterialsPagesTest extends TestCase
             ->assertOk()
             ->assertSee('data-copy-image-url="https://cdn.example.com/assets/copy-demo.png?token=abc123"', false)
             ->assertSee('data-copy-label', false)
+            ->assertSee('image-overlay pointer-events-none absolute inset-0', false)
+            ->assertSee('relative z-10 border-t border-gray-100 bg-white p-2', false)
             ->assertSee('data-image-copy-toast', false)
             ->assertSee('showImageCopyToast', false)
             ->assertSee(__('admin.message.copied'))

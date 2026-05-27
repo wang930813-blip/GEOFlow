@@ -212,12 +212,12 @@
                                     class="w-full aspect-square object-cover"
                                     onclick="showImageModal(@js($imageUrl), @js((string) ($image->original_name ?? '')), '{{ (int) ($image->width ?? 0) }}x{{ (int) ($image->height ?? 0) }}', @js($formatSize((int) ($image->file_size ?? 0))), @js($imageUrl))"
                                 >
-                                <div class="image-overlay absolute inset-0 bg-black/70 text-white flex flex-col justify-center items-center opacity-0 transition-opacity">
+                                <div class="image-overlay pointer-events-none absolute inset-0 bg-black/70 text-white flex flex-col justify-center items-center opacity-0 transition-opacity">
                                     <p class="text-xs text-center mb-2 px-2 break-all">{{ (string) ($image->original_name ?? '') }}</p>
                                     <p class="text-xs text-gray-300">{{ (int) ($image->width ?? 0) }}x{{ (int) ($image->height ?? 0) }}</p>
                                     <p class="text-xs text-gray-300">{{ $formatSize((int) ($image->file_size ?? 0)) }}</p>
                                 </div>
-                                <div class="border-t border-gray-100 bg-white p-2">
+                                <div class="relative z-10 border-t border-gray-100 bg-white p-2">
                                     <div class="text-[11px] font-medium text-gray-500">{{ $urlLabel }}</div>
                                     <div class="mt-1 flex items-center gap-2">
                                         <a href="{{ $imageUrl }}" target="_blank" rel="noopener noreferrer" class="min-w-0 flex-1 truncate text-xs text-blue-600 hover:text-blue-800" title="{{ $imageUrl }}">
