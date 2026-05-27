@@ -135,11 +135,17 @@
                     <h2 class="text-sm font-semibold text-gray-900">批量投稿</h2>
                     <p class="text-xs text-gray-500">勾选多个媒体后进入下一页，可选择多篇文章一起投稿。</p>
                 </div>
-                <form id="bulk-media-submit-form" method="GET" action="{{ route('admin.media-distribution.submissions.index') }}"></form>
-                <button form="bulk-media-submit-form" type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 text-sm font-medium text-white hover:bg-indigo-700">
-                    <i data-lucide="send" class="h-4 w-4"></i>
-                    批量投稿
-                </button>
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <div class="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 text-sm text-slate-600">
+                        <span>媒体总数</span>
+                        <span class="font-semibold text-slate-900">{{ $resources->total() }} 条</span>
+                    </div>
+                    <form id="bulk-media-submit-form" method="GET" action="{{ route('admin.media-distribution.submissions.index') }}"></form>
+                    <button form="bulk-media-submit-form" type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 text-sm font-medium text-white hover:bg-indigo-700">
+                        <i data-lucide="send" class="h-4 w-4"></i>
+                        批量投稿
+                    </button>
+                </div>
             </div>
             <div class="overflow-x-auto">
                 <table class="min-w-max divide-y divide-slate-200">

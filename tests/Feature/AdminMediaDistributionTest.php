@@ -664,6 +664,8 @@ class AdminMediaDistributionTest extends TestCase
             ->assertOk()
             ->assertSee('Finance Media')
             ->assertSee('Travel Media')
+            ->assertSee('媒体总数')
+            ->assertSee('2 条')
             ->assertSee('<option value="all" selected', false);
 
         $this->actingAs($admin, 'admin')
