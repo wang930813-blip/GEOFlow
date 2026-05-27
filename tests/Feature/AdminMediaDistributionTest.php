@@ -97,6 +97,62 @@ class AdminMediaDistributionTest extends TestCase
         ]);
     }
 
+    public function test_media_resource_sync_reads_following_pages_until_exhausted(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+        [$superAdmin] = $this->createAdminWithSite('media_paged_root_admin', 'super_admin');
+
+        $firstPage = [];
+        for ($i = 1; $i <= 100; $i++) {
+            $firstPage[] = [
+                'resource_id' => 80000 + $i,
+                'title' => 'Paged Media '.$i,
+                'status' => 1,
+                'price' => '10.00',
+            ];
+        }
+
+        Http::fake([
+            '*/api/media/media_list' => Http::sequence()
+                ->push(['code' => 1, 'msg' => 'success', 'data' => $firstPage])
+                ->push(['code' => 1, 'msg' => 'success', 'data' => [
+                    [
+                        'resource_id' => 81001,
+                        'media_name' => '红安网',
+                        'field' => '新闻资讯',
+                        'status' => 1,
+                        'price' => '19.00',
+                    ],
+                ]]),
+            '*/api/zi_media_api/media_list' => Http::response([
+                'code' => 1,
+                'msg' => 'success',
+                'data' => [],
+            ]),
+        ]);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.media-distribution.settings.update'), [
+                'api_base_url' => 'http://8.138.187.158:8082',
+                'api_key' => 'test-api-key',
+                'status' => 'active',
+            ])
+            ->assertRedirect(route('admin.media-distribution.settings.index'));
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.media-distribution.resources.sync'))
+            ->assertRedirect(route('admin.media-distribution.resources.index'));
+
+        $this->assertDatabaseHas('media_resources', [
+            'source_type' => 'website_media',
+            'external_resource_id' => '81001',
+            'title' => '红安网',
+            'category' => '新闻资讯',
+            'cost_price' => '19.00',
+        ]);
+        $this->assertSame(101, MediaResource::query()->where('source_type', 'website_media')->count());
+    }
+
     public function test_super_admin_can_recharge_site_credits_and_update_media_sale_price(): void
     {
         $this->withoutMiddleware(ValidateCsrfToken::class);

@@ -16,11 +16,35 @@ class MediaDistributionClient
      */
     public function listResources(string $sourceType): array
     {
-        $data = $this->post($sourceType, 'media_list', [
-            'page_size' => '100',
-        ]);
+        $pageSize = max(1, (int) config('media_distribution.page_size', 100));
+        $maxPages = max(1, (int) config('media_distribution.max_pages', 200));
+        $resources = [];
+        $seenPageSignatures = [];
 
-        return $this->extractList($data);
+        for ($page = 1; $page <= $maxPages; $page++) {
+            $data = $this->post($sourceType, 'media_list', [
+                'page' => (string) $page,
+                'page_size' => (string) $pageSize,
+            ]);
+            $list = $this->extractList($data);
+            if ($list === []) {
+                break;
+            }
+
+            $signature = $this->pageSignature($list);
+            if (isset($seenPageSignatures[$signature])) {
+                break;
+            }
+            $seenPageSignatures[$signature] = true;
+
+            array_push($resources, ...$list);
+
+            if (count($list) < $pageSize) {
+                break;
+            }
+        }
+
+        return $resources;
     }
 
     /**
@@ -125,5 +149,16 @@ class MediaDistributionClient
         }
 
         return [];
+    }
+
+    /**
+     * @param  array<int, array<string,mixed>>  $list
+     */
+    private function pageSignature(array $list): string
+    {
+        return hash('sha256', json_encode(array_map(
+            static fn (array $row): string => (string) ($row['resource_id'] ?? $row['id'] ?? $row['nid'] ?? json_encode($row)),
+            $list
+        )) ?: '');
     }
 }
