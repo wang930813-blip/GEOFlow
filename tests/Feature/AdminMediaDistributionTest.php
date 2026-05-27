@@ -568,11 +568,13 @@ class AdminMediaDistributionTest extends TestCase
             ->assertSee('<option value="active" selected>可投稿</option>', false);
 
         $this->actingAs($admin, 'admin')
-            ->get(route('admin.media-distribution.resources.index').'?status=')
+            ->get(route('admin.media-distribution.resources.index', [
+                'status' => 'all',
+            ]))
             ->assertOk()
             ->assertSee('Finance Media')
             ->assertSee('Travel Media')
-            ->assertSee('<option value="" selected', false);
+            ->assertSee('<option value="all" selected', false);
 
         $this->actingAs($admin, 'admin')
             ->get(route('admin.media-distribution.resources.index', [

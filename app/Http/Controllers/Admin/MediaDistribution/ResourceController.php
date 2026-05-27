@@ -47,6 +47,9 @@ class ResourceController extends Controller
             $query->where('category', (string) $request->query('category'));
         }
         $status = $request->query->has('status') ? (string) $request->query('status', '') : 'active';
+        if ($status === 'all') {
+            $status = '';
+        }
         if (in_array($status, ['active', 'inactive'], true)) {
             $query->where('status', $status);
         }
