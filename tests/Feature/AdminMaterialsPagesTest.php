@@ -1031,7 +1031,11 @@ class AdminMaterialsPagesTest extends TestCase
             ->get(route('admin.image-libraries.detail', ['libraryId' => (int) $imageLibrary->id]))
             ->assertOk()
             ->assertSee('data-copy-image-url="https://cdn.example.com/assets/copy-demo.png?token=abc123"', false)
-            ->assertSee('data-copy-label', false);
+            ->assertSee('data-copy-label', false)
+            ->assertSee('data-image-copy-toast', false)
+            ->assertSee('showImageCopyToast', false)
+            ->assertSee(__('admin.message.copied'))
+            ->assertSee(__('admin.message.copy_failed'));
     }
 
     public function test_admin_can_manage_keyword_and_title_details(): void

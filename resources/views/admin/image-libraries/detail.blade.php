@@ -27,10 +27,23 @@
     if ($copiedLabel === 'admin.message.copied') {
         $copiedLabel = '已复制';
     }
+    $copyFailedLabel = __('admin.message.copy_failed');
+    if ($copyFailedLabel === 'admin.message.copy_failed') {
+        $copyFailedLabel = '复制失败，请手动复制 URL';
+    }
 @endphp
 
 @section('content')
     <div class="px-4 sm:px-0">
+        <div
+            class="fixed right-4 top-4 z-[70] hidden max-w-sm rounded-md border px-4 py-3 text-sm font-medium shadow-lg"
+            data-image-copy-toast
+            data-copy-success-message="{{ $copiedLabel }}"
+            data-copy-failed-message="{{ $copyFailedLabel }}"
+            role="status"
+            aria-live="polite"
+        ></div>
+
         <div class="mb-8">
             <div class="flex items-center justify-between">
                 <div class="flex items-center space-x-4">
@@ -412,17 +425,56 @@
             return copied;
         }
 
+        let imageCopyToastTimer = null;
+
+        function imageCopyMessage(type) {
+            const toast = document.querySelector('[data-image-copy-toast]');
+            if (type === 'success') {
+                return toast?.dataset.copySuccessMessage || @json($copiedLabel);
+            }
+
+            return toast?.dataset.copyFailedMessage || @json($copyFailedLabel);
+        }
+
+        function showImageCopyToast(message, type) {
+            const toast = document.querySelector('[data-image-copy-toast]');
+            if (!toast) {
+                alert(message);
+                return;
+            }
+
+            if (imageCopyToastTimer) {
+                window.clearTimeout(imageCopyToastTimer);
+            }
+
+            toast.textContent = message;
+            toast.className = [
+                'fixed right-4 top-4 z-[70] max-w-sm rounded-md border px-4 py-3 text-sm font-medium shadow-lg',
+                type === 'success'
+                    ? 'border-green-200 bg-green-50 text-green-700'
+                    : 'border-red-200 bg-red-50 text-red-700',
+            ].join(' ');
+
+            imageCopyToastTimer = window.setTimeout(() => {
+                toast.classList.add('hidden');
+            }, 2400);
+        }
+
         async function copyImageUrl(trigger, url) {
             const value = String(url || '').trim();
             if (value === '') {
+                showImageCopyToast(imageCopyMessage('error'), 'error');
                 return;
             }
 
             const copied = await copyTextToClipboard(value);
             if (!copied) {
-                alert(@json(__('admin.message.copy_failed')));
+                showImageCopyToast(imageCopyMessage('error'), 'error');
+                window.prompt(imageCopyMessage('error'), value);
                 return;
             }
+
+            showImageCopyToast(imageCopyMessage('success'), 'success');
 
             const label = trigger?.querySelector('[data-copy-label]');
             if (!label) {
