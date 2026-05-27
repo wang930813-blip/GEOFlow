@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\ProcessMediaResourceSyncJob;
 use App\Models\Admin;
 use App\Models\Article;
 use App\Models\Author;
@@ -9,12 +10,14 @@ use App\Models\Category;
 use App\Models\MediaApiSetting;
 use App\Models\MediaResource;
 use App\Models\MediaResourceSitePrice;
+use App\Models\MediaResourceSyncRun;
 use App\Models\MediaSubmission;
 use App\Models\Site;
 use App\Models\SiteCreditAccount;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 class AdminMediaDistributionTest extends TestCase
@@ -77,9 +80,13 @@ class AdminMediaDistributionTest extends TestCase
             ])
             ->assertRedirect(route('admin.media-distribution.settings.index'));
 
-        $this->actingAs($superAdmin, 'admin')
-            ->post(route('admin.media-distribution.resources.sync'))
-            ->assertRedirect(route('admin.media-distribution.resources.index'));
+        $run = MediaResourceSyncRun::query()->create([
+            'status' => 'pending',
+            'started_by_admin_id' => (int) $superAdmin->id,
+        ]);
+
+        (new ProcessMediaResourceSyncJob((int) $run->id))
+            ->handle(app(\App\Services\MediaDistribution\MediaResourceSyncService::class));
 
         $this->assertDatabaseHas('media_resources', [
             'source_type' => 'website_media',
@@ -95,6 +102,23 @@ class AdminMediaDistributionTest extends TestCase
             'cost_price' => '40.00',
             'sale_price' => '40.00',
         ]);
+    }
+
+    public function test_super_admin_sync_request_creates_run_and_dispatches_job(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+        Queue::fake();
+        [$superAdmin] = $this->createAdminWithSite('media_async_root_admin', 'super_admin');
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.media-distribution.resources.sync'))
+            ->assertRedirect(route('admin.media-distribution.resources.index'));
+
+        $run = MediaResourceSyncRun::query()->first();
+        $this->assertNotNull($run);
+        $this->assertSame('pending', (string) $run->status);
+        $this->assertSame((int) $superAdmin->id, (int) $run->started_by_admin_id);
+        Queue::assertPushed(ProcessMediaResourceSyncJob::class, 1);
     }
 
     public function test_media_resource_sync_reads_following_pages_until_exhausted(): void
@@ -139,9 +163,13 @@ class AdminMediaDistributionTest extends TestCase
             ])
             ->assertRedirect(route('admin.media-distribution.settings.index'));
 
-        $this->actingAs($superAdmin, 'admin')
-            ->post(route('admin.media-distribution.resources.sync'))
-            ->assertRedirect(route('admin.media-distribution.resources.index'));
+        $run = MediaResourceSyncRun::query()->create([
+            'status' => 'pending',
+            'started_by_admin_id' => (int) $superAdmin->id,
+        ]);
+
+        (new ProcessMediaResourceSyncJob((int) $run->id))
+            ->handle(app(\App\Services\MediaDistribution\MediaResourceSyncService::class));
 
         $this->assertDatabaseHas('media_resources', [
             'source_type' => 'website_media',
@@ -151,6 +179,12 @@ class AdminMediaDistributionTest extends TestCase
             'cost_price' => '19.00',
         ]);
         $this->assertSame(101, MediaResource::query()->where('source_type', 'website_media')->count());
+        $run = MediaResourceSyncRun::query()->latest('id')->first();
+        $this->assertNotNull($run);
+        $this->assertSame('completed', (string) $run->status);
+        $this->assertSame(101, (int) $run->website_synced);
+        $this->assertSame(101, (int) $run->total_synced);
+        $this->assertNotNull($run->completed_at);
     }
 
     public function test_super_admin_can_recharge_site_credits_and_update_media_sale_price(): void
@@ -678,9 +712,13 @@ class AdminMediaDistributionTest extends TestCase
             ])
             ->assertRedirect(route('admin.media-distribution.settings.index'));
 
-        $this->actingAs($superAdmin, 'admin')
-            ->post(route('admin.media-distribution.resources.sync'))
-            ->assertRedirect(route('admin.media-distribution.resources.index'));
+        $run = MediaResourceSyncRun::query()->create([
+            'status' => 'pending',
+            'started_by_admin_id' => (int) $superAdmin->id,
+        ]);
+
+        (new ProcessMediaResourceSyncJob((int) $run->id))
+            ->handle(app(\App\Services\MediaDistribution\MediaResourceSyncService::class));
 
         $this->assertDatabaseHas('media_resources', [
             'external_resource_id' => '81001',

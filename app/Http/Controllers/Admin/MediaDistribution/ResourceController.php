@@ -3,12 +3,14 @@
 namespace App\Http\Controllers\Admin\MediaDistribution;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\ProcessMediaResourceSyncJob;
 use App\Models\MediaApiSetting;
 use App\Models\MediaResource;
 use App\Models\MediaResourceSitePrice;
+use App\Models\MediaResourceSyncRun;
 use App\Models\Site;
-use App\Services\MediaDistribution\MediaResourceSyncService;
 use App\Support\AdminWeb;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -83,17 +85,41 @@ class ResourceController extends Controller
             'maxPrice' => (string) $request->query('max_price', ''),
             'priceMultiplier' => number_format((float) ($setting?->price_multiplier ?? 1), 2, '.', ''),
             'isSuperAdmin' => (bool) auth('admin')->user()?->isSuperAdmin(),
+            'latestSyncRun' => MediaResourceSyncRun::query()->latest('id')->first(),
         ]);
     }
 
-    public function sync(MediaResourceSyncService $syncService): RedirectResponse
+    public function sync(): RedirectResponse
     {
         $this->ensureSuperAdmin();
-        $result = $syncService->syncAll();
+        $run = MediaResourceSyncRun::query()
+            ->whereIn('status', ['pending', 'running'])
+            ->latest('id')
+            ->first();
+
+        if (! $run) {
+            $run = MediaResourceSyncRun::query()->create([
+                'status' => 'pending',
+                'started_by_admin_id' => (int) auth('admin')->id(),
+            ]);
+
+            ProcessMediaResourceSyncJob::dispatch((int) $run->id)->onQueue('distribution');
+        }
 
         return redirect()
             ->route('admin.media-distribution.resources.index')
-            ->with('message', '媒体资源同步完成，共处理 '.$result['synced'].' 条');
+            ->with('message', '媒体资源同步任务已开始，请稍后查看进度');
+    }
+
+    public function syncStatus(): JsonResponse
+    {
+        $this->ensureSuperAdmin();
+
+        $run = MediaResourceSyncRun::query()->latest('id')->first();
+
+        return response()->json([
+            'run' => $run ? $this->syncRunPayload($run) : null,
+        ]);
     }
 
     public function updatePrice(Request $request, MediaResource $resource): RedirectResponse
@@ -169,6 +195,25 @@ class ResourceController extends Controller
     private function escapeLike(string $value): string
     {
         return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $value);
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function syncRunPayload(MediaResourceSyncRun $run): array
+    {
+        return [
+            'id' => (int) $run->id,
+            'status' => (string) $run->status,
+            'current_source_type' => (string) $run->current_source_type,
+            'current_page' => (int) $run->current_page,
+            'website_synced' => (int) $run->website_synced,
+            'zi_media_synced' => (int) $run->zi_media_synced,
+            'total_synced' => (int) $run->total_synced,
+            'last_error_message' => (string) ($run->last_error_message ?? ''),
+            'started_at' => $run->started_at?->toDateTimeString(),
+            'completed_at' => $run->completed_at?->toDateTimeString(),
+        ];
     }
 
     /**

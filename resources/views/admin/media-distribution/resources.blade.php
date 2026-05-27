@@ -57,6 +57,29 @@
                     </div>
                 </div>
             </form>
+
+            @if ($latestSyncRun)
+                <div class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <div class="text-sm font-semibold text-gray-900">资源同步状态</div>
+                            <div class="mt-1 text-xs text-gray-500">
+                                状态：{{ $latestSyncRun->status }}
+                                @if($latestSyncRun->current_source_type !== '')
+                                    / {{ $latestSyncRun->current_source_type }} 第 {{ $latestSyncRun->current_page }} 页
+                                @endif
+                                / 已同步 {{ $latestSyncRun->total_synced }} 条
+                            </div>
+                            @if($latestSyncRun->last_error_message)
+                                <div class="mt-1 text-xs text-red-600">{{ $latestSyncRun->last_error_message }}</div>
+                            @endif
+                        </div>
+                        <div class="text-xs text-gray-500">
+                            网站媒体 {{ $latestSyncRun->website_synced }} 条 / 自媒体 {{ $latestSyncRun->zi_media_synced }} 条
+                        </div>
+                    </div>
+                </div>
+            @endif
         @endif
 
         <form method="GET" action="{{ route('admin.media-distribution.resources.index') }}" class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">

@@ -5,6 +5,8 @@ namespace App\Services\MediaDistribution;
 use App\Models\MediaApiSetting;
 use App\Models\MediaResource;
 use App\Support\GeoFlow\ApiKeyCrypto;
+use Generator;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 
 class MediaDistributionClient
@@ -16,16 +18,34 @@ class MediaDistributionClient
      */
     public function listResources(string $sourceType): array
     {
+        $resources = [];
+
+        foreach ($this->resourcePages($sourceType) as $list) {
+            array_push($resources, ...$list);
+        }
+
+        return $resources;
+    }
+
+    /**
+     * @return Generator<int, array<int, array<string,mixed>>>
+     */
+    public function resourcePages(string $sourceType): Generator
+    {
         $pageSize = max(1, (int) config('media_distribution.page_size', 100));
         $maxPages = max(1, (int) config('media_distribution.max_pages', 200));
-        $resources = [];
         $seenPageSignatures = [];
 
         for ($page = 1; $page <= $maxPages; $page++) {
-            $data = $this->post($sourceType, 'media_list', [
-                'page' => (string) $page,
-                'page_size' => (string) $pageSize,
-            ]);
+            try {
+                $data = $this->post($sourceType, 'media_list', [
+                    'page' => (string) $page,
+                    'page_size' => (string) $pageSize,
+                ]);
+            } catch (ConnectionException $exception) {
+                throw new MediaDistributionException('媒体资源同步第 '.$page.' 页请求失败：'.$exception->getMessage(), previous: $exception);
+            }
+
             $list = $this->extractList($data);
             if ($list === []) {
                 break;
@@ -37,14 +57,12 @@ class MediaDistributionClient
             }
             $seenPageSignatures[$signature] = true;
 
-            array_push($resources, ...$list);
+            yield $page => $list;
 
             if (count($list) < $pageSize) {
                 break;
             }
         }
-
-        return $resources;
     }
 
     /**
@@ -104,6 +122,7 @@ class MediaDistributionClient
         $response = Http::asMultipart()
             ->timeout((int) config('media_distribution.timeout', 30))
             ->connectTimeout((int) config('media_distribution.connect_timeout', 10))
+            ->retry(2, 500)
             ->post($baseUrl.$path, ['api_key' => $apiKey] + $payload);
 
         if (! $response->successful()) {
