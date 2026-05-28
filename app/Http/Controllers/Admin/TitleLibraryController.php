@@ -52,7 +52,9 @@ class TitleLibraryController extends Controller
         $library = TitleLibrary::query()->whereKey($libraryId)->firstOrFail();
 
         $titles = $this->loadDetailTitles($libraryId, '');
-        $usageTotal = (int) (Title::query()->where('library_id', $libraryId)->sum('used_count') ?? 0);
+        $usageTotal = (int) (Title::query()
+            ->where('library_id', $libraryId)
+            ->sum(DB::raw($this->titleUsageCountExpression())) ?? 0);
 
         return view('admin.title-libraries.detail', [
             'pageTitle' => (string) $library->name.__('admin.title_detail.page_title_suffix'),
@@ -516,6 +518,8 @@ class TitleLibraryController extends Controller
     private function loadDetailTitles(int $libraryId, string $search): LengthAwarePaginator
     {
         $query = Title::query()
+            ->select('titles.*')
+            ->selectRaw($this->titleUsageCountExpression().' AS display_usage_count')
             ->where('library_id', $libraryId)
             ->orderByDesc('created_at');
         if ($search !== '') {
@@ -617,6 +621,11 @@ class TitleLibraryController extends Controller
         TitleLibrary::query()->whereKey($libraryId)->update([
             'title_count' => $count,
         ]);
+    }
+
+    private function titleUsageCountExpression(): string
+    {
+        return 'CASE WHEN COALESCE(usage_count, 0) > COALESCE(used_count, 0) THEN COALESCE(usage_count, 0) ELSE COALESCE(used_count, 0) END';
     }
 
     /**

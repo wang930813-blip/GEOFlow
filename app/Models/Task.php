@@ -18,6 +18,7 @@ class Task extends Model
         'site_id',
         'name',
         'title_library_id',
+        'fixed_title_id',
         'image_library_id',
         'image_mode',
         'image_count',
@@ -57,6 +58,7 @@ class Task extends Model
     {
         return [
             'title_library_id' => 'integer',
+            'fixed_title_id' => 'integer',
             'site_id' => 'integer',
             'image_library_id' => 'integer',
             'image_mode' => 'string',
@@ -91,6 +93,11 @@ class Task extends Model
     public function titleLibrary(): BelongsTo
     {
         return $this->belongsTo(TitleLibrary::class, 'title_library_id');
+    }
+
+    public function fixedTitle(): BelongsTo
+    {
+        return $this->belongsTo(Title::class, 'fixed_title_id');
     }
 
     public function imageLibrary(): BelongsTo

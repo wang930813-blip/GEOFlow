@@ -9,11 +9,12 @@ use App\Models\Author;
 use App\Models\Category;
 use App\Models\MediaApiSetting;
 use App\Models\MediaResource;
-use App\Models\MediaResourceSitePrice;
 use App\Models\MediaResourceSyncRun;
 use App\Models\MediaSubmission;
 use App\Models\Site;
 use App\Models\SiteCreditAccount;
+use App\Models\SiteCreditLedger;
+use App\Services\MediaDistribution\MediaResourceSyncService;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -86,7 +87,7 @@ class AdminMediaDistributionTest extends TestCase
         ]);
 
         (new ProcessMediaResourceSyncJob((int) $run->id))
-            ->handle(app(\App\Services\MediaDistribution\MediaResourceSyncService::class));
+            ->handle(app(MediaResourceSyncService::class));
 
         $this->assertDatabaseHas('media_resources', [
             'source_type' => 'website_media',
@@ -169,7 +170,7 @@ class AdminMediaDistributionTest extends TestCase
         ]);
 
         (new ProcessMediaResourceSyncJob((int) $run->id))
-            ->handle(app(\App\Services\MediaDistribution\MediaResourceSyncService::class));
+            ->handle(app(MediaResourceSyncService::class));
 
         $this->assertDatabaseHas('media_resources', [
             'source_type' => 'website_media',
@@ -244,7 +245,7 @@ class AdminMediaDistributionTest extends TestCase
         ]);
 
         (new ProcessMediaResourceSyncJob((int) $run->id))
-            ->handle(app(\App\Services\MediaDistribution\MediaResourceSyncService::class));
+            ->handle(app(MediaResourceSyncService::class));
 
         $this->assertDatabaseHas('media_resources', [
             'source_type' => 'website_media',
@@ -415,6 +416,52 @@ class AdminMediaDistributionTest extends TestCase
         $submission->refresh();
         $this->assertSame('published', $submission->status);
         $this->assertSame('https://example.com/published.html', $submission->published_url);
+    }
+
+    public function test_media_submission_uses_form_urlencoded_payload_for_remote_send(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+        [$admin, $site] = $this->createAdminWithSite('media_form_submit_admin', 'admin');
+        [$article, $resource] = $this->createArticleAndResource($site, 'form-encoded-submit');
+        SiteCreditAccount::query()->create([
+            'site_id' => $site->id,
+            'balance' => '100.00',
+            'frozen_balance' => '0.00',
+            'total_recharged' => '100.00',
+            'total_consumed' => '0.00',
+        ]);
+
+        Http::fake([
+            '*/api/media/send' => function ($request) use ($resource) {
+                $contentType = (string) ($request->header('Content-Type')[0] ?? '');
+                $payload = $this->httpRequestPayload($request);
+
+                $this->assertStringContainsString('application/x-www-form-urlencoded', $contentType);
+                $this->assertStringNotContainsString('multipart/form-data', $contentType);
+                $this->assertSame((string) $resource->external_resource_id, (string) ($payload['resource_id'] ?? ''));
+                $this->assertSame('form-submit-note', (string) ($payload['remark'] ?? ''));
+
+                return Http::response([
+                    'code' => 1,
+                    'msg' => 'success',
+                    'data' => ['order_nid' => 'form-order'],
+                ]);
+            },
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => $site->id])
+            ->post(route('admin.media-distribution.submissions.store'), [
+                'article_id' => $article->id,
+                'media_resource_id' => $resource->id,
+                'remark' => 'form-submit-note',
+            ])
+            ->assertRedirect(route('admin.media-distribution.submissions.index'));
+
+        $submission = MediaSubmission::query()->where('article_id', $article->id)->firstOrFail();
+
+        $this->assertSame('submitted', $submission->status);
+        $this->assertSame('form-order', $submission->external_order_nid);
     }
 
     public function test_submission_requires_enough_site_credits(): void
@@ -788,7 +835,7 @@ class AdminMediaDistributionTest extends TestCase
         ]);
 
         (new ProcessMediaResourceSyncJob((int) $run->id))
-            ->handle(app(\App\Services\MediaDistribution\MediaResourceSyncService::class));
+            ->handle(app(MediaResourceSyncService::class));
 
         $this->assertDatabaseHas('media_resources', [
             'external_resource_id' => '81001',
@@ -1053,7 +1100,7 @@ class AdminMediaDistributionTest extends TestCase
             ->assertRedirect(route('admin.media-distribution.submissions.show', ['submission' => $submission->id]));
 
         $this->assertSame('100.00', SiteCreditAccount::query()->where('site_id', $site->id)->value('balance'));
-        $this->assertSame(1, \App\Models\SiteCreditLedger::query()->where('submission_id', $submission->id)->where('type', 'refund')->count());
+        $this->assertSame(1, SiteCreditLedger::query()->where('submission_id', $submission->id)->where('type', 'refund')->count());
 
         $submission->forceFill(['status' => 'submitted'])->save();
         $this->actingAs($admin, 'admin')
@@ -1062,7 +1109,7 @@ class AdminMediaDistributionTest extends TestCase
             ->assertRedirect(route('admin.media-distribution.submissions.show', ['submission' => $submission->id]));
 
         $this->assertSame('100.00', SiteCreditAccount::query()->where('site_id', $site->id)->value('balance'));
-        $this->assertSame(1, \App\Models\SiteCreditLedger::query()->where('submission_id', $submission->id)->where('type', 'refund')->count());
+        $this->assertSame(1, SiteCreditLedger::query()->where('submission_id', $submission->id)->where('type', 'refund')->count());
     }
 
     public function test_super_admin_can_view_and_export_all_site_consumption_records(): void
@@ -1086,7 +1133,7 @@ class AdminMediaDistributionTest extends TestCase
                 'points_amount' => '88.00',
                 'status' => 'submitted',
             ]);
-            \App\Models\SiteCreditLedger::query()->create([
+            SiteCreditLedger::query()->create([
                 'site_id' => $site->id,
                 'submission_id' => $submission->id,
                 'type' => 'deduct',
@@ -1218,6 +1265,7 @@ class AdminMediaDistributionTest extends TestCase
         foreach ($data as $key => $value) {
             if (is_array($value) && array_key_exists('name', $value)) {
                 $payload[(string) $value['name']] = $value['contents'] ?? '';
+
                 continue;
             }
 

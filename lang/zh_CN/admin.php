@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 return [
     'nav' => [
@@ -204,7 +204,7 @@ return [
             'draft_pool_full' => '草稿池已满',
             'limit_reached' => '已达到文章总数上限',
             'retrying' => '重试中',
-            'completed' => '本轮执行完成',
+            'completed' => '已完成',
             'failed' => '执行失败',
         ],
         'mode' => [
@@ -2129,6 +2129,7 @@ return [
         'field' => [
             'task_name' => '任务名称',
             'title_library' => '标题库选择',
+            'fixed_title' => '标题选择',
             'task_status' => '任务状态',
             'content_prompt' => '内容提示词',
             'ai_model' => 'AI 模型选择',
@@ -2152,6 +2153,7 @@ return [
         ],
         'option' => [
             'select_title_library' => '请选择标题库',
+            'select_title' => '不指定标题，按标题库顺序生成',
             'library_count' => ':name (:count 个标题)',
             'status_active' => '开启',
             'status_paused' => '暂停',
@@ -2174,6 +2176,7 @@ return [
         ],
         'help' => [
             'knowledge_base' => '选择后，系统会从知识库中检索与标题/关键词最相关的片段，并注入正文提示词的 <code>{{Knowledge}}</code>。',
+            'fixed_title' => '选择后，本任务优先使用该标题生成；不选择则按标题库原有规则自动取标题。',
             'model_selection_mode' => '固定模型会始终只使用当前所选模型；智能模型切换会先使用主模型，若模型调用失败，再自动尝试下一个可用聊天模型。',
             'image_count' => '系统将自动从图库中随机选择图片匹配到文章的二级或三级标题下',
             'need_review' => '勾选后，生成的文章需要人工审核通过才能自动发布',
@@ -2909,6 +2912,12 @@ return [
         ],
         'empty' => [
             'no_records' => '暂无采集记录',
+        ],
+        'bulk_delete' => [
+            'button' => '批量删除',
+            'confirm' => '确定删除选中的采集记录吗？对应处理日志也会一起删除。',
+            'none_selected' => '请先选择要删除的采集记录',
+            'success' => '已删除 :count 条采集记录',
         ],
         'value' => [
             'unknown_source' => '未知来源',

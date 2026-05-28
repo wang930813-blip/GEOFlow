@@ -3,12 +3,17 @@
 namespace Tests\Feature;
 
 use App\Models\Admin;
+use App\Models\AiModel;
 use App\Models\Article;
 use App\Models\ArticleDistribution;
 use App\Models\Author;
 use App\Models\Category;
 use App\Models\DistributionChannel;
+use App\Models\Prompt;
+use App\Models\Site;
 use App\Models\Task;
+use App\Models\Title;
+use App\Models\TitleLibrary;
 use App\Support\AdminWeb;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -63,6 +68,166 @@ class AdminTasksPageTest extends TestCase
             ->assertSee(__('admin.task_create.page_heading'));
     }
 
+    public function test_task_create_page_prefills_title_library_from_query_string(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'tasks_admin_prefill_title',
+            'password' => 'secret-123',
+            'email' => 'tasks-admin-prefill-title@example.com',
+            'display_name' => 'Tasks Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        Category::query()->create([
+            'name' => 'Prefill Category',
+            'slug' => 'prefill-category',
+        ]);
+        $titleLibrary = TitleLibrary::query()->create([
+            'name' => 'Prefill Title Library',
+            'description' => 'desc',
+            'title_count' => 1,
+            'generation_type' => 'manual',
+            'generation_rounds' => 1,
+            'is_ai_generated' => 0,
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.tasks.create', ['title_library_id' => (int) $titleLibrary->id]))
+            ->assertOk()
+            ->assertSee('value="'.(int) $titleLibrary->id.'" selected', false);
+    }
+
+    public function test_task_create_page_lists_titles_for_selected_title_library(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'tasks_admin_select_title',
+            'password' => 'secret-123',
+            'email' => 'tasks-admin-select-title@example.com',
+            'display_name' => 'Tasks Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'Title Option Site',
+            'status' => 'active',
+        ]);
+        $site->members()->attach((int) $admin->id, ['role' => 'owner']);
+        Category::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Title Option Category',
+            'slug' => 'title-option-category',
+        ]);
+        $titleLibrary = TitleLibrary::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Selectable Title Library',
+            'description' => 'desc',
+            'title_count' => 2,
+            'generation_type' => 'manual',
+            'generation_rounds' => 1,
+            'is_ai_generated' => 0,
+        ]);
+        $title = Title::query()->create([
+            'site_id' => (int) $site->id,
+            'library_id' => (int) $titleLibrary->id,
+            'title' => 'Selectable task title',
+            'keyword' => 'selectable',
+            'is_ai_generated' => false,
+            'used_count' => 0,
+            'usage_count' => 0,
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.tasks.create', [
+                'title_library_id' => (int) $titleLibrary->id,
+                'fixed_title_id' => (int) $title->id,
+            ]))
+            ->assertOk()
+            ->assertSee('name="fixed_title_id"', false)
+            ->assertSee('Selectable task title')
+            ->assertSee('value="'.(int) $title->id.'" selected', false);
+    }
+
+    public function test_task_create_saves_selected_title_when_it_belongs_to_library(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'tasks_admin_store_title',
+            'password' => 'secret-123',
+            'email' => 'tasks-admin-store-title@example.com',
+            'display_name' => 'Tasks Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'Store Title Site',
+            'status' => 'active',
+        ]);
+        $site->members()->attach((int) $admin->id, ['role' => 'owner']);
+        $titleLibrary = TitleLibrary::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Store Title Library',
+            'description' => 'desc',
+            'title_count' => 1,
+            'generation_type' => 'manual',
+            'generation_rounds' => 1,
+            'is_ai_generated' => 0,
+        ]);
+        $title = Title::query()->create([
+            'site_id' => (int) $site->id,
+            'library_id' => (int) $titleLibrary->id,
+            'title' => 'Stored selected title',
+            'keyword' => 'stored',
+            'is_ai_generated' => false,
+            'used_count' => 0,
+            'usage_count' => 0,
+        ]);
+        $prompt = Prompt::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Task Prompt',
+            'type' => 'content',
+            'content' => 'Write {{title}}',
+        ]);
+        $aiModel = AiModel::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Task Model',
+            'model_id' => 'task-model',
+            'model_type' => 'chat',
+            'api_url' => 'https://ai.example.test',
+            'api_key' => 'plain-key',
+            'status' => 'active',
+        ]);
+        Category::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Store Category',
+            'slug' => 'store-category',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.tasks.store'), [
+                'task_name' => 'Selected Title Task',
+                'title_library_id' => (int) $titleLibrary->id,
+                'fixed_title_id' => (int) $title->id,
+                'prompt_id' => (int) $prompt->id,
+                'ai_model_id' => (int) $aiModel->id,
+                'status' => 'paused',
+                'article_limit' => 1,
+                'draft_limit' => 1,
+                'publish_interval' => 60,
+                'category_mode' => 'smart',
+                'model_selection_mode' => 'fixed',
+            ])
+            ->assertRedirect(route('admin.tasks.index'));
+
+        $this->assertDatabaseHas('tasks', [
+            'name' => 'Selected Title Task',
+            'title_library_id' => (int) $titleLibrary->id,
+            'fixed_title_id' => (int) $title->id,
+        ]);
+    }
+
     public function test_task_article_action_links_to_filtered_article_list(): void
     {
         $admin = Admin::query()->create([
@@ -73,8 +238,15 @@ class AdminTasksPageTest extends TestCase
             'role' => 'admin',
             'status' => 'active',
         ]);
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'Tasks Article Filter Site',
+            'status' => 'active',
+        ]);
+        $site->members()->attach((int) $admin->id, ['role' => 'owner']);
 
         $task = Task::query()->create([
+            'site_id' => (int) $site->id,
             'name' => 'Filtered Task',
             'status' => 'active',
             'schedule_enabled' => 1,
@@ -84,6 +256,7 @@ class AdminTasksPageTest extends TestCase
         ]);
 
         $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
             ->get(route('admin.tasks.index'))
             ->assertOk()
             ->assertSee('/'.AdminWeb::basePath().'/articles?task_id='.(int) $task->id, false);
@@ -99,8 +272,15 @@ class AdminTasksPageTest extends TestCase
             'role' => 'admin',
             'status' => 'active',
         ]);
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'Tasks Lifecycle Site',
+            'status' => 'active',
+        ]);
+        $site->members()->attach((int) $admin->id, ['role' => 'owner']);
 
         $activeTask = Task::query()->create([
+            'site_id' => (int) $site->id,
             'name' => 'Active Task',
             'status' => 'active',
             'schedule_enabled' => 1,
@@ -109,6 +289,7 @@ class AdminTasksPageTest extends TestCase
             'article_limit' => 10,
         ]);
         $pausedTask = Task::query()->create([
+            'site_id' => (int) $site->id,
             'name' => 'Paused Task',
             'status' => 'paused',
             'schedule_enabled' => 0,
@@ -118,6 +299,7 @@ class AdminTasksPageTest extends TestCase
         ]);
 
         $response = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
             ->get(route('admin.tasks.index'))
             ->assertOk();
 
@@ -126,6 +308,86 @@ class AdminTasksPageTest extends TestCase
             ->assertSee('id="batch-btn-'.(int) $pausedTask->id.'"', false)
             ->assertSee('data-batch-action="start"', false)
             ->assertSee('text-green-600 hover:text-green-800 hover:bg-green-50', false);
+    }
+
+    public function test_completed_task_is_shown_as_completed_and_cannot_be_started_from_list(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'tasks_completed_status_admin',
+            'password' => 'secret-123',
+            'email' => 'tasks-completed-status@example.com',
+            'display_name' => 'Tasks Completed Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'Tasks Completed Status Site',
+            'status' => 'active',
+        ]);
+        $site->members()->attach((int) $admin->id, ['role' => 'owner']);
+
+        $task = Task::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Completed Task',
+            'status' => 'completed',
+            'schedule_enabled' => 0,
+            'publish_interval' => 3600,
+            'draft_limit' => 1,
+            'article_limit' => 1,
+            'created_count' => 1,
+        ]);
+
+        $response = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.tasks.index'))
+            ->assertOk();
+
+        $response->assertSee(__('admin.tasks.status.completed'))
+            ->assertSee('data-task-runnable="0"', false)
+            ->assertDontSee('id="batch-btn-'.(int) $task->id.'"', false);
+    }
+
+    public function test_completed_task_cannot_be_started_by_batch_endpoint(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'tasks_completed_batch_admin',
+            'password' => 'secret-123',
+            'email' => 'tasks-completed-batch@example.com',
+            'display_name' => 'Tasks Completed Batch Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'Tasks Completed Batch Site',
+            'status' => 'active',
+        ]);
+        $site->members()->attach((int) $admin->id, ['role' => 'owner']);
+
+        $task = Task::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Completed Batch Task',
+            'status' => 'completed',
+            'schedule_enabled' => 0,
+            'publish_interval' => 3600,
+            'draft_limit' => 1,
+            'article_limit' => 1,
+            'created_count' => 1,
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->postJson(route('admin.tasks.batch'), [
+                'task_id' => (int) $task->id,
+                'action' => 'start',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        $task->refresh();
+        $this->assertSame('completed', (string) $task->status);
+        $this->assertSame(0, (int) $task->schedule_enabled);
     }
 
     public function test_task_list_shows_distribution_failure_summary(): void
@@ -138,7 +400,14 @@ class AdminTasksPageTest extends TestCase
             'role' => 'admin',
             'status' => 'active',
         ]);
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'Tasks Distribution Status Site',
+            'status' => 'active',
+        ]);
+        $site->members()->attach((int) $admin->id, ['role' => 'owner']);
         $task = Task::query()->create([
+            'site_id' => (int) $site->id,
             'name' => 'Distribution Failure Task',
             'status' => 'active',
             'schedule_enabled' => 1,
@@ -148,9 +417,11 @@ class AdminTasksPageTest extends TestCase
         ]);
         $category = Category::query()->create([
             'name' => '任务分发分类',
+            'site_id' => (int) $site->id,
             'slug' => 'task-distribution-category',
         ]);
         $author = Author::query()->create([
+            'site_id' => (int) $site->id,
             'name' => 'GEOFlow',
         ]);
         $channel = DistributionChannel::query()->create([
@@ -161,6 +432,7 @@ class AdminTasksPageTest extends TestCase
         ]);
         $article = Article::query()->create([
             'title' => '任务分发失败文章',
+            'site_id' => (int) $site->id,
             'slug' => 'task-distribution-failed-article',
             'excerpt' => '摘要',
             'content' => '正文',
@@ -181,6 +453,7 @@ class AdminTasksPageTest extends TestCase
         ]);
 
         $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
             ->get(route('admin.tasks.index'))
             ->assertOk()
             ->assertSee(__('admin.distribution.task_status.failed', ['count' => 1]));
@@ -196,8 +469,15 @@ class AdminTasksPageTest extends TestCase
             'role' => 'admin',
             'status' => 'active',
         ]);
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'Tasks Delete Site',
+            'status' => 'active',
+        ]);
+        $site->members()->attach((int) $admin->id, ['role' => 'owner']);
 
         $task = Task::query()->create([
+            'site_id' => (int) $site->id,
             'name' => 'Delete Task Without Legacy Queue',
             'status' => 'paused',
             'schedule_enabled' => 0,
@@ -207,6 +487,7 @@ class AdminTasksPageTest extends TestCase
         ]);
 
         $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
             ->from(route('admin.tasks.index'))
             ->post(route('admin.tasks.delete', ['taskId' => (int) $task->id]))
             ->assertRedirect(route('admin.tasks.index'))

@@ -71,6 +71,7 @@ class KnowledgeBaseController extends Controller
             'relatedTasks' => $this->loadRelatedTasks($knowledgeBaseId),
             'chunkStats' => $this->loadChunkStats($knowledgeBaseId),
             'chunkPreviewRows' => $this->loadChunkPreviewRows($knowledgeBaseId),
+            'hasDefaultEmbeddingModel' => $this->hasDefaultEmbeddingModel(),
         ]);
     }
 
@@ -263,14 +264,15 @@ class KnowledgeBaseController extends Controller
         return redirect()->route('admin.knowledge-bases.index')->with('message', __('admin.knowledge_bases.message.delete_success'));
     }
 
-    public function refreshChunks(int $knowledgeBaseId): RedirectResponse
+    public function refreshChunks(Request $request, int $knowledgeBaseId): RedirectResponse
     {
         $knowledgeBase = KnowledgeBase::query()->whereKey($knowledgeBaseId)->firstOrFail();
         $content = trim((string) ($knowledgeBase->content ?? ''));
+        $redirectRoute = $this->refreshChunksRedirectRoute($request, $knowledgeBaseId);
 
         if ($content === '') {
             return redirect()
-                ->route('admin.knowledge-bases.index')
+                ->to($redirectRoute)
                 ->withErrors(__('admin.knowledge_bases.error.content_required'));
         }
 
@@ -281,7 +283,7 @@ class KnowledgeBaseController extends Controller
 
             if ($chunkCount > 0 && $vectorizedCount < $chunkCount) {
                 return redirect()
-                    ->route('admin.knowledge-bases.index')
+                    ->to($redirectRoute)
                     ->withErrors(__('admin.knowledge_bases.error.embedding_sync_partial', [
                         'chunks' => $chunkCount,
                         'vectorized' => $vectorizedCount,
@@ -289,7 +291,7 @@ class KnowledgeBaseController extends Controller
             }
 
             return redirect()
-                ->route('admin.knowledge-bases.index')
+                ->to($redirectRoute)
                 ->with('message', __('admin.knowledge_bases.message.chunks_refreshed', [
                     'chunks' => $chunkCount,
                     'vectorized' => $vectorizedCount,
@@ -298,7 +300,7 @@ class KnowledgeBaseController extends Controller
             report($exception);
 
             return redirect()
-                ->route('admin.knowledge-bases.index')
+                ->to($redirectRoute)
                 ->withErrors(__('admin.knowledge_bases.message.chunks_refresh_error', [
                     'message' => $exception->getMessage(),
                 ]));
@@ -342,9 +344,16 @@ class KnowledgeBaseController extends Controller
     private function hasDefaultEmbeddingModel(): bool
     {
         return AiModel::query()
-            ->where('status', 'active')
-            ->whereRaw("COALESCE(NULLIF(model_type, ''), 'chat') = 'embedding'")
+            ->activeStatus()
+            ->embeddingType()
             ->exists();
+    }
+
+    private function refreshChunksRedirectRoute(Request $request, int $knowledgeBaseId): string
+    {
+        return $request->input('redirect_to') === 'detail'
+            ? route('admin.knowledge-bases.detail', ['knowledgeBaseId' => $knowledgeBaseId])
+            : route('admin.knowledge-bases.index');
     }
 
     /**

@@ -181,8 +181,8 @@ class KnowledgeChunkSyncService
             ->value('setting_value') ?? 0);
 
         $query = AiModel::query()
-            ->where('status', 'active')
-            ->whereRaw("COALESCE(NULLIF(model_type, ''), 'chat') = 'embedding'");
+            ->activeStatus()
+            ->embeddingType();
 
         $candidates = [];
         if ($defaultEmbeddingModelId > 0) {

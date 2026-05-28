@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToSite;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
@@ -50,5 +51,15 @@ class AiModel extends Model
     public function tasks(): HasMany
     {
         return $this->hasMany(Task::class, 'ai_model_id');
+    }
+
+    public function scopeActiveStatus(Builder $query): Builder
+    {
+        return $query->whereRaw("LOWER(COALESCE(NULLIF(TRIM(status), ''), 'active')) = 'active'");
+    }
+
+    public function scopeEmbeddingType(Builder $query): Builder
+    {
+        return $query->whereRaw("LOWER(COALESCE(NULLIF(TRIM(model_type), ''), 'chat')) = 'embedding'");
     }
 }

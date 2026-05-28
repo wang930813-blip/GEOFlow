@@ -13,6 +13,7 @@ use App\Models\Prompt;
 use App\Models\Task;
 use App\Models\TaskRun;
 use App\Models\TaskSchedule;
+use App\Models\Title;
 use App\Models\TitleLibrary;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
@@ -80,6 +81,7 @@ class TaskLifecycleService
             $task = Task::query()->create([
                 'name' => $normalized['name'],
                 'title_library_id' => $normalized['title_library_id'],
+                'fixed_title_id' => $normalized['fixed_title_id'],
                 'image_library_id' => $normalized['image_library_id'],
                 'image_mode' => $normalized['image_mode'],
                 'image_count' => $normalized['image_count'],
@@ -248,7 +250,14 @@ class TaskLifecycleService
      */
     public function startTask(int $taskId, bool $enqueueNow = false): array
     {
-        $this->ensureTaskExists($taskId);
+        $task = Task::query()->whereKey($taskId)->first(['id', 'status']);
+        if (! $task) {
+            throw new ApiException('task_not_found', '任务不存在', 404);
+        }
+        if ((string) ($task->status ?? '') === 'completed') {
+            throw new ApiException('task_completed', '任务已完成，不能再次启动', 409);
+        }
+
         DB::beginTransaction();
         try {
             // 手动“立即执行”场景下，不把 next_run_at 强行置为 now，
@@ -444,6 +453,7 @@ class TaskLifecycleService
 
         $referenceMap = [
             'title_library_id' => ['model' => TitleLibrary::class, 'message' => '选择的标题库不存在', 'required' => ! $isUpdate],
+            'fixed_title_id' => ['model' => Title::class, 'message' => '选择的标题不存在', 'required' => false],
             'image_library_id' => ['model' => ImageLibrary::class, 'message' => '选择的图片库不存在', 'required' => false],
             'prompt_id' => ['model' => Prompt::class, 'message' => '选择的内容提示词不存在', 'required' => ! $isUpdate, 'prompt_content' => true],
             'ai_model_id' => ['model' => AiModel::class, 'message' => '选择的AI模型不存在或未激活', 'required' => ! $isUpdate, 'ai_active_chat' => true],
@@ -497,6 +507,16 @@ class TaskLifecycleService
                 $fieldErrors[$field] = $config['message'];
             } else {
                 $output[$field] = $id;
+            }
+        }
+
+        if (($output['fixed_title_id'] ?? null) !== null && ($output['title_library_id'] ?? null) !== null) {
+            $fixedTitleBelongsToLibrary = Title::query()
+                ->whereKey((int) $output['fixed_title_id'])
+                ->where('library_id', (int) $output['title_library_id'])
+                ->exists();
+            if (! $fixedTitleBelongsToLibrary) {
+                $fieldErrors['fixed_title_id'] = '选择的标题不属于当前标题库';
             }
         }
 

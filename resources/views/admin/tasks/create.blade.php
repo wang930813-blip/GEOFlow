@@ -76,6 +76,18 @@
                                     <option value="paused" @selected(old('status', (string) ($taskForm['status'] ?? 'active')) === 'paused')>{{ $t('task_create.option.status_paused') }}</option>
                                 </select>
                             </div>
+                            <div class="md:col-span-2">
+                                <label for="fixed_title_id" class="block text-sm font-medium text-gray-700">{{ $t('task_create.field.fixed_title') }}</label>
+                                <select name="fixed_title_id" id="fixed_title_id" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" data-selected-title-id="{{ old('fixed_title_id', (string) ($taskForm['fixed_title_id'] ?? '')) }}">
+                                    <option value="">{{ $t('task_create.option.select_title') }}</option>
+                                    @foreach ($formOptions['titles'] as $titleOption)
+                                        <option value="{{ $titleOption['id'] }}" data-library-id="{{ $titleOption['library_id'] }}" @selected((string) old('fixed_title_id', (string) ($taskForm['fixed_title_id'] ?? '')) === (string) $titleOption['id'])>
+                                            {{ $titleOption['title'] }}{{ ($titleOption['keyword'] ?? '') !== '' ? ' - '.$titleOption['keyword'] : '' }}
+                                        </option>
+                                    @endforeach
+                                </select>
+                                <p class="mt-1 text-sm text-gray-500">{{ $t('task_create.help.fixed_title') }}</p>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -432,6 +444,8 @@
             const fixedCategorySection = document.getElementById('fixed-category-section');
             const fixedCategorySelect = document.getElementById('fixed_category_id');
             const categoryModeRadios = document.querySelectorAll('input[name="category_mode"]');
+            const titleLibrarySelect = document.getElementById('title_library_id');
+            const fixedTitleSelect = document.getElementById('fixed_title_id');
             const form = document.querySelector('form');
 
             if (!form) {
@@ -510,8 +524,36 @@
                 }
             }
 
+            function syncFixedTitleOptions() {
+                const selectedLibraryId = titleLibrarySelect.value;
+                const selectedTitleId = fixedTitleSelect.dataset.selectedTitleId || fixedTitleSelect.value;
+                let selectedTitleStillVisible = false;
+
+                Array.from(fixedTitleSelect.options).forEach((option) => {
+                    if (!option.value) {
+                        option.hidden = false;
+                        return;
+                    }
+
+                    const visible = option.dataset.libraryId === selectedLibraryId;
+                    option.hidden = !visible;
+                    if (visible && option.value === selectedTitleId) {
+                        selectedTitleStillVisible = true;
+                    }
+                });
+
+                fixedTitleSelect.value = selectedTitleStillVisible ? selectedTitleId : '';
+                fixedTitleSelect.disabled = !selectedLibraryId;
+                fixedTitleSelect.parentElement.style.opacity = selectedLibraryId ? '1' : '0.6';
+                fixedTitleSelect.dataset.selectedTitleId = fixedTitleSelect.value;
+            }
+
             imageModeSelect.addEventListener('change', toggleImageControls);
             imageLibrarySelect.addEventListener('change', toggleImageControls);
+            titleLibrarySelect.addEventListener('change', syncFixedTitleOptions);
+            fixedTitleSelect.addEventListener('change', () => {
+                fixedTitleSelect.dataset.selectedTitleId = fixedTitleSelect.value;
+            });
             needReviewCheckbox.addEventListener('change', togglePublishInterval);
             articleLimitInput.addEventListener('input', syncDraftLimitMax);
             categoryModeRadios.forEach((radio) => radio.addEventListener('change', handleCategoryModeChange));
@@ -559,6 +601,7 @@
             });
 
             toggleImageControls();
+            syncFixedTitleOptions();
             togglePublishInterval();
             handleCategoryModeChange();
             syncDraftLimitMax();

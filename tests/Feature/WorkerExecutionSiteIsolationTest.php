@@ -16,11 +16,121 @@ use App\Support\CurrentSite;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use ReflectionMethod;
 use Tests\TestCase;
 
 class WorkerExecutionSiteIsolationTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_worker_uses_fixed_task_title_when_configured(): void
+    {
+        $titleLibrary = TitleLibrary::query()->create([
+            'name' => 'Fixed Title Library',
+        ]);
+        Title::query()->create([
+            'library_id' => (int) $titleLibrary->id,
+            'title' => 'First rotating title',
+            'keyword' => 'first',
+            'used_count' => 0,
+            'usage_count' => 0,
+        ]);
+        $fixedTitle = Title::query()->create([
+            'library_id' => (int) $titleLibrary->id,
+            'title' => 'Fixed selected title',
+            'keyword' => 'fixed',
+            'used_count' => 5,
+            'usage_count' => 5,
+        ]);
+        $task = Task::query()->create([
+            'name' => 'Fixed Title Task',
+            'title_library_id' => (int) $titleLibrary->id,
+            'fixed_title_id' => (int) $fixedTitle->id,
+            'status' => 'active',
+            'schedule_enabled' => 1,
+            'draft_limit' => 5,
+            'article_limit' => 5,
+        ]);
+
+        $method = new ReflectionMethod(WorkerExecutionService::class, 'pickTitle');
+        $method->setAccessible(true);
+
+        $pickedTitle = $method->invoke(app(WorkerExecutionService::class), $task);
+
+        $this->assertInstanceOf(Title::class, $pickedTitle);
+        $this->assertSame((int) $fixedTitle->id, (int) $pickedTitle->id);
+    }
+
+    public function test_worker_pauses_task_after_reaching_article_limit(): void
+    {
+        config(['geoflow.api_key_crypto_roots' => ['worker-limit-pause-test-key']]);
+
+        $site = Site::query()->create([
+            'name' => 'Limit Pause Site',
+            'status' => 'active',
+        ]);
+        $titleLibrary = TitleLibrary::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Limit Pause Titles',
+        ]);
+        Title::query()->create([
+            'site_id' => (int) $site->id,
+            'library_id' => (int) $titleLibrary->id,
+            'title' => 'Limit Pause Article',
+            'keyword' => 'limit pause',
+        ]);
+        $prompt = Prompt::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Limit Pause Prompt',
+            'type' => 'content',
+            'content' => 'Write about {{title}}.',
+        ]);
+        $author = Author::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Limit Pause Author',
+        ]);
+        Category::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Limit Pause Category',
+            'slug' => 'limit-pause-category',
+        ]);
+        $aiModel = AiModel::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Limit Pause Chat',
+            'model_id' => 'deepseek-chat',
+            'model_type' => 'chat',
+            'api_url' => 'https://ai.example.test',
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('test-api-key'),
+            'status' => 'active',
+        ]);
+        $task = Task::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Limit pause task',
+            'title_library_id' => (int) $titleLibrary->id,
+            'prompt_id' => (int) $prompt->id,
+            'ai_model_id' => (int) $aiModel->id,
+            'author_id' => (int) $author->id,
+            'need_review' => 1,
+            'status' => 'active',
+            'schedule_enabled' => 1,
+            'draft_limit' => 1,
+            'article_limit' => 1,
+        ]);
+
+        app(CurrentSite::class)->set(null);
+
+        Http::fake([
+            'https://ai.example.test/v1/chat/completions' => Http::response($this->chatCompletion("# Limit Pause Article\n\nGenerated body.")),
+        ]);
+
+        app(WorkerExecutionService::class)->executeTask((int) $task->id);
+
+        $task->refresh();
+        $this->assertSame(1, (int) $task->created_count);
+        $this->assertSame('paused', (string) $task->status);
+        $this->assertSame(0, (int) $task->schedule_enabled);
+        $this->assertNull($task->next_run_at);
+    }
 
     public function test_worker_generated_article_inherits_task_site_without_request_context(): void
     {

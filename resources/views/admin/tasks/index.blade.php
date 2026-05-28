@@ -115,6 +115,10 @@
                                 $failureInfo = $describeTaskFailure($task['batch_error_message'] ?? '');
                                 $failureClasses = $getFailureToneClasses($failureInfo['tone']);
                                 $hasVisibleFailure = !empty($task['batch_error_message']) && in_array($task['batch_status'], ['failed', 'cancelled'], true);
+                                $taskStatus = (string) ($task['status'] ?? 'paused');
+                                $isActiveTask = $taskStatus === 'active';
+                                $isCompletedTask = $taskStatus === 'completed';
+                                $isRunnableTask = $taskStatus === 'paused';
                             @endphp
                             <tr class="hover:bg-gray-50">
                                 <td class="px-5 py-4 align-top">
@@ -189,25 +193,32 @@
                                     </div>
                                 </td>
                                 <td class="px-4 py-4 align-top">
-                                    <form method="POST" action="{{ route('admin.tasks.toggle-status', ['taskId' => (int) $task['id']]) }}" class="inline" id="status-form-{{ (int) $task['id'] }}">
-                                        @csrf
-                                        <input type="hidden" name="status" value="{{ $task['status'] }}">
-                                        <label class="inline-flex items-center">
-                                            <input type="checkbox" @checked(($task['status'] ?? '') === 'active') onchange="handleStatusToggle({{ (int) $task['id'] }}, this)" class="rounded border-gray-300 text-blue-600 shadow-sm">
-                                            <span class="ml-2 text-sm {{ ($task['status'] ?? '') === 'active' ? 'text-green-600' : 'text-gray-500' }}">
-                                                {{ ($task['status'] ?? '') === 'active' ? __('admin.tasks.status.enabled') : __('admin.tasks.status.disabled') }}
-                                            </span>
-                                        </label>
-                                    </form>
+                                    @if ($isCompletedTask)
+                                        <span data-task-runnable="0" class="inline-flex items-center text-sm text-emerald-700">
+                                            <i data-lucide="check-circle-2" class="mr-2 h-4 w-4"></i>
+                                            {{ __('admin.tasks.status.completed') }}
+                                        </span>
+                                    @else
+                                        <form method="POST" action="{{ route('admin.tasks.toggle-status', ['taskId' => (int) $task['id']]) }}" class="inline" id="status-form-{{ (int) $task['id'] }}">
+                                            @csrf
+                                            <input type="hidden" name="status" value="{{ $taskStatus }}">
+                                            <label class="inline-flex items-center">
+                                                <input type="checkbox" @checked($isActiveTask) onchange="handleStatusToggle({{ (int) $task['id'] }}, this)" class="rounded border-gray-300 text-blue-600 shadow-sm">
+                                                <span class="ml-2 text-sm {{ $isActiveTask ? 'text-green-600' : 'text-gray-500' }}">
+                                                    {{ $isActiveTask ? __('admin.tasks.status.enabled') : __('admin.tasks.status.paused') }}
+                                                </span>
+                                            </label>
+                                        </form>
+                                    @endif
                                 </td>
                                 <td class="px-3 py-4 align-top">
                                     <div class="flex w-fit items-center gap-1.5">
-                                        @if (($task['status'] ?? '') === 'active')
-                                            <button onclick="stopBatchExecution({{ (int) $task['id'] }}, '{{ addslashes((string) ($task['name'] ?? '')) }}')" data-batch-action="stop" class="inline-flex items-center justify-center w-8 h-8 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors border border-red-200" title="{{ __('admin.tasks.action.stop_batch') }}" aria-label="{{ __('admin.tasks.action.stop_batch') }}" id="batch-btn-{{ (int) $task['id'] }}">
+                                        @if ($isActiveTask)
+                                            <button onclick="stopBatchExecution({{ (int) $task['id'] }}, '{{ addslashes((string) ($task['name'] ?? '')) }}')" data-task-runnable="0" data-batch-action="stop" class="inline-flex items-center justify-center w-8 h-8 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors border border-red-200" title="{{ __('admin.tasks.action.stop_batch') }}" aria-label="{{ __('admin.tasks.action.stop_batch') }}" id="batch-btn-{{ (int) $task['id'] }}">
                                                 <i data-lucide="square" class="w-4 h-4"></i>
                                             </button>
-                                        @else
-                                            <button onclick="startBatchExecution({{ (int) $task['id'] }}, '{{ addslashes((string) ($task['name'] ?? '')) }}')" data-batch-action="start" class="inline-flex items-center justify-center w-8 h-8 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-colors border border-green-200" title="{{ __('admin.tasks.action.start_batch') }}" aria-label="{{ __('admin.tasks.action.start_batch') }}" id="batch-btn-{{ (int) $task['id'] }}">
+                                        @elseif ($isRunnableTask)
+                                            <button onclick="startBatchExecution({{ (int) $task['id'] }}, '{{ addslashes((string) ($task['name'] ?? '')) }}')" data-task-runnable="1" data-batch-action="start" class="inline-flex items-center justify-center w-8 h-8 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-colors border border-green-200" title="{{ __('admin.tasks.action.start_batch') }}" aria-label="{{ __('admin.tasks.action.start_batch') }}" id="batch-btn-{{ (int) $task['id'] }}">
                                                 <i data-lucide="play" class="w-4 h-4"></i>
                                             </button>
                                         @endif
@@ -421,9 +432,22 @@ function showNotification(type, message) { if (window.AdminUtils && typeof windo
 
 function setButtonLoading(btn, text, classes) { btn.disabled = true; btn.className = classes; btn.innerHTML = `<i data-lucide="loader-2" class="h-4 w-4 animate-spin"></i><span class="sr-only">${text}</span>`; renderIcons(); }
 
-function updateBatchButton(btn, taskId, taskName, isActive) {
+function updateBatchButton(btn, taskId, taskName, isActive, taskStatus = null) {
     if (!btn) return;
+    if (taskStatus === 'completed') {
+        btn.disabled = true;
+        btn.dataset.taskRunnable = '0';
+        btn.dataset.batchAction = 'completed';
+        btn.className = 'inline-flex items-center justify-center w-8 h-8 rounded-md border border-emerald-200 bg-emerald-50 text-emerald-600 cursor-not-allowed';
+        btn.innerHTML = '<i data-lucide="check" class="w-4 h-4"></i>';
+        btn.title = TASK_I18N.completed;
+        btn.setAttribute('aria-label', btn.title);
+        btn.onclick = null;
+        renderIcons();
+        return;
+    }
     btn.disabled = false;
+    btn.dataset.taskRunnable = isActive ? '0' : '1';
     btn.dataset.batchAction = isActive ? 'stop' : 'start';
     btn.className = isActive ? 'inline-flex items-center justify-center w-8 h-8 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors border border-red-200' : 'inline-flex items-center justify-center w-8 h-8 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-colors border border-green-200';
     btn.innerHTML = isActive ? '<i data-lucide="square" class="w-4 h-4"></i>' : '<i data-lucide="play" class="w-4 h-4"></i>';
@@ -485,12 +509,12 @@ function updateBatchStatus(task) {
 function updateTaskUI(task) {
     const btn = document.getElementById(`batch-btn-${task.id}`);
     const isActive = task.status === 'active';
-    updateBatchButton(btn, task.id, task.name, isActive);
-    updateTaskStatusToggle(task.id, isActive);
+    updateBatchButton(btn, task.id, task.name, isActive, task.status);
+    updateTaskStatusToggle(task.id, isActive, task.status);
     updateBatchStatus(task);
 }
 
-function updateTaskStatusToggle(taskId, isActive) {
+function updateTaskStatusToggle(taskId, isActive, taskStatus = null) {
     const form = document.getElementById(`status-form-${taskId}`);
     if (!form) return;
     const hidden = form.querySelector('input[name="status"]');
@@ -499,7 +523,7 @@ function updateTaskStatusToggle(taskId, isActive) {
     if (hidden) hidden.value = isActive ? 'active' : 'paused';
     if (checkbox) checkbox.checked = isActive;
     if (label) {
-        label.textContent = isActive ? TASK_I18N.enabledStatus : TASK_I18N.disabledStatus;
+        label.textContent = isActive ? TASK_I18N.enabledStatus : (taskStatus === 'completed' ? TASK_I18N.completed : TASK_I18N.disabledStatus);
         label.className = `ml-2 text-sm ${isActive ? 'text-green-600' : 'text-gray-500'}`;
     }
 }
@@ -679,7 +703,7 @@ function stopBatchExecution(taskId, taskName) {
 }
 
 function executeAllActiveTasks() {
-    const buttons = Array.from(document.querySelectorAll('[id^="batch-btn-"]')).filter(btn => btn.dataset.batchAction === 'start');
+    const buttons = Array.from(document.querySelectorAll('[id^="batch-btn-"]')).filter(btn => btn.dataset.batchAction === 'start' && btn.dataset.taskRunnable === '1');
     if (buttons.length === 0) { showNotification('info', TASK_I18N.noRunnable); return; }
     if (!confirm(TASK_I18N.confirmRunAll)) return;
     let completed = 0; let success = 0;

@@ -260,8 +260,8 @@ class AiModelController extends Controller
         if ($modelId > 0) {
             $available = AiModel::query()
                 ->whereKey($modelId)
-                ->where('status', 'active')
-                ->whereRaw("COALESCE(NULLIF(model_type, ''), 'chat') = 'embedding'")
+                ->activeStatus()
+                ->embeddingType()
                 ->exists();
 
             if (! $available) {
@@ -341,8 +341,8 @@ class AiModelController extends Controller
     {
         return AiModel::query()
             ->select(['id', 'name', 'model_id'])
-            ->where('status', 'active')
-            ->whereRaw("COALESCE(NULLIF(model_type, ''), 'chat') = 'embedding'")
+            ->activeStatus()
+            ->embeddingType()
             ->orderBy('name')
             ->orderByDesc('id')
             ->get()
@@ -427,7 +427,7 @@ class AiModelController extends Controller
             $row = DB::selectOne("SELECT extname FROM pg_extension WHERE extname = 'vector' LIMIT 1");
 
             return $row !== null;
-        } catch (\Throwable) {
+        } catch (Throwable) {
             return false;
         }
     }

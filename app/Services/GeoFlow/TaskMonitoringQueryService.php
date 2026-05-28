@@ -228,6 +228,7 @@ class TaskMonitoringQueryService
                 'status' => (string) ($task->status ?? 'paused'),
                 'publish_scope' => (string) ($task->publish_scope ?? 'local_and_distribution'),
                 'title_library_id' => $this->nullableInt($task->title_library_id),
+                'fixed_title_id' => $this->nullableInt($task->fixed_title_id),
                 'prompt_id' => $this->nullableInt($task->prompt_id),
                 'ai_model_id' => $this->nullableInt($task->ai_model_id),
                 'knowledge_base_id' => $this->nullableInt($task->knowledge_base_id),
@@ -307,6 +308,10 @@ class TaskMonitoringQueryService
 
         if ((int) ($runStats['pending_jobs'] ?? 0) > 0) {
             return 'pending';
+        }
+
+        if (($task->status ?? 'paused') === 'completed') {
+            return 'completed';
         }
 
         if (($task->status ?? 'paused') === 'paused') {

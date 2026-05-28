@@ -132,7 +132,7 @@ class MediaDistributionClient
             : '';
 
         $path = $this->path($sourceType, $action);
-        $response = Http::asMultipart()
+        $response = Http::asForm()
             ->timeout((int) config('media_distribution.timeout', 30))
             ->connectTimeout((int) config('media_distribution.connect_timeout', 10))
             ->retry(2, 500)
@@ -179,7 +179,8 @@ class MediaDistributionClient
 
     private function responseExcerpt(string $body): string
     {
-        $excerpt = trim(preg_replace('/\s+/', ' ', $body) ?? '');
+        $excerpt = html_entity_decode(strip_tags($body), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $excerpt = trim(preg_replace('/\s+/', ' ', $excerpt) ?? '');
 
         return $excerpt === '' ? '空响应' : substr($excerpt, 0, 200);
     }

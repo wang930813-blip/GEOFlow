@@ -138,11 +138,15 @@
                                         @endif
                                     </div>
                                     <div class="mt-2 flex items-center space-x-4 text-sm text-gray-500">
-                                        <span>{{ __('admin.title_detail.usage_count', ['count' => (int) ($title->used_count ?? 0)]) }}</span>
+                                        <span>{{ __('admin.title_detail.usage_count', ['count' => (int) ($title->display_usage_count ?? $title->usage_count ?? $title->used_count ?? 0)]) }}</span>
                                         <span>{{ __('admin.title_detail.created_at', ['value' => optional($title->created_at)->format('Y-m-d H:i') ?? '-']) }}</span>
                                     </div>
                                 </div>
                                 <div class="flex items-center space-x-2">
+                                    <a href="{{ route('admin.tasks.create', ['title_library_id' => (int) $library->id, 'fixed_title_id' => (int) $title->id]) }}" class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-orange-600 hover:bg-orange-700">
+                                        <i data-lucide="clipboard-plus" class="w-4 h-4 mr-1"></i>
+                                        {{ __('admin.button.create_task') }}
+                                    </a>
                                     <button type="button" onclick="editTitle({{ (int) $title->id }}, @js($title->title), @js((string) ($title->keyword ?? '')), @js(route('admin.title-libraries.titles.update', ['libraryId' => (int) $library->id, 'titleId' => (int) $title->id])))" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50">
                                         <i data-lucide="edit-3" class="w-4 h-4 mr-1"></i>
                                         编辑

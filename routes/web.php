@@ -29,9 +29,9 @@ use App\Http\Controllers\Admin\MediaDistribution\ResourceController as MediaDist
 use App\Http\Controllers\Admin\MediaDistribution\SettingController as MediaDistributionSettingController;
 use App\Http\Controllers\Admin\MediaDistribution\SubmissionController as MediaDistributionSubmissionController;
 use App\Http\Controllers\Admin\SecuritySettingsController;
-use App\Http\Controllers\Admin\SiteSettingsController;
 use App\Http\Controllers\Admin\SiteContextController;
 use App\Http\Controllers\Admin\SiteManagementController;
+use App\Http\Controllers\Admin\SiteSettingsController;
 use App\Http\Controllers\Admin\TaskController;
 use App\Http\Controllers\Admin\TitleLibraryController;
 use App\Http\Controllers\Admin\UrlImportController;
@@ -42,7 +42,7 @@ use App\Http\Controllers\Site\HomeController;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
-        Route::middleware(['site.domain', 'site.locale', 'site.view_log'])->group(function (): void {
+Route::middleware(['site.domain', 'site.locale', 'site.view_log'])->group(function (): void {
     Route::get('/', [HomeController::class, 'index'])->name('site.home');
     Route::get('/archive', [ArchiveController::class, 'index'])->name('site.archive');
     Route::get('/archive/{year}/{month}', [ArchiveController::class, 'month'])
@@ -54,7 +54,7 @@ use Illuminate\Support\Facades\Route;
 
 $adminPrefix = trim((string) config('geoflow.admin_base_path', '/geo_admin'), '/');
 
-        Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group(function () {
+Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group(function () {
     // 通用入口与语言切换
     Route::get('locale/{locale}', [AdminAuthController::class, 'switchLocale'])->name('locale.switch');
 
@@ -256,6 +256,7 @@ $adminPrefix = trim((string) config('geoflow.admin_base_path', '/geo_admin'), '/
         Route::get('url-import', [UrlImportController::class, 'index'])->name('url-import');
         Route::post('url-import', [UrlImportController::class, 'store'])->name('url-import.store');
         Route::get('url-import/history', [UrlImportController::class, 'history'])->name('url-import.history');
+        Route::post('url-import/history/bulk-delete', [UrlImportController::class, 'bulkDelete'])->name('url-import.bulk-delete');
         Route::post('url-import/{jobId}/run', [UrlImportController::class, 'run'])
             ->name('url-import.run')
             ->whereNumber('jobId');
@@ -272,7 +273,7 @@ $adminPrefix = trim((string) config('geoflow.admin_base_path', '/geo_admin'), '/
         // AI 配置模块（配置器 / 模型 / 提示词）
         Route::group([], function () {
             Route::get('ai-configurator', [LegacyController::class, 'aiConfigurator'])->name('ai.configurator');
-        Route::prefix('ai-models')->name('ai-models.')->group(function () {
+            Route::prefix('ai-models')->name('ai-models.')->group(function () {
                 Route::get('/', [AiModelController::class, 'index'])->name('index');
                 Route::post('create', [AiModelController::class, 'store'])->name('store');
                 Route::put('{modelId}', [AiModelController::class, 'update'])->name('update');
@@ -315,7 +316,7 @@ $adminPrefix = trim((string) config('geoflow.admin_base_path', '/geo_admin'), '/
                 Route::post('{site}', [SiteManagementController::class, 'update'])->name('update');
                 Route::post('{site}/toggle-status', [SiteManagementController::class, 'toggleStatus'])->name('toggle-status');
             });
-        Route::prefix('admin-users')->name('admin-users.')->group(function () {
+            Route::prefix('admin-users')->name('admin-users.')->group(function () {
                 Route::get('/', [AdminUserController::class, 'index'])->name('index');
                 Route::post('create', [AdminUserController::class, 'store'])->name('store');
                 Route::post('{adminId}/update', [AdminUserController::class, 'update'])->name('update');
@@ -323,7 +324,7 @@ $adminPrefix = trim((string) config('geoflow.admin_base_path', '/geo_admin'), '/
                 Route::post('{adminId}/delete', [AdminUserController::class, 'destroy'])->name('delete');
             });
             Route::get('admin-activity-logs', [AdminActivityLogController::class, 'index'])->name('admin-activity-logs');
-        Route::prefix('api-tokens')->name('api-tokens.')->group(function () {
+            Route::prefix('api-tokens')->name('api-tokens.')->group(function () {
                 Route::get('/', [ApiTokenController::class, 'index'])->name('index');
                 Route::post('/', [ApiTokenController::class, 'store'])->name('store');
                 Route::post('{tokenId}/revoke', [ApiTokenController::class, 'revoke'])->name('revoke');

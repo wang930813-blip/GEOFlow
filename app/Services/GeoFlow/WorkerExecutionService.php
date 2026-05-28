@@ -147,12 +147,19 @@ class WorkerExecutionService
             // 淇濇寔涓庢棫閫昏緫涓€鑷达細姣忔浠诲姟鎵ц浼氭秷鑰楁爣棰樺苟绱姞浠诲姟璁℃暟銆?            Title::query()->whereKey($titleRow->id)->increment('used_count');
             Title::query()->whereKey($titleRow->id)->increment('usage_count');
 
+            $articleLimit = max(1, (int) ($freshTask->article_limit ?? $freshTask->draft_limit ?? 10));
+            $nextCreatedCount = (int) ($freshTask->created_count ?? 0) + 1;
             $taskUpdate = [
                 'created_count' => DB::raw('COALESCE(created_count,0)+1'),
                 'loop_count' => DB::raw('COALESCE(loop_count,0)+1'),
                 'updated_at' => now(),
             ];
-            if ($freshTask->next_publish_at === null || ! $freshTask->next_publish_at->greaterThan(now())) {
+
+            if ($nextCreatedCount >= $articleLimit) {
+                $taskUpdate['status'] = 'paused';
+                $taskUpdate['schedule_enabled'] = 0;
+                $taskUpdate['next_run_at'] = null;
+            } elseif ($freshTask->next_publish_at === null || ! $freshTask->next_publish_at->greaterThan(now())) {
                 $taskUpdate['next_publish_at'] = now()->addSeconds($this->normalizePublishInterval($freshTask));
             }
             Task::query()->whereKey($task->id)->update($taskUpdate);
@@ -185,6 +192,7 @@ class WorkerExecutionService
 
     /**
      * 鍙戝竷涓€涓凡瀹℃牳鑽夌銆傜敓鎴愪笌鍙戝竷瑙ｈ€﹀悗锛學orker 姣忔鎵ц浼樺厛閲婃斁鍒版湡鑽夌銆?     *
+     *
      * @return array{article_id:int, title:string, message:string, meta:array<string,mixed>}|null
      */
     private function publishDueDraftArticle(Task $task): ?array
@@ -304,6 +312,7 @@ class WorkerExecutionService
 
     /**
      * 鍥哄畾妯″瀷鍙皾璇曚富妯″瀷锛涙櫤鑳藉垏鎹㈡寜 failover_priority 渚濇灏濊瘯鍏跺畠 active chat 妯″瀷銆?     *
+     *
      * @return array{content:string,model:AiModel,attempts:list<array{model_id:int,model_name:string,status:string,reason:?string}>}
      */
     private function generateContentWithModelSelection(Task $task, string $contentPrompt): array
@@ -424,6 +433,18 @@ class WorkerExecutionService
             throw new RuntimeException('Task title library is not configured');
         }
 
+        $fixedTitleId = (int) ($task->fixed_title_id ?? 0);
+        if ($fixedTitleId > 0) {
+            /** @var Title|null $fixedTitle */
+            $fixedTitle = Title::query()
+                ->whereKey($fixedTitleId)
+                ->where('library_id', $libraryId)
+                ->first();
+            if ($fixedTitle) {
+                return $fixedTitle;
+            }
+        }
+
         $query = Title::query()->where('library_id', $libraryId);
         if ((int) ($task->is_loop ?? 0) !== 1) {
             $query->where(function ($builder): void {
@@ -528,7 +549,7 @@ class WorkerExecutionService
             $renderedPrompt = trim($renderedPrompt)."\n\n".trim($geoContext);
         }
 
-        return trim($renderedPrompt)."\n\n".$this->finalPromptInstruction($renderedPrompt);
+        return trim($renderedPrompt)."\n\n".$this->finalPromptInstruction($renderedPrompt, $knowledgeContext);
     }
 
     private function promptHasKnownContextVariables(string $prompt): bool
@@ -539,6 +560,7 @@ class WorkerExecutionService
 
     /**
      * 娓叉煋浠诲姟涓婁笅鏂囧彉閲忥紝鍏煎 {{Knowledge}} 涓?{{knowledge}} 绛夊ぇ灏忓啓鍐欐硶銆?     *
+     *
      * @param  array{title:string, keyword:string, knowledge:string}  $context
      */
     private function renderPromptTemplate(string $prompt, array $context): string
@@ -617,13 +639,29 @@ class WorkerExecutionService
         return trim($prompt)."\n\n".implode("\n", $lines);
     }
 
-    private function finalPromptInstruction(string $prompt): string
+    private function finalPromptInstruction(string $prompt, string $knowledgeContext = ''): string
     {
         if (! $this->isLikelyEnglishPrompt($prompt)) {
-            return '请直接输出最终文章正文（Markdown），不要重复提示词、不要输出占位符。';
+            $instructions = [
+                '请直接输出最终文章正文（Markdown），不要重复提示词、不要输出占位符。',
+                '必须写成完整文章，包含开头导语、清晰小节和结尾总结；不要只输出检查清单、提纲或提示词内容。',
+            ];
+            if (trim($knowledgeContext) !== '') {
+                $instructions[] = '如果提供了参考知识或来源资料，必须在正文中吸收关键事实，并在文末增加“参考依据”小节，列出可验证的来源、事实或引用依据；不要编造来源。';
+            }
+
+            return implode("\n", $instructions);
         }
 
-        return 'Please output only the final article body in Markdown. Do not repeat the prompt or output placeholders.';
+        $instructions = [
+            'Please output only the final article body in Markdown. Do not repeat the prompt or output placeholders.',
+            'Write a complete article with an introduction, clear sections, and a conclusion. Do not output only a checklist, outline, or prompt instructions.',
+        ];
+        if (trim($knowledgeContext) !== '') {
+            $instructions[] = 'When reference knowledge or source material is provided, incorporate the key facts into the article and include a "References" section with verifiable sources, facts, or citation basis. Do not invent sources.';
+        }
+
+        return implode("\n", $instructions);
     }
 
     private function isLikelyEnglishPrompt(string $prompt): bool
@@ -745,6 +783,7 @@ class WorkerExecutionService
 
     /**
      * 鎸変换鍔″浘鐗囬厤缃彃鍏?Markdown 閰嶅浘骞惰繑鍥炶閫変腑鐨勫浘鐗囧垪琛ㄣ€?     *
+     *
      * @return array{content:string,images:list<Image>,generated_images?:list<array<string,mixed>>,image_error?:string|null}
      */
     private function insertTaskImagesIntoContent(Task $task, string $content, ?AiModel $chatModel = null, string $title = '', string $keyword = ''): array
@@ -814,6 +853,7 @@ class WorkerExecutionService
 
     /**
      * 鎸夋钀介棿闅旀彃鍏ュ浘鐗囷紝閬垮厤鍏ㄩ儴鍫嗗湪鏂囨湯銆?     *
+     *
      * @param  list<string>  $markdownBlocks
      */
     private function insertImagesByParagraphInterval(string $content, array $markdownBlocks): string
@@ -1264,6 +1304,7 @@ class WorkerExecutionService
 
     /**
      * 浼樺厛浣跨敤 pgvector 鎵ц鏁版嵁搴撳悜閲忔绱紝鍛戒腑鍒欒繑鍥炲€欓€夊潡銆?     *
+     *
      * @return list<array{chunk_index:int,content:string,score:float}>
      */
     private function fetchKnowledgeChunksByPgvector(int $knowledgeBaseId, string $query, int $candidateLimit): array
@@ -1342,6 +1383,7 @@ class WorkerExecutionService
 
     /**
      * 浠庡€欓€夊潡鎷艰鐭ヨ瘑涓婁笅鏂囷紝鎸夌墖娈甸『搴忚緭鍑恒€?     *
+     *
      * @param  list<array{chunk_index:int,content:string,score:float}>  $scored
      */
     private function composeKnowledgeContext(array $scored, int $limit, int $maxChars): string

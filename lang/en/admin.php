@@ -204,7 +204,7 @@ return [
             'draft_pool_full' => 'Draft Pool Full',
             'limit_reached' => 'Total Article Limit Reached',
             'retrying' => 'Retrying',
-            'completed' => 'Run Completed',
+            'completed' => 'Completed',
             'failed' => 'Execution Failed',
         ],
         'mode' => [
@@ -2909,6 +2909,12 @@ return [
         ],
         'empty' => [
             'no_records' => 'No import records yet',
+        ],
+        'bulk_delete' => [
+            'button' => 'Bulk Delete',
+            'confirm' => 'Delete the selected import records? Their processing logs will be deleted too.',
+            'none_selected' => 'Select import records to delete first',
+            'success' => 'Deleted :count import records',
         ],
         'value' => [
             'unknown_source' => 'Unknown source',

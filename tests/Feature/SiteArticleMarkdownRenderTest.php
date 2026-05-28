@@ -157,4 +157,56 @@ MD);
             ->assertSee('GEOFlow Demo')
             ->assertSee('Demo homepage description');
     }
+
+    public function test_netease_theme_renders_configured_homepage_carousel(): void
+    {
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'active_theme'],
+            ['setting_value' => 'netease-news-20260507']
+        );
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'home_carousel_slides'],
+            ['setting_value' => json_encode([
+                [
+                    'image_url' => 'https://example.com/net-ease-banner.jpg',
+                    'title' => 'NetEase Banner',
+                    'link_url' => '',
+                    'enabled' => true,
+                ],
+            ], JSON_UNESCAPED_UNICODE)]
+        );
+        SiteSettingsBag::forget();
+
+        $this->get(route('site.home'))
+            ->assertOk()
+            ->assertSee('data-home-poster-carousel', false)
+            ->assertSee('https://example.com/net-ease-banner.jpg', false)
+            ->assertSee('NetEase Banner');
+    }
+
+    public function test_english_netease_theme_renders_configured_homepage_carousel(): void
+    {
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'active_theme'],
+            ['setting_value' => 'tdwh-netease-news-en-20260508']
+        );
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'home_carousel_slides'],
+            ['setting_value' => json_encode([
+                [
+                    'image_url' => 'https://example.com/english-banner.jpg',
+                    'title' => 'English Banner',
+                    'link_url' => '',
+                    'enabled' => true,
+                ],
+            ], JSON_UNESCAPED_UNICODE)]
+        );
+        SiteSettingsBag::forget();
+
+        $this->get(route('site.home'))
+            ->assertOk()
+            ->assertSee('data-home-poster-carousel', false)
+            ->assertSee('https://example.com/english-banner.jpg', false)
+            ->assertSee('English Banner');
+    }
 }

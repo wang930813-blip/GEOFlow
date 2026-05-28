@@ -14,6 +14,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 class UrlImportController extends Controller
@@ -187,6 +188,52 @@ class UrlImportController extends Controller
         ]);
     }
 
+    public function bulkDelete(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'job_ids' => ['required', 'array', 'min:1'],
+            'job_ids.*' => ['integer', 'min:1'],
+        ]);
+
+        $jobIds = collect($validated['job_ids'] ?? [])
+            ->map(fn ($id): int => (int) $id)
+            ->filter(fn (int $id): bool => $id > 0)
+            ->unique()
+            ->values();
+
+        if ($jobIds->isEmpty()) {
+            return redirect()
+                ->route('admin.url-import.history')
+                ->withErrors(__('admin.url_import_history.bulk_delete.none_selected'));
+        }
+
+        $deletableIds = UrlImportJob::query()
+            ->whereIn('id', $jobIds->all())
+            ->pluck('id')
+            ->map(fn ($id): int => (int) $id)
+            ->all();
+
+        if ($deletableIds === []) {
+            return redirect()
+                ->route('admin.url-import.history')
+                ->withErrors(__('admin.url_import_history.bulk_delete.none_selected'));
+        }
+
+        DB::transaction(function () use ($deletableIds): void {
+            UrlImportJobLog::query()
+                ->whereIn('job_id', $deletableIds)
+                ->delete();
+
+            UrlImportJob::query()
+                ->whereIn('id', $deletableIds)
+                ->delete();
+        });
+
+        return redirect()
+            ->route('admin.url-import.history')
+            ->with('message', __('admin.url_import_history.bulk_delete.success', ['count' => count($deletableIds)]));
+    }
+
     private function loadStats(): array
     {
         return [
@@ -229,7 +276,7 @@ class UrlImportController extends Controller
         return [
             'id' => (int) $job->id,
             'status' => (string) $job->status,
-            'status_label' => __('admin.url_import_history.status.' . $job->status),
+            'status_label' => __('admin.url_import_history.status.'.$job->status),
             'current_step' => $currentStep,
             'stored_step' => $storedStep,
             'progress_percent' => (int) $job->progress_percent,

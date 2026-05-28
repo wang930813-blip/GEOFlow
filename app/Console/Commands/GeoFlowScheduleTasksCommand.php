@@ -7,6 +7,7 @@ use App\Models\TaskRun;
 use App\Services\GeoFlow\JobQueueService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 
 /**
  * GeoFlow 任务调度命令（对齐 bak/bin/cron.php 的入队判定）。
@@ -63,7 +64,7 @@ class GeoFlowScheduleTasksCommand extends Command
 
         $articleStats = empty($taskIds)
             ? collect()
-            : \Illuminate\Support\Facades\DB::table('articles')
+            : DB::table('articles')
                 ->selectRaw("
                     task_id,
                     SUM(CASE WHEN status = 'draft' THEN 1 ELSE 0 END) AS draft_articles,
@@ -97,6 +98,18 @@ class GeoFlowScheduleTasksCommand extends Command
             $nextPublishAt = $task->next_publish_at instanceof Carbon ? $task->next_publish_at : null;
             $canGenerate = $createdCount < $articleLimit && $draftCount < $draftLimit;
             $canPublishNow = $publishableDrafts > 0 && ($nextPublishAt === null || ! $nextPublishAt->greaterThan($now));
+
+            if ($createdCount >= $articleLimit) {
+                Task::query()->whereKey($taskId)->update([
+                    'status' => 'completed',
+                    'schedule_enabled' => 0,
+                    'next_run_at' => null,
+                    'updated_at' => now(),
+                ]);
+                $skippedCount++;
+
+                continue;
+            }
 
             if (! $canGenerate && ! $canPublishNow) {
                 if ($publishableDrafts > 0 && $nextPublishAt instanceof Carbon) {

@@ -34,6 +34,7 @@
     @php
         $homeArticles = method_exists($articles, 'getCollection') ? $articles->getCollection() : collect($articles);
         $homepageHotArticles = collect($hotArticles ?? []);
+        $homepageSlides = collect($homepageCarouselSlides ?? [])->take(3);
         $isDefaultHome = $search === '' && !$category && !$categoryMissing;
         $leadArticle = $isDefaultHome ? ($featuredArticles->first() ?: $homeArticles->first()) : null;
         $leadSummary = $leadArticle ? trim((string) ($cardSummaries[$leadArticle->id] ?? '')) : '';
@@ -56,6 +57,39 @@
                     <p class="ne-page-desc">{{ $pageDescription }}</p>
                 </div>
             @else
+                @if($homepageSlides->isNotEmpty())
+                    <section class="ne-home-poster-carousel" data-home-poster-carousel>
+                        @foreach($homepageSlides as $slide)
+                            @php
+                                $slideTitle = trim((string) ($slide['title'] ?? ''));
+                                $slideLink = trim((string) ($slide['link_url'] ?? ''));
+                                $slideAlt = $slideTitle !== '' ? $slideTitle : $siteTitle;
+                            @endphp
+                            @if($slideLink !== '')
+                                <a href="{{ $slideLink }}" class="ne-home-poster-slide {{ $loop->first ? 'is-active' : '' }}" data-home-poster-slide>
+                                    <img src="{{ $slide['image_url'] }}" alt="{{ $slideAlt }}">
+                                    @if($slideTitle !== '')
+                                        <span class="ne-home-poster-caption">{{ $slideTitle }}</span>
+                                    @endif
+                                </a>
+                            @else
+                                <div class="ne-home-poster-slide {{ $loop->first ? 'is-active' : '' }}" data-home-poster-slide>
+                                    <img src="{{ $slide['image_url'] }}" alt="{{ $slideAlt }}">
+                                    @if($slideTitle !== '')
+                                        <span class="ne-home-poster-caption">{{ $slideTitle }}</span>
+                                    @endif
+                                </div>
+                            @endif
+                        @endforeach
+                        @if($homepageSlides->count() > 1)
+                            <div class="ne-home-poster-dots" aria-hidden="true">
+                                @foreach($homepageSlides as $slide)
+                                    <button type="button" class="{{ $loop->first ? 'is-active' : '' }}" data-home-poster-dot></button>
+                                @endforeach
+                            </div>
+                        @endif
+                    </section>
+                @endif
                 @if($leadArticle)
                     <section class="ne-home-lead">
                         <div class="ne-home-lead-main">
