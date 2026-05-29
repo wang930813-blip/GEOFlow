@@ -765,6 +765,89 @@ class AdminMediaDistributionTest extends TestCase
         $this->assertSame('', (string) $submission->last_error_message);
     }
 
+    public function test_submission_list_auto_syncs_visible_unfinished_orders(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('media_list_auto_sync_admin', 'admin');
+        [$article, $resource] = $this->createArticleAndResource($site, 'list-auto-sync-article');
+        $submission = MediaSubmission::query()->create([
+            'site_id' => $site->id,
+            'article_id' => $article->id,
+            'media_resource_id' => $resource->id,
+            'source_type' => $resource->source_type,
+            'external_order_nid' => 'list-auto-sync-order',
+            'title_snapshot' => $article->title,
+            'content_snapshot' => $article->content,
+            'cost_price_snapshot' => '27.00',
+            'sale_price_snapshot' => '88.00',
+            'points_amount' => '88.00',
+            'status' => 'submitted',
+        ]);
+        Http::fake([
+            '*/api/media/order_info' => Http::response([
+                'code' => 1,
+                'msg' => 'success',
+                'data' => [[
+                    'order_nid' => 'list-auto-sync-order',
+                    'status' => 'published',
+                    'url' => 'https://example.com/list-auto-sync.html',
+                ]],
+            ]),
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => $site->id])
+            ->get(route('admin.media-distribution.submissions.index'))
+            ->assertOk()
+            ->assertSee('已发布')
+            ->assertDontSee('已提交');
+
+        $submission->refresh();
+        $this->assertSame('published', $submission->status);
+        $this->assertSame('https://example.com/list-auto-sync.html', $submission->published_url);
+    }
+
+    public function test_submission_detail_auto_syncs_order_status(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('media_detail_auto_sync_admin', 'admin');
+        [$article, $resource] = $this->createArticleAndResource($site, 'detail-auto-sync-article');
+        $submission = MediaSubmission::query()->create([
+            'site_id' => $site->id,
+            'article_id' => $article->id,
+            'media_resource_id' => $resource->id,
+            'source_type' => $resource->source_type,
+            'external_order_nid' => 'detail-auto-sync-order',
+            'title_snapshot' => $article->title,
+            'content_snapshot' => $article->content,
+            'cost_price_snapshot' => '27.00',
+            'sale_price_snapshot' => '88.00',
+            'points_amount' => '88.00',
+            'status' => 'submitted',
+        ]);
+        Http::fake([
+            '*/api/media/order_info' => Http::response([
+                'code' => 1,
+                'msg' => 'success',
+                'data' => [[
+                    'order_nid' => 'detail-auto-sync-order',
+                    'status' => 'published',
+                    'url' => 'https://example.com/detail-auto-sync.html',
+                ]],
+            ]),
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => $site->id])
+            ->get(route('admin.media-distribution.submissions.show', ['submission' => $submission->id]))
+            ->assertOk()
+            ->assertSee('已发布')
+            ->assertSee('打开链接')
+            ->assertDontSee('已提交');
+
+        $submission->refresh();
+        $this->assertSame('published', $submission->status);
+        $this->assertSame('https://example.com/detail-auto-sync.html', $submission->published_url);
+    }
+
     public function test_admin_can_bulk_submit_articles_to_media(): void
     {
         $this->withoutMiddleware(ValidateCsrfToken::class);

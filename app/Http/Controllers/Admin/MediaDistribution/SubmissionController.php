@@ -18,7 +18,7 @@ use Throwable;
 
 class SubmissionController extends Controller
 {
-    public function index(Request $request): View
+    public function index(Request $request, MediaSubmissionService $submissionService): View
     {
         $admin = auth('admin')->user();
         $isSuperAdmin = (bool) $admin?->isSuperAdmin();
@@ -30,6 +30,8 @@ class SubmissionController extends Controller
             ->with(['article:id,title', 'resource:id,title,source_type,sale_price,cost_price', 'site:id,name'])
             ->orderByDesc('id')
             ->paginate(20);
+        $this->syncVisibleSubmissions($submissions->getCollection(), $submissionService);
+        $submissions->setCollection($submissions->getCollection()->fresh(['article:id,title', 'resource:id,title,source_type,sale_price,cost_price', 'site:id,name']));
 
         $selectedResourceIds = collect((array) $request->query('media_resource_ids', []))
             ->push($request->query('media_resource_id'))
@@ -141,10 +143,12 @@ class SubmissionController extends Controller
             ->with('message', '批量投稿已提交 '.$created.' 个订单'.($errors !== [] ? '，失败 '.count($errors).' 个' : ''));
     }
 
-    public function show(int $submission): View
+    public function show(int $submission, MediaSubmissionService $submissions): View
     {
         $submission = $this->findSubmission($submission);
         $this->authorizeSubmission($submission);
+        $this->syncVisibleSubmissions(collect([$submission]), $submissions);
+        $submission->refresh();
 
         return view('admin.media-distribution.submission-show', [
             'pageTitle' => '媒体投稿详情',
@@ -282,5 +286,25 @@ class SubmissionController extends Controller
         }
 
         return $query->whereKey($submissionId)->firstOrFail();
+    }
+
+    private function syncVisibleSubmissions($submissions, MediaSubmissionService $submissionService): void
+    {
+        foreach ($submissions as $submission) {
+            if (! $submission instanceof MediaSubmission
+                || (string) $submission->external_order_nid === ''
+                || in_array((string) $submission->status, ['published', 'rejected', 'cancelled'], true)) {
+                continue;
+            }
+
+            try {
+                $submissionService->syncStatus($submission);
+            } catch (Throwable $e) {
+                $submission->forceFill([
+                    'last_error_message' => $e->getMessage(),
+                    'last_synced_at' => now(),
+                ])->save();
+            }
+        }
     }
 }
