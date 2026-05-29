@@ -383,14 +383,22 @@ class AdminMediaDistributionTest extends TestCase
                 'msg' => '投稿成功',
                 'data' => ['order_nid' => 123456],
             ]),
-            '*/api/media/order_info' => Http::response([
-                'code' => 1,
-                'msg' => 'success',
-                'data' => [
-                    'status' => 'published',
-                    'url' => 'https://example.com/published.html',
-                ],
-            ]),
+            '*/api/media/order_info' => function ($request) {
+                $payload = $this->httpRequestPayload($request);
+                $this->assertSame('123456', (string) ($payload['order_nid'] ?? ''));
+                $this->assertSame('123456', (string) ($payload['nid'] ?? ''));
+                $this->assertSame('123456', (string) ($payload['order_id'] ?? ''));
+                $this->assertSame('123456', (string) ($payload['id'] ?? ''));
+
+                return Http::response([
+                    'code' => 1,
+                    'msg' => 'success',
+                    'data' => [
+                        'status' => 'published',
+                        'url' => 'https://example.com/published.html',
+                    ],
+                ]);
+            },
         ]);
 
         $this->actingAs($admin, 'admin')

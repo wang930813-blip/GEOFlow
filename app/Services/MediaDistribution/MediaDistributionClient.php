@@ -92,9 +92,7 @@ class MediaDistributionClient
      */
     public function orderInfo(string $sourceType, string $orderNid): array
     {
-        return $this->post($sourceType, 'order_info', [
-            'order_nid' => $orderNid,
-        ]);
+        return $this->post($sourceType, 'order_info', $this->orderPayload($orderNid));
     }
 
     /**
@@ -102,8 +100,7 @@ class MediaDistributionClient
      */
     public function cancelOrder(string $sourceType, string $orderNid, string $reason): array
     {
-        return $this->post($sourceType, 'cancel_order', [
-            'order_nid' => $orderNid,
+        return $this->post($sourceType, 'cancel_order', $this->orderPayload($orderNid) + [
             'reason' => $reason,
         ]);
     }
@@ -113,10 +110,22 @@ class MediaDistributionClient
      */
     public function rejection(string $sourceType, string $orderNid, string $content): array
     {
-        return $this->post($sourceType, 'rejection', [
-            'order_nid' => $orderNid,
+        return $this->post($sourceType, 'rejection', $this->orderPayload($orderNid) + [
             'content' => $content,
         ]);
+    }
+
+    /**
+     * @return array<string,string>
+     */
+    private function orderPayload(string $orderNid): array
+    {
+        return [
+            'order_nid' => $orderNid,
+            'nid' => $orderNid,
+            'order_id' => $orderNid,
+            'id' => $orderNid,
+        ];
     }
 
     /**
