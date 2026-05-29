@@ -14,6 +14,8 @@ use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\CatalogController;
 use App\Http\Controllers\Api\V1\JobController;
 use App\Http\Controllers\Api\V1\MaterialController;
+use App\Http\Controllers\Api\V1\MediaResourceController;
+use App\Http\Controllers\Api\V1\MediaSubmissionController;
 use App\Http\Controllers\Api\V1\TaskController;
 use Illuminate\Support\Facades\Route;
 
@@ -100,5 +102,24 @@ Route::prefix('v1')
             Route::post('articles/{article}/trash', [ArticleController::class, 'trash'])
                 ->whereNumber('article')
                 ->middleware('api.scope:articles:write');
+
+            Route::get('media/resources', [MediaResourceController::class, 'index'])->middleware('api.scope:media:read');
+            Route::get('media/resources/{resource}', [MediaResourceController::class, 'show'])
+                ->whereNumber('resource')
+                ->middleware('api.scope:media:read');
+            Route::get('media/submissions', [MediaSubmissionController::class, 'index'])->middleware('api.scope:media:read');
+            Route::post('media/submissions', [MediaSubmissionController::class, 'store'])->middleware('api.scope:media:submit');
+            Route::get('media/submissions/{submission}', [MediaSubmissionController::class, 'show'])
+                ->whereNumber('submission')
+                ->middleware('api.scope:media:read');
+            Route::post('media/submissions/{submission}/sync', [MediaSubmissionController::class, 'sync'])
+                ->whereNumber('submission')
+                ->middleware('api.scope:media:sync');
+            Route::post('media/submissions/{submission}/cancel', [MediaSubmissionController::class, 'cancel'])
+                ->whereNumber('submission')
+                ->middleware('api.scope:media:sync');
+            Route::post('media/submissions/{submission}/appeal', [MediaSubmissionController::class, 'appeal'])
+                ->whereNumber('submission')
+                ->middleware('api.scope:media:sync');
         });
     });

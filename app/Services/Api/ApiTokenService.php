@@ -180,6 +180,9 @@ class ApiTokenService
             'articles:read',
             'articles:write',
             'articles:publish',
+            'media:read',
+            'media:submit',
+            'media:sync',
             'materials:read',
             'materials:write',
         ];
