@@ -743,6 +743,43 @@ class AdminMediaDistributionTest extends TestCase
         Http::assertSentCount(4);
     }
 
+    public function test_media_resource_submit_link_prefills_bulk_submission_article_picker(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+        [$admin, $site] = $this->createAdminWithSite('media_prefill_submit_admin', 'admin');
+        [$article, $resource] = $this->createArticleAndResource($site, 'prefill-submit');
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => $site->id])
+            ->get(route('admin.media-distribution.submissions.index', [
+                'media_resource_id' => (int) $resource->id,
+            ]))
+            ->assertOk()
+            ->assertSee('name="article_ids[]"', false)
+            ->assertSee('name="media_resource_ids[]"', false)
+            ->assertSee('value="'.(int) $resource->id.'" selected', false)
+            ->assertSee('value="'.(int) $article->id.'"', false)
+            ->assertDontSee('name="article_id"', false)
+            ->assertDontSee('name="media_resource_id"', false);
+    }
+
+    public function test_media_submission_page_uses_single_bulk_submission_form(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('media_single_submit_form_admin', 'admin');
+        [$article, $resource] = $this->createArticleAndResource($site, 'single-submit-form');
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => $site->id])
+            ->get(route('admin.media-distribution.submissions.index'))
+            ->assertOk()
+            ->assertSee('name="article_ids[]"', false)
+            ->assertSee('name="media_resource_ids[]"', false)
+            ->assertSee('value="'.(int) $article->id.'"', false)
+            ->assertSee('value="'.(int) $resource->id.'"', false)
+            ->assertDontSee('name="article_id"', false)
+            ->assertDontSee('name="media_resource_id"', false);
+    }
+
     public function test_media_resources_support_status_category_and_price_filters(): void
     {
         [$admin] = $this->createAdminWithSite('media_filter_admin', 'admin');

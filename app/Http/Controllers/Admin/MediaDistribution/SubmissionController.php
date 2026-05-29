@@ -6,15 +6,14 @@ use App\Http\Controllers\Controller;
 use App\Models\Article;
 use App\Models\MediaResource;
 use App\Models\MediaSubmission;
-use App\Models\SiteCreditAccount;
 use App\Services\MediaDistribution\MediaSubmissionService;
 use App\Services\MediaDistribution\SiteCreditService;
 use App\Support\AdminWeb;
 use App\Support\CurrentSite;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
 
 class SubmissionController extends Controller
@@ -39,6 +38,20 @@ class SubmissionController extends Controller
             ->unique()
             ->values()
             ->all();
+        $resources = MediaResource::query()
+            ->active()
+            ->when($selectedResourceIds !== [], fn ($query) => $query->orderByRaw('CASE WHEN id IN ('.implode(',', array_fill(0, count($selectedResourceIds), '?')).') THEN 0 ELSE 1 END', $selectedResourceIds))
+            ->orderBy('sale_price')
+            ->limit(200)
+            ->get();
+
+        if ($selectedResourceIds !== []) {
+            $missingSelectedResources = MediaResource::query()
+                ->active()
+                ->whereIn('id', array_diff($selectedResourceIds, $resources->pluck('id')->map(static fn ($id): int => (int) $id)->all()))
+                ->get();
+            $resources = $missingSelectedResources->concat($resources)->unique('id')->values();
+        }
 
         return view('admin.media-distribution.submissions', [
             'pageTitle' => '媒体投稿订单',
@@ -46,9 +59,10 @@ class SubmissionController extends Controller
             'adminSiteName' => AdminWeb::siteName(),
             'submissions' => $submissions,
             'articles' => Article::query()->select(['id', 'title'])->whereNull('deleted_at')->orderByDesc('id')->limit(100)->get(),
-            'resources' => MediaResource::query()->active()->orderBy('sale_price')->limit(200)->get(),
+            'resources' => $resources,
             'selectedResourceId' => $selectedResourceIds[0] ?? 0,
             'selectedResourceIds' => $selectedResourceIds,
+            'hasSelectedResources' => $selectedResourceIds !== [],
             'account' => $account,
             'isSuperAdmin' => $isSuperAdmin,
         ]);

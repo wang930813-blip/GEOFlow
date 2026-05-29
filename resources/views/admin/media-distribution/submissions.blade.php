@@ -20,46 +20,9 @@
         </div>
 
         <section class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <div class="mb-4 flex items-center justify-between">
-                <div>
-                    <h2 class="text-lg font-semibold text-gray-900">发起投稿</h2>
-                    <p class="text-sm text-gray-500">当前站点余额：{{ $account?->balance ?? '0.00' }} 积分</p>
-                </div>
-            </div>
-            <form method="POST" action="{{ route('admin.media-distribution.submissions.store') }}" class="grid grid-cols-1 gap-4 lg:grid-cols-12">
-                @csrf
-                <div class="lg:col-span-4">
-                    <label class="mb-1 block text-sm font-medium text-gray-700">文章</label>
-                    <select name="article_id" required class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
-                        <option value="">选择文章</option>
-                        @foreach ($articles as $article)
-                            <option value="{{ $article->id }}">{{ $article->title }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div class="lg:col-span-4">
-                    <label class="mb-1 block text-sm font-medium text-gray-700">媒体</label>
-                    <select name="media_resource_id" required class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
-                        <option value="">选择媒体</option>
-                        @foreach ($resources as $resource)
-                            <option value="{{ $resource->id }}" @selected($selectedResourceId === (int) $resource->id)>{{ $resource->title }} · {{ $resource->sale_price }} 积分</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div class="lg:col-span-3">
-                    <label class="mb-1 block text-sm font-medium text-gray-700">投稿备注</label>
-                    <input name="remark" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" placeholder="选填">
-                </div>
-                <div class="flex items-end lg:col-span-1">
-                    <button type="submit" class="inline-flex h-10 w-full items-center justify-center rounded-md bg-indigo-600 px-4 text-sm font-medium text-white hover:bg-indigo-700">投稿</button>
-                </div>
-            </form>
-        </section>
-
-        <section class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
             <div class="mb-4">
-                <h2 class="text-lg font-semibold text-gray-900">批量投稿</h2>
-                <p class="text-sm text-gray-500">选择多篇文章和多个媒体，系统会按每篇文章 × 每个媒体分别创建投稿订单并扣减积分。</p>
+                <h2 class="text-lg font-semibold text-gray-900">选择文章投稿</h2>
+                <p class="text-sm text-gray-500">{{ $hasSelectedResources ? '已预选上一步的媒体，请勾选要投稿的文章。' : '选择文章和媒体，系统会按每篇文章 × 每个媒体分别创建投稿订单并扣减积分。' }}</p>
             </div>
             <form method="POST" action="{{ route('admin.media-distribution.submissions.bulk-store') }}" class="grid grid-cols-1 gap-4 lg:grid-cols-12">
                 @csrf
