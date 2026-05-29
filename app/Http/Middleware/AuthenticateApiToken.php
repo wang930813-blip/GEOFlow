@@ -4,7 +4,9 @@ namespace App\Http\Middleware;
 
 use App\Exceptions\ApiException;
 use App\Http\ApiAuthContext;
+use App\Models\Site;
 use App\Services\Api\ApiTokenService;
+use App\Support\CurrentSite;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -41,7 +43,19 @@ class AuthenticateApiToken
             isset($token['created_by_admin_id']) ? (int) $token['created_by_admin_id'] : null
         );
 
-        $request->attributes->set('api_auth', new ApiAuthContext($token, $auditAdminId));
+        $siteId = isset($token['site_id']) ? (int) $token['site_id'] : null;
+        if ($siteId !== null && $siteId > 0) {
+            $site = Site::query()->whereKey($siteId)->where('status', 'active')->first();
+            if (! $site instanceof Site) {
+                throw new ApiException('site_not_available', 'Token 绑定的站点不存在或已停用', 403);
+            }
+
+            app(CurrentSite::class)->set($site);
+        } else {
+            $siteId = null;
+        }
+
+        $request->attributes->set('api_auth', new ApiAuthContext($token, $auditAdminId, $siteId));
 
         return $next($request);
     }

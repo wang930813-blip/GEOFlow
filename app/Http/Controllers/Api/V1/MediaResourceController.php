@@ -14,7 +14,7 @@ class MediaResourceController extends BaseApiController
     {
         $page = max(1, $request->integer('page', 1));
         $perPage = max(1, min(100, $request->integer('per_page', 50)));
-        $siteId = $request->integer('site_id', 0);
+        $siteId = $this->auth($request)->siteId ?? $request->integer('site_id', 0);
         $query = MediaResource::query()
             ->active()
             ->when($request->filled('source_type'), fn ($q) => $q->where('source_type', (string) $request->query('source_type')))
@@ -52,7 +52,7 @@ class MediaResourceController extends BaseApiController
             throw new ApiException('media_resource_not_found', '媒体资源不存在', 404);
         }
 
-        return $this->success($request, $this->resourcePayload($mediaResource, $request->integer('site_id', 0)));
+        return $this->success($request, $this->resourcePayload($mediaResource, $this->auth($request)->siteId ?? $request->integer('site_id', 0)));
     }
 
     private function resourcePayload(MediaResource $resource, int $siteId = 0): array

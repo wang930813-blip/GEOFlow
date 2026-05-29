@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Exceptions\ApiException;
 use App\Http\Controllers\Controller;
+use App\Models\Site;
 use App\Services\Api\ApiTokenService;
 use App\Support\AdminWeb;
 use Illuminate\Http\RedirectResponse;
@@ -37,6 +38,7 @@ class ApiTokenController extends Controller
             'tokens' => $this->apiTokenService->listTokens(),
             'availableScopes' => $this->apiTokenService->getAvailableScopes(),
             'defaultExpiresAtInput' => $this->apiTokenService->defaultExpiresAtInputValue(),
+            'sites' => Site::query()->where('status', 'active')->orderBy('id')->get(['id', 'name']),
         ]);
     }
 
@@ -50,6 +52,7 @@ class ApiTokenController extends Controller
             'scopes' => ['required', 'array', 'min:1'],
             'scopes.*' => ['required', 'string'],
             'expires_at' => ['nullable', 'string', 'max:32'],
+            'site_id' => ['nullable', 'integer', 'min:1'],
         ]);
 
         try {
@@ -57,7 +60,8 @@ class ApiTokenController extends Controller
                 (string) $payload['name'],
                 is_array($payload['scopes']) ? $payload['scopes'] : [],
                 auth('admin')->id() !== null ? (int) auth('admin')->id() : null,
-                (string) ($payload['expires_at'] ?? '')
+                (string) ($payload['expires_at'] ?? ''),
+                isset($payload['site_id']) ? (int) $payload['site_id'] : null
             );
 
             return redirect()

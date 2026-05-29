@@ -42,6 +42,17 @@
                     </div>
 
                     <div>
+                        <label for="site_id" class="block text-sm font-medium text-gray-700">绑定站点</label>
+                        <select id="site_id" name="site_id" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                            <option value="">全局 Token（不限制站点）</option>
+                            @foreach ($sites as $site)
+                                <option value="{{ $site->id }}" @selected((int) old('site_id', 0) === (int) $site->id)>#{{ $site->id }} {{ $site->name }}</option>
+                            @endforeach
+                        </select>
+                        <p class="mt-1 text-xs text-gray-500">绑定后 API 只能读写该站点数据；权限仍由 scopes 控制。</p>
+                    </div>
+
+                    <div>
                         <div class="mb-3 block text-sm font-medium text-gray-700">Scopes *</div>
                         <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
                             @foreach ($availableScopes as $scope)
@@ -77,6 +88,7 @@
                             <tr>
                                 <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">{{ __('admin.api_tokens.column.name') }}</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Scopes</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">绑定站点</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">{{ __('admin.api_tokens.column.created_by') }}</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">{{ __('admin.api_tokens.column.last_used') }}</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">{{ __('admin.api_tokens.column.expires_at') }}</th>
@@ -89,6 +101,13 @@
                                 <tr>
                                     <td class="px-6 py-4 text-sm text-gray-900">{{ $token['name'] ?? '' }}</td>
                                     <td class="px-6 py-4 text-sm text-gray-600">{{ implode(', ', $token['scopes'] ?? []) }}</td>
+                                    <td class="px-6 py-4 text-sm text-gray-600">
+                                        @if (! empty($token['site_id']))
+                                            #{{ $token['site_id'] }} {{ $token['site_name'] ?? '' }}
+                                        @else
+                                            全局
+                                        @endif
+                                    </td>
                                     <td class="px-6 py-4 text-sm text-gray-600">{{ $token['created_by_username'] !== '' ? $token['created_by_username'] : __('admin.api_tokens.value.system') }}</td>
                                     <td class="px-6 py-4 text-sm text-gray-600">{{ $token['last_used_at'] ?? __('admin.api_tokens.value.never_used') }}</td>
                                     <td class="px-6 py-4 text-sm text-gray-600">{{ $token['expires_at'] ?? __('admin.api_tokens.value.no_expiry') }}</td>

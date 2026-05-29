@@ -10,6 +10,7 @@ use App\Models\Category;
 use App\Models\Keyword;
 use App\Models\KeywordLibrary;
 use App\Models\MediaResource;
+use App\Models\MediaResourceSitePrice;
 use App\Models\MediaSubmission;
 use App\Models\Prompt;
 use App\Models\Site;
@@ -43,11 +44,14 @@ class ApiV1ContractTest extends TestCase
      * @param  list<string>  $scopes
      * @return array{plain: string}
      */
-    private function createBearerToken(Admin $admin, array $scopes): array
+    private function createBearerToken(Admin $admin, array $scopes, ?int $siteId = null): array
     {
-        $plain = $admin->createToken('contract-test', $scopes)->plainTextToken;
+        $token = $admin->createToken('contract-test', $scopes);
+        if ($siteId !== null) {
+            $token->accessToken->forceFill(['site_id' => $siteId])->save();
+        }
 
-        return ['plain' => $plain];
+        return ['plain' => $token->plainTextToken];
     }
 
     public function test_catalog_requires_bearer_token(): void
@@ -339,6 +343,37 @@ class ApiV1ContractTest extends TestCase
             ->assertJsonPath('data.items.0.sale_price', '3.00');
     }
 
+    public function test_site_bound_token_uses_bound_site_for_media_prices(): void
+    {
+        $admin = $this->createActiveAdmin('media_site_price_admin', 'p');
+        [$siteA, $siteB] = $this->createTwoSites($admin);
+        $bearer = $this->createBearerToken($admin, ['media:read'], (int) $siteA->id);
+        $resource = MediaResource::query()->create([
+            'source_type' => 'website_media',
+            'external_resource_id' => 'api-media-price',
+            'title' => 'API Media Price',
+            'category' => 'news',
+            'status' => 'active',
+            'cost_price' => '1.00',
+            'sale_price' => '3.00',
+        ]);
+        MediaResourceSitePrice::query()->create([
+            'site_id' => $siteA->id,
+            'media_resource_id' => $resource->id,
+            'sale_price' => '6.00',
+        ]);
+        MediaResourceSitePrice::query()->create([
+            'site_id' => $siteB->id,
+            'media_resource_id' => $resource->id,
+            'sale_price' => '9.00',
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->getJson('/api/v1/media/resources?site_id='.$siteB->id)
+            ->assertOk()
+            ->assertJsonPath('data.items.0.sale_price', '6.00');
+    }
+
     public function test_media_submission_api_submits_article_to_media(): void
     {
         $admin = $this->createActiveAdmin('media_submit_api_admin', 'p');
@@ -431,6 +466,51 @@ class ApiV1ContractTest extends TestCase
             ->assertJsonPath('data.published_url', 'https://example.com/api-show-sync.html');
     }
 
+    public function test_site_bound_token_only_sees_own_media_submissions(): void
+    {
+        $admin = $this->createActiveAdmin('media_site_scope_admin', 'p');
+        [$siteA, $siteB] = $this->createTwoSites($admin);
+        $bearer = $this->createBearerToken($admin, ['media:read'], (int) $siteA->id);
+        [$articleA, $resourceA] = $this->createArticleAndMediaResource($admin, $siteA);
+        [$articleB, $resourceB] = $this->createArticleAndMediaResource($admin, $siteB);
+        $submissionA = $this->createMediaSubmission($articleA, $resourceA, 'api-site-a-order');
+        $submissionB = $this->createMediaSubmission($articleB, $resourceB, 'api-site-b-order');
+
+        $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->getJson('/api/v1/media/submissions')
+            ->assertOk()
+            ->assertJsonPath('data.items.0.id', $submissionA->id);
+
+        $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->getJson("/api/v1/media/submissions/{$submissionB->id}")
+            ->assertStatus(404)
+            ->assertJsonPath('error.code', 'media_submission_not_found');
+    }
+
+    public function test_site_bound_token_only_sees_own_catalog_and_articles(): void
+    {
+        $admin = $this->createActiveAdmin('content_site_scope_admin', 'p');
+        [$siteA, $siteB] = $this->createTwoSites($admin);
+        $bearer = $this->createBearerToken($admin, ['catalog:read', 'articles:read'], (int) $siteA->id);
+        [$articleA] = $this->createArticleAndMediaResource($admin, $siteA);
+        [$articleB] = $this->createArticleAndMediaResource($admin, $siteB);
+
+        $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->getJson('/api/v1/catalog')
+            ->assertOk()
+            ->assertJsonPath('data.authors.0.name', 'API Author '.$siteA->id);
+
+        $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->getJson('/api/v1/articles')
+            ->assertOk()
+            ->assertJsonPath('data.items.0.id', $articleA->id);
+
+        $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->getJson("/api/v1/articles/{$articleB->id}")
+            ->assertStatus(404)
+            ->assertJsonPath('error.code', 'article_not_found');
+    }
+
     public function test_media_submission_api_can_cancel_order(): void
     {
         $admin = $this->createActiveAdmin('media_cancel_api_admin', 'p');
@@ -476,25 +556,25 @@ class ApiV1ContractTest extends TestCase
         $this->assertSame('please recheck', $submission->appeal_content);
     }
 
-    private function createArticleAndMediaResource(Admin $admin): array
+    private function createArticleAndMediaResource(Admin $admin, ?Site $site = null): array
     {
-        $site = Site::query()->create([
+        $site ??= Site::query()->create([
             'owner_admin_id' => $admin->id,
             'name' => 'API Media Site',
             'status' => 'active',
         ]);
         $category = Category::query()->create([
             'site_id' => $site->id,
-            'name' => 'API Category',
+            'name' => 'API Category '.$site->id,
             'slug' => 'api-category-'.uniqid(),
         ]);
         $author = Author::query()->create([
             'site_id' => $site->id,
-            'name' => 'API Author',
+            'name' => 'API Author '.$site->id,
         ]);
         $article = Article::withoutGlobalScope('current_site')->create([
             'site_id' => $site->id,
-            'title' => 'API Media Article',
+            'title' => 'API Media Article '.$site->id,
             'slug' => 'api-media-article-'.uniqid(),
             'content' => 'API media article content.',
             'excerpt' => 'API media article content.',
@@ -514,6 +594,22 @@ class ApiV1ContractTest extends TestCase
         ]);
 
         return [$article, $resource];
+    }
+
+    private function createTwoSites(Admin $admin): array
+    {
+        $siteA = Site::query()->create([
+            'owner_admin_id' => $admin->id,
+            'name' => 'API Site A',
+            'status' => 'active',
+        ]);
+        $siteB = Site::query()->create([
+            'owner_admin_id' => $admin->id,
+            'name' => 'API Site B',
+            'status' => 'active',
+        ]);
+
+        return [$siteA, $siteB];
     }
 
     private function createMediaSubmission(Article $article, MediaResource $resource, string $orderNid): MediaSubmission

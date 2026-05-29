@@ -4,6 +4,7 @@ namespace App\Services\Api;
 
 use App\Exceptions\ApiException;
 use App\Models\Admin;
+use App\Models\Site;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Laravel\Sanctum\PersonalAccessToken;
@@ -24,11 +25,15 @@ class ApiTokenService
             ->orderByDesc('created_at')
             ->orderByDesc('id')
             ->get();
+        $siteNames = Site::query()
+            ->whereIn('id', $rows->pluck('site_id')->filter()->unique()->values())
+            ->pluck('name', 'id');
 
         return $rows
-            ->map(function (PersonalAccessToken $row): array {
+            ->map(function (PersonalAccessToken $row) use ($siteNames): array {
                 $data = $this->hydrate($row);
                 $data['created_by_username'] = (string) ($row->tokenable?->username ?? '');
+                $data['site_name'] = $row->site_id !== null ? (string) ($siteNames[(int) $row->site_id] ?? '') : '';
 
                 return $data;
             })
@@ -126,7 +131,7 @@ class ApiTokenService
      * @param  list<string>  $scopes
      * @return array{token: string, record: array<string, mixed>}
      */
-    public function createToken(string $name, array $scopes, ?int $adminId, ?string $expiresAt = null): array
+    public function createToken(string $name, array $scopes, ?int $adminId, ?string $expiresAt = null, ?int $siteId = null): array
     {
         $name = trim($name);
         if ($name === '') {
@@ -143,6 +148,7 @@ class ApiTokenService
         }
 
         $expires = $this->normalizeExpiresAt($expiresAt);
+        $siteId = $this->normalizeSiteId($siteId);
         $creatorId = $this->normalizeCreatorAdminId($adminId) ?? $this->resolveAuditAdminId($adminId);
         $admin = Admin::query()->whereKey($creatorId)->first();
         if (! $admin) {
@@ -157,6 +163,10 @@ class ApiTokenService
         $model = $tokenResult->accessToken->fresh();
         if (! $model instanceof PersonalAccessToken) {
             throw new ApiException('token_create_failed', 'Token 创建失败', 500);
+        }
+        if ($siteId !== null) {
+            $model->forceFill(['site_id' => $siteId])->save();
+            $model->refresh();
         }
 
         $record = $this->hydrate($model);
@@ -204,6 +214,7 @@ class ApiTokenService
             'token_hash' => '',
             'scopes' => $scopes,
             'status' => 'active',
+            'site_id' => $row->site_id !== null ? (int) $row->site_id : null,
             'created_by_admin_id' => $row->tokenable_id !== null ? (int) $row->tokenable_id : null,
             'last_used_at' => $row->last_used_at?->format('Y-m-d H:i:s'),
             'expires_at' => $row->expires_at?->format('Y-m-d H:i:s'),
@@ -253,5 +264,21 @@ class ApiTokenService
         }
 
         return Admin::query()->whereKey($adminId)->exists() ? $adminId : null;
+    }
+
+    private function normalizeSiteId(?int $siteId): ?int
+    {
+        if ($siteId === null || $siteId <= 0) {
+            return null;
+        }
+
+        $exists = Site::query()->whereKey($siteId)->where('status', 'active')->exists();
+        if (! $exists) {
+            throw new ApiException('validation_failed', '绑定站点不存在或已停用', 422, [
+                'field_errors' => ['site_id' => '绑定站点不存在或已停用'],
+            ]);
+        }
+
+        return $siteId;
     }
 }
