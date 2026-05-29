@@ -384,19 +384,20 @@ class AdminMediaDistributionTest extends TestCase
                 'data' => ['order_nid' => 123456],
             ]),
             '*/api/media/order_info' => function ($request) {
+                $contentType = (string) ($request->header('Content-Type')[0] ?? '');
                 $payload = $this->httpRequestPayload($request);
-                $this->assertSame('123456', (string) ($payload['order_nid'] ?? ''));
-                $this->assertSame('123456', (string) ($payload['nid'] ?? ''));
-                $this->assertSame('123456', (string) ($payload['order_id'] ?? ''));
-                $this->assertSame('123456', (string) ($payload['id'] ?? ''));
+
+                $this->assertStringContainsString('multipart/form-data', $contentType);
+                $this->assertSame('123456', (string) ($payload['order_nids[]'] ?? ''));
 
                 return Http::response([
                     'code' => 1,
                     'msg' => 'success',
-                    'data' => [
+                    'data' => [[
+                        'order_nid' => '123456',
                         'status' => 'published',
                         'url' => 'https://example.com/published.html',
-                    ],
+                    ]],
                 ]);
             },
         ]);
@@ -659,6 +660,44 @@ class AdminMediaDistributionTest extends TestCase
         $submission->refresh();
         $this->assertSame('appealing', $submission->status);
         $this->assertSame('please recheck', $submission->appeal_content);
+    }
+
+    public function test_failed_manual_sync_persists_error_on_submission_detail(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+        [$admin, $site] = $this->createAdminWithSite('media_sync_error_admin', 'admin');
+        [$article, $resource] = $this->createArticleAndResource($site, 'sync-error-article');
+        $submission = MediaSubmission::query()->create([
+            'site_id' => $site->id,
+            'article_id' => $article->id,
+            'media_resource_id' => $resource->id,
+            'source_type' => $resource->source_type,
+            'external_order_nid' => 'sync-error-order',
+            'title_snapshot' => $article->title,
+            'content_snapshot' => $article->content,
+            'cost_price_snapshot' => '27.00',
+            'sale_price_snapshot' => '88.00',
+            'points_amount' => '88.00',
+            'status' => 'submitted',
+        ]);
+        Http::fake([
+            '*/api/media/order_info' => Http::response(['code' => 0, 'msg' => '参数异常', 'data' => []]),
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => $site->id])
+            ->post(route('admin.media-distribution.submissions.sync', ['submission' => $submission->id]))
+            ->assertSessionHasErrors();
+
+        $submission->refresh();
+        $this->assertSame('参数异常', $submission->last_error_message);
+        $this->assertNotNull($submission->last_synced_at);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => $site->id])
+            ->get(route('admin.media-distribution.submissions.show', ['submission' => $submission->id]))
+            ->assertOk()
+            ->assertSee('参数异常');
     }
 
     public function test_admin_can_bulk_submit_articles_to_media(): void

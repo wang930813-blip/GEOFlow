@@ -90,8 +90,9 @@ class MediaSubmissionService
             throw new RuntimeException('投稿订单缺少第三方订单号');
         }
 
-        $response = $this->client->orderInfo((string) $submission->source_type, (string) $submission->external_order_nid);
-        $data = is_array($response['data'] ?? null) ? $response['data'] : [];
+        $orderNid = (string) $submission->external_order_nid;
+        $response = $this->client->orderInfo((string) $submission->source_type, $orderNid);
+        $data = $this->orderInfoData($response, $orderNid);
         $status = $this->normalizeStatus((string) ($data['status'] ?? $data['order_status'] ?? ''));
         $url = (string) ($data['url'] ?? $data['link'] ?? $data['published_url'] ?? '');
 
@@ -221,5 +222,40 @@ class MediaSubmissionService
             'submitted', 'pending' => 'submitted',
             default => '',
         };
+    }
+
+    /**
+     * @param  array<string,mixed>  $response
+     * @return array<string,mixed>
+     */
+    private function orderInfoData(array $response, string $orderNid): array
+    {
+        $data = $response['data'] ?? [];
+        if (! is_array($data)) {
+            return [];
+        }
+
+        if (isset($data['status']) || isset($data['order_status'])) {
+            return $data;
+        }
+
+        if (isset($data[$orderNid]) && is_array($data[$orderNid])) {
+            return $data[$orderNid];
+        }
+
+        foreach ($data as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $rowOrderNid = (string) ($row['order_nid'] ?? $row['nid'] ?? $row['order_id'] ?? $row['id'] ?? '');
+            if ($rowOrderNid === $orderNid) {
+                return $row;
+            }
+        }
+
+        $first = reset($data);
+
+        return is_array($first) ? $first : [];
     }
 }

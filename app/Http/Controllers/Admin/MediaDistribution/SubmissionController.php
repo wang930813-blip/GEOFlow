@@ -163,6 +163,11 @@ class SubmissionController extends Controller
         try {
             $submissions->syncStatus($submission);
         } catch (Throwable $e) {
+            $submission->forceFill([
+                'last_error_message' => $e->getMessage(),
+                'last_synced_at' => now(),
+            ])->save();
+
             return back()->withErrors($e->getMessage());
         }
 

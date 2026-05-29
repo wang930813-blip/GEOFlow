@@ -92,7 +92,9 @@ class MediaDistributionClient
      */
     public function orderInfo(string $sourceType, string $orderNid): array
     {
-        return $this->post($sourceType, 'order_info', $this->orderPayload($orderNid));
+        return $this->postMultipart($sourceType, 'order_info', [
+            'order_nids' => [$orderNid],
+        ]);
     }
 
     /**
@@ -134,6 +136,24 @@ class MediaDistributionClient
      */
     private function post(string $sourceType, string $action, array $payload): array
     {
+        return $this->sendPost($sourceType, $action, $payload, false);
+    }
+
+    /**
+     * @param  array<string,mixed>  $payload
+     * @return array<string,mixed>
+     */
+    private function postMultipart(string $sourceType, string $action, array $payload): array
+    {
+        return $this->sendPost($sourceType, $action, $payload, true);
+    }
+
+    /**
+     * @param  array<string,mixed>  $payload
+     * @return array<string,mixed>
+     */
+    private function sendPost(string $sourceType, string $action, array $payload, bool $multipart): array
+    {
         $setting = MediaApiSetting::query()->orderByDesc('id')->first();
         $baseUrl = rtrim((string) ($setting?->api_base_url ?: config('media_distribution.base_url')), '/');
         $apiKey = $setting instanceof MediaApiSetting
@@ -141,11 +161,12 @@ class MediaDistributionClient
             : '';
 
         $path = $this->path($sourceType, $action);
-        $response = Http::asForm()
-            ->timeout((int) config('media_distribution.timeout', 30))
+        $request = Http::timeout((int) config('media_distribution.timeout', 30))
             ->connectTimeout((int) config('media_distribution.connect_timeout', 10))
-            ->retry(2, 500)
-            ->post($baseUrl.$path, ['api_key' => $apiKey] + $payload);
+            ->retry(2, 500);
+        $request = $multipart ? $request->asMultipart() : $request->asForm();
+
+        $response = $request->post($baseUrl.$path, ['api_key' => $apiKey] + $payload);
 
         if (! $response->successful()) {
             throw new MediaDistributionException('媒体接口请求失败：HTTP '.$response->status());
