@@ -215,12 +215,13 @@ class MediaSubmissionService
         $status = strtolower(trim($status));
 
         return match ($status) {
-            'published', 'success', 'done', '1', '4', '已发布', '发布成功' => 'published',
-            'rejected', 'reject', 'failed', '5', '已拒稿', '拒稿' => 'rejected',
-            'cancelled', 'canceled', '6', '已取消', '取消' => 'cancelled',
-            'publishing', 'processing', '3', '发布中' => 'publishing',
-            'submitting', '0', '提交中' => 'submitting',
-            'submitted', 'pending', '2', '已提交', '待发布', '待审核' => 'submitted',
+            'published', 'success', 'done', '2', '已发布', '发布成功' => 'published',
+            'rejected', 'reject', 'failed', '4', '已退稿', '已拒稿', '退稿', '拒稿' => 'rejected',
+            'cancelled', 'canceled', '已取消', '取消' => 'cancelled',
+            'appealing', 'after_sale', 'aftersale', '9', '售后中', '申诉中' => 'appealing',
+            'publishing', 'processing', '1', '已安排', '发布中' => 'publishing',
+            'submitting', '提交中' => 'submitting',
+            'submitted', 'pending', '0', '待安排', '已提交', '待发布', '待审核' => 'submitted',
             default => '',
         };
     }

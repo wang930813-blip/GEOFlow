@@ -722,7 +722,7 @@ class AdminMediaDistributionTest extends TestCase
             ->withSession(['current_site_id' => $site->id])
             ->get(route('admin.media-distribution.submissions.show', ['submission' => $submission->id]))
             ->assertOk()
-            ->assertSee('已提交')
+            ->assertSee('待安排')
             ->assertDontSee('submitted');
     }
 
@@ -799,7 +799,7 @@ class AdminMediaDistributionTest extends TestCase
             ->get(route('admin.media-distribution.submissions.index'))
             ->assertOk()
             ->assertSee('已发布')
-            ->assertDontSee('已提交');
+            ->assertDontSee('待安排');
 
         $submission->refresh();
         $this->assertSame('published', $submission->status);
@@ -843,7 +843,7 @@ class AdminMediaDistributionTest extends TestCase
             ->assertSee('打开链接')
             ->assertSee('文章链接')
             ->assertSee('打开文章')
-            ->assertDontSee('已提交');
+            ->assertDontSee('待安排');
 
         $submission->refresh();
         $this->assertSame('published', $submission->status);
@@ -873,7 +873,7 @@ class AdminMediaDistributionTest extends TestCase
                 'msg' => 'success',
                 'data' => [[
                     'order_nid' => 'numeric-status-order',
-                    'status' => 4,
+                    'status' => 2,
                     'publish_url' => 'https://example.com/numeric-status.html',
                 ]],
             ]),
@@ -885,7 +885,7 @@ class AdminMediaDistributionTest extends TestCase
             ->assertOk()
             ->assertSee('已发布')
             ->assertSee('打开链接')
-            ->assertDontSee('已提交');
+            ->assertDontSee('待安排');
 
         $submission->refresh();
         $this->assertSame('published', $submission->status);
@@ -915,7 +915,7 @@ class AdminMediaDistributionTest extends TestCase
                 'msg' => 'success',
                 'data' => [[
                     'order_nid' => 'nested-url-order',
-                    'status' => 4,
+                    'status' => 2,
                     'extra' => [
                         'article_url' => 'https://example.com/nested-url.html',
                     ],
@@ -931,6 +931,59 @@ class AdminMediaDistributionTest extends TestCase
         $submission->refresh();
         $this->assertSame('published', $submission->status);
         $this->assertSame('https://example.com/nested-url.html', $submission->published_url);
+    }
+
+    public function test_submission_sync_uses_external_numeric_status_labels(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('media_numeric_labels_admin', 'admin');
+        [$article, $resource] = $this->createArticleAndResource($site, 'numeric-labels-article');
+        $cases = [
+            0 => ['submitted', '待安排'],
+            1 => ['publishing', '已安排'],
+            2 => ['published', '已发布'],
+            4 => ['rejected', '已退稿'],
+            9 => ['appealing', '售后中'],
+        ];
+        Http::fake([
+            '*/api/media/order_info' => function ($request) {
+                $orderNid = (string) ($this->httpRequestPayload($request)['order_nids[]'] ?? '');
+                $externalStatus = (int) str_replace('numeric-label-', '', $orderNid);
+
+                return Http::response([
+                    'code' => 1,
+                    'msg' => 'success',
+                    'data' => [[
+                        'order_nid' => $orderNid,
+                        'status' => $externalStatus,
+                        'publish_url' => $externalStatus === 2 ? 'https://example.com/numeric-label-'.$externalStatus.'.html' : '',
+                    ]],
+                ]);
+            },
+        ]);
+
+        foreach ($cases as $externalStatus => [$internalStatus, $label]) {
+            $submission = MediaSubmission::query()->create([
+                'site_id' => $site->id,
+                'article_id' => $article->id,
+                'media_resource_id' => $resource->id,
+                'source_type' => $resource->source_type,
+                'external_order_nid' => 'numeric-label-'.$externalStatus,
+                'title_snapshot' => $article->title,
+                'content_snapshot' => $article->content,
+                'cost_price_snapshot' => '27.00',
+                'sale_price_snapshot' => '88.00',
+                'points_amount' => '88.00',
+                'status' => 'submitted',
+            ]);
+            $this->actingAs($admin, 'admin')
+                ->withSession(['current_site_id' => $site->id])
+                ->post(route('admin.media-distribution.submissions.sync', ['submission' => $submission->id]))
+                ->assertRedirect(route('admin.media-distribution.submissions.show', ['submission' => $submission->id]));
+
+            $submission->refresh();
+            $this->assertSame($internalStatus, $submission->status);
+            $this->assertSame($label, $submission->statusLabel());
+        }
     }
 
     public function test_admin_can_bulk_submit_articles_to_media(): void

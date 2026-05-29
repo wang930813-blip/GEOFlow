@@ -310,6 +310,47 @@ class ApiV1ContractTest extends TestCase
         ]);
     }
 
+    public function test_article_create_accepts_keywords_array_from_external_editors(): void
+    {
+        $admin = $this->createActiveAdmin('article_keywords_admin', 'p');
+        $site = Site::query()->create([
+            'owner_admin_id' => $admin->id,
+            'name' => 'API Article Site',
+            'status' => 'active',
+        ]);
+        $category = Category::query()->create([
+            'site_id' => $site->id,
+            'name' => 'API Article Category',
+            'slug' => 'api-article-category',
+        ]);
+        $author = Author::query()->create([
+            'site_id' => $site->id,
+            'name' => 'API Article Author',
+        ]);
+        $bearer = $this->createBearerToken($admin, ['articles:write'], (int) $site->id);
+
+        $response = $this->withHeader('Authorization', 'Bearer '.$bearer['plain'])
+            ->postJson('/api/v1/articles', [
+                'title' => 'External Editor Article',
+                'content' => '<p>External editor content.</p>',
+                'category_id' => $category->id,
+                'author_id' => $author->id,
+                'status' => 'draft',
+                'review_status' => 'pending',
+                'keywords' => ['GEO优化', 'AI搜索曝光', '', 'GEO优化'],
+            ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.keywords', 'GEO优化,AI搜索曝光');
+
+        $this->assertDatabaseHas('articles', [
+            'id' => $response->json('data.id'),
+            'site_id' => $site->id,
+            'keywords' => 'GEO优化,AI搜索曝光',
+        ]);
+    }
+
     public function test_media_resources_require_media_read_scope(): void
     {
         $admin = $this->createActiveAdmin('media_scope_admin', 'p');
@@ -403,7 +444,7 @@ class ApiV1ContractTest extends TestCase
             ->assertCreated()
             ->assertJsonPath('success', true)
             ->assertJsonPath('data.submissions.0.external_order_nid', 'api-submit-order')
-            ->assertJsonPath('data.submissions.0.status_label', '已提交');
+            ->assertJsonPath('data.submissions.0.status_label', '待安排');
 
         $this->assertDatabaseHas('media_submissions', [
             'article_id' => $article->id,
@@ -549,7 +590,7 @@ class ApiV1ContractTest extends TestCase
                 'content' => 'please recheck',
             ])
             ->assertOk()
-            ->assertJsonPath('data.status_label', '申诉中');
+            ->assertJsonPath('data.status_label', '售后中');
 
         $submission->refresh();
         $this->assertSame('appealing', $submission->status);
