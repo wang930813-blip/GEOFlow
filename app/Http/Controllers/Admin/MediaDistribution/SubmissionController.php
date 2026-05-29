@@ -154,7 +154,8 @@ class SubmissionController extends Controller
             'pageTitle' => '媒体投稿详情',
             'activeMenu' => 'media_distribution',
             'adminSiteName' => AdminWeb::siteName(),
-            'submission' => $submission->load(['article:id,title,slug', 'resource:id,title,source_type,remarks,case_link,cost_price,sale_price', 'site:id,name']),
+            'submission' => $submission->load(['article:id,title,slug,status', 'resource:id,title,source_type,remarks,case_link,cost_price,sale_price', 'site:id,name,domain']),
+            'articlePublicUrl' => $this->articlePublicUrl($submission),
             'isSuperAdmin' => (bool) auth('admin')->user()?->isSuperAdmin(),
         ]);
     }
@@ -286,6 +287,23 @@ class SubmissionController extends Controller
         }
 
         return $query->whereKey($submissionId)->firstOrFail();
+    }
+
+    private function articlePublicUrl(MediaSubmission $submission): string
+    {
+        $article = $submission->article;
+        if (! $article instanceof Article || trim((string) $article->slug) === '' || (string) $article->status !== 'published') {
+            return '';
+        }
+
+        $domain = trim((string) ($submission->site?->domain ?? ''));
+        if ($domain !== '') {
+            $baseUrl = preg_match('#^https?://#i', $domain) === 1 ? $domain : request()->getScheme().'://'.$domain;
+
+            return rtrim($baseUrl, '/').'/article/'.rawurlencode((string) $article->slug);
+        }
+
+        return route('site.article', ['slug' => $article->slug]);
     }
 
     private function syncVisibleSubmissions($submissions, MediaSubmissionService $submissionService): void

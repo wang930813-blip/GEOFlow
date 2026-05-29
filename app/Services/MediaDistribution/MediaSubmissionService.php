@@ -94,7 +94,7 @@ class MediaSubmissionService
         $response = $this->client->orderInfo((string) $submission->source_type, $orderNid);
         $data = $this->orderInfoData($response, $orderNid);
         $status = $this->normalizeStatus((string) ($data['status'] ?? $data['order_status'] ?? ''));
-        $url = (string) ($data['url'] ?? $data['link'] ?? $data['published_url'] ?? '');
+        $url = $this->publishedUrlFromOrderData($data);
 
         $previousStatus = (string) $submission->status;
         $submission->forceFill([
@@ -215,11 +215,12 @@ class MediaSubmissionService
         $status = strtolower(trim($status));
 
         return match ($status) {
-            'published', 'success', 'done', '1' => 'published',
-            'rejected', 'reject', 'failed' => 'rejected',
-            'cancelled', 'canceled' => 'cancelled',
-            'publishing', 'processing' => 'publishing',
-            'submitted', 'pending' => 'submitted',
+            'published', 'success', 'done', '1', '4', '已发布', '发布成功' => 'published',
+            'rejected', 'reject', 'failed', '5', '已拒稿', '拒稿' => 'rejected',
+            'cancelled', 'canceled', '6', '已取消', '取消' => 'cancelled',
+            'publishing', 'processing', '3', '发布中' => 'publishing',
+            'submitting', '0', '提交中' => 'submitting',
+            'submitted', 'pending', '2', '已提交', '待发布', '待审核' => 'submitted',
             default => '',
         };
     }
@@ -257,5 +258,46 @@ class MediaSubmissionService
         $first = reset($data);
 
         return is_array($first) ? $first : [];
+    }
+
+    /**
+     * @param  array<string,mixed>  $data
+     */
+    private function publishedUrlFromOrderData(array $data): string
+    {
+        foreach (['url', 'link', 'published_url', 'publish_url', 'article_url', 'content_url', 'news_url', 'show_url'] as $key) {
+            $url = trim((string) ($data[$key] ?? ''));
+            if ($this->looksLikeUrl($url)) {
+                return $url;
+            }
+        }
+
+        foreach ($data as $key => $value) {
+            if (is_array($value)) {
+                $url = $this->publishedUrlFromOrderData($value);
+                if ($url !== '') {
+                    return $url;
+                }
+
+                continue;
+            }
+
+            if (! is_string($value) && ! is_numeric($value)) {
+                continue;
+            }
+
+            $key = strtolower((string) $key);
+            $url = trim((string) $value);
+            if (str_contains($key, 'url') && $this->looksLikeUrl($url)) {
+                return $url;
+            }
+        }
+
+        return '';
+    }
+
+    private function looksLikeUrl(string $value): bool
+    {
+        return preg_match('#^https?://#i', trim($value)) === 1;
     }
 }

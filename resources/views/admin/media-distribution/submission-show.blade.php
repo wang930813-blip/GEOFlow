@@ -25,6 +25,13 @@
                 <dl class="mt-4 space-y-3 text-sm">
                     <div class="flex justify-between gap-4"><dt class="text-gray-500">站点</dt><dd class="text-gray-900">{{ $submission->site?->name }}</dd></div>
                     <div class="flex justify-between gap-4"><dt class="text-gray-500">文章</dt><dd class="text-gray-900">{{ $submission->title_snapshot }}</dd></div>
+                    <div class="flex justify-between gap-4"><dt class="text-gray-500">文章链接</dt><dd class="text-right text-gray-900">
+                        @if ($articlePublicUrl !== '')
+                            <a href="{{ $articlePublicUrl }}" target="_blank" rel="noopener noreferrer" class="text-indigo-600 hover:text-indigo-800">打开文章</a>
+                        @else
+                            -
+                        @endif
+                    </dd></div>
                     <div class="flex justify-between gap-4"><dt class="text-gray-500">媒体</dt><dd class="text-gray-900">{{ $submission->resource?->title }}</dd></div>
                     <div class="flex justify-between gap-4"><dt class="text-gray-500">订单号</dt><dd class="text-gray-900">{{ $submission->external_order_nid ?: '-' }}</dd></div>
                     <div class="flex justify-between gap-4"><dt class="text-gray-500">消耗积分</dt><dd class="text-gray-900">{{ $submission->points_amount }}</dd></div>
@@ -40,7 +47,7 @@
                     <div class="flex justify-between gap-4"><dt class="text-gray-500">当前状态</dt><dd class="text-gray-900">{{ $submission->statusLabel() }}</dd></div>
                     <div class="flex justify-between gap-4"><dt class="text-gray-500">投稿时间</dt><dd class="text-gray-900">{{ $submission->submitted_at?->format('Y-m-d H:i:s') ?: '-' }}</dd></div>
                     <div class="flex justify-between gap-4"><dt class="text-gray-500">同步时间</dt><dd class="text-gray-900">{{ $submission->last_synced_at?->format('Y-m-d H:i:s') ?: '-' }}</dd></div>
-                    <div class="flex justify-between gap-4"><dt class="text-gray-500">发布链接</dt><dd class="text-right text-gray-900">
+                    <div class="flex justify-between gap-4"><dt class="text-gray-500">媒体发布链接</dt><dd class="text-right text-gray-900">
                         @if ($submission->published_url !== '')
                             <a href="{{ $submission->published_url }}" target="_blank" rel="noopener noreferrer" class="text-indigo-600 hover:text-indigo-800">打开链接</a>
                         @else

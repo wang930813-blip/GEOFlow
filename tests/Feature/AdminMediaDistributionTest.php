@@ -841,11 +841,96 @@ class AdminMediaDistributionTest extends TestCase
             ->assertOk()
             ->assertSee('已发布')
             ->assertSee('打开链接')
+            ->assertSee('文章链接')
+            ->assertSee('打开文章')
             ->assertDontSee('已提交');
 
         $submission->refresh();
         $this->assertSame('published', $submission->status);
         $this->assertSame('https://example.com/detail-auto-sync.html', $submission->published_url);
+    }
+
+    public function test_submission_sync_accepts_numeric_published_status_and_publish_url(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('media_numeric_status_admin', 'admin');
+        [$article, $resource] = $this->createArticleAndResource($site, 'numeric-status-article');
+        $submission = MediaSubmission::query()->create([
+            'site_id' => $site->id,
+            'article_id' => $article->id,
+            'media_resource_id' => $resource->id,
+            'source_type' => $resource->source_type,
+            'external_order_nid' => 'numeric-status-order',
+            'title_snapshot' => $article->title,
+            'content_snapshot' => $article->content,
+            'cost_price_snapshot' => '27.00',
+            'sale_price_snapshot' => '88.00',
+            'points_amount' => '88.00',
+            'status' => 'submitted',
+        ]);
+        Http::fake([
+            '*/api/media/order_info' => Http::response([
+                'code' => 1,
+                'msg' => 'success',
+                'data' => [[
+                    'order_nid' => 'numeric-status-order',
+                    'status' => 4,
+                    'publish_url' => 'https://example.com/numeric-status.html',
+                ]],
+            ]),
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => $site->id])
+            ->get(route('admin.media-distribution.submissions.show', ['submission' => $submission->id]))
+            ->assertOk()
+            ->assertSee('已发布')
+            ->assertSee('打开链接')
+            ->assertDontSee('已提交');
+
+        $submission->refresh();
+        $this->assertSame('published', $submission->status);
+        $this->assertSame('https://example.com/numeric-status.html', $submission->published_url);
+    }
+
+    public function test_submission_sync_falls_back_to_nested_published_url(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('media_nested_url_admin', 'admin');
+        [$article, $resource] = $this->createArticleAndResource($site, 'nested-url-article');
+        $submission = MediaSubmission::query()->create([
+            'site_id' => $site->id,
+            'article_id' => $article->id,
+            'media_resource_id' => $resource->id,
+            'source_type' => $resource->source_type,
+            'external_order_nid' => 'nested-url-order',
+            'title_snapshot' => $article->title,
+            'content_snapshot' => $article->content,
+            'cost_price_snapshot' => '27.00',
+            'sale_price_snapshot' => '88.00',
+            'points_amount' => '88.00',
+            'status' => 'submitted',
+        ]);
+        Http::fake([
+            '*/api/media/order_info' => Http::response([
+                'code' => 1,
+                'msg' => 'success',
+                'data' => [[
+                    'order_nid' => 'nested-url-order',
+                    'status' => 4,
+                    'extra' => [
+                        'article_url' => 'https://example.com/nested-url.html',
+                    ],
+                ]],
+            ]),
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => $site->id])
+            ->post(route('admin.media-distribution.submissions.sync', ['submission' => $submission->id]))
+            ->assertRedirect(route('admin.media-distribution.submissions.show', ['submission' => $submission->id]));
+
+        $submission->refresh();
+        $this->assertSame('published', $submission->status);
+        $this->assertSame('https://example.com/nested-url.html', $submission->published_url);
     }
 
     public function test_admin_can_bulk_submit_articles_to_media(): void
