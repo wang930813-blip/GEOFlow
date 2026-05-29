@@ -262,11 +262,11 @@
                                 <i data-lucide="clipboard-list" class="w-4 h-4 inline mr-2"></i>
                                 {{ __('admin.nav.activity_logs') }}
                             </a>
-                            <a href="{{ route('admin.api-tokens.index') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                                <i data-lucide="key-round" class="w-4 h-4 inline mr-2"></i>
-                                {{ __('admin.nav.api_tokens') }}
-                            </a>
                         @endif
+                        <a href="{{ route('admin.api-tokens.index') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                            <i data-lucide="key-round" class="w-4 h-4 inline mr-2"></i>
+                            {{ __('admin.nav.api_tokens') }}
+                        </a>
                         <div class="border-t border-gray-100"></div>
                         <form method="POST" action="{{ route('admin.logout') }}">
                             @csrf

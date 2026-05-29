@@ -308,6 +308,11 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::post('password', [SecuritySettingsController::class, 'updatePassword'])->name('password.update');
         });
 
+        Route::prefix('api-tokens')->name('api-tokens.')->group(function () {
+            Route::get('/', [ApiTokenController::class, 'index'])->name('index');
+            Route::post('/', [ApiTokenController::class, 'store'])->name('store');
+            Route::post('{tokenId}/revoke', [ApiTokenController::class, 'revoke'])->name('revoke');
+        });
         // Super admin routes
         Route::middleware('admin.super')->group(function () {
             Route::prefix('sites/manage')->name('sites.manage.')->group(function () {
@@ -324,11 +329,7 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
                 Route::post('{adminId}/delete', [AdminUserController::class, 'destroy'])->name('delete');
             });
             Route::get('admin-activity-logs', [AdminActivityLogController::class, 'index'])->name('admin-activity-logs');
-            Route::prefix('api-tokens')->name('api-tokens.')->group(function () {
-                Route::get('/', [ApiTokenController::class, 'index'])->name('index');
-                Route::post('/', [ApiTokenController::class, 'store'])->name('store');
-                Route::post('{tokenId}/revoke', [ApiTokenController::class, 'revoke'])->name('revoke');
-            });
+
         });
     });
 });

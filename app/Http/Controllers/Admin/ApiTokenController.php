@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Admin;
 
 use App\Exceptions\ApiException;
 use App\Http\Controllers\Controller;
+use App\Models\Admin;
 use App\Models\Site;
 use App\Services\Api\ApiTokenService;
 use App\Support\AdminWeb;
+use App\Support\CurrentSite;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -31,14 +33,23 @@ class ApiTokenController extends Controller
      */
     public function index(): View
     {
+        $admin = auth('admin')->user();
+        $isSuperAdmin = $admin instanceof Admin && $admin->isSuperAdmin();
+        $currentSite = app(CurrentSite::class)->get();
+        $siteScopeId = $isSuperAdmin ? null : $this->currentSiteId();
+
         return view('admin.api-tokens.index', [
             'pageTitle' => __('admin.api_tokens.page_title'),
             'activeMenu' => 'admin_users',
             'adminSiteName' => AdminWeb::siteName(),
-            'tokens' => $this->apiTokenService->listTokens(),
+            'tokens' => $this->apiTokenService->listTokens($siteScopeId),
             'availableScopes' => $this->apiTokenService->getAvailableScopes(),
             'defaultExpiresAtInput' => $this->apiTokenService->defaultExpiresAtInputValue(),
-            'sites' => Site::query()->where('status', 'active')->orderBy('id')->get(['id', 'name']),
+            'sites' => $isSuperAdmin
+                ? Site::query()->where('status', 'active')->orderBy('id')->get(['id', 'name'])
+                : collect([$currentSite])->filter()->values(),
+            'isSuperAdmin' => $isSuperAdmin,
+            'currentSite' => $currentSite,
         ]);
     }
 
@@ -56,12 +67,13 @@ class ApiTokenController extends Controller
         ]);
 
         try {
+            $siteId = $this->tokenSiteId(isset($payload['site_id']) ? (int) $payload['site_id'] : null);
             $created = $this->apiTokenService->createToken(
                 (string) $payload['name'],
                 is_array($payload['scopes']) ? $payload['scopes'] : [],
                 auth('admin')->id() !== null ? (int) auth('admin')->id() : null,
                 (string) ($payload['expires_at'] ?? ''),
-                isset($payload['site_id']) ? (int) $payload['site_id'] : null
+                $siteId
             );
 
             return redirect()
@@ -85,7 +97,7 @@ class ApiTokenController extends Controller
         }
 
         try {
-            $this->apiTokenService->revokeToken($tokenId);
+            $this->apiTokenService->revokeToken($tokenId, $this->tokenListSiteScopeId());
 
             return redirect()
                 ->route('admin.api-tokens.index')
@@ -95,5 +107,30 @@ class ApiTokenController extends Controller
         } catch (Throwable $exception) {
             return back()->withErrors(__('admin.api_tokens.error.operation_failed', ['message' => $exception->getMessage()]));
         }
+    }
+
+    private function tokenSiteId(?int $requestedSiteId): ?int
+    {
+        $admin = auth('admin')->user();
+        if ($admin instanceof Admin && $admin->isSuperAdmin()) {
+            return $requestedSiteId !== null && $requestedSiteId > 0 ? $requestedSiteId : null;
+        }
+
+        return $this->currentSiteId();
+    }
+
+    private function tokenListSiteScopeId(): ?int
+    {
+        $admin = auth('admin')->user();
+
+        return $admin instanceof Admin && $admin->isSuperAdmin() ? null : $this->currentSiteId();
+    }
+
+    private function currentSiteId(): int
+    {
+        $siteId = app(CurrentSite::class)->id();
+        abort_unless($siteId !== null && $siteId > 0, 403);
+
+        return (int) $siteId;
     }
 }

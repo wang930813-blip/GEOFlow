@@ -16,11 +16,12 @@ class ApiTokenService
      *
      * @return list<array<string,mixed>>
      */
-    public function listTokens(): array
+    public function listTokens(?int $siteId = null): array
     {
         /** @var Collection<int, PersonalAccessToken> $rows */
         $rows = PersonalAccessToken::query()
             ->where('tokenable_type', Admin::class)
+            ->when($siteId !== null, fn ($query) => $query->where('site_id', $siteId))
             ->with('tokenable:id,username')
             ->orderByDesc('created_at')
             ->orderByDesc('id')
@@ -43,10 +44,11 @@ class ApiTokenService
     /**
      * 撤销指定 Token（Sanctum 语义为物理删除）。
      */
-    public function revokeToken(int $tokenId): void
+    public function revokeToken(int $tokenId, ?int $siteId = null): void
     {
         $affected = PersonalAccessToken::query()
             ->where('tokenable_type', Admin::class)
+            ->when($siteId !== null, fn ($query) => $query->where('site_id', $siteId))
             ->whereKey($tokenId)
             ->delete();
 

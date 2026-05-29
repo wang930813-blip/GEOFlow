@@ -123,4 +123,134 @@ class AdminSiteContextTest extends TestCase
         $this->assertSame($site->id, session('current_site_id'));
         $this->assertSame($site->id, app(CurrentSite::class)->id());
     }
+
+    public function test_site_admin_can_create_only_current_site_api_tokens(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'site_token_admin',
+            'password' => 'secret-123',
+            'email' => 'site-token-admin@example.com',
+            'display_name' => 'Site Token Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $site = Site::query()->create([
+            'owner_admin_id' => $admin->id,
+            'name' => 'Token Site',
+            'status' => 'active',
+        ]);
+        $site->members()->attach($admin->id, ['role' => 'owner']);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.api-tokens.index'))
+            ->assertOk()
+            ->assertSee('Token Site')
+            ->assertDontSee('全局 Token（不限制站点）');
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.api-tokens.store'), [
+                'name' => 'Site Editor Token',
+                'scopes' => ['catalog:read', 'articles:write'],
+                'expires_at' => now()->addDay()->format('Y-m-d\TH:i'),
+                'site_id' => '',
+            ])
+            ->assertRedirect(route('admin.api-tokens.index'));
+
+        $this->assertDatabaseHas('personal_access_tokens', [
+            'name' => 'Site Editor Token',
+            'site_id' => $site->id,
+        ]);
+    }
+
+    public function test_super_admin_can_create_global_api_tokens(): void
+    {
+        $superAdmin = Admin::query()->create([
+            'username' => 'super_token_admin',
+            'password' => 'secret-123',
+            'email' => 'super-token-admin@example.com',
+            'display_name' => 'Super Token Admin',
+            'role' => 'super_admin',
+            'status' => 'active',
+        ]);
+        $siteOwner = Admin::query()->create([
+            'username' => 'super_token_owner',
+            'password' => 'secret-123',
+            'email' => 'super-token-owner@example.com',
+            'display_name' => 'Super Token Owner',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        Site::query()->create([
+            'owner_admin_id' => $siteOwner->id,
+            'name' => 'Selectable Token Site',
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.api-tokens.index'))
+            ->assertOk()
+            ->assertSee('全局 Token（不限制站点）')
+            ->assertSee('Selectable Token Site');
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.api-tokens.store'), [
+                'name' => 'Global Editor Token',
+                'scopes' => ['catalog:read'],
+                'expires_at' => now()->addDay()->format('Y-m-d\TH:i'),
+                'site_id' => '',
+            ])
+            ->assertRedirect(route('admin.api-tokens.index'));
+
+        $this->assertDatabaseHas('personal_access_tokens', [
+            'name' => 'Global Editor Token',
+            'site_id' => null,
+        ]);
+    }
+
+    public function test_site_admin_only_lists_and_revokes_current_site_tokens(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'site_token_list_admin',
+            'password' => 'secret-123',
+            'email' => 'site-token-list-admin@example.com',
+            'display_name' => 'Site Token List Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $site = Site::query()->create([
+            'owner_admin_id' => $admin->id,
+            'name' => 'Current Token Site',
+            'status' => 'active',
+        ]);
+        $site->members()->attach($admin->id, ['role' => 'owner']);
+        $otherSite = Site::query()->create([
+            'owner_admin_id' => $admin->id,
+            'name' => 'Other Token Site',
+            'status' => 'active',
+        ]);
+
+        $ownToken = $admin->createToken('Own Site Token', ['catalog:read'])->accessToken;
+        $ownToken->forceFill(['site_id' => $site->id])->save();
+        $otherToken = $admin->createToken('Other Site Token', ['catalog:read'])->accessToken;
+        $otherToken->forceFill(['site_id' => $otherSite->id])->save();
+        $globalToken = $admin->createToken('Global Token', ['catalog:read'])->accessToken;
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.api-tokens.index'))
+            ->assertOk()
+            ->assertSee('Own Site Token')
+            ->assertDontSee('Other Site Token')
+            ->assertDontSee('Global Token');
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.api-tokens.revoke', ['tokenId' => $otherToken->id]))
+            ->assertSessionHasErrors();
+        $this->assertDatabaseHas('personal_access_tokens', ['id' => $otherToken->id]);
+        $this->assertDatabaseHas('personal_access_tokens', ['id' => $globalToken->id]);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.api-tokens.revoke', ['tokenId' => $ownToken->id]))
+            ->assertRedirect(route('admin.api-tokens.index'));
+        $this->assertDatabaseMissing('personal_access_tokens', ['id' => $ownToken->id]);
+    }
 }

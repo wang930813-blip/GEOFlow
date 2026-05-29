@@ -43,13 +43,21 @@
 
                     <div>
                         <label for="site_id" class="block text-sm font-medium text-gray-700">绑定站点</label>
-                        <select id="site_id" name="site_id" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
-                            <option value="">全局 Token（不限制站点）</option>
-                            @foreach ($sites as $site)
-                                <option value="{{ $site->id }}" @selected((int) old('site_id', 0) === (int) $site->id)>#{{ $site->id }} {{ $site->name }}</option>
-                            @endforeach
-                        </select>
-                        <p class="mt-1 text-xs text-gray-500">绑定后 API 只能读写该站点数据；权限仍由 scopes 控制。</p>
+                        @if ($isSuperAdmin)
+                            <select id="site_id" name="site_id" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                <option value="">全局 Token（不限制站点）</option>
+                                @foreach ($sites as $site)
+                                    <option value="{{ $site->id }}" @selected((int) old('site_id', 0) === (int) $site->id)>#{{ $site->id }} {{ $site->name }}</option>
+                                @endforeach
+                            </select>
+                            <p class="mt-1 text-xs text-gray-500">绑定后 API 只能读写该站点数据；权限仍由 scopes 控制。</p>
+                        @else
+                            <input type="hidden" name="site_id" value="{{ $currentSite?->id }}">
+                            <div class="mt-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                                #{{ $currentSite?->id }} {{ $currentSite?->name }}
+                            </div>
+                            <p class="mt-1 text-xs text-gray-500">站点管理员创建的 Token 会自动绑定当前站点；权限仍由 scopes 控制。</p>
+                        @endif
                     </div>
 
                     <div>
