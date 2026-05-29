@@ -100,7 +100,7 @@ class MediaSubmissionService
         $submission->forceFill([
             'status' => $status !== '' ? $status : $submission->status,
             'published_url' => $url !== '' ? $url : $submission->published_url,
-            'last_error_message' => (string) ($data['reason'] ?? $data['error'] ?? $submission->last_error_message ?? ''),
+            'last_error_message' => (string) ($data['reason'] ?? $data['error'] ?? ''),
             'last_synced_at' => now(),
             'raw_status_response' => $response,
         ])->save();

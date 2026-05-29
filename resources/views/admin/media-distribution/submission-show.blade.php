@@ -5,7 +5,7 @@
         <div class="flex items-start justify-between gap-4">
             <div>
                 <h1 class="text-2xl font-bold text-gray-900">媒体投稿详情</h1>
-                <p class="mt-1 text-sm text-gray-600">订单 #{{ $submission->id }} · {{ $submission->status }}</p>
+                <p class="mt-1 text-sm text-gray-600">订单 #{{ $submission->id }} · {{ $submission->statusLabel() }}</p>
             </div>
             <div class="flex gap-2">
                 <form method="POST" action="{{ route('admin.media-distribution.submissions.sync', ['submission' => $submission->id]) }}">
@@ -37,7 +37,7 @@
             <div class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
                 <h2 class="text-lg font-semibold text-gray-900">状态</h2>
                 <dl class="mt-4 space-y-3 text-sm">
-                    <div class="flex justify-between gap-4"><dt class="text-gray-500">当前状态</dt><dd class="text-gray-900">{{ $submission->status }}</dd></div>
+                    <div class="flex justify-between gap-4"><dt class="text-gray-500">当前状态</dt><dd class="text-gray-900">{{ $submission->statusLabel() }}</dd></div>
                     <div class="flex justify-between gap-4"><dt class="text-gray-500">投稿时间</dt><dd class="text-gray-900">{{ $submission->submitted_at?->format('Y-m-d H:i:s') ?: '-' }}</dd></div>
                     <div class="flex justify-between gap-4"><dt class="text-gray-500">同步时间</dt><dd class="text-gray-900">{{ $submission->last_synced_at?->format('Y-m-d H:i:s') ?: '-' }}</dd></div>
                     <div class="flex justify-between gap-4"><dt class="text-gray-500">发布链接</dt><dd class="text-right text-gray-900">

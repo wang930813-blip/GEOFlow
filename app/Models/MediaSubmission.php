@@ -74,6 +74,21 @@ class MediaSubmission extends Model
         return $this->belongsTo(MediaResource::class, 'media_resource_id');
     }
 
+    public function statusLabel(): string
+    {
+        return match ((string) $this->status) {
+            'submitting' => '提交中',
+            'submitted' => '已提交',
+            'publishing' => '发布中',
+            'published' => '已发布',
+            'failed' => '提交失败',
+            'rejected' => '已拒稿',
+            'cancelled' => '已取消',
+            'appealing' => '申诉中',
+            default => (string) $this->status,
+        };
+    }
+
     public function submittedBy(): BelongsTo
     {
         return $this->belongsTo(Admin::class, 'submitted_by_admin_id');

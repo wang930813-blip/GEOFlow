@@ -239,7 +239,7 @@ class SubmissionController extends Controller
                         $submission->title_snapshot,
                         $submission->resource?->title,
                         $submission->external_order_nid,
-                        $submission->status,
+                        $submission->statusLabel(),
                     ];
                     if ($isSuperAdmin) {
                         $row = [
@@ -248,7 +248,7 @@ class SubmissionController extends Controller
                             $submission->title_snapshot,
                             $submission->resource?->title,
                             $submission->external_order_nid,
-                            $submission->status,
+                            $submission->statusLabel(),
                             $submission->cost_price_snapshot,
                         ];
                     }

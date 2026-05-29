@@ -700,6 +700,71 @@ class AdminMediaDistributionTest extends TestCase
             ->assertSee('参数异常');
     }
 
+    public function test_media_submission_detail_displays_chinese_status_label(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('media_status_label_admin', 'admin');
+        [$article, $resource] = $this->createArticleAndResource($site, 'status-label-article');
+        $submission = MediaSubmission::query()->create([
+            'site_id' => $site->id,
+            'article_id' => $article->id,
+            'media_resource_id' => $resource->id,
+            'source_type' => $resource->source_type,
+            'external_order_nid' => 'status-label-order',
+            'title_snapshot' => $article->title,
+            'content_snapshot' => $article->content,
+            'cost_price_snapshot' => '27.00',
+            'sale_price_snapshot' => '88.00',
+            'points_amount' => '88.00',
+            'status' => 'submitted',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => $site->id])
+            ->get(route('admin.media-distribution.submissions.show', ['submission' => $submission->id]))
+            ->assertOk()
+            ->assertSee('已提交')
+            ->assertDontSee('submitted');
+    }
+
+    public function test_successful_manual_sync_clears_previous_error_message(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+        [$admin, $site] = $this->createAdminWithSite('media_sync_clear_error_admin', 'admin');
+        [$article, $resource] = $this->createArticleAndResource($site, 'sync-clear-error-article');
+        $submission = MediaSubmission::query()->create([
+            'site_id' => $site->id,
+            'article_id' => $article->id,
+            'media_resource_id' => $resource->id,
+            'source_type' => $resource->source_type,
+            'external_order_nid' => 'sync-clear-error-order',
+            'title_snapshot' => $article->title,
+            'content_snapshot' => $article->content,
+            'cost_price_snapshot' => '27.00',
+            'sale_price_snapshot' => '88.00',
+            'points_amount' => '88.00',
+            'status' => 'submitted',
+            'last_error_message' => '参数异常',
+        ]);
+        Http::fake([
+            '*/api/media/order_info' => Http::response([
+                'code' => 1,
+                'msg' => 'success',
+                'data' => [[
+                    'order_nid' => 'sync-clear-error-order',
+                    'status' => 'submitted',
+                ]],
+            ]),
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => $site->id])
+            ->post(route('admin.media-distribution.submissions.sync', ['submission' => $submission->id]))
+            ->assertRedirect(route('admin.media-distribution.submissions.show', ['submission' => $submission->id]));
+
+        $submission->refresh();
+        $this->assertSame('', (string) $submission->last_error_message);
+    }
+
     public function test_admin_can_bulk_submit_articles_to_media(): void
     {
         $this->withoutMiddleware(ValidateCsrfToken::class);

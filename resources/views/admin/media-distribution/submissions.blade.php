@@ -82,7 +82,7 @@
                                     <div class="mt-1 text-xs text-gray-500">{{ $submission->resource?->title }}</div>
                                 </td>
                                 <td class="px-5 py-4 text-sm text-gray-700">{{ $submission->points_amount }}</td>
-                                <td class="px-5 py-4 text-sm text-gray-700">{{ $submission->status }}</td>
+                                <td class="px-5 py-4 text-sm text-gray-700">{{ $submission->statusLabel() }}</td>
                                 <td class="px-5 py-4 text-right">
                                     <a href="{{ route('admin.media-distribution.submissions.show', ['submission' => $submission->id]) }}" class="text-sm font-medium text-indigo-600 hover:text-indigo-800">详情</a>
                                 </td>
