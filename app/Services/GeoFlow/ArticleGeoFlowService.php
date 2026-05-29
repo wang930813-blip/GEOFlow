@@ -256,7 +256,7 @@ class ArticleGeoFlowService
             'title' => $title,
             'content' => $content,
             'excerpt' => trim((string) ($data['excerpt'] ?? '')),
-            'keywords' => trim((string) ($data['keywords'] ?? '')),
+            'keywords' => $this->normalizeKeywords($data['keywords'] ?? ''),
             'meta_description' => trim((string) ($data['meta_description'] ?? '')),
             'status' => trim((string) ($data['status'] ?? 'draft')),
             'review_status' => trim((string) ($data['review_status'] ?? 'pending')),
@@ -305,7 +305,9 @@ class ArticleGeoFlowService
 
         foreach (['excerpt', 'keywords', 'meta_description'] as $field) {
             if (array_key_exists($field, $data)) {
-                $normalized[$field] = trim((string) $data[$field]);
+                $normalized[$field] = $field === 'keywords'
+                    ? $this->normalizeKeywords($data[$field])
+                    : trim((string) $data[$field]);
             }
         }
 
@@ -387,6 +389,29 @@ class ArticleGeoFlowService
             'author_id' => '请选择文章作者',
             default => "{$field} 不能为空"
         };
+    }
+
+    private function normalizeKeywords(mixed $value): string
+    {
+        if (! is_array($value)) {
+            return trim((string) $value);
+        }
+
+        $keywords = [];
+        foreach ($value as $keyword) {
+            if (is_array($keyword) || is_object($keyword)) {
+                continue;
+            }
+
+            $keyword = trim((string) $keyword);
+            if ($keyword === '' || in_array($keyword, $keywords, true)) {
+                continue;
+            }
+
+            $keywords[] = $keyword;
+        }
+
+        return implode(',', $keywords);
     }
 
     private function ensureSlugAvailable(string $slug, ?int $excludeId = null): void
