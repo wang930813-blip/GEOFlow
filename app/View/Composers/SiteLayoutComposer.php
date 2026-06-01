@@ -20,6 +20,10 @@ final class SiteLayoutComposer
         $siteFavicon = (string) ($map['site_favicon'] ?? '');
         $copyright = (string) ($map['copyright_info'] ?? '');
         $analyticsCode = (string) ($map['analytics_code'] ?? '');
+        $contactInfo = (string) ($map['contact_info'] ?? '');
+        $companyAddress = (string) ($map['company_address'] ?? '');
+        $siteRemark = (string) ($map['site_remark'] ?? '');
+        $contactPayments = $this->parseContactPayments((string) ($map['contact_payments'] ?? '[]'));
 
         $categories = collect();
         if (Schema::hasTable('categories')) {
@@ -41,6 +45,37 @@ final class SiteLayoutComposer
             'footerCopyright' => $copyright,
             'headAnalyticsCode' => $analyticsCode,
             'navCategories' => $categories,
+            'contactInfo' => $contactInfo,
+            'companyAddress' => $companyAddress,
+            'siteRemark' => $siteRemark,
+            'contactPayments' => $contactPayments,
         ]);
+    }
+
+    /**
+     * @return array<int, array{type:string,name:string,qr_url:string,account:string}>
+     */
+    private function parseContactPayments(string $raw): array
+    {
+        $decoded = json_decode($raw, true);
+        if (! is_array($decoded)) {
+            return [];
+        }
+
+        $items = [];
+        foreach ($decoded as $item) {
+            if (! is_array($item) || empty($item['enabled'])) {
+                continue;
+            }
+
+            $items[] = [
+                'type' => trim((string) ($item['type'] ?? '')),
+                'name' => trim((string) ($item['name'] ?? '')),
+                'qr_url' => trim((string) ($item['qr_url'] ?? '')),
+                'account' => trim((string) ($item['account'] ?? '')),
+            ];
+        }
+
+        return $items;
     }
 }

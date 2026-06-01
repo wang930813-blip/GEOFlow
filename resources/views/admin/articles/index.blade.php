@@ -490,6 +490,9 @@
                                             <a href="{{ route('admin.articles.edit', ['articleId' => (int) $article->id]) }}" class="text-green-600 hover:text-green-800" title="{{ __('admin.button.edit') }}">
                                                 <i data-lucide="edit" class="w-4 h-4"></i>
                                             </a>
+                                            <a href="{{ route('admin.articles.download', ['articleId' => (int) $article->id]) }}" class="text-blue-600 hover:text-blue-800" title="{{ __('admin.button.download_word') }}">
+                                                <i data-lucide="download" class="w-4 h-4"></i>
+                                            </a>
                                             @if((string) $article->review_status === 'pending')
                                                 <button type="button" onclick="quickReview({{ (int) $article->id }}, 'approved')" class="text-green-600 hover:text-green-800" title="{{ __('admin.articles.action.approve') }}">
                                                     <i data-lucide="check" class="w-4 h-4"></i>

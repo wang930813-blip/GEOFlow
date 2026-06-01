@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Web 路由：前台与 Blade 管理后台（路径见 config/geoflow.admin_base_path，默�?geo_admin）�? */
+ * Web 路由：前台与 Blade 管理后台（路径见 config/geoflow.admin_base_path，默�?geo_admin）�? */
 
 use App\Http\Controllers\Admin\AdminActivityLogController;
 use App\Http\Controllers\Admin\AdminAuthController;
@@ -156,6 +156,7 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::post('{articleId}/force-delete', [ArticleController::class, 'forceDelete'])->name('force-delete')->whereNumber('articleId');
             Route::get('{articleId}/edit', [ArticleController::class, 'edit'])->name('edit');
             Route::put('{articleId}', [ArticleController::class, 'update'])->name('update');
+            Route::get('{articleId}/download', [ArticleController::class, 'downloadWord'])->name('download')->whereNumber('articleId');
         });
 
         // Category management

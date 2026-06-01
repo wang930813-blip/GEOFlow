@@ -46,6 +46,7 @@ class SiteSettingsController extends Controller
             'availableThemes' => $this->siteThemeCatalog->all(),
             'homeCarouselSlides' => $this->parseHomeCarouselSlides((string) ($settings['home_carousel_slides'] ?? '[]')),
             'articleDetailAds' => $this->parseArticleDetailAds((string) ($settings['article_detail_ads'] ?? '[]')),
+            'contactPayments' => $this->parseContactPayments((string) ($settings['contact_payments'] ?? '[]')),
         ]);
     }
 
@@ -73,6 +74,15 @@ class SiteSettingsController extends Controller
             'home_carousel_slides.*.title' => ['nullable', 'string', 'max:120'],
             'home_carousel_slides.*.link_url' => ['nullable', 'string', 'max:500'],
             'home_carousel_slides.*.enabled' => ['nullable'],
+            'contact_info' => ['nullable', 'string', 'max:1000'],
+            'company_address' => ['nullable', 'string', 'max:500'],
+            'site_remark' => ['nullable', 'string', 'max:2000'],
+            'contact_payments' => ['nullable', 'array', 'max:10'],
+            'contact_payments.*.type' => ['nullable', 'string', 'max:32'],
+            'contact_payments.*.name' => ['nullable', 'string', 'max:120'],
+            'contact_payments.*.qr_url' => ['nullable', 'string', 'max:500'],
+            'contact_payments.*.account' => ['nullable', 'string', 'max:200'],
+            'contact_payments.*.enabled' => ['nullable'],
             'admin_base_path' => [
                 'required',
                 'string',
@@ -133,6 +143,10 @@ class SiteSettingsController extends Controller
             'featured_limit' => (string) ((int) ($payload['featured_limit'] ?? 6)),
             'per_page' => (string) ((int) ($payload['per_page'] ?? 12)),
             'home_carousel_slides' => (string) json_encode($this->normalizeHomeCarouselSlides($payload['home_carousel_slides'] ?? []), JSON_UNESCAPED_UNICODE),
+            'contact_info' => trim((string) ($payload['contact_info'] ?? '')),
+            'company_address' => trim((string) ($payload['company_address'] ?? '')),
+            'site_remark' => trim((string) ($payload['site_remark'] ?? '')),
+            'contact_payments' => (string) json_encode($this->normalizeContactPayments($payload['contact_payments'] ?? []), JSON_UNESCAPED_UNICODE),
             'admin_base_path' => $newAdminBasePath,
         ];
 
@@ -268,7 +282,11 @@ class SiteSettingsController extends Controller
      *   admin_base_path:string,
      *   active_theme:string,
      *   home_carousel_slides:string,
-     *   article_detail_ads:string
+     *   article_detail_ads:string,
+     *   contact_info:string,
+     *   company_address:string,
+     *   site_remark:string,
+     *   contact_payments:string
      * }
      */
     private function loadSettings(): array
@@ -290,6 +308,10 @@ class SiteSettingsController extends Controller
             'active_theme' => (string) config('geoflow.default_theme', ''),
             'home_carousel_slides' => '[]',
             'article_detail_ads' => '[]',
+            'contact_info' => '',
+            'company_address' => '',
+            'site_remark' => '',
+            'contact_payments' => '[]',
         ];
 
         $stored = SiteSetting::query()
@@ -322,6 +344,10 @@ class SiteSettingsController extends Controller
             'active_theme' => (string) ($stored['active_theme'] !== '' ? $stored['active_theme'] : config('geoflow.default_theme', '')),
             'home_carousel_slides' => (string) $stored['home_carousel_slides'],
             'article_detail_ads' => (string) $stored['article_detail_ads'],
+            'contact_info' => (string) $stored['contact_info'],
+            'company_address' => (string) $stored['company_address'],
+            'site_remark' => (string) $stored['site_remark'],
+            'contact_payments' => (string) $stored['contact_payments'],
         ];
     }
 
@@ -479,5 +505,74 @@ class SiteSettingsController extends Controller
         }
 
         return '/'.ltrim($normalized, '/');
+    }
+
+    /**
+     * @return array<int, array{type:string,name:string,qr_url:string,account:string,enabled:bool}>
+     */
+    private function parseContactPayments(string $raw): array
+    {
+        $decoded = json_decode($raw, true);
+        if (! is_array($decoded)) {
+            return [];
+        }
+
+        $items = [];
+        foreach ($decoded as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+
+            $items[] = [
+                'type' => trim((string) ($item['type'] ?? '')),
+                'name' => trim((string) ($item['name'] ?? '')),
+                'qr_url' => trim((string) ($item['qr_url'] ?? '')),
+                'account' => trim((string) ($item['account'] ?? '')),
+                'enabled' => ! empty($item['enabled']),
+            ];
+        }
+
+        return $items;
+    }
+
+    /**
+     * @return array<int, array{type:string,name:string,qr_url:string,account:string,enabled:bool}>
+     */
+    private function normalizeContactPayments(mixed $posted): array
+    {
+        if (! is_array($posted)) {
+            return [];
+        }
+
+        $items = [];
+        foreach ($posted as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $type = trim((string) ($row['type'] ?? ''));
+            $name = trim((string) ($row['name'] ?? ''));
+            $qrUrl = $this->normalizePublicImageUrl((string) ($row['qr_url'] ?? ''));
+            $account = trim((string) ($row['account'] ?? ''));
+            $enabled = ! empty($row['enabled']);
+
+            if ($type === '' && $name === '' && $qrUrl === '' && $account === '') {
+                continue;
+            }
+
+            $items[] = [
+                'type' => $type,
+                'name' => $name,
+                'qr_url' => $qrUrl,
+                'account' => $account,
+                'enabled' => $enabled,
+            ];
+
+            if (count($items) >= 10) {
+                break;
+            }
+        }
+
+        return $items;
     }
 }

@@ -175,6 +175,104 @@
                     </div>
 
                     <div class="border-t border-gray-200 pt-6">
+                        <div class="mb-4">
+                            <h4 class="text-lg font-medium text-gray-900">{{ __('admin.site_settings.section_contact') }}</h4>
+                            <p class="mt-1 text-sm text-gray-600">{{ __('admin.site_settings.contact_desc') }}</p>
+                        </div>
+
+                        <div class="space-y-5">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">{{ __('admin.site_settings.field_contact_info') }}</label>
+                                <textarea name="contact_info" rows="3"
+                                          class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                                          placeholder="{{ __('admin.site_settings.placeholder_contact_info') }}">{{ $settings['contact_info'] }}</textarea>
+                                <p class="mt-1 text-xs text-gray-500">{{ __('admin.site_settings.contact_info_help') }}</p>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">{{ __('admin.site_settings.field_company_address') }}</label>
+                                <input type="text" name="company_address"
+                                       value="{{ $settings['company_address'] }}"
+                                       class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                                       placeholder="{{ __('admin.site_settings.placeholder_company_address') }}">
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">{{ __('admin.site_settings.field_site_remark') }}</label>
+                                <textarea name="site_remark" rows="3"
+                                          class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                                          placeholder="{{ __('admin.site_settings.placeholder_site_remark') }}">{{ $settings['site_remark'] }}</textarea>
+                                <p class="mt-1 text-xs text-gray-500">{{ __('admin.site_settings.site_remark_help') }}</p>
+                            </div>
+
+                            <div>
+                                <div class="mb-3 flex items-center justify-between">
+                                    <div>
+                                        <div class="text-sm font-medium text-gray-700">{{ __('admin.site_settings.field_contact_payments') }}</div>
+                                        <p class="mt-1 text-xs text-gray-500">{{ __('admin.site_settings.contact_payments_help') }}</p>
+                                    </div>
+                                </div>
+                                @php
+                                    $paymentRows = $contactPayments ?? [];
+                                    if (empty($paymentRows)) {
+                                        $paymentRows = [
+                                            ['type' => 'wechat', 'name' => '', 'qr_url' => '', 'account' => '', 'enabled' => false],
+                                            ['type' => 'alipay', 'name' => '', 'qr_url' => '', 'account' => '', 'enabled' => false],
+                                        ];
+                                    }
+                                @endphp
+                                <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                                    @foreach ($paymentRows as $payIndex => $payment)
+                                        <div class="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                                            <div class="mb-3 flex items-center justify-between gap-3">
+                                                <div class="text-sm font-semibold text-gray-900">{{ __('admin.site_settings.contact_payment_item', ['index' => $payIndex + 1]) }}</div>
+                                                <label class="inline-flex items-center gap-2 text-sm text-gray-600">
+                                                    <input type="checkbox" name="contact_payments[{{ $payIndex }}][enabled]" value="1" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500" @checked(!empty($payment['enabled']))>
+                                                    {{ __('admin.site_settings.field_home_carousel_enabled') }}
+                                                </label>
+                                            </div>
+                                            <div class="space-y-3">
+                                                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                    <div>
+                                                        <label class="block text-xs font-medium text-gray-600 mb-1">{{ __('admin.site_settings.field_contact_payment_type') }}</label>
+                                                        <select name="contact_payments[{{ $payIndex }}][type]" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                                            <option value="wechat" @selected(($payment['type'] ?? '') === 'wechat')>{{ __('admin.site_settings.payment_type_wechat') }}</option>
+                                                            <option value="alipay" @selected(($payment['type'] ?? '') === 'alipay')>{{ __('admin.site_settings.payment_type_alipay') }}</option>
+                                                            <option value="bank" @selected(($payment['type'] ?? '') === 'bank')>{{ __('admin.site_settings.payment_type_bank') }}</option>
+                                                            <option value="other" @selected(! in_array(($payment['type'] ?? ''), ['wechat', 'alipay', 'bank'], true))>{{ __('admin.site_settings.payment_type_other') }}</option>
+                                                        </select>
+                                                    </div>
+                                                    <div>
+                                                        <label class="block text-xs font-medium text-gray-600 mb-1">{{ __('admin.site_settings.field_contact_payment_name') }}</label>
+                                                        <input type="text" name="contact_payments[{{ $payIndex }}][name]"
+                                                               value="{{ $payment['name'] ?? '' }}"
+                                                               class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                                               placeholder="{{ __('admin.site_settings.placeholder_contact_payment_name') }}">
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <label class="block text-xs font-medium text-gray-600 mb-1">{{ __('admin.site_settings.field_contact_payment_qr') }}</label>
+                                                    <input type="text" name="contact_payments[{{ $payIndex }}][qr_url]"
+                                                           value="{{ $payment['qr_url'] ?? '' }}"
+                                                           class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                                           placeholder="{{ __('admin.site_settings.placeholder_contact_payment_qr') }}">
+                                                </div>
+                                                <div>
+                                                    <label class="block text-xs font-medium text-gray-600 mb-1">{{ __('admin.site_settings.field_contact_payment_account') }}</label>
+                                                    <input type="text" name="contact_payments[{{ $payIndex }}][account]"
+                                                           value="{{ $payment['account'] ?? '' }}"
+                                                           class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                                           placeholder="{{ __('admin.site_settings.placeholder_contact_payment_account') }}">
+                                                </div>
+                                            </div>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="border-t border-gray-200 pt-6">
                         <h4 class="text-lg font-medium text-gray-900 mb-4">{{ __('admin.site_settings.section_seo') }}</h4>
 
                         <div class="space-y-4">
