@@ -646,9 +646,9 @@ class WorkerExecutionService
                 '请直接输出最终文章正文（Markdown），不要重复提示词、不要输出占位符。',
                 '必须写成完整文章，包含开头导语、清晰小节和结尾总结；不要只输出检查清单、提纲或提示词内容。',
             ];
-            if (trim($knowledgeContext) !== '') {
-                $instructions[] = '如果提供了参考知识或来源资料，必须在正文中吸收关键事实，并在文末增加“参考依据”小节，列出可验证的来源、事实或引用依据；不要编造来源。';
-            }
+//            if (trim($knowledgeContext) !== '') {
+//                $instructions[] = '如果提供了参考知识或来源资料，必须在正文中吸收关键事实，并在文末增加“参考依据”小节，列出可验证的来源、事实或引用依据；不要编造来源。';
+//            }
 
             return implode("\n", $instructions);
         }
@@ -657,9 +657,9 @@ class WorkerExecutionService
             'Please output only the final article body in Markdown. Do not repeat the prompt or output placeholders.',
             'Write a complete article with an introduction, clear sections, and a conclusion. Do not output only a checklist, outline, or prompt instructions.',
         ];
-        if (trim($knowledgeContext) !== '') {
-            $instructions[] = 'When reference knowledge or source material is provided, incorporate the key facts into the article and include a "References" section with verifiable sources, facts, or citation basis. Do not invent sources.';
-        }
+//        if (trim($knowledgeContext) !== '') {
+//            $instructions[] = 'When reference knowledge or source material is provided, incorporate the key facts into the article and include a "References" section with verifiable sources, facts, or citation basis. Do not invent sources.';
+//        }
 
         return implode("\n", $instructions);
     }
