@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Jobs\ProcessMediaResourceSyncJob;
 use PHPUnit\Framework\TestCase;
 
 class DistributionQueueConfigurationTest extends TestCase
@@ -18,6 +19,7 @@ class DistributionQueueConfigurationTest extends TestCase
             $contents = file_get_contents($composeFile);
             $this->assertIsString($contents);
             $this->assertStringContainsString('--queue=geoflow,distribution,default', $contents, basename($composeFile));
+            $this->assertStringContainsString('--tries=3', $contents, basename($composeFile));
             $this->assertStringContainsString('--timeout=600', $contents, basename($composeFile));
         }
     }
@@ -41,6 +43,14 @@ class DistributionQueueConfigurationTest extends TestCase
             600,
             $queue['connections']['redis']['retry_after'] ?? null
         );
+    }
+
+    public function test_media_resource_sync_job_retries_transient_remote_failures(): void
+    {
+        $job = new ProcessMediaResourceSyncJob(1);
+
+        $this->assertSame(3, $job->tries);
+        $this->assertSame([60, 300], $job->backoff());
     }
 
     public function test_docker_entrypoints_prepare_private_knowledge_upload_directory(): void

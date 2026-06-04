@@ -12,11 +12,19 @@ class ProcessMediaResourceSyncJob implements ShouldQueue
 {
     use Queueable;
 
-    public int $tries = 1;
+    public int $tries = 3;
 
     public int $timeout = 3600;
 
     public function __construct(public readonly int $runId) {}
+
+    /**
+     * @return array<int,int>
+     */
+    public function backoff(): array
+    {
+        return [60, 300];
+    }
 
     /**
      * @return array<int,string>
