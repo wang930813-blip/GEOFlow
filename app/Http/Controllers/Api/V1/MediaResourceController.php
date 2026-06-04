@@ -17,6 +17,7 @@ class MediaResourceController extends BaseApiController
         $siteId = $this->auth($request)->siteId ?? $request->integer('site_id', 0);
         $query = MediaResource::query()
             ->active()
+            ->when($request->integer('platform_id', 0) > 0, fn ($q) => $q->where('platform_id', $request->integer('platform_id')))
             ->when($request->filled('source_type'), fn ($q) => $q->where('source_type', (string) $request->query('source_type')))
             ->when($request->filled('search'), function ($q) use ($request): void {
                 $search = '%'.trim((string) $request->query('search')).'%';
@@ -70,6 +71,8 @@ class MediaResourceController extends BaseApiController
 
         return [
             'id' => (int) $resource->id,
+            'platform_id' => (int) $resource->platform_id,
+            'platform_label' => $resource->platformLabel(),
             'source_type' => (string) $resource->source_type,
             'source_label' => $resource->sourceLabel(),
             'external_resource_id' => (string) $resource->external_resource_id,

@@ -35,4 +35,5 @@ class MediaDistributionClientTest extends TestCase
 
         $method->invoke($client, '<html><title>from-data请求error</title><div>宝塔WAF提醒您,from-data 请求异常</div></html>');
     }
+
 }

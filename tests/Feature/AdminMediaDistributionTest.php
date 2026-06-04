@@ -15,6 +15,7 @@ use App\Models\Site;
 use App\Models\SiteCreditAccount;
 use App\Models\SiteCreditLedger;
 use App\Services\MediaDistribution\MediaResourceSyncService;
+use App\Support\MediaDistribution\MediaPlatform;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -105,6 +106,178 @@ class AdminMediaDistributionTest extends TestCase
         ]);
     }
 
+    public function test_super_admin_can_sync_chaojimeijie_media_resources(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+        [$superAdmin] = $this->createAdminWithSite('media_cjmj_root_admin', 'super_admin');
+
+        Http::fake([
+            '*/media/resource*' => Http::response([
+                'code' => 200,
+                'message' => 'success',
+                'data' => [
+                    'total' => 1,
+                    'items' => [[
+                        'id' => 50001,
+                        'name' => '超级新闻媒体',
+                        'case_link' => 'https://example.com/case.html',
+                        'remark' => '超级媒介新闻资源',
+                        'status' => 2,
+                        'price' => '31.00',
+                        'published_rate' => '93%',
+                        'pc_weight' => 4,
+                        'mobile_weight' => 5,
+                    ]],
+                ],
+            ]),
+            '*/we-media/resource*' => Http::response([
+                'code' => 200,
+                'message' => 'success',
+                'data' => [
+                    'total' => 1,
+                    'items' => [[
+                        'id' => 60001,
+                        'name' => '超级自媒体账号',
+                        'platform' => '头条',
+                        'status' => 2,
+                        'price' => '42.00',
+                        'video_price' => '80.00',
+                        'trend_price' => '20.00',
+                    ]],
+                ],
+            ]),
+        ]);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.media-distribution.settings.update'), [
+                'platform_id' => MediaPlatform::CEYING_MEDIA_2,
+                'api_base_url' => 'https://vip.chaojimeijie.com/api',
+                'app_id' => 'app-id',
+                'api_secret' => 'secret',
+                'status' => 'active',
+            ])
+            ->assertRedirect(route('admin.media-distribution.settings.index'));
+
+        $run = MediaResourceSyncRun::query()->create([
+            'platform_id' => MediaPlatform::CEYING_MEDIA_2,
+            'status' => 'pending',
+            'started_by_admin_id' => (int) $superAdmin->id,
+        ]);
+
+        (new ProcessMediaResourceSyncJob((int) $run->id))
+            ->handle(app(MediaResourceSyncService::class));
+
+        $this->assertDatabaseHas('media_resources', [
+            'platform_id' => MediaPlatform::CEYING_MEDIA_2,
+            'source_type' => 'website_media',
+            'external_resource_id' => '50001',
+            'title' => '超级新闻媒体',
+            'status' => 'active',
+            'cost_price' => '31.00',
+            'sale_price' => '31.00',
+        ]);
+        $websiteResource = MediaResource::query()
+            ->where('platform_id', MediaPlatform::CEYING_MEDIA_2)
+            ->where('external_resource_id', '50001')
+            ->firstOrFail();
+        $this->assertSame('93%', $websiteResource->apiField('publish_rate'));
+        $this->assertSame('4', $websiteResource->apiField('pc_weigh'));
+        $this->assertSame('5', $websiteResource->apiField('wap_weight'));
+        $this->assertDatabaseHas('media_resources', [
+            'platform_id' => MediaPlatform::CEYING_MEDIA_2,
+            'source_type' => 'zi_media',
+            'external_resource_id' => '60001',
+            'title' => '超级自媒体账号',
+            'category' => '头条',
+            'cost_price' => '42.00',
+        ]);
+    }
+
+    public function test_media_resource_sync_marks_missing_resources_inactive(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+        [$superAdmin] = $this->createAdminWithSite('media_missing_root_admin', 'super_admin');
+
+        MediaResource::query()->create([
+            'platform_id' => MediaPlatform::CEYING_MEDIA_2,
+            'source_type' => MediaResource::SOURCE_WEBSITE,
+            'external_resource_id' => 'missing-website-resource',
+            'title' => 'Missing Website Resource',
+            'status' => 'active',
+            'cost_price' => '10.00',
+            'sale_price' => '10.00',
+            'last_synced_at' => now()->subDay(),
+        ]);
+        MediaResource::query()->create([
+            'platform_id' => MediaPlatform::CEYING_MEDIA_1,
+            'source_type' => MediaResource::SOURCE_WEBSITE,
+            'external_resource_id' => 'other-platform-resource',
+            'title' => 'Other Platform Resource',
+            'status' => 'active',
+            'cost_price' => '10.00',
+            'sale_price' => '10.00',
+            'last_synced_at' => now()->subDay(),
+        ]);
+
+        Http::fake([
+            '*/media/resource*' => Http::response([
+                'code' => 200,
+                'message' => 'success',
+                'data' => [
+                    'items' => [[
+                        'id' => 50001,
+                        'name' => 'Current Website Resource',
+                        'status' => 2,
+                        'price' => '31.00',
+                    ]],
+                ],
+            ]),
+            '*/we-media/resource*' => Http::response([
+                'code' => 200,
+                'message' => 'success',
+                'data' => ['items' => []],
+            ]),
+        ]);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.media-distribution.settings.update'), [
+                'platform_id' => MediaPlatform::CEYING_MEDIA_2,
+                'api_base_url' => 'https://vip.chaojimeijie.com/api',
+                'app_id' => 'app-id',
+                'api_secret' => 'secret',
+                'status' => 'active',
+            ])
+            ->assertRedirect(route('admin.media-distribution.settings.index'));
+
+        $run = MediaResourceSyncRun::query()->create([
+            'platform_id' => MediaPlatform::CEYING_MEDIA_2,
+            'status' => 'pending',
+            'started_by_admin_id' => (int) $superAdmin->id,
+        ]);
+
+        (new ProcessMediaResourceSyncJob((int) $run->id))
+            ->handle(app(MediaResourceSyncService::class));
+
+        $this->assertDatabaseHas('media_resources', [
+            'platform_id' => MediaPlatform::CEYING_MEDIA_2,
+            'source_type' => MediaResource::SOURCE_WEBSITE,
+            'external_resource_id' => 'missing-website-resource',
+            'status' => 'inactive',
+        ]);
+        $this->assertDatabaseHas('media_resources', [
+            'platform_id' => MediaPlatform::CEYING_MEDIA_1,
+            'source_type' => MediaResource::SOURCE_WEBSITE,
+            'external_resource_id' => 'other-platform-resource',
+            'status' => 'active',
+        ]);
+        $this->assertDatabaseHas('media_resources', [
+            'platform_id' => MediaPlatform::CEYING_MEDIA_2,
+            'source_type' => MediaResource::SOURCE_WEBSITE,
+            'external_resource_id' => '50001',
+            'status' => 'active',
+        ]);
+    }
+
     public function test_super_admin_sync_request_creates_run_and_dispatches_job(): void
     {
         $this->withoutMiddleware(ValidateCsrfToken::class);
@@ -122,10 +295,33 @@ class AdminMediaDistributionTest extends TestCase
         Queue::assertPushed(ProcessMediaResourceSyncJob::class, 1);
     }
 
+    public function test_media_resource_sync_error_details_are_hidden_from_resources_page(): void
+    {
+        [$superAdmin] = $this->createAdminWithSite('media_sync_error_root_admin', 'super_admin');
+
+        MediaResourceSyncRun::query()->create([
+            'platform_id' => MediaPlatform::CEYING_MEDIA_2,
+            'status' => 'failed',
+            'last_error_message' => 'cURL error 28 for https://vip.chaojimeijie.com/api/media/resource?appid=app-id&signature=secret-signature',
+            'completed_at' => now(),
+            'started_by_admin_id' => (int) $superAdmin->id,
+        ]);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.media-distribution.resources.index'))
+            ->assertOk()
+            ->assertSee('同步失败，请检查接口配置或网络连通性。')
+            ->assertDontSee('https://vip.chaojimeijie.com/api/media/resource', false)
+            ->assertDontSee('signature=secret-signature', false)
+            ->assertDontSee('appid=app-id', false)
+            ->assertDontSee('cURL error 28', false);
+    }
+
     public function test_media_resource_sync_reads_following_pages_until_exhausted(): void
     {
         $this->withoutMiddleware(ValidateCsrfToken::class);
         [$superAdmin] = $this->createAdminWithSite('media_paged_root_admin', 'super_admin');
+        config(['media_distribution.page_size' => 100]);
 
         $firstPage = [];
         for ($i = 1; $i <= 100; $i++) {
@@ -186,6 +382,101 @@ class AdminMediaDistributionTest extends TestCase
         $this->assertSame(101, (int) $run->website_synced);
         $this->assertSame(101, (int) $run->total_synced);
         $this->assertNotNull($run->completed_at);
+    }
+
+    public function test_ceying_media_one_sync_caps_page_size_to_remote_limit(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+        [$superAdmin] = $this->createAdminWithSite('media_page_size_root_admin', 'super_admin');
+        config(['media_distribution.page_size' => 200]);
+
+        Http::fake([
+            '*/api/media/media_list' => function ($request) {
+                $payload = $this->httpRequestPayload($request);
+
+                $this->assertSame('100', (string) ($payload['page_size'] ?? ''));
+                $this->assertSame('100', (string) ($payload['limit'] ?? ''));
+
+                return Http::response([
+                    'code' => 1,
+                    'msg' => 'success',
+                    'data' => [],
+                ]);
+            },
+            '*/api/zi_media_api/media_list' => Http::response([
+                'code' => 1,
+                'msg' => 'success',
+                'data' => [],
+            ]),
+        ]);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.media-distribution.settings.update'), [
+                'api_base_url' => 'http://8.138.187.158:8082',
+                'api_key' => 'test-api-key',
+                'status' => 'active',
+            ])
+            ->assertRedirect(route('admin.media-distribution.settings.index'));
+
+        $run = MediaResourceSyncRun::query()->create([
+            'status' => 'pending',
+            'started_by_admin_id' => (int) $superAdmin->id,
+        ]);
+
+        (new ProcessMediaResourceSyncJob((int) $run->id))
+            ->handle(app(MediaResourceSyncService::class));
+
+        $this->assertSame('completed', (string) $run->fresh()->status);
+    }
+
+    public function test_media_resource_sync_truncates_case_link_for_storage(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+        [$superAdmin] = $this->createAdminWithSite('media_long_case_link_root_admin', 'super_admin');
+        $longCaseLink = 'https://example.com/article?'.str_repeat('token=long-value&', 40);
+
+        Http::fake([
+            '*/api/media/media_list' => Http::response([
+                'code' => 1,
+                'msg' => 'success',
+                'data' => [[
+                    'resource_id' => 91001,
+                    'title' => 'Long Case Link Media',
+                    'case_link' => $longCaseLink,
+                    'status' => 1,
+                    'price' => '10.00',
+                ]],
+            ]),
+            '*/api/zi_media_api/media_list' => Http::response([
+                'code' => 1,
+                'msg' => 'success',
+                'data' => [],
+            ]),
+        ]);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.media-distribution.settings.update'), [
+                'api_base_url' => 'http://8.138.187.158:8082',
+                'api_key' => 'test-api-key',
+                'status' => 'active',
+            ])
+            ->assertRedirect(route('admin.media-distribution.settings.index'));
+
+        $run = MediaResourceSyncRun::query()->create([
+            'status' => 'pending',
+            'started_by_admin_id' => (int) $superAdmin->id,
+        ]);
+
+        (new ProcessMediaResourceSyncJob((int) $run->id))
+            ->handle(app(MediaResourceSyncService::class));
+
+        $resource = MediaResource::query()
+            ->where('external_resource_id', '91001')
+            ->firstOrFail();
+
+        $this->assertSame(500, mb_strlen((string) $resource->case_link));
+        $this->assertSame($longCaseLink, $resource->apiField('case_link'));
+        $this->assertSame('completed', (string) $run->fresh()->status);
     }
 
     public function test_media_resource_sync_sends_pagination_aliases_when_fetching_more_than_default_remote_page(): void
@@ -471,6 +762,68 @@ class AdminMediaDistributionTest extends TestCase
 
         $this->assertSame('submitted', $submission->status);
         $this->assertSame('form-order', $submission->external_order_nid);
+    }
+
+    public function test_chaojimeijie_we_media_submission_uses_preview_url_and_fixed_article_params(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+        [$admin, $site] = $this->createAdminWithSite('media_cjmj_submit_admin', 'admin');
+        [$article, $resource] = $this->createArticleAndResource($site, 'cjmj-submit');
+        $resource->forceFill([
+            'platform_id' => MediaPlatform::CEYING_MEDIA_2,
+            'source_type' => MediaResource::SOURCE_ZI_MEDIA,
+            'external_resource_id' => '60001',
+        ])->save();
+        MediaApiSetting::query()->create([
+            'platform_id' => MediaPlatform::CEYING_MEDIA_2,
+            'api_base_url' => 'https://vip.chaojimeijie.com/api',
+            'app_id' => 'app-id',
+            'api_secret_ciphertext' => app(\App\Support\GeoFlow\ApiKeyCrypto::class)->encrypt('secret'),
+            'status' => 'active',
+            'price_multiplier' => '1.00',
+        ]);
+        SiteCreditAccount::query()->create([
+            'site_id' => $site->id,
+            'balance' => '100.00',
+            'frozen_balance' => '0.00',
+            'total_recharged' => '100.00',
+            'total_consumed' => '0.00',
+        ]);
+
+        Http::fake([
+            '*/we-media/order' => function ($request) use ($resource) {
+                $payload = $this->httpRequestPayload($request);
+
+                $this->assertSame((string) $resource->external_resource_id, (string) ($payload['resource_id'] ?? ''));
+                $this->assertSame('1', (string) ($payload['publish_form'] ?? ''));
+                $this->assertSame('1', (string) ($payload['publish_type'] ?? ''));
+                $this->assertSame('3', (string) ($payload['account_rule'] ?? ''));
+                $this->assertStringContainsString('/media-submission-preview/', (string) ($payload['content'] ?? ''));
+                $this->assertNotEmpty($payload['signature'] ?? '');
+
+                return Http::response([
+                    'code' => 200,
+                    'message' => 'success',
+                    'data' => ['partner_sn' => 'CJMJ202606040000000001'],
+                ]);
+            },
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => $site->id])
+            ->post(route('admin.media-distribution.submissions.store'), [
+                'article_id' => $article->id,
+                'media_resource_id' => $resource->id,
+                'remark' => 'cjmj submit',
+            ])
+            ->assertRedirect(route('admin.media-distribution.submissions.index'));
+
+        $submission = MediaSubmission::query()->where('article_id', $article->id)->firstOrFail();
+
+        $this->assertSame(MediaPlatform::CEYING_MEDIA_2, (int) $submission->platform_id);
+        $this->assertSame('CJMJ202606040000000001', $submission->external_order_nid);
+        $this->assertNotSame('', (string) $submission->agent_order_sn);
+        $this->assertNotSame('', (string) $submission->preview_token);
     }
 
     public function test_submission_requires_enough_site_credits(): void
@@ -1018,7 +1371,7 @@ class AdminMediaDistributionTest extends TestCase
 
         $this->assertSame(2, MediaSubmission::query()->where('media_resource_id', $resource->id)->count());
         $this->assertSame('24.00', SiteCreditAccount::query()->where('site_id', $site->id)->value('balance'));
-        Http::assertSentCount(2);
+        $this->assertSame(2, Http::recorded(fn ($request): bool => str_contains($request->url(), '/api/media/send'))->count());
     }
 
     public function test_admin_can_select_multiple_media_resources_then_bulk_submit_multiple_articles(): void
@@ -1073,7 +1426,7 @@ class AdminMediaDistributionTest extends TestCase
         $this->assertSame(2, MediaSubmission::query()->where('media_resource_id', $resourceA->id)->count());
         $this->assertSame(2, MediaSubmission::query()->where('media_resource_id', $resourceB->id)->count());
         $this->assertSame('148.00', SiteCreditAccount::query()->where('site_id', $site->id)->value('balance'));
-        Http::assertSentCount(4);
+        $this->assertSame(4, Http::recorded(fn ($request): bool => str_contains($request->url(), '/api/media/send'))->count());
     }
 
     public function test_media_resource_submit_link_prefills_bulk_submission_article_picker(): void
@@ -1113,7 +1466,7 @@ class AdminMediaDistributionTest extends TestCase
             ->assertDontSee('name="media_resource_id"', false);
     }
 
-    public function test_media_resources_support_status_category_and_price_filters(): void
+    public function test_media_resources_support_status_and_price_filters_without_category_options(): void
     {
         [$admin] = $this->createAdminWithSite('media_filter_admin', 'admin');
         MediaResource::query()->create([
@@ -1140,7 +1493,9 @@ class AdminMediaDistributionTest extends TestCase
             ->assertOk()
             ->assertSee('Finance Media')
             ->assertDontSee('Travel Media')
-            ->assertSee('<option value="active" selected>可投稿</option>', false);
+            ->assertSee('<option value="active" selected>可投稿</option>', false)
+            ->assertDontSee('<option value="finance"', false)
+            ->assertDontSee('<option value="travel"', false);
 
         $this->actingAs($admin, 'admin')
             ->get(route('admin.media-distribution.resources.index', [
@@ -1155,7 +1510,6 @@ class AdminMediaDistributionTest extends TestCase
 
         $this->actingAs($admin, 'admin')
             ->get(route('admin.media-distribution.resources.index', [
-                'category' => 'finance',
                 'status' => 'active',
                 'min_price' => '60',
                 'max_price' => '100',
@@ -1480,6 +1834,95 @@ class AdminMediaDistributionTest extends TestCase
 
         $this->assertSame('100.00', SiteCreditAccount::query()->where('site_id', $site->id)->value('balance'));
         $this->assertSame(1, SiteCreditLedger::query()->where('submission_id', $submission->id)->where('type', 'refund')->count());
+    }
+
+    public function test_chaojimeijie_sync_status_and_appeal_use_agent_order_sn(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+        [$admin, $site] = $this->createAdminWithSite('media_cjmj_status_admin', 'admin');
+        [$article, $resource] = $this->createArticleAndResource($site, 'cjmj-status');
+        $resource->forceFill([
+            'platform_id' => MediaPlatform::CEYING_MEDIA_2,
+            'source_type' => MediaResource::SOURCE_WEBSITE,
+            'external_resource_id' => '50001',
+        ])->save();
+        MediaApiSetting::query()->create([
+            'platform_id' => MediaPlatform::CEYING_MEDIA_2,
+            'api_base_url' => 'https://vip.chaojimeijie.com/api',
+            'app_id' => 'app-id',
+            'api_secret_ciphertext' => app(\App\Support\GeoFlow\ApiKeyCrypto::class)->encrypt('secret'),
+            'status' => 'active',
+            'price_multiplier' => '1.00',
+        ]);
+        SiteCreditAccount::query()->create([
+            'site_id' => $site->id,
+            'balance' => '12.00',
+            'frozen_balance' => '0.00',
+            'total_recharged' => '100.00',
+            'total_consumed' => '88.00',
+        ]);
+        $submission = MediaSubmission::query()->create([
+            'site_id' => $site->id,
+            'article_id' => $article->id,
+            'media_resource_id' => $resource->id,
+            'platform_id' => MediaPlatform::CEYING_MEDIA_2,
+            'source_type' => $resource->source_type,
+            'external_order_nid' => 'CJMJ202606040000000002',
+            'agent_order_sn' => 'geoflow-2-1-agent-sn',
+            'preview_token' => 'preview-token',
+            'title_snapshot' => $article->title,
+            'content_snapshot' => $article->content,
+            'cost_price_snapshot' => '27.00',
+            'sale_price_snapshot' => '88.00',
+            'points_amount' => '88.00',
+            'status' => 'submitted',
+        ]);
+
+        Http::fake([
+            '*/media/order/query*' => function ($request) {
+                $query = [];
+                parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+                $this->assertSame('geoflow-2-1-agent-sn', (string) ($query['sn'][0] ?? ''));
+
+                return Http::response([
+                    'code' => 200,
+                    'message' => 'success',
+                    'data' => [[
+                        'sn' => 'geoflow-2-1-agent-sn',
+                        'status' => 7,
+                        'url' => null,
+                        'feedback' => ['reason' => '退款成功'],
+                    ]],
+                ]);
+            },
+            '*/media/order/apply-refund' => function ($request) {
+                $payload = $this->httpRequestPayload($request);
+                $this->assertSame('geoflow-2-1-agent-sn', (string) ($payload['sn'] ?? ''));
+                $this->assertSame('please refund', (string) ($payload['reason'] ?? ''));
+
+                return Http::response(['code' => 200, 'message' => 'success', 'data' => []]);
+            },
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => $site->id])
+            ->post(route('admin.media-distribution.submissions.sync', ['submission' => $submission->id]))
+            ->assertRedirect(route('admin.media-distribution.submissions.show', ['submission' => $submission->id]));
+
+        $submission->refresh();
+        $this->assertSame('rejected', $submission->status);
+        $this->assertSame('100.00', SiteCreditAccount::query()->where('site_id', $site->id)->value('balance'));
+        $this->assertSame(1, SiteCreditLedger::query()->where('submission_id', $submission->id)->where('type', 'refund')->count());
+
+        $submission->forceFill(['status' => 'rejected'])->save();
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => $site->id])
+            ->post(route('admin.media-distribution.submissions.appeal', ['submission' => $submission->id]), [
+                'content' => 'please refund',
+            ])
+            ->assertRedirect(route('admin.media-distribution.submissions.show', ['submission' => $submission->id]));
+
+        $this->assertSame('appealing', $submission->fresh()->status);
     }
 
     public function test_super_admin_can_view_and_export_all_site_consumption_records(): void

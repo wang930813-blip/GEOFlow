@@ -5,33 +5,44 @@ namespace App\Services\MediaDistribution;
 use App\Models\MediaApiSetting;
 use App\Models\MediaResource;
 use App\Models\MediaResourceSyncRun;
+use App\Support\MediaDistribution\MediaPlatform;
+use Carbon\CarbonInterface;
 
 class MediaResourceSyncService
 {
-    public function __construct(private readonly MediaDistributionClient $client) {}
+    public function __construct(private readonly MediaPlatformClientManager $clients) {}
 
     /**
      * @return array{synced:int}
      */
-    public function syncAll(?MediaResourceSyncRun $run = null): array
+    public function syncAll(?MediaResourceSyncRun $run = null, ?int $platformId = null): array
     {
+        $platformId = $platformId ?? (int) ($run?->platform_id ?: MediaPlatform::CEYING_MEDIA_1);
+        $client = $this->clients->forPlatform($platformId);
         $count = 0;
         $sourceCounts = [
             MediaResource::SOURCE_WEBSITE => 0,
             MediaResource::SOURCE_ZI_MEDIA => 0,
         ];
-        $multiplier = (float) (MediaApiSetting::query()->orderByDesc('id')->value('price_multiplier') ?? 1);
+        $syncTimestamp = now()->startOfSecond();
+        $multiplier = (float) (MediaApiSetting::query()
+            ->where('platform_id', $platformId)
+            ->orderByDesc('id')
+            ->value('price_multiplier') ?? 1);
 
         $run?->update([
+            'platform_id' => $platformId,
             'status' => 'running',
             'started_at' => $run->started_at ?? now(),
+            'completed_at' => null,
             'last_error_message' => null,
         ]);
 
         foreach ([MediaResource::SOURCE_WEBSITE, MediaResource::SOURCE_ZI_MEDIA] as $sourceType) {
-            foreach ($this->client->resourcePages($sourceType) as $page => $rows) {
+            foreach ($client->resourcePages($sourceType) as $page => $rows) {
                 foreach ($rows as $row) {
                     $resource = MediaResource::query()->firstOrNew([
+                        'platform_id' => $platformId,
                         'source_type' => $sourceType,
                         'external_resource_id' => $this->firstFilled($row, ['resource_id', 'id', 'nid']),
                     ]);
@@ -41,14 +52,15 @@ class MediaResourceSyncService
 
                     $costPrice = $this->normalizeMoney($row['price'] ?? 0);
                     $resource->fill([
+                        'platform_id' => $platformId,
                         'title' => $this->firstFilled($row, ['title', 'media_name', 'name', 'site_name', 'account_name'], (string) $resource->external_resource_id),
-                        'category' => $this->firstFilled($row, ['category', 'field', 'type_name', 'class_name']),
+                        'category' => $this->firstFilled($row, ['category', 'field', 'type_name', 'class_name', 'platform']),
                         'remarks' => $this->firstFilled($row, ['remarks', 'remark', 'description', 'desc']),
-                        'case_link' => $this->firstFilled($row, ['case_link', 'case_url', 'url', 'link']),
-                        'status' => ((string) ($row['status'] ?? '1')) === '1' ? 'active' : 'inactive',
+                        'case_link' => $this->limitText($this->firstFilled($row, ['case_link', 'case_url', 'entrance_link', 'url', 'link']), 500),
+                        'status' => $this->isActiveStatus($row['status'] ?? '1', $platformId) ? 'active' : 'inactive',
                         'cost_price' => $costPrice,
-                        'raw_payload' => $row,
-                        'last_synced_at' => now(),
+                        'raw_payload' => $this->rawPayload($row, $platformId),
+                        'last_synced_at' => $syncTimestamp,
                     ]);
                     $resource->sale_price = $this->multiplyMoney($costPrice, $multiplier);
                     $resource->save();
@@ -58,6 +70,8 @@ class MediaResourceSyncService
 
                 $this->markRunProgress($run, $sourceType, (int) $page, $sourceCounts, $count);
             }
+
+            $this->markMissingResourcesInactive($platformId, $sourceType, $syncTimestamp);
         }
 
         $run?->update([
@@ -83,6 +97,29 @@ class MediaResourceSyncService
         return number_format(max(0, (float) $value * $multiplier), 2, '.', '');
     }
 
+    private function isActiveStatus(mixed $status, int $platformId): bool
+    {
+        return (string) $status === ($platformId === MediaPlatform::CEYING_MEDIA_2 ? '2' : '1');
+    }
+
+    /**
+     * @param  array<string,mixed>  $row
+     * @return array<string,mixed>
+     */
+    private function rawPayload(array $row, int $platformId): array
+    {
+        if ($platformId !== MediaPlatform::CEYING_MEDIA_2) {
+            return $row;
+        }
+
+        return $row + [
+            'publish_rate' => $row['published_rate'] ?? null,
+            'pc_weigh' => $row['pc_weight'] ?? null,
+            'wap_weight' => $row['mobile_weight'] ?? null,
+            'status_label' => $row['status'] ?? null,
+        ];
+    }
+
     /**
      * @param  array<string,int>  $sourceCounts
      */
@@ -99,7 +136,26 @@ class MediaResourceSyncService
             'website_synced' => $sourceCounts[MediaResource::SOURCE_WEBSITE] ?? 0,
             'zi_media_synced' => $sourceCounts[MediaResource::SOURCE_ZI_MEDIA] ?? 0,
             'total_synced' => $total,
+            'completed_at' => null,
         ]);
+    }
+
+    private function markMissingResourcesInactive(int $platformId, string $sourceType, CarbonInterface $syncTimestamp): void
+    {
+        MediaResource::query()
+            ->where('platform_id', $platformId)
+            ->where('source_type', $sourceType)
+            ->where('status', 'active')
+            ->where(function ($query) use ($syncTimestamp): void {
+                $query->whereNull('last_synced_at')
+                    ->orWhere('last_synced_at', '<>', $syncTimestamp);
+            })
+            ->update(['status' => 'inactive']);
+    }
+
+    private function limitText(string $value, int $limit): string
+    {
+        return mb_substr($value, 0, $limit);
     }
 
     /**

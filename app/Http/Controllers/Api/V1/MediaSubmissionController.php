@@ -21,7 +21,7 @@ class MediaSubmissionController extends BaseApiController
         $perPage = max(1, min(100, $request->integer('per_page', 20)));
         $siteId = $this->auth($request)->siteId;
         $query = MediaSubmission::withoutGlobalScope('current_site')
-            ->with(['article:id,title', 'resource:id,title,source_type,sale_price', 'site:id,name'])
+            ->with(['article:id,title', 'resource:id,title,platform_id,source_type,sale_price', 'site:id,name'])
             ->when($siteId !== null, fn ($q) => $q->where('site_id', $siteId))
             ->when($request->integer('site_id', 0) > 0, fn ($q) => $q->where('site_id', $request->integer('site_id')))
             ->when($request->integer('article_id', 0) > 0, fn ($q) => $q->where('article_id', $request->integer('article_id')))
@@ -33,7 +33,7 @@ class MediaSubmissionController extends BaseApiController
         $submissions = $query->forPage($page, $perPage)->get();
         $this->syncVisible($submissions, $submissionService);
         $submissions = MediaSubmission::withoutGlobalScope('current_site')
-            ->with(['article:id,title', 'resource:id,title,source_type,sale_price', 'site:id,name'])
+            ->with(['article:id,title', 'resource:id,title,platform_id,source_type,sale_price', 'site:id,name'])
             ->whereIn('id', $submissions->pluck('id'))
             ->when($siteId !== null, fn ($q) => $q->where('site_id', $siteId))
             ->orderByDesc('id')
@@ -96,7 +96,7 @@ class MediaSubmissionController extends BaseApiController
 
                 try {
                     $submission = $submissionService->submit($article, $resource, $admin, trim((string) ($payload['remark'] ?? '')));
-                    $created[] = $this->submissionPayload($submission->load(['article:id,title', 'resource:id,title,source_type,sale_price', 'site:id,name']));
+                    $created[] = $this->submissionPayload($submission->load(['article:id,title', 'resource:id,title,platform_id,source_type,sale_price', 'site:id,name']));
                 } catch (Throwable $e) {
                     $errors[] = ['article_id' => $articleId, 'media_resource_id' => $resourceId, 'message' => $e->getMessage()];
                 }
@@ -117,7 +117,7 @@ class MediaSubmissionController extends BaseApiController
     {
         $mediaSubmission = $this->findSubmission($request, $submission);
         $this->syncVisible(collect([$mediaSubmission]), $submissionService);
-        $mediaSubmission = $this->findSubmission($request, $submission)->load(['article:id,title', 'resource:id,title,source_type,sale_price', 'site:id,name']);
+        $mediaSubmission = $this->findSubmission($request, $submission)->load(['article:id,title', 'resource:id,title,platform_id,source_type,sale_price', 'site:id,name']);
 
         return $this->success($request, $this->submissionPayload($mediaSubmission));
     }
@@ -137,7 +137,7 @@ class MediaSubmissionController extends BaseApiController
             throw new ApiException('media_submission_sync_failed', $e->getMessage(), 422);
         }
 
-        $mediaSubmission->refresh()->load(['article:id,title', 'resource:id,title,source_type,sale_price', 'site:id,name']);
+        $mediaSubmission->refresh()->load(['article:id,title', 'resource:id,title,platform_id,source_type,sale_price', 'site:id,name']);
 
         return $this->success($request, $this->submissionPayload($mediaSubmission));
     }
@@ -155,7 +155,7 @@ class MediaSubmissionController extends BaseApiController
             throw new ApiException('media_submission_cancel_failed', $e->getMessage(), 422);
         }
 
-        $mediaSubmission->refresh()->load(['article:id,title', 'resource:id,title,source_type,sale_price', 'site:id,name']);
+        $mediaSubmission->refresh()->load(['article:id,title', 'resource:id,title,platform_id,source_type,sale_price', 'site:id,name']);
 
         return $this->success($request, $this->submissionPayload($mediaSubmission));
     }
@@ -173,7 +173,7 @@ class MediaSubmissionController extends BaseApiController
             throw new ApiException('media_submission_appeal_failed', $e->getMessage(), 422);
         }
 
-        $mediaSubmission->refresh()->load(['article:id,title', 'resource:id,title,source_type,sale_price', 'site:id,name']);
+        $mediaSubmission->refresh()->load(['article:id,title', 'resource:id,title,platform_id,source_type,sale_price', 'site:id,name']);
 
         return $this->success($request, $this->submissionPayload($mediaSubmission));
     }
@@ -181,7 +181,7 @@ class MediaSubmissionController extends BaseApiController
     private function findSubmission(Request $request, int $submissionId): MediaSubmission
     {
         $submission = MediaSubmission::withoutGlobalScope('current_site')
-            ->with(['article:id,title', 'resource:id,title,source_type,sale_price', 'site:id,name'])
+            ->with(['article:id,title', 'resource:id,title,platform_id,source_type,sale_price', 'site:id,name'])
             ->when($this->auth($request)->siteId !== null, fn ($q) => $q->where('site_id', $this->auth($request)->siteId))
             ->whereKey($submissionId)
             ->first();
@@ -222,6 +222,8 @@ class MediaSubmissionController extends BaseApiController
             'article_title' => (string) ($submission->article?->title ?? $submission->title_snapshot),
             'media_resource_id' => (int) $submission->media_resource_id,
             'media_title' => (string) ($submission->resource?->title ?? ''),
+            'platform_id' => (int) $submission->platform_id,
+            'platform_label' => $submission->platformLabel(),
             'source_type' => (string) $submission->source_type,
             'external_order_nid' => (string) $submission->external_order_nid,
             'status' => (string) $submission->status,

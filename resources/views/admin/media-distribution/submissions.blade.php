@@ -38,7 +38,7 @@
                     <label class="mb-1 block text-sm font-medium text-gray-700">媒体</label>
                     <select name="media_resource_ids[]" multiple required size="5" class="block w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
                         @foreach ($resources as $resource)
-                            <option value="{{ $resource->id }}" @selected(in_array((int) $resource->id, $selectedResourceIds ?? [], true))>{{ $resource->title }} · {{ $resource->sale_price }} 积分</option>
+                            <option value="{{ $resource->id }}" @selected(in_array((int) $resource->id, $selectedResourceIds ?? [], true))>{{ $resource->platformLabel() }} · {{ $resource->title }} · {{ $resource->sale_price }} 积分</option>
                         @endforeach
                     </select>
                 </div>
@@ -73,13 +73,16 @@
                                 <td class="px-5 py-4 text-sm text-gray-600">
                                     <div>#{{ $submission->id }}</div>
                                     <div class="text-xs text-gray-400">{{ $submission->external_order_nid ?: '未返回订单号' }}</div>
+                                    @if($submission->agent_order_sn)
+                                        <div class="text-xs text-gray-400">{{ $submission->agent_order_sn }}</div>
+                                    @endif
                                 </td>
                                 @if ($isSuperAdmin)
                                     <td class="px-5 py-4 text-sm text-gray-600">{{ $submission->site?->name }}</td>
                                 @endif
                                 <td class="px-5 py-4">
                                     <div class="text-sm font-medium text-gray-900">{{ $submission->title_snapshot }}</div>
-                                    <div class="mt-1 text-xs text-gray-500">{{ $submission->resource?->title }}</div>
+                                    <div class="mt-1 text-xs text-gray-500">{{ $submission->platformLabel() }} · {{ $submission->resource?->title }}</div>
                                 </td>
                                 <td class="px-5 py-4 text-sm text-gray-700">{{ $submission->points_amount }}</td>
                                 <td class="px-5 py-4 text-sm text-gray-700">{{ $submission->statusLabel() }}</td>

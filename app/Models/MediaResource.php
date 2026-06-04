@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\MediaDistribution\MediaPlatform;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -13,6 +14,7 @@ class MediaResource extends Model
     public const SOURCE_ZI_MEDIA = 'zi_media';
 
     protected $fillable = [
+        'platform_id',
         'source_type',
         'external_resource_id',
         'title',
@@ -29,6 +31,7 @@ class MediaResource extends Model
     protected function casts(): array
     {
         return [
+            'platform_id' => 'integer',
             'raw_payload' => 'array',
             'last_synced_at' => 'datetime',
             'cost_price' => 'decimal:2',
@@ -63,6 +66,12 @@ class MediaResource extends Model
             default => '网站媒体',
         };
     }
+
+    public function platformLabel(): string
+    {
+        return MediaPlatform::label((int) ($this->platform_id ?: MediaPlatform::CEYING_MEDIA_1));
+    }
+
     /**
      * @param  list<string>|string  $keys
      */
@@ -83,6 +92,6 @@ class MediaResource extends Model
     {
         $status = $this->apiField('status', $this->status === 'active' ? '1' : '0');
 
-        return (string) $status === '1' ? '可接单' : '不接单';
+        return in_array((string) $status, ['1', '2'], true) ? '可接单' : '不接单';
     }
 }

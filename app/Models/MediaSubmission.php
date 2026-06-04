@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToSite;
+use App\Support\MediaDistribution\MediaPlatform;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -14,8 +15,11 @@ class MediaSubmission extends Model
         'site_id',
         'article_id',
         'media_resource_id',
+        'platform_id',
         'source_type',
         'external_order_nid',
+        'agent_order_sn',
+        'preview_token',
         'title_snapshot',
         'content_snapshot',
         'cost_price_snapshot',
@@ -44,6 +48,7 @@ class MediaSubmission extends Model
             'site_id' => 'integer',
             'article_id' => 'integer',
             'media_resource_id' => 'integer',
+            'platform_id' => 'integer',
             'submitted_by_admin_id' => 'integer',
             'submitted_at' => 'datetime',
             'last_synced_at' => 'datetime',
@@ -87,6 +92,11 @@ class MediaSubmission extends Model
             'appealing' => '售后中',
             default => (string) $this->status,
         };
+    }
+
+    public function platformLabel(): string
+    {
+        return MediaPlatform::label((int) ($this->platform_id ?: MediaPlatform::CEYING_MEDIA_1));
     }
 
     public function submittedBy(): BelongsTo

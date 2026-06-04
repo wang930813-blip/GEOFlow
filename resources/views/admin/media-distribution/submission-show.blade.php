@@ -32,8 +32,12 @@
                             -
                         @endif
                     </dd></div>
+                    <div class="flex justify-between gap-4"><dt class="text-gray-500">媒体平台</dt><dd class="text-gray-900">{{ $submission->platformLabel() }}</dd></div>
                     <div class="flex justify-between gap-4"><dt class="text-gray-500">媒体</dt><dd class="text-gray-900">{{ $submission->resource?->title }}</dd></div>
                     <div class="flex justify-between gap-4"><dt class="text-gray-500">订单号</dt><dd class="text-gray-900">{{ $submission->external_order_nid ?: '-' }}</dd></div>
+                    @if($submission->agent_order_sn)
+                        <div class="flex justify-between gap-4"><dt class="text-gray-500">代理商订单号</dt><dd class="text-gray-900">{{ $submission->agent_order_sn }}</dd></div>
+                    @endif
                     <div class="flex justify-between gap-4"><dt class="text-gray-500">消耗积分</dt><dd class="text-gray-900">{{ $submission->points_amount }}</dd></div>
                     @if ($isSuperAdmin)
                         <div class="flex justify-between gap-4"><dt class="text-gray-500">成本价</dt><dd class="text-gray-900">{{ $submission->cost_price_snapshot }}</dd></div>

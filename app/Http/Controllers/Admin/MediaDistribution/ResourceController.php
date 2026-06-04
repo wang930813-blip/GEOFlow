@@ -10,6 +10,7 @@ use App\Models\MediaResourceSitePrice;
 use App\Models\MediaResourceSyncRun;
 use App\Models\Site;
 use App\Support\AdminWeb;
+use App\Support\MediaDistribution\MediaPlatform;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -24,8 +25,15 @@ class ResourceController extends Controller
         if (! in_array($sourceType, [MediaResource::SOURCE_WEBSITE, MediaResource::SOURCE_ZI_MEDIA], true)) {
             $sourceType = '';
         }
+        $platformId = (int) $request->query('platform_id', 0);
+        if (! in_array($platformId, MediaPlatform::ids(), true)) {
+            $platformId = 0;
+        }
 
         $query = MediaResource::query()->orderByDesc('status')->orderBy('sale_price')->orderBy('id');
+        if ($platformId > 0) {
+            $query->where('platform_id', $platformId);
+        }
         if ($sourceType !== '') {
             $query->where('source_type', $sourceType);
         }
@@ -45,9 +53,6 @@ class ResourceController extends Controller
                 }
             });
         }
-        if (filled($request->query('category'))) {
-            $query->where('category', (string) $request->query('category'));
-        }
         $status = $request->query->has('status') ? (string) $request->query('status', '') : 'active';
         if ($status === 'all') {
             $status = '';
@@ -62,43 +67,55 @@ class ResourceController extends Controller
             $query->where('sale_price', '<=', (float) $request->query('max_price'));
         }
 
-        $setting = MediaApiSetting::query()->orderByDesc('id')->first();
+        $priceMultiplierPlatformId = $platformId > 0 ? $platformId : MediaPlatform::CEYING_MEDIA_1;
+        $setting = MediaApiSetting::query()
+            ->where('platform_id', $priceMultiplierPlatformId)
+            ->orderByDesc('id')
+            ->first();
 
         return view('admin.media-distribution.resources', [
             'pageTitle' => '分发媒体',
             'activeMenu' => 'media_distribution',
             'adminSiteName' => AdminWeb::siteName(),
             'resources' => $query->paginate(20)->withQueryString(),
-            'categories' => MediaResource::query()
-                ->where('category', '<>', '')
-                ->distinct()
-                ->orderBy('category')
-                ->pluck('category'),
             'sites' => (bool) auth('admin')->user()?->isSuperAdmin()
                 ? Site::query()->orderBy('id')->get(['id', 'name'])
                 : collect(),
+            'platformId' => $platformId,
+            'platforms' => MediaPlatform::labels(),
             'sourceType' => $sourceType,
             'search' => $search,
-            'category' => (string) $request->query('category', ''),
             'status' => $status,
             'minPrice' => (string) $request->query('min_price', ''),
             'maxPrice' => (string) $request->query('max_price', ''),
             'priceMultiplier' => number_format((float) ($setting?->price_multiplier ?? 1), 2, '.', ''),
             'isSuperAdmin' => (bool) auth('admin')->user()?->isSuperAdmin(),
-            'latestSyncRun' => MediaResourceSyncRun::query()->latest('id')->first(),
+            'latestSyncRuns' => MediaResourceSyncRun::query()
+                ->whereIn('id', MediaResourceSyncRun::query()
+                    ->selectRaw('MAX(id)')
+                    ->groupBy('platform_id'))
+                ->get()
+                ->keyBy('platform_id'),
         ]);
     }
 
-    public function sync(): RedirectResponse
+    public function sync(Request $request): RedirectResponse
     {
         $this->ensureSuperAdmin();
+        $platformId = (int) $request->input('platform_id', MediaPlatform::CEYING_MEDIA_1);
+        if (! in_array($platformId, MediaPlatform::ids(), true)) {
+            throw ValidationException::withMessages(['platform_id' => '媒体平台不正确']);
+        }
+
         $run = MediaResourceSyncRun::query()
+            ->where('platform_id', $platformId)
             ->whereIn('status', ['pending', 'running'])
             ->latest('id')
             ->first();
 
         if (! $run) {
             $run = MediaResourceSyncRun::query()->create([
+                'platform_id' => $platformId,
                 'status' => 'pending',
                 'started_by_admin_id' => (int) auth('admin')->id(),
             ]);
@@ -108,7 +125,7 @@ class ResourceController extends Controller
 
         return redirect()
             ->route('admin.media-distribution.resources.index')
-            ->with('message', '媒体资源同步任务已开始，请稍后查看进度');
+            ->with('message', MediaPlatform::label($platformId).'资源同步任务已开始，请稍后查看进度');
     }
 
     public function syncStatus(): JsonResponse
@@ -141,15 +158,25 @@ class ResourceController extends Controller
         $this->ensureSuperAdmin();
         $payload = $request->validate([
             'price_multiplier' => ['required', 'numeric', 'min:0', 'max:9999'],
+            'platform_id' => ['nullable', 'integer'],
         ]);
         $multiplier = (float) $payload['price_multiplier'];
+        $platformId = (int) ($payload['platform_id'] ?? MediaPlatform::CEYING_MEDIA_1);
+        if (! in_array($platformId, MediaPlatform::ids(), true)) {
+            throw ValidationException::withMessages(['platform_id' => '媒体平台不正确']);
+        }
 
-        $setting = MediaApiSetting::query()->orderByDesc('id')->first() ?? new MediaApiSetting();
+        $setting = MediaApiSetting::query()
+            ->where('platform_id', $platformId)
+            ->orderByDesc('id')
+            ->first() ?? new MediaApiSetting(['platform_id' => $platformId]);
+        $setting->platform_id = $platformId;
         $setting->price_multiplier = number_format($multiplier, 2, '.', '');
         $setting->save();
 
         MediaResource::query()
             ->select(['id', 'cost_price'])
+            ->where('platform_id', $platformId)
             ->orderBy('id')
             ->chunkById(200, function ($resources) use ($multiplier): void {
                 foreach ($resources as $resource) {
@@ -161,7 +188,7 @@ class ResourceController extends Controller
 
         return redirect()
             ->route('admin.media-distribution.resources.index')
-            ->with('message', '积分价倍率已应用到全部媒体资源');
+            ->with('message', MediaPlatform::label($platformId).'积分价倍率已应用');
     }
 
     public function updateSitePrice(Request $request, MediaResource $resource): RedirectResponse
@@ -204,13 +231,15 @@ class ResourceController extends Controller
     {
         return [
             'id' => (int) $run->id,
+            'platform_id' => (int) $run->platform_id,
+            'platform_label' => MediaPlatform::label((int) $run->platform_id),
             'status' => (string) $run->status,
             'current_source_type' => (string) $run->current_source_type,
             'current_page' => (int) $run->current_page,
             'website_synced' => (int) $run->website_synced,
             'zi_media_synced' => (int) $run->zi_media_synced,
             'total_synced' => (int) $run->total_synced,
-            'last_error_message' => (string) ($run->last_error_message ?? ''),
+            'last_error_message' => $run->displayLastErrorMessage(),
             'started_at' => $run->started_at?->toDateTimeString(),
             'completed_at' => $run->completed_at?->toDateTimeString(),
         ];

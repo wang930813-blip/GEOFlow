@@ -7,13 +7,15 @@ use App\Models\Article;
 use App\Models\MediaResource;
 use App\Models\MediaResourceSitePrice;
 use App\Models\MediaSubmission;
+use App\Support\MediaDistribution\MediaPlatform;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use RuntimeException;
 
 class MediaSubmissionService
 {
     public function __construct(
-        private readonly MediaDistributionClient $client,
+        private readonly MediaPlatformClientManager $clients,
         private readonly SiteCreditService $credits,
     ) {}
 
@@ -33,11 +35,16 @@ class MediaSubmissionService
         $this->credits->ensureSufficient((int) $article->site_id, $salePrice);
 
         $submission = DB::transaction(function () use ($article, $resource, $admin, $remark, $salePrice): MediaSubmission {
+            $platformId = (int) ($resource->platform_id ?: MediaPlatform::CEYING_MEDIA_1);
+
             return MediaSubmission::query()->create([
                 'site_id' => (int) $article->site_id,
                 'article_id' => (int) $article->id,
                 'media_resource_id' => (int) $resource->id,
+                'platform_id' => $platformId,
                 'source_type' => (string) $resource->source_type,
+                'agent_order_sn' => $this->agentOrderSn($platformId, (int) $article->site_id),
+                'preview_token' => Str::random(48),
                 'title_snapshot' => (string) $article->title,
                 'content_snapshot' => $this->contentAsHtml((string) $article->content),
                 'cost_price_snapshot' => $resource->cost_price,
@@ -53,15 +60,11 @@ class MediaSubmissionService
         try {
             $this->credits->deductForSubmission($submission, (int) $admin->id);
             $deducted = true;
-            $response = $this->client->send($submission->source_type, [
-                'resource_id' => (string) $resource->external_resource_id,
-                'title' => (string) $submission->title_snapshot,
-                'content' => (string) $submission->content_snapshot,
-                'remark' => $remark,
-                'third_id' => 'geoflow-'.$submission->site_id.'-'.$submission->id,
-            ]);
+            $response = $this->clients
+                ->forPlatform((int) ($submission->platform_id ?: MediaPlatform::CEYING_MEDIA_1))
+                ->submit($submission, $resource, $remark);
 
-            $orderNid = (string) data_get($response, 'data.order_nid', '');
+            $orderNid = $this->submittedOrderId($submission, $response);
             $submission->forceFill([
                 'external_order_nid' => $orderNid,
                 'status' => $orderNid !== '' ? 'submitted' : 'failed',
@@ -91,9 +94,11 @@ class MediaSubmissionService
         }
 
         $orderNid = (string) $submission->external_order_nid;
-        $response = $this->client->orderInfo((string) $submission->source_type, $orderNid);
-        $data = $this->orderInfoData($response, $orderNid);
-        $status = $this->normalizeStatus((string) ($data['status'] ?? $data['order_status'] ?? ''));
+        $response = $this->clients
+            ->forPlatform((int) ($submission->platform_id ?: MediaPlatform::CEYING_MEDIA_1))
+            ->orderInfo($submission);
+        $data = $this->orderInfoData($response, $submission);
+        $status = $this->normalizeStatus((string) ($data['status'] ?? $data['order_status'] ?? ''), (int) ($submission->platform_id ?: MediaPlatform::CEYING_MEDIA_1));
         $url = $this->publishedUrlFromOrderData($data);
 
         $previousStatus = (string) $submission->status;
@@ -153,11 +158,9 @@ class MediaSubmissionService
             throw new RuntimeException('当前订单状态不能取消');
         }
 
-        $response = $this->client->cancelOrder(
-            (string) $submission->source_type,
-            (string) $submission->external_order_nid,
-            $reason
-        );
+        $response = $this->clients
+            ->forPlatform((int) ($submission->platform_id ?: MediaPlatform::CEYING_MEDIA_1))
+            ->cancelOrder($submission, $reason);
 
         $submission->forceFill([
             'status' => 'cancelled',
@@ -179,11 +182,9 @@ class MediaSubmissionService
             throw new RuntimeException('仅失败或拒稿订单可以申诉');
         }
 
-        $response = $this->client->rejection(
-            (string) $submission->source_type,
-            (string) $submission->external_order_nid,
-            $content
-        );
+        $response = $this->clients
+            ->forPlatform((int) ($submission->platform_id ?: MediaPlatform::CEYING_MEDIA_1))
+            ->appeal($submission, $content);
 
         $submission->forceFill([
             'status' => 'appealing',
@@ -210,9 +211,23 @@ class MediaSubmissionService
         return number_format((float) ($sitePrice ?? $resource->sale_price), 2, '.', '');
     }
 
-    private function normalizeStatus(string $status): string
+    private function normalizeStatus(string $status, int $platformId = MediaPlatform::CEYING_MEDIA_1): string
     {
         $status = strtolower(trim($status));
+
+        if ($platformId === MediaPlatform::CEYING_MEDIA_2) {
+            return match ($status) {
+                '1' => 'submitted',
+                '2', '8' => 'rejected',
+                '3', '10' => 'publishing',
+                '4', '11', '12' => 'published',
+                '5' => 'cancelled',
+                '6' => 'appealing',
+                '7' => 'rejected',
+                '9' => 'failed',
+                default => '',
+            };
+        }
 
         return match ($status) {
             'published', 'success', 'done', '2', '已发布', '发布成功' => 'published',
@@ -230,8 +245,10 @@ class MediaSubmissionService
      * @param  array<string,mixed>  $response
      * @return array<string,mixed>
      */
-    private function orderInfoData(array $response, string $orderNid): array
+    private function orderInfoData(array $response, MediaSubmission $submission): array
     {
+        $orderNid = (string) $submission->external_order_nid;
+        $agentOrderSn = (string) $submission->agent_order_sn;
         $data = $response['data'] ?? [];
         if (! is_array($data)) {
             return [];
@@ -240,9 +257,11 @@ class MediaSubmissionService
         if (isset($data['status']) || isset($data['order_status'])) {
             return $data;
         }
-
         if (isset($data[$orderNid]) && is_array($data[$orderNid])) {
             return $data[$orderNid];
+        }
+        if ($agentOrderSn !== '' && isset($data[$agentOrderSn]) && is_array($data[$agentOrderSn])) {
+            return $data[$agentOrderSn];
         }
 
         foreach ($data as $row) {
@@ -251,7 +270,8 @@ class MediaSubmissionService
             }
 
             $rowOrderNid = (string) ($row['order_nid'] ?? $row['nid'] ?? $row['order_id'] ?? $row['id'] ?? '');
-            if ($rowOrderNid === $orderNid) {
+            $rowAgentSn = (string) ($row['sn'] ?? '');
+            if ($rowOrderNid === $orderNid || ($rowAgentSn !== '' && ($rowAgentSn === $orderNid || $rowAgentSn === $agentOrderSn))) {
                 return $row;
             }
         }
@@ -300,5 +320,22 @@ class MediaSubmissionService
     private function looksLikeUrl(string $value): bool
     {
         return preg_match('#^https?://#i', trim($value)) === 1;
+    }
+
+    private function agentOrderSn(int $platformId, int $siteId): string
+    {
+        return 'geoflow-'.$platformId.'-'.$siteId.'-'.Str::lower(Str::random(18));
+    }
+
+    /**
+     * @param  array<string,mixed>  $response
+     */
+    private function submittedOrderId(MediaSubmission $submission, array $response): string
+    {
+        if ((int) ($submission->platform_id ?: MediaPlatform::CEYING_MEDIA_1) === MediaPlatform::CEYING_MEDIA_2) {
+            return (string) data_get($response, 'data.partner_sn', $submission->agent_order_sn);
+        }
+
+        return (string) data_get($response, 'data.order_nid', '');
     }
 }

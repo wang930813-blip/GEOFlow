@@ -29,13 +29,16 @@
                         <i data-lucide="settings" class="h-4 w-4"></i>
                         接口配置
                     </a>
-                    <form method="POST" action="{{ route('admin.media-distribution.resources.sync') }}">
-                        @csrf
-                        <button type="submit" class="inline-flex h-10 items-center gap-2 rounded-md bg-indigo-600 px-4 text-sm font-medium text-white hover:bg-indigo-700">
-                            <i data-lucide="refresh-cw" class="h-4 w-4"></i>
-                            同步资源
-                        </button>
-                    </form>
+                    @foreach ($platforms as $syncPlatformId => $syncPlatformLabel)
+                        <form method="POST" action="{{ route('admin.media-distribution.resources.sync') }}">
+                            @csrf
+                            <input type="hidden" name="platform_id" value="{{ $syncPlatformId }}">
+                            <button type="submit" class="inline-flex h-10 items-center gap-2 rounded-md {{ (int) $syncPlatformId === 1 ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-slate-900 hover:bg-slate-700' }} px-4 text-sm font-medium text-white">
+                                <i data-lucide="refresh-cw" class="h-4 w-4"></i>
+                                同步{{ $syncPlatformLabel }}
+                            </button>
+                        </form>
+                    @endforeach
                 @endif
             </div>
         </div>
@@ -49,41 +52,67 @@
                         <p class="text-xs text-gray-500">统一按接口成本价乘以倍率生成积分价，例如 1.5 表示成本价的 1.5 倍。</p>
                     </div>
                     <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+                        <select name="platform_id" class="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:w-40">
+                            @foreach ($platforms as $itemPlatformId => $itemPlatformLabel)
+                                <option value="{{ $itemPlatformId }}" @selected((int) ($platformId ?: 1) === (int) $itemPlatformId)>{{ $itemPlatformLabel }}</option>
+                            @endforeach
+                        </select>
                         <input name="price_multiplier" required type="number" step="0.01" min="0" value="{{ old('price_multiplier', $priceMultiplier) }}" class="h-10 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:w-36">
                         <button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 text-sm font-medium text-white hover:bg-indigo-700">
                             <i data-lucide="calculator" class="h-4 w-4"></i>
-                            应用到全部媒体
+                            应用到该平台
                         </button>
                     </div>
                 </div>
             </form>
 
-            @if ($latestSyncRun)
-                <div class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-                    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                            <div class="text-sm font-semibold text-gray-900">资源同步状态</div>
-                            <div class="mt-1 text-xs text-gray-500">
-                                状态：{{ $latestSyncRun->status }}
-                                @if($latestSyncRun->current_source_type !== '')
-                                    / {{ $latestSyncRun->current_source_type }} 第 {{ $latestSyncRun->current_page }} 页
-                                @endif
-                                / 已同步 {{ $latestSyncRun->total_synced }} 条
+            @if ($latestSyncRuns->isNotEmpty())
+                <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                    @foreach ($platforms as $runPlatformId => $runPlatformLabel)
+                        @php
+                            $latestSyncRun = $latestSyncRuns->get($runPlatformId);
+                        @endphp
+                        @if ($latestSyncRun)
+                            <div class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                    <div>
+                                        <div class="text-sm font-semibold text-gray-900">{{ $runPlatformLabel }}资源同步状态</div>
+                                        <div class="mt-1 text-xs text-gray-500">
+                                            状态：{{ $latestSyncRun->status }}
+                                            @if($latestSyncRun->current_source_type !== '')
+                                                / {{ $latestSyncRun->current_source_type }} 第 {{ $latestSyncRun->current_page }} 页
+                                            @endif
+                                            / 已同步 {{ $latestSyncRun->total_synced }} 条
+                                        </div>
+                                        @if($latestSyncRun->displayLastErrorMessage() !== '')
+                                            <div class="mt-2 inline-flex max-w-full items-center gap-1 rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700">
+                                                <i data-lucide="circle-alert" class="h-3.5 w-3.5 shrink-0"></i>
+                                                <span class="truncate">{{ $latestSyncRun->displayLastErrorMessage() }}</span>
+                                            </div>
+                                        @endif
+                                    </div>
+                                    <div class="text-xs text-gray-500">
+                                        网站媒体 {{ $latestSyncRun->website_synced }} 条 / 自媒体 {{ $latestSyncRun->zi_media_synced }} 条
+                                    </div>
+                                </div>
                             </div>
-                            @if($latestSyncRun->last_error_message)
-                                <div class="mt-1 text-xs text-red-600">{{ $latestSyncRun->last_error_message }}</div>
-                            @endif
-                        </div>
-                        <div class="text-xs text-gray-500">
-                            网站媒体 {{ $latestSyncRun->website_synced }} 条 / 自媒体 {{ $latestSyncRun->zi_media_synced }} 条
-                        </div>
-                    </div>
+                        @endif
+                    @endforeach
                 </div>
             @endif
         @endif
 
         <form method="GET" action="{{ route('admin.media-distribution.resources.index') }}" class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-            <div class="grid grid-cols-1 gap-4 md:grid-cols-6">
+            <div class="grid grid-cols-1 gap-4 md:grid-cols-7">
+                <div>
+                    <label class="mb-1 block text-sm font-medium text-gray-700">媒体平台</label>
+                    <select name="platform_id" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
+                        <option value="">全部</option>
+                        @foreach ($platforms as $itemPlatformId => $itemPlatformLabel)
+                            <option value="{{ $itemPlatformId }}" @selected((int) $platformId === (int) $itemPlatformId)>{{ $itemPlatformLabel }}</option>
+                        @endforeach
+                    </select>
+                </div>
                 <div>
                     <label class="mb-1 block text-sm font-medium text-gray-700">媒体类型</label>
                     <select name="source_type" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
@@ -96,9 +125,6 @@
                     <label class="mb-1 block text-sm font-medium text-gray-700">分类</label>
                     <select name="category" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
                         <option value="">全部</option>
-                        @foreach ($categories as $item)
-                            <option value="{{ $item }}" @selected($category === $item)>{{ $item }}</option>
-                        @endforeach
                     </select>
                 </div>
                 <div>
@@ -155,6 +181,7 @@
                                 <span class="sr-only">选择</span>
                             </th>
                             <th class="min-w-44 whitespace-nowrap px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">媒体</th>
+                            <th class="min-w-24 whitespace-nowrap px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">平台</th>
                             <th class="w-56 max-w-56 whitespace-nowrap px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">备注</th>
                             @foreach ($apiColumns as [$label])
                                 <th class="min-w-24 whitespace-nowrap px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">{{ $label }}</th>
@@ -180,6 +207,7 @@
                                         <a href="{{ $resource->case_link }}" target="_blank" rel="noopener noreferrer" class="mt-1 inline-flex text-xs text-indigo-600 hover:text-indigo-800">案例链接</a>
                                     @endif
                                 </td>
+                                <td class="whitespace-nowrap px-5 py-4 align-top text-sm text-gray-700">{{ $resource->platformLabel() }}</td>
                                 <td class="w-56 max-w-56 px-5 py-4 align-top text-sm text-gray-600">
                                     <div class="truncate" title="{{ $resource->remarks }}">{{ $resource->remarks }}</div>
                                 </td>
@@ -256,7 +284,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="{{ $isSuperAdmin ? 11 : 10 }}" class="px-5 py-10 text-center text-sm text-gray-500">暂无媒体资源，请先同步。</td>
+                                <td colspan="{{ $isSuperAdmin ? 12 : 11 }}" class="px-5 py-10 text-center text-sm text-gray-500">暂无媒体资源，请先同步。</td>
                             </tr>
                         @endforelse
                     </tbody>

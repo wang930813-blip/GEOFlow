@@ -27,11 +27,11 @@ class SubmissionController extends Controller
 
         $submissions = MediaSubmission::query()
             ->when($isSuperAdmin, fn ($query) => $query->withoutGlobalScope('current_site'))
-            ->with(['article:id,title', 'resource:id,title,source_type,sale_price,cost_price', 'site:id,name'])
+            ->with(['article:id,title', 'resource:id,title,platform_id,source_type,sale_price,cost_price', 'site:id,name'])
             ->orderByDesc('id')
             ->paginate(20);
         $this->syncVisibleSubmissions($submissions->getCollection(), $submissionService);
-        $submissions->setCollection($submissions->getCollection()->fresh(['article:id,title', 'resource:id,title,source_type,sale_price,cost_price', 'site:id,name']));
+        $submissions->setCollection($submissions->getCollection()->fresh(['article:id,title', 'resource:id,title,platform_id,source_type,sale_price,cost_price', 'site:id,name']));
 
         $selectedResourceIds = collect((array) $request->query('media_resource_ids', []))
             ->push($request->query('media_resource_id'))
@@ -154,7 +154,7 @@ class SubmissionController extends Controller
             'pageTitle' => '媒体投稿详情',
             'activeMenu' => 'media_distribution',
             'adminSiteName' => AdminWeb::siteName(),
-            'submission' => $submission->load(['article:id,title,slug,status', 'resource:id,title,source_type,remarks,case_link,cost_price,sale_price', 'site:id,name,domain']),
+            'submission' => $submission->load(['article:id,title,slug,status', 'resource:id,title,platform_id,source_type,remarks,case_link,cost_price,sale_price', 'site:id,name,domain']),
             'articlePublicUrl' => $this->articlePublicUrl($submission),
             'isSuperAdmin' => (bool) auth('admin')->user()?->isSuperAdmin(),
         ]);

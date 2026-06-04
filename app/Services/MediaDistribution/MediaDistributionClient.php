@@ -4,14 +4,21 @@ namespace App\Services\MediaDistribution;
 
 use App\Models\MediaApiSetting;
 use App\Models\MediaResource;
+use App\Models\MediaSubmission;
+use App\Support\MediaDistribution\MediaPlatform;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Generator;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 
-class MediaDistributionClient
+class MediaDistributionClient implements MediaPlatformClient
 {
     public function __construct(private readonly ApiKeyCrypto $apiKeyCrypto) {}
+
+    public function platformId(): int
+    {
+        return MediaPlatform::CEYING_MEDIA_1;
+    }
 
     /**
      * @return array<int, array<string,mixed>>
@@ -32,7 +39,7 @@ class MediaDistributionClient
      */
     public function resourcePages(string $sourceType): Generator
     {
-        $pageSize = max(1, (int) config('media_distribution.page_size', 100));
+        $pageSize = max(1, min(100, (int) config('media_distribution.page_size', 100)));
         $maxPages = max(1, (int) config('media_distribution.max_pages', 200));
         $seenPageSignatures = [];
 
@@ -90,26 +97,6 @@ class MediaDistributionClient
     /**
      * @return array<string,mixed>
      */
-    public function orderInfo(string $sourceType, string $orderNid): array
-    {
-        return $this->postMultipart($sourceType, 'order_info', [
-            'order_nids' => [$orderNid],
-        ]);
-    }
-
-    /**
-     * @return array<string,mixed>
-     */
-    public function cancelOrder(string $sourceType, string $orderNid, string $reason): array
-    {
-        return $this->post($sourceType, 'cancel_order', $this->orderPayload($orderNid) + [
-            'reason' => $reason,
-        ]);
-    }
-
-    /**
-     * @return array<string,mixed>
-     */
     public function rejection(string $sourceType, string $orderNid, string $content): array
     {
         return $this->post($sourceType, 'rejection', $this->orderPayload($orderNid) + [
@@ -154,7 +141,13 @@ class MediaDistributionClient
      */
     private function sendPost(string $sourceType, string $action, array $payload, bool $multipart): array
     {
-        $setting = MediaApiSetting::query()->orderByDesc('id')->first();
+        $setting = MediaApiSetting::query()
+            ->where('platform_id', MediaPlatform::CEYING_MEDIA_1)
+            ->orderByDesc('id')
+            ->first();
+        if (! $setting instanceof MediaApiSetting) {
+            $setting = MediaApiSetting::query()->orderByDesc('id')->first();
+        }
         $baseUrl = rtrim((string) ($setting?->api_base_url ?: config('media_distribution.base_url')), '/');
         $apiKey = $setting instanceof MediaApiSetting
             ? $this->apiKeyCrypto->decrypt((string) $setting->api_key_ciphertext)
@@ -163,7 +156,10 @@ class MediaDistributionClient
         $path = $this->path($sourceType, $action);
         $request = Http::timeout((int) config('media_distribution.timeout', 30))
             ->connectTimeout((int) config('media_distribution.connect_timeout', 10))
-            ->retry(2, 500);
+            ->retry(
+                max(1, (int) config('media_distribution.retry_times', 3)),
+                max(0, (int) config('media_distribution.retry_sleep', 1000))
+            );
         $request = $multipart ? $request->asMultipart() : $request->asForm();
 
         $response = $request->post($baseUrl.$path, ['api_key' => $apiKey] + $payload);
@@ -220,6 +216,72 @@ class MediaDistributionClient
         $prefix = $sourceType === MediaResource::SOURCE_ZI_MEDIA ? '/api/zi_media_api' : '/api/media';
 
         return $prefix.'/'.$action;
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    public function submit(MediaSubmission $submission, MediaResource $resource, string $remark = ''): array
+    {
+        return $this->send((string) $submission->source_type, [
+            'resource_id' => (string) $resource->external_resource_id,
+            'title' => (string) $submission->title_snapshot,
+            'content' => (string) $submission->content_snapshot,
+            'remark' => $remark,
+            'third_id' => (string) ($submission->agent_order_sn ?: 'geoflow-'.$submission->site_id.'-'.$submission->id),
+        ]);
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    public function orderInfo(MediaSubmission|string $submission, ?string $orderNid = null): array
+    {
+        if ($submission instanceof MediaSubmission) {
+            return $this->legacyOrderInfo((string) $submission->source_type, (string) $submission->external_order_nid);
+        }
+
+        return $this->legacyOrderInfo($submission, (string) $orderNid);
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function legacyOrderInfo(string $sourceType, string $orderNid): array
+    {
+        return $this->postMultipart($sourceType, 'order_info', [
+            'order_nids' => [$orderNid],
+        ]);
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    public function cancelOrder(MediaSubmission|string $submission, ?string $orderNid = null, ?string $reason = null): array
+    {
+        if ($submission instanceof MediaSubmission) {
+            return $this->legacyCancelOrder((string) $submission->source_type, (string) $submission->external_order_nid, (string) $orderNid);
+        }
+
+        return $this->legacyCancelOrder($submission, (string) $orderNid, (string) $reason);
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function legacyCancelOrder(string $sourceType, string $orderNid, string $reason): array
+    {
+        return $this->post($sourceType, 'cancel_order', $this->orderPayload($orderNid) + [
+            'reason' => $reason,
+        ]);
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    public function appeal(MediaSubmission $submission, string $content): array
+    {
+        return $this->rejection((string) $submission->source_type, (string) $submission->external_order_nid, $content);
     }
 
     /**
