@@ -33,13 +33,31 @@ class MediaSubmissionPreviewController extends Controller
             return '';
         }
 
-        return $this->looksLikeHtml($content)
+        return $this->looksLikeRenderedHtml($content) && ! $this->looksLikeMarkdown($content)
             ? $content
-            : ArticleHtmlPresenter::markdownToHtml($content);
+            : ArticleHtmlPresenter::markdownToHtml($this->htmlLineBreaksToMarkdownNewlines($content));
     }
 
-    private function looksLikeHtml(string $content): bool
+    private function looksLikeRenderedHtml(string $content): bool
     {
-        return preg_match('/<\/?(?:p|h[1-6]|ul|ol|li|blockquote|pre|table|div|section|article|img|figure|strong|em|br)\b/i', $content) === 1;
+        return preg_match('/<\/?(?:p|h[1-6]|ul|ol|li|blockquote|pre|table|div|section|article|img|figure|strong|em)\b/i', $content) === 1;
+    }
+
+    private function looksLikeMarkdown(string $content): bool
+    {
+        $plain = $this->htmlLineBreaksToMarkdownNewlines(strip_tags($content, '<br>'));
+
+        return preg_match('/(^|\n)\s{0,3}#{1,6}\s+\S/u', $plain) === 1
+            || preg_match('/(^|\n)\s{0,3}(?:[-*+]\s+|\d+[.)]\s+)/u', $plain) === 1
+            || preg_match('/(?:\*\*|__)[^\n]+(?:\*\*|__)/u', $plain) === 1
+            || preg_match('/(^|\n)\s{0,3}>\s+\S/u', $plain) === 1
+            || preg_match('/(^|\n)\s{0,3}```/u', $plain) === 1;
+    }
+
+    private function htmlLineBreaksToMarkdownNewlines(string $content): string
+    {
+        $content = preg_replace('/<br\s*\/?>\s*/i', "\n", $content) ?? $content;
+
+        return html_entity_decode($content, ENT_QUOTES | ENT_HTML5, 'UTF-8');
     }
 }

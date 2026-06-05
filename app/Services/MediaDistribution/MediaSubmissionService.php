@@ -8,6 +8,7 @@ use App\Models\MediaResource;
 use App\Models\MediaResourceSitePrice;
 use App\Models\MediaSubmission;
 use App\Support\MediaDistribution\MediaPlatform;
+use App\Support\Site\ArticleHtmlPresenter;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -198,7 +199,14 @@ class MediaSubmissionService
 
     private function contentAsHtml(string $content): string
     {
-        return str_contains($content, '<') ? $content : nl2br(e($content));
+        $content = trim($content);
+        if ($content === '') {
+            return '';
+        }
+
+        return preg_match('/<\/?(?:p|h[1-6]|ul|ol|li|blockquote|pre|table|div|section|article|img|figure|strong|em)\b/i', $content) === 1
+            ? $content
+            : ArticleHtmlPresenter::markdownToHtml($content);
     }
 
     private function salePriceForSite(MediaResource $resource, int $siteId): string

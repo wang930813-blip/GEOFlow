@@ -20,6 +20,7 @@ use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class AdminMediaDistributionTest extends TestCase
@@ -960,23 +961,81 @@ class AdminMediaDistributionTest extends TestCase
 
     public function test_media_submission_preview_renders_markdown_snapshot_as_safe_html(): void
     {
-        $site = Site::query()->create(['name' => 'Preview Site', 'domain' => 'preview-site.test', 'status' => 'active']);
+        [$submission] = $this->createPreviewSubmissionWithSnapshot(
+            "## Section Heading\n\nThis is **bold content**.\n\n- First item\n- Second item\n\n<script>alert('xss')</script>",
+            'markdown-preview-token'
+        );
+
+        $response = $this->get(route('media-submission-preview.show', [
+            'submission' => (int) $submission->id,
+            'token' => 'markdown-preview-token',
+        ]));
+
+        $response
+            ->assertOk()
+            ->assertSee('<h2>Section Heading</h2>', false)
+            ->assertSee('<strong>bold content</strong>', false)
+            ->assertSee('<li>First item</li>', false)
+            ->assertDontSee('<script>', false);
+    }
+
+    public function test_media_submission_preview_renders_escaped_markdown_snapshot_with_br_tags(): void
+    {
+        [$submission] = $this->createPreviewSubmissionWithSnapshot(
+            "## Section Heading<br />\n<br />\nThis is **bold content**.<br />\n<br />\n- First item<br />\n- Second item",
+            'escaped-markdown-preview-token'
+        );
+
+        $response = $this->get(route('media-submission-preview.show', [
+            'submission' => (int) $submission->id,
+            'token' => 'escaped-markdown-preview-token',
+        ]));
+
+        $response
+            ->assertOk()
+            ->assertSee('<h2>Section Heading</h2>', false)
+            ->assertSee('<strong>bold content</strong>', false)
+            ->assertSee('<li>First item</li>', false)
+            ->assertDontSee('## Section Heading');
+    }
+
+    public function test_media_submission_preview_keeps_existing_html_snapshot(): void
+    {
+        [$submission] = $this->createPreviewSubmissionWithSnapshot(
+            '<h2>Existing HTML</h2><p>Already rendered.</p>',
+            'html-preview-token'
+        );
+
+        $response = $this->get(route('media-submission-preview.show', [
+            'submission' => (int) $submission->id,
+            'token' => 'html-preview-token',
+        ]));
+
+        $response
+            ->assertOk()
+            ->assertSee('<h2>Existing HTML</h2>', false)
+            ->assertSee('<p>Already rendered.</p>', false);
+    }
+
+    private function createPreviewSubmissionWithSnapshot(string $contentSnapshot, string $token): array
+    {
+        $site = Site::query()->create(['name' => 'Preview Site '.Str::random(6), 'domain' => Str::random(8).'.test', 'status' => 'active']);
         $category = Category::query()->create([
             'site_id' => $site->id,
             'name' => 'Preview',
-            'slug' => 'preview',
+            'slug' => 'preview-'.Str::random(6),
         ]);
         $author = Author::query()->create([
             'site_id' => $site->id,
             'name' => 'Preview Author',
-            'slug' => 'preview-author',
+            'slug' => 'preview-author-'.Str::random(6),
         ]);
         $article = Article::query()->create([
             'site_id' => $site->id,
             'category_id' => $category->id,
             'author_id' => $author->id,
             'title' => 'Markdown Preview Article',
-            'slug' => 'markdown-preview-article',
+            'slug' => 'markdown-preview-article-'.Str::random(6),
             'content' => '# Markdown Preview Article',
             'status' => 'published',
             'published_at' => now(),
@@ -984,7 +1043,7 @@ class AdminMediaDistributionTest extends TestCase
         $resource = MediaResource::query()->create([
             'platform_id' => MediaPlatform::CEYING_MEDIA_2,
             'source_type' => MediaResource::SOURCE_ZI_MEDIA,
-            'external_resource_id' => 'preview-resource',
+            'external_resource_id' => 'preview-resource-'.Str::random(8),
             'title' => 'Preview Resource',
             'status' => 'active',
             'cost_price' => '0.00',
@@ -998,26 +1057,16 @@ class AdminMediaDistributionTest extends TestCase
             'source_type' => 'we_media',
             'external_order_nid' => 'preview-order',
             'agent_order_sn' => 'preview-agent-sn',
-            'preview_token' => 'markdown-preview-token',
+            'preview_token' => $token,
             'title_snapshot' => 'Markdown Preview Article',
-            'content_snapshot' => "## Section Heading\n\nThis is **bold content**.\n\n- First item\n- Second item\n\n<script>alert('xss')</script>",
+            'content_snapshot' => $contentSnapshot,
             'cost_price_snapshot' => '0.00',
             'sale_price_snapshot' => '0.00',
             'points_amount' => '0.00',
             'status' => 'submitted',
         ]);
 
-        $response = $this->get(route('media-submission-preview.show', [
-            'submission' => (int) $submission->id,
-            'token' => 'markdown-preview-token',
-        ]));
-
-        $response
-            ->assertOk()
-            ->assertSee('<h2>Section Heading</h2>', false)
-            ->assertSee('<strong>bold content</strong>', false)
-            ->assertSee('<li>First item</li>', false)
-            ->assertDontSee('<script>', false);
+        return [$submission, $site, $article, $resource];
     }
 
     public function test_submission_requires_enough_site_credits(): void
