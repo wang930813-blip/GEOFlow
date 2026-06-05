@@ -37,13 +37,19 @@ class MediaDistributionClient implements MediaPlatformClient
     /**
      * @return Generator<int, array<int, array<string,mixed>>>
      */
-    public function resourcePages(string $sourceType): Generator
+    public function resourcePages(string $sourceType, int $startPage = 1): Generator
     {
         $pageSize = max(1, min(100, (int) config('media_distribution.page_size', 100)));
         $maxPages = max(1, (int) config('media_distribution.max_pages', 200));
+        $startPage = max(1, min($startPage, $maxPages));
+        $pageDelayMs = max(0, (int) config('media_distribution.page_delay_ms', 0));
         $seenPageSignatures = [];
 
-        for ($page = 1; $page <= $maxPages; $page++) {
+        for ($page = $startPage; $page <= $maxPages; $page++) {
+            if ($pageDelayMs > 0 && $page > $startPage) {
+                usleep($pageDelayMs * 1000);
+            }
+
             try {
                 $data = $this->post($sourceType, 'media_list', $this->paginationPayload($page, $pageSize));
             } catch (ConnectionException $exception) {

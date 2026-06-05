@@ -27,13 +27,14 @@ class ChaoJiMeiJieClient implements MediaPlatformClient
     /**
      * @return Generator<int, array<int, array<string,mixed>>>
      */
-    public function resourcePages(string $sourceType): Generator
+    public function resourcePages(string $sourceType, int $startPage = 1): Generator
     {
         $pageSize = max(1, min(200, (int) config('media_distribution.page_size', 100)));
         $maxPages = max(1, (int) config('media_distribution.max_pages', 200));
+        $startPage = max(1, min($startPage, $maxPages));
         $seenPageSignatures = [];
 
-        for ($page = 1; $page <= $maxPages; $page++) {
+        for ($page = $startPage; $page <= $maxPages; $page++) {
             try {
                 $response = $this->get($this->path($sourceType, 'resource'), [
                     'page' => $page,

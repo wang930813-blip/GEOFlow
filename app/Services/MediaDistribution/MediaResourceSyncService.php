@@ -19,11 +19,12 @@ class MediaResourceSyncService
     {
         $platformId = $platformId ?? (int) ($run?->platform_id ?: MediaPlatform::CEYING_MEDIA_1);
         $client = $this->clients->forPlatform($platformId);
-        $count = 0;
-        $sourceCounts = [
-            MediaResource::SOURCE_WEBSITE => 0,
-            MediaResource::SOURCE_ZI_MEDIA => 0,
-        ];
+        $sourceTypes = [MediaResource::SOURCE_WEBSITE, MediaResource::SOURCE_ZI_MEDIA];
+        $isResume = $run?->isRunning()
+            && in_array((string) $run->current_source_type, $sourceTypes, true)
+            && (int) $run->current_page > 0;
+        $sourceCounts = $this->initialSourceCounts($run, $isResume);
+        $count = array_sum($sourceCounts);
         $syncTimestamp = now()->startOfSecond();
         $multiplier = (float) (MediaApiSetting::query()
             ->where('platform_id', $platformId)
@@ -38,8 +39,8 @@ class MediaResourceSyncService
             'last_error_message' => null,
         ]);
 
-        foreach ([MediaResource::SOURCE_WEBSITE, MediaResource::SOURCE_ZI_MEDIA] as $sourceType) {
-            foreach ($client->resourcePages($sourceType) as $page => $rows) {
+        foreach ($this->sourceResumePlan($sourceTypes, $run, $isResume) as $sourceType => $startPage) {
+            foreach ($client->resourcePages($sourceType, $startPage) as $page => $rows) {
                 foreach ($rows as $row) {
                     $resource = MediaResource::query()->firstOrNew([
                         'platform_id' => $platformId,
@@ -85,6 +86,52 @@ class MediaResourceSyncService
         ]);
 
         return ['synced' => $count];
+    }
+
+    /**
+     * @return array<string,int>
+     */
+    private function initialSourceCounts(?MediaResourceSyncRun $run, bool $isResume): array
+    {
+        if ($isResume && $run) {
+            return [
+                MediaResource::SOURCE_WEBSITE => (int) $run->website_synced,
+                MediaResource::SOURCE_ZI_MEDIA => (int) $run->zi_media_synced,
+            ];
+        }
+
+        return [
+            MediaResource::SOURCE_WEBSITE => 0,
+            MediaResource::SOURCE_ZI_MEDIA => 0,
+        ];
+    }
+
+    /**
+     * @param  list<string>  $sourceTypes
+     * @return array<string,int>
+     */
+    private function sourceResumePlan(array $sourceTypes, ?MediaResourceSyncRun $run, bool $isResume): array
+    {
+        if (! $isResume || ! $run) {
+            return array_fill_keys($sourceTypes, 1);
+        }
+
+        $currentSourceType = (string) $run->current_source_type;
+        $plan = [];
+        $resumeFound = false;
+
+        foreach ($sourceTypes as $sourceType) {
+            if (! $resumeFound && $sourceType !== $currentSourceType) {
+                continue;
+            }
+
+            $resumeFound = true;
+            $plan[$sourceType] = $sourceType === $currentSourceType
+                ? (int) $run->current_page + 1
+                : 1;
+        }
+
+        return $plan;
     }
 
     private function normalizeMoney(mixed $value): string

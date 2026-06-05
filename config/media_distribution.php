@@ -7,6 +7,7 @@ return [
     'connect_timeout' => (int) env('MEDIA_DISTRIBUTION_HTTP_CONNECT_TIMEOUT', 30),
     'retry_times' => (int) env('MEDIA_DISTRIBUTION_HTTP_RETRY_TIMES', 3),
     'retry_sleep' => (int) env('MEDIA_DISTRIBUTION_HTTP_RETRY_SLEEP', 1000),
+    'page_delay_ms' => (int) env('MEDIA_DISTRIBUTION_PAGE_DELAY_MS', 800),
     'page_size' => (int) env('MEDIA_DISTRIBUTION_PAGE_SIZE', 200),
     'max_pages' => (int) env('MEDIA_DISTRIBUTION_MAX_PAGES', 200),
 ];

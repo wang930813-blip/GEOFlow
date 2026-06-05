@@ -13,7 +13,7 @@ interface MediaPlatformClient
     /**
      * @return Generator<int, array<int, array<string,mixed>>>
      */
-    public function resourcePages(string $sourceType): Generator;
+    public function resourcePages(string $sourceType, int $startPage = 1): Generator;
 
     /**
      * @return array<string,mixed>

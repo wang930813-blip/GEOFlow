@@ -547,6 +547,138 @@ class AdminMediaDistributionTest extends TestCase
         $this->assertSame(250, (int) $run->fresh()->total_synced);
     }
 
+    public function test_ceying_media_one_sync_resumes_running_run_from_recorded_page(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+        [$superAdmin] = $this->createAdminWithSite('media_resume_root_admin', 'super_admin');
+        config(['media_distribution.page_size' => 100]);
+
+        $requestedZiMediaPages = [];
+
+        Http::fake([
+            '*/api/media/media_list' => function (): void {
+                $this->fail('Completed website media pages should not be requested again when resuming a running sync.');
+            },
+            '*/api/zi_media_api/media_list' => function ($request) use (&$requestedZiMediaPages) {
+                $payload = $this->httpRequestPayload($request);
+                $page = (int) ($payload['p'] ?? 1);
+                $requestedZiMediaPages[] = $page;
+
+                $this->assertSame(122, $page);
+
+                return Http::response([
+                    'code' => 1,
+                    'msg' => 'success',
+                    'data' => [[
+                        'resource_id' => 990122,
+                        'title' => 'Resumed Zi Media',
+                        'status' => 1,
+                        'price' => '16.00',
+                    ]],
+                ]);
+            },
+        ]);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.media-distribution.settings.update'), [
+                'api_base_url' => 'http://8.138.187.158:8082',
+                'api_key' => 'test-api-key',
+                'status' => 'active',
+            ])
+            ->assertRedirect(route('admin.media-distribution.settings.index'));
+
+        $run = MediaResourceSyncRun::query()->create([
+            'status' => 'running',
+            'current_source_type' => MediaResource::SOURCE_ZI_MEDIA,
+            'current_page' => 121,
+            'website_synced' => 100,
+            'zi_media_synced' => 12100,
+            'total_synced' => 12200,
+            'started_by_admin_id' => (int) $superAdmin->id,
+            'started_at' => now()->subMinute(),
+        ]);
+
+        (new ProcessMediaResourceSyncJob((int) $run->id))
+            ->handle(app(MediaResourceSyncService::class));
+
+        $this->assertSame([122], $requestedZiMediaPages);
+        $this->assertDatabaseHas('media_resources', [
+            'source_type' => MediaResource::SOURCE_ZI_MEDIA,
+            'external_resource_id' => '990122',
+            'title' => 'Resumed Zi Media',
+        ]);
+
+        $run->refresh();
+        $this->assertSame('completed', (string) $run->status);
+        $this->assertSame(100, (int) $run->website_synced);
+        $this->assertSame(12101, (int) $run->zi_media_synced);
+        $this->assertSame(12201, (int) $run->total_synced);
+    }
+
+    public function test_ceying_media_one_sync_waits_between_full_pages_when_configured(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+        [$superAdmin] = $this->createAdminWithSite('media_page_delay_root_admin', 'super_admin');
+        config([
+            'media_distribution.page_size' => 2,
+            'media_distribution.page_delay_ms' => 800,
+        ]);
+
+        Http::fake([
+            '*/api/media/media_list' => function ($request) {
+                $payload = $this->httpRequestPayload($request);
+                $page = (int) ($payload['p'] ?? 1);
+
+                return Http::response([
+                    'code' => 1,
+                    'msg' => 'success',
+                    'data' => $page === 1 ? [
+                        [
+                            'resource_id' => 88001,
+                            'title' => 'Delayed Media 1',
+                            'status' => 1,
+                            'price' => '10.00',
+                        ],
+                        [
+                            'resource_id' => 88002,
+                            'title' => 'Delayed Media 2',
+                            'status' => 1,
+                            'price' => '10.00',
+                        ],
+                    ] : [],
+                ]);
+            },
+            '*/api/zi_media_api/media_list' => Http::response([
+                'code' => 1,
+                'msg' => 'success',
+                'data' => [],
+            ]),
+        ]);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.media-distribution.settings.update'), [
+                'api_base_url' => 'http://8.138.187.158:8082',
+                'api_key' => 'test-api-key',
+                'status' => 'active',
+            ])
+            ->assertRedirect(route('admin.media-distribution.settings.index'));
+
+        $run = MediaResourceSyncRun::query()->create([
+            'status' => 'pending',
+            'started_by_admin_id' => (int) $superAdmin->id,
+        ]);
+
+        $startedAt = hrtime(true);
+
+        (new ProcessMediaResourceSyncJob((int) $run->id))
+            ->handle(app(MediaResourceSyncService::class));
+
+        $elapsedMilliseconds = (hrtime(true) - $startedAt) / 1_000_000;
+
+        $this->assertGreaterThanOrEqual(700, $elapsedMilliseconds);
+        $this->assertSame('completed', (string) $run->fresh()->status);
+    }
+
     public function test_super_admin_can_recharge_site_credits_and_update_media_sale_price(): void
     {
         $this->withoutMiddleware(ValidateCsrfToken::class);
