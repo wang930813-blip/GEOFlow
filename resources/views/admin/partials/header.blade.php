@@ -20,14 +20,15 @@
     $menu = [
         'dashboard' => ['route' => 'admin.dashboard', 'name' => __('admin.nav.dashboard')],
         'geo_reports' => ['route' => 'admin.geo-reports.index', 'name' => 'GEO 报表'],
+        'brand_diagnosis' => ['route' => 'admin.brand-diagnosis.index', 'name' => '品牌诊断/报告'],
         'analytics' => ['route' => 'admin.analytics', 'name' => __('admin.nav.analytics')],
         'tasks' => ['route' => 'admin.tasks.index', 'name' => __('admin.nav.tasks')],
         'media_distribution' => ['route' => 'admin.media-distribution.resources.index', 'name' => '分发媒体'],
         'articles' => ['route' => 'admin.articles.index', 'name' => __('admin.nav.articles')],
-        'materials' => ['route' => 'admin.materials.index', 'name' => __('admin.nav.materials')],
     ];
     $subMap = [
         'admin.geo-reports.index' => 'geo_reports',
+        'admin.brand-diagnosis.index' => 'brand_diagnosis',
         'admin.analytics' => 'analytics',
         'admin.media-distribution.resources.index' => 'media_distribution',
         'admin.media-distribution.resources.sync' => 'media_distribution',
@@ -257,6 +258,10 @@
                             <a href="{{ route('admin.admin-users.index') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
                                 <i data-lucide="users" class="w-4 h-4 inline mr-2"></i>
                                 {{ __('admin.nav.admin_management') }}
+                            </a>
+                            <a href="{{ route('admin.materials.index') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                <i data-lucide="folder-kanban" class="w-4 h-4 inline mr-2"></i>
+                                {{ __('admin.nav.materials') }}
                             </a>
                             <a href="{{ route('admin.admin-activity-logs') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
                                 <i data-lucide="clipboard-list" class="w-4 h-4 inline mr-2"></i>
