@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\MediaSubmission;
+use App\Support\Site\ArticleHtmlPresenter;
 use Illuminate\View\View;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
@@ -21,6 +22,24 @@ class MediaSubmissionPreviewController extends Controller
 
         return view('media-submission-preview.show', [
             'submission' => $mediaSubmission,
+            'contentHtml' => $this->contentHtml((string) $mediaSubmission->content_snapshot),
         ]);
+    }
+
+    private function contentHtml(string $content): string
+    {
+        $content = trim($content);
+        if ($content === '') {
+            return '';
+        }
+
+        return $this->looksLikeHtml($content)
+            ? $content
+            : ArticleHtmlPresenter::markdownToHtml($content);
+    }
+
+    private function looksLikeHtml(string $content): bool
+    {
+        return preg_match('/<\/?(?:p|h[1-6]|ul|ol|li|blockquote|pre|table|div|section|article|img|figure|strong|em|br)\b/i', $content) === 1;
     }
 }

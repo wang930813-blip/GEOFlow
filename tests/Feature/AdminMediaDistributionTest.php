@@ -958,6 +958,68 @@ class AdminMediaDistributionTest extends TestCase
         $this->assertNotSame('', (string) $submission->preview_token);
     }
 
+    public function test_media_submission_preview_renders_markdown_snapshot_as_safe_html(): void
+    {
+        $site = Site::query()->create(['name' => 'Preview Site', 'domain' => 'preview-site.test', 'status' => 'active']);
+        $category = Category::query()->create([
+            'site_id' => $site->id,
+            'name' => 'Preview',
+            'slug' => 'preview',
+        ]);
+        $author = Author::query()->create([
+            'site_id' => $site->id,
+            'name' => 'Preview Author',
+            'slug' => 'preview-author',
+        ]);
+        $article = Article::query()->create([
+            'site_id' => $site->id,
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'title' => 'Markdown Preview Article',
+            'slug' => 'markdown-preview-article',
+            'content' => '# Markdown Preview Article',
+            'status' => 'published',
+            'published_at' => now(),
+        ]);
+        $resource = MediaResource::query()->create([
+            'platform_id' => MediaPlatform::CEYING_MEDIA_2,
+            'source_type' => MediaResource::SOURCE_ZI_MEDIA,
+            'external_resource_id' => 'preview-resource',
+            'title' => 'Preview Resource',
+            'status' => 'active',
+            'cost_price' => '0.00',
+            'sale_price' => '0.00',
+        ]);
+        $submission = MediaSubmission::query()->create([
+            'site_id' => $site->id,
+            'article_id' => $article->id,
+            'media_resource_id' => $resource->id,
+            'platform_id' => MediaPlatform::CEYING_MEDIA_2,
+            'source_type' => 'we_media',
+            'external_order_nid' => 'preview-order',
+            'agent_order_sn' => 'preview-agent-sn',
+            'preview_token' => 'markdown-preview-token',
+            'title_snapshot' => 'Markdown Preview Article',
+            'content_snapshot' => "## Section Heading\n\nThis is **bold content**.\n\n- First item\n- Second item\n\n<script>alert('xss')</script>",
+            'cost_price_snapshot' => '0.00',
+            'sale_price_snapshot' => '0.00',
+            'points_amount' => '0.00',
+            'status' => 'submitted',
+        ]);
+
+        $response = $this->get(route('media-submission-preview.show', [
+            'submission' => (int) $submission->id,
+            'token' => 'markdown-preview-token',
+        ]));
+
+        $response
+            ->assertOk()
+            ->assertSee('<h2>Section Heading</h2>', false)
+            ->assertSee('<strong>bold content</strong>', false)
+            ->assertSee('<li>First item</li>', false)
+            ->assertDontSee('<script>', false);
+    }
+
     public function test_submission_requires_enough_site_credits(): void
     {
         $this->withoutMiddleware(ValidateCsrfToken::class);
