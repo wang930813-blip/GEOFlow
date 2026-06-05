@@ -267,6 +267,11 @@
                                 <i data-lucide="clipboard-list" class="w-4 h-4 inline mr-2"></i>
                                 {{ __('admin.nav.activity_logs') }}
                             </a>
+                        @else
+                            <a href="{{ route('admin.materials.index') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                <i data-lucide="folder-kanban" class="w-4 h-4 inline mr-2"></i>
+                                {{ __('admin.nav.materials') }}
+                            </a>
                         @endif
                         <a href="{{ route('admin.api-tokens.index') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
                             <i data-lucide="key-round" class="w-4 h-4 inline mr-2"></i>

@@ -98,4 +98,31 @@ class AdminBrandDiagnosisPageTest extends TestCase
             strpos($html, route('admin.materials.index'))
         );
     }
+
+    public function test_standard_admin_can_access_materials_entry_from_user_menu(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'brand_standard_materials_admin',
+            'password' => 'secret-123',
+            'email' => 'brand-standard-materials-admin@example.com',
+            'display_name' => 'Brand Standard Materials Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        $html = $this->actingAs($admin, 'admin')
+            ->get(route('admin.brand-diagnosis.index'))
+            ->assertOk()
+            ->getContent();
+
+        $desktopNavStart = strpos($html, '<nav class="hidden md:flex flex-1 min-w-0 items-center">');
+        $desktopNavEnd = strpos($html, '</nav>', $desktopNavStart);
+        $desktopNav = substr($html, $desktopNavStart, $desktopNavEnd - $desktopNavStart);
+        $userMenuStart = strpos($html, '<div id="user-menu"');
+        $userMenuEnd = strpos($html, '<form method="POST" action="'.route('admin.logout').'"', $userMenuStart);
+        $userMenu = substr($html, $userMenuStart, $userMenuEnd - $userMenuStart);
+
+        $this->assertStringNotContainsString(route('admin.materials.index'), $desktopNav);
+        $this->assertStringContainsString(route('admin.materials.index'), $userMenu);
+    }
 }
