@@ -24,7 +24,9 @@ body.admin-ui {
     --aliyun-warning-soft: #fff7e8;
     --aliyun-danger: #e34d59;
     --aliyun-danger-soft: #fff0f1;
-    --aliyun-radius: 2px;
+    --aliyun-radius: 8px;
+    --aliyun-radius-panel: 12px;
+    --aliyun-radius-popover: 12px;
     --aliyun-shadow: 0 1px 2px rgba(24, 28, 36, 0.04), 0 8px 24px rgba(24, 28, 36, 0.06);
     --aliyun-shadow-panel: 0 8px 28px rgba(24, 28, 36, 0.12);
     --aliyun-focus: 0 0 0 3px rgba(0, 100, 200, 0.16);
@@ -137,12 +139,15 @@ body.admin-ui .shadow-2xl {
 }
 
 body.admin-ui .rounded,
-body.admin-ui .rounded-md,
+body.admin-ui .rounded-md {
+    border-radius: var(--aliyun-radius) !important;
+}
+
 body.admin-ui .rounded-lg,
 body.admin-ui .rounded-xl,
 body.admin-ui .rounded-2xl,
 body.admin-ui .rounded-3xl {
-    border-radius: var(--aliyun-radius) !important;
+    border-radius: var(--aliyun-radius-panel) !important;
 }
 
 body.admin-ui .rounded-full {
@@ -276,6 +281,7 @@ body.admin-ui button[type="submit"] {
     min-height: 36px;
     border-radius: var(--aliyun-radius) !important;
     font-weight: 600;
+    transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease, color 140ms ease;
 }
 
 body.admin-ui button:focus-visible,
@@ -557,7 +563,7 @@ body.admin-ui .admin-locale-select:focus {
 
 .admin-menu-panel {
     border-color: var(--aliyun-border) !important;
-    border-radius: var(--aliyun-radius) !important;
+    border-radius: var(--aliyun-radius-popover) !important;
     box-shadow: var(--aliyun-shadow-panel) !important;
     color: var(--aliyun-text) !important;
 }
