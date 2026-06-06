@@ -21,6 +21,7 @@ class BrandDiagnosisController extends Controller
             'averageRankings' => $this->averageRankings(),
             'sources' => $this->sources(),
             'conversations' => $this->conversations(),
+            'diagnosisRecords' => $this->diagnosisRecords(),
         ]);
     }
 
@@ -31,9 +32,56 @@ class BrandDiagnosisController extends Controller
     {
         return [
             ['name' => '豆包', 'key' => 'doubao', 'initial' => '豆', 'color' => 'bg-blue-600', 'desc' => '网页问答', 'deep' => true],
-            ['name' => 'DeepSeek', 'key' => 'deepseek', 'initial' => 'DS', 'color' => 'bg-indigo-600', 'desc' => '深度推理', 'deep' => true],
-            ['name' => '元宝', 'key' => 'yuanbao', 'initial' => '元', 'color' => 'bg-emerald-600', 'desc' => '腾讯生态', 'deep' => true],
             ['name' => '千问', 'key' => 'qianwen', 'initial' => '千', 'color' => 'bg-violet-600', 'desc' => '通义问答', 'deep' => true],
+            ['name' => '文心一言', 'key' => 'wenxin', 'initial' => '文', 'color' => 'bg-emerald-600', 'desc' => '千帆搜索', 'deep' => false],
+            ['name' => 'DeepSeek', 'key' => 'deepseek', 'initial' => 'DS', 'color' => 'bg-indigo-600', 'desc' => '深度推理', 'deep' => true],
+        ];
+    }
+
+    /**
+     * @return list<array{
+     *     id:int,
+     *     brand:string,
+     *     status:string,
+     *     created_at:string,
+     *     expanded:bool,
+     *     has_report:bool,
+     *     metrics:array{score:int,mention_rate:int,average_rank:int,mention_count:int,sentiment_rate:int}
+     * }>
+     */
+    private function diagnosisRecords(): array
+    {
+        return [
+            [
+                'id' => 1,
+                'brand' => '策影GEO',
+                'status' => '已完成',
+                'created_at' => '2026-06-05 10:26:23',
+                'expanded' => true,
+                'has_report' => true,
+                'metrics' => [
+                    'score' => 0,
+                    'mention_rate' => 0,
+                    'average_rank' => 0,
+                    'mention_count' => 0,
+                    'sentiment_rate' => 0,
+                ],
+            ],
+            [
+                'id' => 2,
+                'brand' => '策影GEO',
+                'status' => '已完成',
+                'created_at' => '2026-06-04 16:12:08',
+                'expanded' => false,
+                'has_report' => true,
+                'metrics' => [
+                    'score' => 12,
+                    'mention_rate' => 8,
+                    'average_rank' => 3,
+                    'mention_count' => 4,
+                    'sentiment_rate' => 75,
+                ],
+            ],
         ];
     }
 

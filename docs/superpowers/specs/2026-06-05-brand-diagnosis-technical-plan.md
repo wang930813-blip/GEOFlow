@@ -99,6 +99,19 @@ GEO 报表数据不是直接在报表页采集，而是来自关键词库详情�
 - 每条诊断记录的详情、来源、回答和 PDF 都通过 `run_id` 绑定，历史报告可重复查看和下载。
 - 只有管理员明确执行删除操作时，才允许删除历史诊断记录；首版可先不做删除功能。
 
+诊断次数与费用控制规则：
+
+- 品牌诊断会产生大模型 API 调用费用，创建诊断前必须先做使用资格校验。
+- 超级管理员不受每日次数限制。
+- 普通用户首版每天只能创建 1 次品牌诊断，不按品牌名、不按平台分别计算；同一天内第二次点击“搜索/开始诊断”时应阻止创建 run，并提示“普通用户每天只能进行 1 次品牌诊断”。
+- “每天”按系统业务时区计算，默认使用 `config('app.timezone')`，当前生产建议保持 `Asia/Shanghai`。
+- 每日限制按 `site_id + admin_id + usage_date` 维度统计，避免不同站点数据互相影响。
+- 只有成功创建的 `brand_diagnosis_runs` 才计入当日使用次数；表单校验失败、平台未选择等未创建 run 的请求不计入。
+- 已创建 run 后即计入当天使用次数，即使后续平台 API 失败、部分失败或 PDF 失败，也不回退次数；避免用户重复消耗外部平台请求。
+- 首版不做积分扣减，但必须预留积分抵扣兼容能力：后续如果用户积分足够并选择积分支付，可按“每次诊断消耗 N 积分”创建诊断，此时不再受每日 1 次限制。
+- 积分抵扣后续版本实现前，所有普通用户创建 run 的 `billing_mode` 统一记为 `daily_free`；超级管理员记为 `admin_unlimited`；未来积分抵扣记为 `points`。
+- 后续积分抵扣必须使用事务和幂等交易记录，先扣减/冻结积分，再创建诊断 run，避免并发重复诊断或重复扣积分。
+
 ### 3.2 首版问题集合
 
 首版先使用固定模板，不做复杂 AI 自动扩展，保证结果可控：
@@ -478,6 +491,12 @@ DeepSeek 生成，来源类型：外部检索增强
 - `mention_count`
 - `average_rank`
 - `positive_neutral_rate`
+- `usage_date`：普通用户每日限制统计日期，按业务时区写入 `YYYY-MM-DD`。
+- `billing_mode`：`daily_free/admin_unlimited/points/manual_adjustment`；首版只写入 `daily_free` 或 `admin_unlimited`，为后续积分抵扣预留。
+- `points_cost`：本次诊断消耗积分，首版默认 `0`。
+- `points_transaction_id`：后续积分流水 ID，首版为 `null`。
+- `limit_bypassed`：是否绕过每日限制，超级管理员为 `true`。
+- `limit_bypass_reason`：`super_admin/points/admin_manual/null`；首版超级管理员写 `super_admin`，普通用户写 `null`。
 - `started_at`
 - `completed_at`
 - `error_message`
@@ -490,6 +509,15 @@ DeepSeek 生成，来源类型：外部检索增强
 - `site_id, created_at`
 - `status, created_at`
 - `normalized_brand_name, created_at`
+- `site_id, admin_id, usage_date, billing_mode`
+
+每日限制实现建议：
+
+- 不建议只依赖应用层 `count()` 判断，否则并发点击可能创建多条 run。
+- 首版推荐在创建 run 时使用数据库事务，并在事务中对当前用户当天的使用计数做锁定校验。
+- 如果项目当前没有独立 usage 表，首版可以通过 `brand_diagnosis_runs` 查询 `billing_mode = daily_free` 且 `usage_date = today` 的记录数。
+- 更稳的扩展方案是新增 `brand_diagnosis_usage_counters` 表，用 `site_id + admin_id + usage_date` 唯一索引做原子计数；后续积分抵扣也可以共用该表记录免费次数和积分次数。
+- 积分抵扣后续实现时，`billing_mode = points` 的 run 不计入每日 1 次限制，但要写入 `points_cost` 和 `points_transaction_id`。
 
 ### 5.2 brand_diagnosis_questions
 
@@ -977,18 +1005,26 @@ source_mode 定义：
 1. 所有页面必须走现有 `admin.auth`、`admin.site`、`admin.activity` 中间件。
 2. 普通管理员只能看当前站点数据。
 3. 超级管理员根据现有站点上下文看对应站点数据。
-4. 平台 API Key 只在服务端保存和调用。
-5. API Key 使用 `ApiKeyCrypto` 加密。
-6. 表单使用 Laravel CSRF。
-7. Blade 输出使用 `{{ }}` 转义。
-8. 外部 URL 只作为链接展示，不在首版抓取正文。
-9. 日志不得写入完整请求头、API Key、原始密钥。
-10. 平台失败信息要面向管理员可读，但避免暴露敏感响应。
+4. 创建诊断前必须调用 `BrandDiagnosisUsagePolicy` 或同等服务做额度校验，不能只在前端按钮禁用。
+5. 超级管理员跳过每日 1 次限制，但 run 中必须记录 `billing_mode = admin_unlimited` 和 `limit_bypassed = true`。
+6. 普通用户首版每天只能创建 1 次诊断，限制维度为 `site_id + admin_id + usage_date`。
+7. 普通用户达到每日限制时返回可读错误，不创建 `brand_diagnosis_runs`，不投递队列 job，不调用任何外部平台 API。
+8. 后续积分抵扣功能预留 `billing_mode = points`、`points_cost`、`points_transaction_id`；首版不扣积分、不展示积分支付入口。
+9. 后续积分抵扣启用后，积分足够并成功扣减/冻结的诊断不受每日 1 次限制，但必须有积分流水幂等记录。
+10. 平台 API Key 只在服务端保存和调用。
+11. API Key 使用 `ApiKeyCrypto` 加密。
+12. 表单使用 Laravel CSRF。
+13. Blade 输出使用 `{{ }}` 转义。
+14. 外部 URL 只作为链接展示，不在首版抓取正文。
+15. 日志不得写入完整请求头、API Key、原始密钥。
+16. 平台失败信息要面向管理员可读，但避免暴露敏感响应。
 
 ## 12. 错误处理
 
 页面需要区分这些情况：
 
+- 普通用户当天已使用 1 次免费品牌诊断。
+- 额度校验服务异常或并发锁获取失败。
 - 未配置平台 API Key。
 - 平台 API Key 解密失败。
 - 平台 API 返回鉴权失败。
@@ -1003,6 +1039,8 @@ source_mode 定义：
 
 批次级处理：
 
+- 额度不足属于创建前错误，不创建批次，不进入平台调用流程。
+- 每日次数一旦成功创建 run 即视为已使用，不因平台失败或用户关闭页面而回退。
 - 一个结果失败，不中断其他结果。
 - 如果真实平台失败且允许兜底，先记录真实平台失败原因，再调用 `SimulatedPlatformFallbackClient`。
 - 兜底成功时该 result 可记为 `success`，但 `fallback_mode` 必须为 `simulated_chat`。
@@ -1022,6 +1060,7 @@ source_mode 定义：
 - `tests/Unit/BrandDiagnosisMentionAnalyzerTest.php`
 - `tests/Unit/BrandDiagnosisScoreCalculatorTest.php`
 - `tests/Unit/BrandDiagnosisFallbackPolicyTest.php`
+- `tests/Unit/BrandDiagnosisUsagePolicyTest.php`
 
 覆盖：
 
@@ -1038,6 +1077,12 @@ source_mode 定义：
 - 平均排名计算。
 - 情感结果解析失败时回退 unknown。
 - 品牌得分公式。
+- 超级管理员不受每日诊断次数限制。
+- 普通用户当天没有诊断记录时允许创建。
+- 普通用户当天已有 `billing_mode = daily_free` 的诊断记录时拒绝创建。
+- 普通用户昨天的诊断记录不影响今天创建。
+- `billing_mode = points` 的历史记录不计入每日免费次数限制，为后续积分抵扣预留。
+- 额度校验使用业务时区计算 `usage_date`。
 
 ### 13.2 Feature 测试
 
@@ -1053,6 +1098,10 @@ source_mode 定义：
 - 创建诊断批次会生成 run/questions/results jobs。
 - 连续两次用同一品牌和同一平台创建诊断，会生成两条不同的 run 记录。
 - 新诊断完成后不会覆盖旧 run 的 metrics、results、sources、report。
+- 普通用户第一次创建诊断成功，并写入 `billing_mode = daily_free`、`usage_date`、`points_cost = 0`。
+- 普通用户同一天第二次创建诊断会被拒绝，不创建 run，不投递 jobs，不调用外部 API。
+- 超级管理员同一天可以创建多次诊断，并写入 `billing_mode = admin_unlimited`、`limit_bypassed = true`。
+- 普通用户使用后续预留的 `billing_mode = points` 创建路径时，不受每日 1 次限制；首版该路径只做服务层兼容测试，不开放 UI 入口。
 - 未选择平台时默认使用四平台。
 - 非法平台会被过滤。
 - snapshot 返回进度。
@@ -1148,6 +1197,7 @@ docker exec geoflow-app php artisan test tests/Feature/AdminBrandDiagnosisReport
 目标：
 
 - 创建 run。
+- 创建 run 前执行额度校验：超级管理员不限次数，普通用户每天 1 次。
 - 生成问题。
 - 投递 jobs。
 - 保存 result/source/mention。
@@ -1157,6 +1207,7 @@ docker exec geoflow-app php artisan test tests/Feature/AdminBrandDiagnosisReport
 关键服务：
 
 - `BrandDiagnosisRunService`
+- `BrandDiagnosisUsagePolicy`
 - `BrandDiagnosisMentionAnalyzer`
 - `BrandDiagnosisScoreCalculator`
 - `BrandDiagnosisReportQueryService`
@@ -1205,6 +1256,8 @@ docker exec geoflow-app php artisan test tests/Feature/AdminBrandDiagnosisReport
 - 生成 PDF 报告。
 - 保留历史诊断记录。
 - 每次诊断搜索都新增一条历史诊断记录，不覆盖之前记录。
+- 控制诊断费用：超级管理员不限次数，普通用户首版每天只能诊断 1 次。
+- 为后续“积分抵扣一次诊断”预留 `billing_mode/points_cost/points_transaction_id` 等兼容字段；首版不实现积分扣减。
 - 后续扩展竞品榜单和自定义问题。
 
 ### 首版不能承诺
@@ -1263,7 +1316,9 @@ docker exec geoflow-app php artisan test tests/Feature/AdminBrandDiagnosisReport
 5. DeepSeek 结果不假装原生引用；`platform = deepseek`，`provider = volcengine_ark`，`source_mode = external_retrieval`。
 6. 品牌诊断独立建表。
 7. 每次诊断搜索新增一条 `brand_diagnosis_runs`，同品牌历史记录按时间保留，不覆盖。
-8. 平台客户端和 source normalizer 做成可复用服务，为后续升级 GEO 报表预留。
-9. PDF 使用独立模板和受保护下载路由。
+8. 首版增加诊断费用控制：超级管理员不限次数，普通用户每天 1 次；后续积分抵扣可绕过每日限制。
+9. 首版不实现积分扣减 UI 和积分流水，但 run 表预留 `billing_mode`、`points_cost`、`points_transaction_id`。
+10. 平台客户端和 source normalizer 做成可复用服务，为后续升级 GEO 报表预留。
+11. PDF 使用独立模板和受保护下载路由。
 
 这个方案能最大程度满足“真实引用来源”的业务要求，同时避免把模拟平台能力包装成真实平台数据。

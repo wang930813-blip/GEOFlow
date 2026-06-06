@@ -32,9 +32,17 @@ class AdminBrandDiagnosisPageTest extends TestCase
             ->assertSee('引用来源')
             ->assertSee('AI 对话记录')
             ->assertSee('豆包')
+            ->assertSee('文心一言')
             ->assertSee('DeepSeek')
-            ->assertSee('元宝')
             ->assertSee('千问')
+            ->assertDontSee('元宝')
+            ->assertDontSee('开始诊断')
+            ->assertDontSee('开始监测品牌')
+            ->assertSee('placeholder="开始日期"', false)
+            ->assertSee('placeholder="结束日期"', false)
+            ->assertSee('data-report-count', false)
+            ->assertSee('data-record-toggle', false)
+            ->assertDontSee('_scope', false)
             ->assertSee('is-active font-medium', false);
     }
 
