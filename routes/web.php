@@ -85,6 +85,7 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
         Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
         Route::get('geo-reports', [GeoReportController::class, 'index'])->name('geo-reports.index');
         Route::get('brand-diagnosis', [BrandDiagnosisController::class, 'index'])->name('brand-diagnosis.index');
+        Route::post('brand-diagnosis', [BrandDiagnosisController::class, 'store'])->name('brand-diagnosis.store');
         Route::get('analytics', [AnalyticsController::class, 'index'])->name('analytics');
 
         Route::prefix('media-distribution')->name('media-distribution.')->group(function () {
