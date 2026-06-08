@@ -5,9 +5,8 @@ namespace App\Models;
 use App\Models\Concerns\BelongsToSite;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class BrandDiagnosisResult extends Model
+class BrandDiagnosisBrandMention extends Model
 {
     use BelongsToSite;
 
@@ -15,17 +14,16 @@ class BrandDiagnosisResult extends Model
         'site_id',
         'run_id',
         'question_id',
+        'result_id',
         'platform',
-        'answer',
-        'brand_mentioned',
+        'brand_name',
         'mention_count',
         'mention_rank',
         'sentiment',
-        'status',
-        'error_message',
-        'raw_response',
+        'source_count',
+        'is_target_brand',
+        'evidence',
         'meta',
-        'checked_at',
     ];
 
     protected function casts(): array
@@ -34,12 +32,12 @@ class BrandDiagnosisResult extends Model
             'site_id' => 'integer',
             'run_id' => 'integer',
             'question_id' => 'integer',
-            'brand_mentioned' => 'boolean',
+            'result_id' => 'integer',
             'mention_count' => 'integer',
             'mention_rank' => 'integer',
-            'raw_response' => 'array',
+            'source_count' => 'integer',
+            'is_target_brand' => 'boolean',
             'meta' => 'array',
-            'checked_at' => 'datetime',
         ];
     }
 
@@ -53,13 +51,8 @@ class BrandDiagnosisResult extends Model
         return $this->belongsTo(BrandDiagnosisQuestion::class, 'question_id');
     }
 
-    public function sources(): HasMany
+    public function result(): BelongsTo
     {
-        return $this->hasMany(BrandDiagnosisSource::class, 'result_id');
-    }
-
-    public function brandMentions(): HasMany
-    {
-        return $this->hasMany(BrandDiagnosisBrandMention::class, 'result_id');
+        return $this->belongsTo(BrandDiagnosisResult::class, 'result_id');
     }
 }

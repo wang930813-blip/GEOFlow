@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\BrandDiagnosisRun;
+use App\Models\BrandDiagnosisResult;
 use App\Services\BrandDiagnosis\BrandDiagnosisMetricsCalculator;
 use App\Services\BrandDiagnosis\DoubaoBrandDiagnosisClient;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -51,9 +52,10 @@ class ProcessBrandDiagnosisJob implements ShouldQueue
 
         if ($run->questions->isEmpty()) {
             try {
-                $questions = app(DoubaoBrandDiagnosisClient::class)->generateQuestions(
+                $questions = app(DoubaoBrandDiagnosisClient::class)->generateQuestionPool(
                     (string) $run->brand_name,
-                    max(1, (int) config('brand_diagnosis.question_count', 5))
+                    max(1, (int) config('brand_diagnosis.question_count', 5)),
+                    (array) $run->platforms
                 );
 
                 foreach ($questions as $index => $question) {
@@ -84,28 +86,47 @@ class ProcessBrandDiagnosisJob implements ShouldQueue
 
         foreach ($run->questions as $question) {
             foreach ((array) $run->platforms as $platform) {
-                if ((string) $platform !== 'doubao') {
+                $platform = strtolower(trim((string) $platform));
+                if (! in_array($platform, ['doubao', 'deepseek'], true)) {
                     continue;
                 }
 
                 try {
                     $clientResponse = app(DoubaoBrandDiagnosisClient::class)->ask(
                         (string) $run->brand_name,
-                        (string) $question->question
+                        (string) $question->question,
+                        $platform
                     );
 
                     $metrics = app(BrandDiagnosisMetricsCalculator::class);
-                    $mentionCount = $metrics->mentionCount($clientResponse->answer, (string) $run->brand_name);
+                    $brandMentions = $metrics->normalizeBrandMentions(
+                        $clientResponse->brandMentions,
+                        $clientResponse->answer,
+                        (string) $run->brand_name,
+                        $this->sourceEvidenceText($clientResponse->sources),
+                        (string) $question->question
+                    );
+                    $targetMention = collect($brandMentions)
+                        ->first(fn (array $mention): bool => $metrics->isSameBrand((string) $mention['brand'], (string) $run->brand_name));
+                    $mentionCount = is_array($targetMention)
+                        ? (int) $targetMention['mention_count']
+                        : 0;
+                    $mentionRank = is_array($targetMention)
+                        ? (int) $targetMention['mention_rank']
+                        : 0;
+                    $sentiment = is_array($targetMention)
+                        ? (string) $targetMention['sentiment']
+                        : $metrics->classifySentiment($clientResponse->answer);
                     $result = $question->results()->updateOrCreate(
-                        ['platform' => 'doubao'],
+                        ['platform' => $platform],
                         [
                             'site_id' => (int) $run->site_id,
                             'run_id' => (int) $run->id,
                             'answer' => $clientResponse->answer,
                             'brand_mentioned' => $mentionCount > 0,
                             'mention_count' => $mentionCount,
-                            'mention_rank' => $metrics->mentionRank($clientResponse->answer, (string) $run->brand_name),
-                            'sentiment' => $metrics->classifySentiment($clientResponse->answer),
+                            'mention_rank' => $mentionRank,
+                            'sentiment' => $sentiment,
                             'status' => 'success',
                             'error_message' => null,
                             'raw_response' => $clientResponse->rawResponse,
@@ -120,7 +141,7 @@ class ProcessBrandDiagnosisJob implements ShouldQueue
                             'site_id' => (int) $run->site_id,
                             'run_id' => (int) $run->id,
                             'question_id' => (int) $question->id,
-                            'platform' => 'doubao',
+                            'platform' => $platform,
                             'title' => (string) $source['title'],
                             'url' => (string) $source['url'],
                             'domain' => $this->domainFromUrl((string) $source['url']),
@@ -128,11 +149,12 @@ class ProcessBrandDiagnosisJob implements ShouldQueue
                             'meta' => (array) ($source['meta'] ?? []),
                         ]);
                     }
+                    $this->replaceBrandMentions($result, $brandMentions, (string) $run->brand_name, count($clientResponse->sources));
 
                     $question->update(['status' => 'completed']);
                 } catch (Throwable $exception) {
                     $question->results()->updateOrCreate(
-                        ['platform' => 'doubao'],
+                        ['platform' => $platform],
                         [
                             'site_id' => (int) $run->site_id,
                             'run_id' => (int) $run->id,
@@ -144,11 +166,13 @@ class ProcessBrandDiagnosisJob implements ShouldQueue
                             'status' => 'failed',
                             'error_message' => $exception->getMessage(),
                             'raw_response' => null,
-                            'meta' => ['client' => 'doubao'],
+                            'meta' => ['client' => $platform],
                             'checked_at' => now(),
                         ]
                     );
-                    $question->update(['status' => 'failed']);
+                    if ($question->results()->where('status', 'success')->doesntExist()) {
+                        $question->update(['status' => 'failed']);
+                    }
                 }
             }
         }
@@ -167,5 +191,47 @@ class ProcessBrandDiagnosisJob implements ShouldQueue
     private function domainFromUrl(string $url): string
     {
         return (string) (parse_url($url, PHP_URL_HOST) ?: '');
+    }
+
+    /**
+     * @param  list<array{title:string,url:string,type:string,meta?:array<string,mixed>}>  $sources
+     */
+    private function sourceEvidenceText(array $sources): string
+    {
+        return collect($sources)
+            ->flatMap(static function (array $source): array {
+                return [
+                    (string) ($source['title'] ?? ''),
+                    (string) ($source['url'] ?? ''),
+                    json_encode((array) ($source['meta'] ?? []), JSON_UNESCAPED_UNICODE) ?: '',
+                ];
+            })
+            ->filter(static fn (string $value): bool => trim($value) !== '')
+            ->implode("\n");
+    }
+
+    /**
+     * @param  list<array{brand:string,mention_count:int,mention_rank:int,sentiment:string,evidence:string,source_count?:int,meta?:array<string,mixed>}>  $brandMentions
+     */
+    private function replaceBrandMentions(BrandDiagnosisResult $result, array $brandMentions, string $targetBrandName, int $sourceCount): void
+    {
+        $result->brandMentions()->delete();
+
+        foreach ($brandMentions as $mention) {
+            $result->brandMentions()->create([
+                'site_id' => (int) $result->site_id,
+                'run_id' => (int) $result->run_id,
+                'question_id' => (int) $result->question_id,
+                'platform' => (string) $result->platform,
+                'brand_name' => (string) $mention['brand'],
+                'mention_count' => max(1, (int) $mention['mention_count']),
+                'mention_rank' => max(0, (int) $mention['mention_rank']),
+                'sentiment' => (string) $mention['sentiment'],
+                'source_count' => max((int) ($mention['source_count'] ?? 0), $sourceCount),
+                'is_target_brand' => app(BrandDiagnosisMetricsCalculator::class)->isSameBrand((string) $mention['brand'], $targetBrandName),
+                'evidence' => (string) ($mention['evidence'] ?? ''),
+                'meta' => (array) ($mention['meta'] ?? []),
+            ]);
+        }
     }
 }

@@ -94,8 +94,8 @@
                                 </div>
                                 @if ($model['available'])
                                     <label class="flex min-h-6 items-center gap-2">
-                                        <input name="platforms[]" value="{{ $model['key'] }}" type="checkbox" checked>
-                                        启用诊断
+                                        <input name="platforms[]" value="{{ $model['key'] }}" type="checkbox" checked data-platform-checkbox data-platform-name="{{ $model['name'] }}">
+                                        诊断
                                     </label>
                                 @else
                                     <div class="flex min-h-6 items-center gap-2 text-gray-400">
@@ -112,7 +112,7 @@
                 <div class="flex flex-wrap items-center gap-4 text-sm text-gray-600">
                     <span class="inline-flex min-h-9 items-center gap-2">
                         <span class="inline-flex h-2 w-2 rounded-full bg-orange-500"></span>
-                        当前先跑通豆包真实联网诊断
+                        数据来源：<span data-selected-platforms>豆包、DeepSeek</span>
                     </span>
                 </div>
                 <div class="text-xs text-gray-500">模型限定：豆包、千问、文心一言、DeepSeek</div>
@@ -171,15 +171,17 @@
                             $recordQuestions = $record['questions'] ?? [];
                             $recordSources = $record['sources'] ?? [];
                             $recordConversations = $record['conversations'] ?? [];
-                            $recordMentionRateRanking = [['brand' => $record['brand'], 'rate' => (int) $record['metrics']['mention_rate']]];
-                            $recordMentionCountRanking = [['brand' => $record['brand'], 'count' => (int) $record['metrics']['mention_count']]];
-                            $recordAverageRankings = [[
-                                'brand' => $record['brand'],
-                                'rate' => (int) $record['metrics']['mention_rate'],
-                                'rank' => $record['metrics']['average_rank'].'名',
-                            ]];
-                            $recordMaxRate = max([1, ...array_map(static fn ($row) => (int) $row['rate'], $recordMentionRateRanking)]);
-                            $recordMaxCount = max([1, ...array_map(static fn ($row) => (int) $row['count'], $recordMentionCountRanking)]);
+                            $recordMentionRateRanking = $record['rankings']['mention_rate'] ?? [];
+                            $recordMentionCountRanking = $record['rankings']['mention_count'] ?? [];
+                            $recordAverageRankings = $record['rankings']['average_rank'] ?? [];
+                            $recordMentionRateRows = array_slice(array_values(array_filter($recordMentionRateRanking, static fn ($row) => empty($row['is_target_brand']))), 0, 9);
+                            $recordMentionCountRows = array_slice(array_values(array_filter($recordMentionCountRanking, static fn ($row) => empty($row['is_target_brand']))), 0, 9);
+                            $recordAverageRankRows = array_slice(array_values(array_filter($recordAverageRankings, static fn ($row) => empty($row['is_target_brand']))), 0, 9);
+                            $recordMentionRateTarget = $recordMentionRateRanking[count($recordMentionRateRanking) - 1] ?? ['brand' => $record['brand'], 'rate' => (int) $record['metrics']['mention_rate']];
+                            $recordMentionCountTarget = $recordMentionCountRanking[count($recordMentionCountRanking) - 1] ?? ['brand' => $record['brand'], 'count' => (int) $record['metrics']['mention_count']];
+                            $recordAverageRankTarget = $recordAverageRankings[count($recordAverageRankings) - 1] ?? ['brand' => $record['brand'], 'rate' => (int) $record['metrics']['mention_rate'], 'rank' => $record['metrics']['average_rank'].'名'];
+                            $recordMaxRate = max([1, ...array_map(static fn ($row) => (int) $row['rate'], $recordMentionRateRows)]);
+                            $recordMaxCount = max([1, ...array_map(static fn ($row) => (int) $row['count'], $recordMentionCountRows)]);
                             $recordMetricCards = [
                                 ['label' => '品牌得分 / 100', 'value' => $record['metrics']['score'], 'suffix' => '', 'value_class' => 'text-orange-600'],
                                 ['label' => '品牌提及率', 'value' => $record['metrics']['mention_rate'], 'suffix' => '%', 'value_class' => 'text-gray-900'],
@@ -226,13 +228,13 @@
 
                             <div data-record-detail @class(['hidden' => ! $record['expanded'], 'border-t border-slate-200 bg-white p-4'])>
                                 <div class="rounded-lg border border-slate-200 bg-orange-50/40 px-3 py-2 text-xs text-gray-600">
-                                    记录 #{{ $record['id'] }} 当前状态：{{ $record['status'] }}。诊断完成后会展示豆包真实联网回答和引用来源。
+                                    记录 #{{ $record['id'] }} 当前状态：{{ $record['status'] }}。诊断完成后会展示所选模型真实联网回答和引用来源。
                                 </div>
 
-                <div class="mt-5 rounded-lg border border-slate-200 bg-white p-4">
-                    <div class="mb-3 text-sm font-semibold text-gray-900">AI问题</div>
-                    <div class="flex flex-wrap gap-2">
-                        @foreach ($recordQuestions as $question)
+                        <div class="mt-5 rounded-lg border border-slate-200 bg-white p-4">
+                            <div class="mb-3 text-sm font-semibold text-gray-900">AI问题</div>
+                            <div class="flex flex-wrap gap-2">
+                                @foreach ($recordQuestions as $question)
                             <span class="inline-flex min-h-8 items-center gap-2 rounded-md bg-blue-50 px-3 text-xs font-medium text-blue-700">
                                 <span class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-[11px] font-bold text-white">{{ $question['rank'] }}</span>
                                 {{ $question['text'] }}
@@ -258,12 +260,13 @@
                         <div class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
                             <h3 class="mb-4 text-base font-semibold text-gray-900">品牌提及率</h3>
                             <div class="space-y-3">
-                                @foreach ($recordMentionRateRanking as $index => $row)
+                                @foreach ($recordMentionRateRows as $index => $row)
                                     <div class="grid grid-cols-[24px_88px_1fr_40px] items-center gap-2 text-sm">
                                         <span class="text-xs text-gray-500">{{ $index + 1 }}</span>
                                         <span class="truncate font-medium text-gray-700">{{ $row['brand'] }}</span>
                                         <span class="h-2 rounded-full bg-slate-100">
-                                            <span class="block h-2 rounded-full bg-blue-600" style="width: {{ ((int) $row['rate'] / $recordMaxRate) * 100 }}%"></span>
+                                            @php($rateWidth = (int) round(((int) $row['rate'] / $recordMaxRate) * 100))
+                                            <span class="block h-2 rounded-full bg-blue-600 w-[{{ max(4, $rateWidth) }}%]"></span>
                                         </span>
                                         <span class="text-right text-xs font-semibold text-blue-700">{{ $row['rate'] }}%</span>
                                     </div>
@@ -271,19 +274,20 @@
                             </div>
                             <div class="mt-4 flex items-center gap-2 rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700">
                                 <span class="rounded bg-orange-600 px-1.5 py-0.5 text-white">1</span>
-                                {{ $record['brand'] }} {{ $record['metrics']['mention_rate'] }}%
+                                {{ $recordMentionRateTarget['brand'] }} {{ $recordMentionRateTarget['rate'] }}%
                             </div>
                         </div>
 
                         <div class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
                             <h3 class="mb-4 text-base font-semibold text-gray-900">品牌提及次数</h3>
                             <div class="space-y-3">
-                                @foreach ($recordMentionCountRanking as $index => $row)
+                                @foreach ($recordMentionCountRows as $index => $row)
                                     <div class="grid grid-cols-[24px_88px_1fr_32px] items-center gap-2 text-sm">
                                         <span class="text-xs text-gray-500">{{ $index + 1 }}</span>
                                         <span class="truncate font-medium text-gray-700">{{ $row['brand'] }}</span>
                                         <span class="h-2 rounded-full bg-slate-100">
-                                            <span class="block h-2 rounded-full bg-blue-600" style="width: {{ ((int) $row['count'] / $recordMaxCount) * 100 }}%"></span>
+                                            @php($countWidth = (int) round(((int) $row['count'] / $recordMaxCount) * 100))
+                                            <span class="block h-2 rounded-full bg-blue-600 w-[{{ max(4, $countWidth) }}%]"></span>
                                         </span>
                                         <span class="text-right text-xs font-semibold text-blue-700">{{ $row['count'] }}</span>
                                     </div>
@@ -291,7 +295,7 @@
                             </div>
                             <div class="mt-4 flex items-center gap-2 rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700">
                                 <span class="rounded bg-orange-600 px-1.5 py-0.5 text-white">1</span>
-                                {{ $record['brand'] }} {{ $record['metrics']['mention_count'] }}
+                                {{ $recordMentionCountTarget['brand'] }} {{ $recordMentionCountTarget['count'] }}
                             </div>
                         </div>
 
@@ -307,7 +311,7 @@
                                         </tr>
                                     </thead>
                                     <tbody class="divide-y divide-slate-100">
-                                        @foreach ($recordAverageRankings as $index => $row)
+                                        @foreach ($recordAverageRankRows as $index => $row)
                                             <tr>
                                                 <td class="px-3 py-2">
                                                     <span class="mr-2 text-xs text-gray-500">{{ $index + 1 }}</span>{{ $row['brand'] }}
@@ -318,6 +322,10 @@
                                         @endforeach
                                     </tbody>
                                 </table>
+                            </div>
+                            <div class="mt-4 flex items-center gap-2 rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700">
+                                <span class="rounded bg-orange-600 px-1.5 py-0.5 text-white">1</span>
+                                {{ $recordAverageRankTarget['brand'] }} {{ $recordAverageRankTarget['rank'] }}
                             </div>
                         </div>
                     </div>
@@ -454,6 +462,24 @@
 @push('scripts')
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            const platformCheckboxes = Array.from(document.querySelectorAll('[data-platform-checkbox]'));
+            const selectedPlatformsLabel = document.querySelector('[data-selected-platforms]');
+            const renderSelectedPlatforms = () => {
+                const names = platformCheckboxes
+                    .filter((checkbox) => checkbox.checked)
+                    .map((checkbox) => checkbox.dataset.platformName || checkbox.value)
+                    .filter(Boolean);
+
+                if (selectedPlatformsLabel) {
+                    selectedPlatformsLabel.textContent = names.length > 0 ? names.join('、') : '未选择';
+                }
+            };
+
+            platformCheckboxes.forEach((checkbox) => {
+                checkbox.addEventListener('change', renderSelectedPlatforms);
+            });
+            renderSelectedPlatforms();
+
             document.querySelectorAll('[data-record-toggle]').forEach((button) => {
                 button.addEventListener('click', () => {
                     const record = button.closest('[data-diagnosis-record]');
@@ -579,6 +605,7 @@
                 window.addEventListener('resize', renderPage);
                 renderPage();
             });
+
         });
     </script>
 @endpush

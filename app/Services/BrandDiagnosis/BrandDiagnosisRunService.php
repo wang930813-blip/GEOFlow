@@ -64,7 +64,7 @@ class BrandDiagnosisRunService
      */
     private function normalizePlatforms(array $platforms): array
     {
-        $allowed = ['doubao'];
+        $allowed = ['doubao', 'deepseek'];
         $normalized = collect($platforms)
             ->map(static fn (mixed $platform): string => strtolower(trim((string) $platform)))
             ->filter(static fn (string $platform): bool => in_array($platform, $allowed, true))

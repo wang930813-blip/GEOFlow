@@ -44,10 +44,10 @@ class BrandDiagnosisController extends Controller
         $payload = $request->validate([
             'brand_name' => ['required', 'string', 'max:120'],
             'platforms' => ['nullable', 'array'],
-            'platforms.*' => ['string', 'in:doubao'],
+            'platforms.*' => ['string', 'in:doubao,deepseek'],
         ], [
             'brand_name.required' => '请输入品牌名称',
-            'platforms.*.in' => '当前版本先支持豆包诊断',
+            'platforms.*.in' => '当前版本先支持豆包和 DeepSeek 诊断',
         ]);
 
         $admin = auth('admin')->user();
@@ -79,9 +79,9 @@ class BrandDiagnosisController extends Controller
     {
         return [
             ['name' => '豆包', 'key' => 'doubao', 'initial' => '豆', 'color' => 'bg-blue-600', 'desc' => '网页问答', 'deep' => true, 'available' => true],
+            ['name' => 'DeepSeek', 'key' => 'deepseek', 'initial' => 'DS', 'color' => 'bg-indigo-600', 'desc' => '深度推理', 'deep' => true, 'available' => true],
             ['name' => '千问', 'key' => 'qianwen', 'initial' => '千', 'color' => 'bg-violet-600', 'desc' => '通义问答', 'deep' => true, 'available' => false],
             ['name' => '文心一言', 'key' => 'wenxin', 'initial' => '文', 'color' => 'bg-emerald-600', 'desc' => '千帆搜索', 'deep' => false, 'available' => false],
-            ['name' => 'DeepSeek', 'key' => 'deepseek', 'initial' => 'DS', 'color' => 'bg-indigo-600', 'desc' => '深度推理', 'deep' => true, 'available' => false],
         ];
     }
 
@@ -109,8 +109,9 @@ class BrandDiagnosisController extends Controller
             ->when($isSuperAdmin, fn ($query) => $query->withoutGlobalScope('current_site'))
             ->when(! $isSuperAdmin && $siteId !== null, fn ($query) => $query->where('site_id', $siteId))
             ->with([
-                'questions' => fn ($query) => $query->orderBy('sort_order')->with(['results.sources']),
+                'questions' => fn ($query) => $query->orderBy('sort_order')->with(['results.sources', 'results.brandMentions']),
                 'sources',
+                'brandMentions',
             ])
             ->orderByDesc('created_at')
             ->limit(20)
@@ -125,6 +126,7 @@ class BrandDiagnosisController extends Controller
      */
     private function formatRecord(BrandDiagnosisRun $run, bool $expanded): array
     {
+        $rankings = $this->brandRankings($run);
         $questions = $run->questions->map(static fn ($question): array => [
             'rank' => (int) $question->sort_order,
             'text' => (string) $question->question,
@@ -132,22 +134,21 @@ class BrandDiagnosisController extends Controller
             'status' => (string) $question->status,
         ])->values()->all();
 
-        $sources = $run->sources->map(static fn ($source): array => [
-            'platform' => '豆包',
+        $sources = $run->sources->map(fn ($source): array => [
+            'platform' => $this->platformLabel((string) $source->platform),
             'category' => $source->domain !== '' ? (string) $source->domain : '网页来源',
             'title' => (string) ($source->title ?: $source->url),
             'questions' => 1,
             'models' => 1,
-            'icon' => 'DB',
+            'icon' => $this->platformIcon((string) $source->platform),
             'url' => (string) $source->url,
         ])->values()->all();
 
         $conversations = $run->questions->map(function ($question) use ($run): array {
             $result = $question->results->first();
-            $brands = [];
-            if ($result && (bool) $result->brand_mentioned) {
-                $brands[] = (string) $run->brand_name;
-            }
+            $brands = $result
+                ? $result->brandMentions->pluck('brand_name')->filter()->unique()->values()->all()
+                : [];
 
             return [
                 'question' => (string) $question->question,
@@ -175,6 +176,7 @@ class BrandDiagnosisController extends Controller
             'questions' => $questions,
             'sources' => $sources,
             'conversations' => $conversations,
+            'rankings' => $rankings,
         ];
     }
 
@@ -214,13 +216,7 @@ class BrandDiagnosisController extends Controller
      */
     private function mentionRateRanking(?array $record): array
     {
-        if ($record !== null) {
-            return [
-                ['brand' => (string) $record['brand'], 'rate' => (int) $record['metrics']['mention_rate']],
-            ];
-        }
-
-        return [];
+        return (array) ($record['rankings']['mention_rate'] ?? []);
     }
 
     /**
@@ -229,13 +225,7 @@ class BrandDiagnosisController extends Controller
      */
     private function mentionCountRanking(?array $record): array
     {
-        if ($record !== null) {
-            return [
-                ['brand' => (string) $record['brand'], 'count' => (int) $record['metrics']['mention_count']],
-            ];
-        }
-
-        return [];
+        return (array) ($record['rankings']['mention_count'] ?? []);
     }
 
     /**
@@ -244,17 +234,7 @@ class BrandDiagnosisController extends Controller
      */
     private function averageRankings(?array $record): array
     {
-        if ($record !== null) {
-            return [
-                [
-                    'brand' => (string) $record['brand'],
-                    'rate' => (int) $record['metrics']['mention_rate'],
-                    'rank' => (string) $record['metrics']['average_rank'].'名',
-                ],
-            ];
-        }
-
-        return [];
+        return (array) ($record['rankings']['average_rank'] ?? []);
     }
 
     /**
@@ -287,5 +267,96 @@ class BrandDiagnosisController extends Controller
         $conversations = $record['conversations'];
 
         return $conversations;
+    }
+
+    /**
+     * @return array{
+     *   mention_rate:list<array{brand:string,rate:int,is_target_brand:bool}>,
+     *   mention_count:list<array{brand:string,count:int,is_target_brand:bool}>,
+     *   average_rank:list<array{brand:string,rate:int,rank:string,rank_value:float,is_target_brand:bool}>
+     * }
+     */
+    private function brandRankings(BrandDiagnosisRun $run): array
+    {
+        $mentions = $run->brandMentions;
+        $successResults = $run->questions->flatMap(static fn ($question) => $question->results)->where('status', 'success');
+        $totalConversations = max(1, $successResults->count());
+
+        $grouped = $mentions
+            ->groupBy(static fn ($mention): string => mb_strtolower(trim((string) $mention->brand_name), 'UTF-8'))
+            ->map(function (Collection $group) use ($totalConversations): array {
+                $first = $group->first();
+                $conversationCount = $group->pluck('result_id')->unique()->count();
+                $mentionCount = (int) $group->sum('mention_count');
+                $averageRank = (float) ($group->where('mention_rank', '>', 0)->avg('mention_rank') ?: 0);
+
+                return [
+                    'brand' => (string) $first?->brand_name,
+                    'rate' => (int) round(($conversationCount / $totalConversations) * 100),
+                    'count' => $mentionCount,
+                    'rank_value' => $averageRank,
+                    'rank_sort' => $averageRank > 0 ? $averageRank : 999999,
+                    'rank' => $this->formatAverageRank($averageRank),
+                    'is_target_brand' => (bool) ($first?->is_target_brand ?? false),
+                ];
+            })
+            ->values();
+
+        $targetRow = $grouped->firstWhere('is_target_brand', true) ?? [
+            'brand' => (string) $run->brand_name,
+            'rate' => (int) $run->mention_rate,
+            'count' => (int) $run->mention_count,
+            'rank_value' => (float) $run->average_rank,
+            'rank_sort' => (float) $run->average_rank > 0 ? (float) $run->average_rank : 999999,
+            'rank' => $this->formatAverageRank((float) $run->average_rank),
+            'is_target_brand' => true,
+        ];
+
+        return [
+            'mention_rate' => $this->topRowsWithTargetLast($grouped, 'rate', true, $targetRow)->all(),
+            'mention_count' => $this->topRowsWithTargetLast($grouped, 'count', true, $targetRow)->all(),
+            'average_rank' => $this->topRowsWithTargetLast($grouped, 'rank_sort', false, $targetRow)
+                ->map(static fn (array $row): array => [
+                    'brand' => (string) $row['brand'],
+                    'rate' => (int) $row['rate'],
+                    'rank' => (string) $row['rank'],
+                    'rank_value' => (float) $row['rank_value'],
+                    'is_target_brand' => (bool) $row['is_target_brand'],
+                ])
+                ->all(),
+        ];
+    }
+
+    /**
+     * @param  Collection<int,array{brand:string,rate:int,count:int,rank_value:float,rank:string,is_target_brand:bool}>  $rows
+     * @return Collection<int,array{brand:string,rate:int,count:int,rank_value:float,rank:string,is_target_brand:bool}>
+     */
+    private function topRowsWithTargetLast(Collection $rows, string $sortKey, bool $descending, array $targetRow): Collection
+    {
+        $topRows = $rows
+            ->reject(static fn (array $row): bool => (bool) $row['is_target_brand'])
+            ->when($descending, fn (Collection $collection): Collection => $collection->sortByDesc($sortKey), fn (Collection $collection): Collection => $collection->sortBy($sortKey))
+            ->take(9)
+            ->values();
+
+        return $topRows->push($targetRow);
+    }
+
+    private function platformLabel(string $platform): string
+    {
+        return match ($platform) {
+            'deepseek' => 'DeepSeek',
+            'doubao' => '豆包',
+            default => $platform,
+        };
+    }
+
+    private function platformIcon(string $platform): string
+    {
+        return match ($platform) {
+            'deepseek' => 'DS',
+            'doubao' => 'DB',
+            default => mb_strtoupper(mb_substr($platform, 0, 2, 'UTF-8'), 'UTF-8'),
+        };
     }
 }

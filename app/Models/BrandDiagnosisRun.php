@@ -78,4 +78,9 @@ class BrandDiagnosisRun extends Model
     {
         return $this->hasMany(BrandDiagnosisSource::class, 'run_id');
     }
+
+    public function brandMentions(): HasMany
+    {
+        return $this->hasMany(BrandDiagnosisBrandMention::class, 'run_id');
+    }
 }
