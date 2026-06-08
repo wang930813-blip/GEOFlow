@@ -3,6 +3,7 @@
 return [
     'daily_free_limit' => (int) env('BRAND_DIAGNOSIS_DAILY_FREE_LIMIT', 1),
     'question_count' => (int) env('BRAND_DIAGNOSIS_QUESTION_COUNT', 5),
+    'job_timeout' => (int) env('BRAND_DIAGNOSIS_JOB_TIMEOUT', 1200),
 
     'doubao' => [
         'enabled' => filter_var(env('BRAND_DIAGNOSIS_DOUBAO_ENABLED', false), FILTER_VALIDATE_BOOLEAN),

@@ -16,9 +16,12 @@ class ProcessBrandDiagnosisJob implements ShouldQueue
 
     public int $tries = 1;
 
-    public int $timeout = 600;
+    public int $timeout = 1200;
 
-    public function __construct(public readonly int $runId) {}
+    public function __construct(public readonly int $runId)
+    {
+        $this->timeout = max(600, (int) config('brand_diagnosis.job_timeout', 1200));
+    }
 
     /**
      * @return array<int,string>
@@ -188,6 +191,29 @@ class ProcessBrandDiagnosisJob implements ShouldQueue
         ]);
     }
 
+    public function failed(?Throwable $exception): void
+    {
+        $run = BrandDiagnosisRun::query()
+            ->withoutGlobalScope('current_site')
+            ->whereKey($this->runId)
+            ->first();
+
+        if (! $run) {
+            return;
+        }
+
+        $message = $exception?->getMessage();
+        if (! is_string($message) || trim($message) === '') {
+            $message = $exception ? class_basename($exception) : '品牌诊断任务执行失败';
+        }
+
+        $run->update([
+            'status' => 'failed',
+            'error_message' => mb_strimwidth($message, 0, 1000, '...', 'UTF-8'),
+            'completed_at' => now(),
+        ]);
+    }
+
     private function domainFromUrl(string $url): string
     {
         return (string) (parse_url($url, PHP_URL_HOST) ?: '');
@@ -199,15 +225,20 @@ class ProcessBrandDiagnosisJob implements ShouldQueue
     private function sourceEvidenceText(array $sources): string
     {
         return collect($sources)
-            ->flatMap(static function (array $source): array {
-                return [
+            ->map(static function (array $source): string {
+                $text = collect([
                     (string) ($source['title'] ?? ''),
-                    (string) ($source['url'] ?? ''),
-                    json_encode((array) ($source['meta'] ?? []), JSON_UNESCAPED_UNICODE) ?: '',
-                ];
+                    (string) data_get($source, 'meta.summary', ''),
+                    (string) data_get($source, 'meta.snippet', ''),
+                    (string) data_get($source, 'meta.content', ''),
+                ])
+                    ->filter(static fn (string $value): bool => trim($value) !== '')
+                    ->implode(' ');
+
+                return trim((string) preg_replace('/\s+/u', ' ', $text));
             })
             ->filter(static fn (string $value): bool => trim($value) !== '')
-            ->implode("\n");
+            ->implode(BrandDiagnosisMetricsCalculator::SOURCE_UNIT_SEPARATOR);
     }
 
     /**

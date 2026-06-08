@@ -7,6 +7,8 @@ use Illuminate\Support\Collection;
 
 class BrandDiagnosisMetricsCalculator
 {
+    public const SOURCE_UNIT_SEPARATOR = "\n---BRAND_DIAGNOSIS_SOURCE---\n";
+
     public function classifySentiment(string $answer): string
     {
         $negativeWords = ['风险', '不足', '负面', '投诉', '差评', '问题', '不推荐', '谨慎'];
@@ -69,7 +71,7 @@ class BrandDiagnosisMetricsCalculator
         $before = mb_substr($answer, 0, $position, 'UTF-8');
         $rankMarkers = preg_match_all('/(?:^|\D)([1-9][0-9]?)[\.\、\)]/u', $before, $matches);
 
-        return $rankMarkers > 0 ? max(1, (int) end($matches[1])) : 1;
+        return $rankMarkers > 0 ? max(1, (int) end($matches[1])) : 0;
     }
 
     /**
@@ -79,6 +81,7 @@ class BrandDiagnosisMetricsCalculator
     public function normalizeBrandMentions(array $brandMentions, string $answer, string $targetBrandName, string $sourceEvidence = '', string $question = ''): array
     {
         $normalized = [];
+        $fallbackAnswer = $this->answerWithoutQuestionEcho($answer, $question);
 
         foreach ($brandMentions as $mention) {
             if (! is_array($mention)) {
@@ -92,16 +95,21 @@ class BrandDiagnosisMetricsCalculator
             }
             $evidence = trim((string) ($mention['evidence'] ?? ''));
             $isTargetBrand = $this->isSameBrand($brandName, $targetBrandName);
-            if ($isTargetBrand && ! $this->hasValidTargetEvidence($answer, $sourceEvidence, $brandName, $targetBrandName, $evidence)) {
+            if ($isTargetBrand && ! $this->hasValidTargetEvidence($fallbackAnswer, $sourceEvidence, $brandName, $targetBrandName, $evidence)) {
                 continue;
             }
 
-            $mentionCount = max(1, (int) ($mention['mention_count'] ?? 1));
-            $mentionRank = max(0, (int) ($mention['mention_rank'] ?? 0));
+            $mentionCount = $this->validatedMentionCount($fallbackAnswer, $sourceEvidence, $brandName, $isTargetBrand);
+            if ($mentionCount <= 0) {
+                continue;
+            }
+            $answerRank = $this->mentionRank($fallbackAnswer, $brandName);
+            $reportedRank = max(0, (int) ($mention['mention_rank'] ?? 0));
+            $mentionRank = $answerRank > 0 ? $answerRank : $reportedRank;
             $sentiment = $this->normalizeSentiment((string) ($mention['sentiment'] ?? 'neutral'));
 
             if (isset($normalized[$brandKey])) {
-                $normalized[$brandKey]['mention_count'] += $mentionCount;
+                $normalized[$brandKey]['mention_count'] = max((int) $normalized[$brandKey]['mention_count'], $mentionCount);
                 if ($mentionRank > 0) {
                     $previousRank = (int) $normalized[$brandKey]['mention_rank'];
                     $normalized[$brandKey]['mention_rank'] = $previousRank > 0 ? min($previousRank, $mentionRank) : $mentionRank;
@@ -125,11 +133,10 @@ class BrandDiagnosisMetricsCalculator
         }
 
         $targetKey = $this->normalizeBrandName($targetBrandName);
-        $fallbackAnswer = $this->answerWithoutQuestionEcho($answer, $question);
-        $targetMentionCount = $this->mentionCount($fallbackAnswer, $targetBrandName);
+        $targetMentionCount = $this->validatedMentionCount($fallbackAnswer, $sourceEvidence, $targetBrandName, true);
         if ($targetKey !== '' && $targetMentionCount > 0) {
             if (isset($normalized[$targetKey])) {
-                $normalized[$targetKey]['mention_count'] = max((int) $normalized[$targetKey]['mention_count'], $targetMentionCount);
+                $normalized[$targetKey]['mention_count'] = $targetMentionCount;
                 if ((int) $normalized[$targetKey]['mention_rank'] <= 0) {
                     $normalized[$targetKey]['mention_rank'] = $this->mentionRank($fallbackAnswer, $targetBrandName);
                 }
@@ -266,10 +273,73 @@ class BrandDiagnosisMetricsCalculator
             }
         }
 
-        $haystack = $answer."\n".$sourceEvidence."\n".$evidence;
+        $haystack = $answer."\n".$sourceEvidence;
         $aliases = array_values(array_unique(array_merge($this->brandAliases($targetBrandName), $this->brandAliases($brandName))));
         foreach ($aliases as $alias) {
             if (mb_stripos($haystack, $alias, 0, 'UTF-8') !== false) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function validatedMentionCount(string $answer, string $sourceEvidence, string $brandName, bool $isTargetBrand): int
+    {
+        $answerMentioned = $this->mentionCount($answer, $brandName) > 0;
+        if ($isTargetBrand && $answerMentioned && $this->onlyNegatedMentions($answer, $brandName)) {
+            $answerMentioned = false;
+        }
+
+        $sourceCount = $this->sourceMentionUnitCount($sourceEvidence, $brandName);
+
+        return ($answerMentioned ? 1 : 0) + $sourceCount;
+    }
+
+    private function sourceMentionUnitCount(string $evidence, string $brandName): int
+    {
+        $units = str_contains($evidence, self::SOURCE_UNIT_SEPARATOR)
+            ? explode(self::SOURCE_UNIT_SEPARATOR, $evidence)
+            : (preg_split('/\R/u', $evidence) ?: []);
+
+        return collect($units)
+            ->map(static fn (string $unit): string => trim((string) preg_replace('/\s+/u', ' ', $unit)))
+            ->filter(static fn (string $unit): bool => $unit !== '')
+            ->unique(static fn (string $unit): string => mb_strtolower($unit, 'UTF-8'))
+            ->filter(fn (string $unit): bool => $this->mentionCount($unit, $brandName) > 0)
+            ->count();
+    }
+
+    private function onlyNegatedMentions(string $answer, string $brandName): bool
+    {
+        $aliases = collect($this->brandAliases($brandName))
+            ->sortByDesc(static fn (string $alias): int => mb_strlen($alias, 'UTF-8'))
+            ->values();
+        if ($aliases->isEmpty()) {
+            return false;
+        }
+
+        $found = false;
+        foreach ($aliases as $alias) {
+            $offset = 0;
+            while (($position = mb_stripos($answer, $alias, $offset, 'UTF-8')) !== false) {
+                $found = true;
+                $contextStart = max(0, $position - 24);
+                $context = mb_substr($answer, $contextStart, mb_strlen($alias, 'UTF-8') + 96, 'UTF-8');
+                if (! $this->isNegatedContext($context)) {
+                    return false;
+                }
+                $offset = $position + max(1, mb_strlen($alias, 'UTF-8'));
+            }
+        }
+
+        return $found;
+    }
+
+    private function isNegatedContext(string $context): bool
+    {
+        foreach (['未检索到', '没有检索到', '未发现', '没有发现', '未找到', '没有找到', '暂无', '无法确认', '无法核实', '资料较少', '公开资料较少', '未提到', '没有提到', '未被提及', '没有被提及', '未能确认', '暂未被推荐', '未被推荐', '不在推荐', '未收录为推荐', '暂未收录', '暂未出现'] as $word) {
+            if (mb_stripos($context, $word, 0, 'UTF-8') !== false) {
                 return true;
             }
         }

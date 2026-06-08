@@ -66,7 +66,7 @@
                 <div class="min-w-0 flex-1">
                     <label id="brand-diagnosis-form-title" for="brand-name" class="mb-2 block text-sm font-semibold text-gray-900">品牌名称</label>
                     <div class="flex flex-col gap-3 sm:flex-row">
-                        <input id="brand-name" name="brand_name" type="text" value="{{ old('brand_name', '策影GEO') }}" class="min-w-0 flex-1 rounded-md border border-slate-200 bg-white text-sm" aria-label="品牌名称">
+                        <input id="brand-name" name="brand_name" type="text" value="{{ old('brand_name') }}" class="min-w-0 flex-1 rounded-md border border-slate-200 bg-white text-sm" aria-label="品牌名称">
                         <button type="submit" class="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md bg-orange-600 px-5 text-sm font-semibold text-white hover:bg-orange-700">
                             <i data-lucide="search" class="h-4 w-4"></i>
                             搜索一下
@@ -75,7 +75,7 @@
                     @error('brand_name')
                         <p class="mt-2 text-xs font-medium text-red-600">{{ $message }}</p>
                     @enderror
-                    <p class="mt-2 text-xs text-gray-500">选择模型和检索深度后，可生成品牌提及率、提及次数、排名和引用来源报告。</p>
+                    <p class="mt-2 text-xs text-gray-500">选择模型后，可生成品牌提及率、提及次数、排名和引用来源报告。</p>
                 </div>
                 <div class="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:w-[520px]">
                     @foreach ($models as $model)
@@ -171,15 +171,17 @@
                             $recordQuestions = $record['questions'] ?? [];
                             $recordSources = $record['sources'] ?? [];
                             $recordConversations = $record['conversations'] ?? [];
+                            $recordPlatformOptions = $record['platform_options'] ?? [['value' => 'all', 'label' => '全部平台']];
+                            $recordPlatformData = $record['platform_data'] ?? [];
                             $recordMentionRateRanking = $record['rankings']['mention_rate'] ?? [];
                             $recordMentionCountRanking = $record['rankings']['mention_count'] ?? [];
                             $recordAverageRankings = $record['rankings']['average_rank'] ?? [];
-                            $recordMentionRateRows = array_slice(array_values(array_filter($recordMentionRateRanking, static fn ($row) => empty($row['is_target_brand']))), 0, 9);
-                            $recordMentionCountRows = array_slice(array_values(array_filter($recordMentionCountRanking, static fn ($row) => empty($row['is_target_brand']))), 0, 9);
-                            $recordAverageRankRows = array_slice(array_values(array_filter($recordAverageRankings, static fn ($row) => empty($row['is_target_brand']))), 0, 9);
-                            $recordMentionRateTarget = $recordMentionRateRanking[count($recordMentionRateRanking) - 1] ?? ['brand' => $record['brand'], 'rate' => (int) $record['metrics']['mention_rate']];
-                            $recordMentionCountTarget = $recordMentionCountRanking[count($recordMentionCountRanking) - 1] ?? ['brand' => $record['brand'], 'count' => (int) $record['metrics']['mention_count']];
-                            $recordAverageRankTarget = $recordAverageRankings[count($recordAverageRankings) - 1] ?? ['brand' => $record['brand'], 'rate' => (int) $record['metrics']['mention_rate'], 'rank' => $record['metrics']['average_rank'].'名'];
+                            $recordMentionRateRows = array_slice(array_values(array_filter($recordMentionRateRanking, static fn ($row) => empty($row['is_target_brand']))), 0, 10);
+                            $recordMentionCountRows = array_slice(array_values(array_filter($recordMentionCountRanking, static fn ($row) => empty($row['is_target_brand']))), 0, 10);
+                            $recordAverageRankRows = array_slice(array_values(array_filter($recordAverageRankings, static fn ($row) => empty($row['is_target_brand']))), 0, 10);
+                            $recordMentionRateTarget = $recordMentionRateRanking[count($recordMentionRateRanking) - 1] ?? ['brand' => $record['brand'], 'rate' => (int) $record['metrics']['mention_rate'], 'display_rank' => '99+'];
+                            $recordMentionCountTarget = $recordMentionCountRanking[count($recordMentionCountRanking) - 1] ?? ['brand' => $record['brand'], 'count' => (int) $record['metrics']['mention_count'], 'display_rank' => '99+'];
+                            $recordAverageRankTarget = $recordAverageRankings[count($recordAverageRankings) - 1] ?? ['brand' => $record['brand'], 'rate' => (int) $record['metrics']['mention_rate'], 'rank' => $record['metrics']['average_rank'].'名', 'display_rank' => '99+'];
                             $recordMaxRate = max([1, ...array_map(static fn ($row) => (int) $row['rate'], $recordMentionRateRows)]);
                             $recordMaxCount = max([1, ...array_map(static fn ($row) => (int) $row['count'], $recordMentionCountRows)]);
                             $recordMetricCards = [
@@ -190,7 +192,8 @@
                                 ['label' => '正面/中性情感倾向', 'value' => $record['metrics']['sentiment_rate'], 'suffix' => '%', 'value_class' => 'text-gray-900'],
                             ];
                         @endphp
-                        <article class="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm" data-diagnosis-record>
+                        <article class="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm" data-diagnosis-record data-active-platform="all">
+                            <script type="application/json" data-record-platform-data>@json($recordPlatformData)</script>
                             <div class="grid gap-4 p-4 lg:grid-cols-[210px_1fr_132px] lg:items-center">
                                 <div class="flex min-w-0 items-center gap-3">
                                     <span class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-orange-600 text-xs font-bold text-white">{{ mb_substr($record['brand'], 0, 1) }}</span>
@@ -207,7 +210,7 @@
                                 <div class="grid grid-cols-2 gap-3 md:grid-cols-5">
                                     @foreach ($recordMetricCards as $metricCard)
                                         <div class="rounded-lg border border-slate-200 bg-slate-50 p-3 text-center">
-                                            <div class="{{ $metricCard['value_class'] }} text-xl font-bold">{{ $metricCard['value'] }}{{ $metricCard['suffix'] }}</div>
+                                            <div class="{{ $metricCard['value_class'] }} text-xl font-bold" data-metric-card="{{ $loop->index }}">{{ $metricCard['value'] }}{{ $metricCard['suffix'] }}</div>
                                             <div class="mt-1 text-xs text-gray-500">{{ $metricCard['label'] }}</div>
                                         </div>
                                     @endforeach
@@ -247,23 +250,21 @@
                 <div class="mt-6">
                     <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <h2 class="text-lg font-semibold text-gray-900">品牌表现</h2>
-                        <select class="h-10 w-full sm:w-44" aria-label="平台筛选">
-                            <option>全部平台</option>
-                            <option>豆包</option>
-                            <option>千问</option>
-                            <option>文心一言</option>
-                            <option>DeepSeek</option>
+                        <select class="h-10 w-full sm:w-44" aria-label="平台筛选" data-platform-filter>
+                            @foreach ($recordPlatformOptions as $option)
+                                <option value="{{ $option['value'] }}">{{ $option['label'] }}</option>
+                            @endforeach
                         </select>
                     </div>
 
                     <div class="grid grid-cols-1 gap-5 xl:grid-cols-3">
-                        <div class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                        <div class="flex min-h-[420px] flex-col rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
                             <h3 class="mb-4 text-base font-semibold text-gray-900">品牌提及率</h3>
-                            <div class="space-y-3">
+                            <div class="space-y-3" data-ranking-list="mention_rate">
                                 @foreach ($recordMentionRateRows as $index => $row)
                                     <div class="grid grid-cols-[24px_88px_1fr_40px] items-center gap-2 text-sm">
                                         <span class="text-xs text-gray-500">{{ $index + 1 }}</span>
-                                        <span class="truncate font-medium text-gray-700">{{ $row['brand'] }}</span>
+                                        <span class="truncate font-medium text-gray-700 transition-colors hover:text-orange-700" data-ranking-brand title="{{ $row['brand'] }}">{{ $row['brand'] }}</span>
                                         <span class="h-2 rounded-full bg-slate-100">
                                             @php($rateWidth = (int) round(((int) $row['rate'] / $recordMaxRate) * 100))
                                             <span class="block h-2 rounded-full bg-blue-600 w-[{{ max(4, $rateWidth) }}%]"></span>
@@ -272,19 +273,20 @@
                                     </div>
                                 @endforeach
                             </div>
-                            <div class="mt-4 flex items-center gap-2 rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700">
-                                <span class="rounded bg-orange-600 px-1.5 py-0.5 text-white">1</span>
-                                {{ $recordMentionRateTarget['brand'] }} {{ $recordMentionRateTarget['rate'] }}%
+                            <div class="mt-auto flex items-center gap-2 rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700" data-ranking-target="mention_rate" title="{{ $recordMentionRateTarget['brand'] ?? $record['brand'] }}">
+                                <span class="rounded bg-orange-600 px-1.5 py-0.5 text-white">{{ $recordMentionRateTarget['display_rank'] ?? '99+' }}</span>
+                                <span class="truncate transition-colors hover:text-orange-800" data-ranking-brand title="{{ $recordMentionRateTarget['brand'] ?? $record['brand'] }}">{{ $recordMentionRateTarget['brand'] }}</span>
+                                <span class="shrink-0">{{ $recordMentionRateTarget['rate'] }}%</span>
                             </div>
                         </div>
 
-                        <div class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                        <div class="flex min-h-[420px] flex-col rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
                             <h3 class="mb-4 text-base font-semibold text-gray-900">品牌提及次数</h3>
-                            <div class="space-y-3">
+                            <div class="space-y-3" data-ranking-list="mention_count">
                                 @foreach ($recordMentionCountRows as $index => $row)
                                     <div class="grid grid-cols-[24px_88px_1fr_32px] items-center gap-2 text-sm">
                                         <span class="text-xs text-gray-500">{{ $index + 1 }}</span>
-                                        <span class="truncate font-medium text-gray-700">{{ $row['brand'] }}</span>
+                                        <span class="truncate font-medium text-gray-700 transition-colors hover:text-orange-700" data-ranking-brand title="{{ $row['brand'] }}">{{ $row['brand'] }}</span>
                                         <span class="h-2 rounded-full bg-slate-100">
                                             @php($countWidth = (int) round(((int) $row['count'] / $recordMaxCount) * 100))
                                             <span class="block h-2 rounded-full bg-blue-600 w-[{{ max(4, $countWidth) }}%]"></span>
@@ -293,13 +295,14 @@
                                     </div>
                                 @endforeach
                             </div>
-                            <div class="mt-4 flex items-center gap-2 rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700">
-                                <span class="rounded bg-orange-600 px-1.5 py-0.5 text-white">1</span>
-                                {{ $recordMentionCountTarget['brand'] }} {{ $recordMentionCountTarget['count'] }}
+                            <div class="mt-auto flex items-center gap-2 rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700" data-ranking-target="mention_count" title="{{ $recordMentionCountTarget['brand'] ?? $record['brand'] }}">
+                                <span class="rounded bg-orange-600 px-1.5 py-0.5 text-white">{{ $recordMentionCountTarget['display_rank'] ?? '99+' }}</span>
+                                <span class="truncate transition-colors hover:text-orange-800" data-ranking-brand title="{{ $recordMentionCountTarget['brand'] ?? $record['brand'] }}">{{ $recordMentionCountTarget['brand'] }}</span>
+                                <span class="shrink-0">{{ $recordMentionCountTarget['count'] }}</span>
                             </div>
                         </div>
 
-                        <div class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                        <div class="flex min-h-[420px] flex-col rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
                             <h3 class="mb-4 text-base font-semibold text-gray-900">平均提及排名</h3>
                             <div class="overflow-x-auto">
                                 <table class="min-w-full text-sm">
@@ -310,11 +313,11 @@
                                             <th class="px-3 py-2 text-right font-semibold">平均排名</th>
                                         </tr>
                                     </thead>
-                                    <tbody class="divide-y divide-slate-100">
+                                    <tbody class="divide-y divide-slate-100" data-ranking-list="average_rank">
                                         @foreach ($recordAverageRankRows as $index => $row)
                                             <tr>
                                                 <td class="px-3 py-2">
-                                                    <span class="mr-2 text-xs text-gray-500">{{ $index + 1 }}</span>{{ $row['brand'] }}
+                                                    <span class="mr-2 text-xs text-gray-500">{{ $index + 1 }}</span><span class="font-medium transition-colors hover:text-orange-700" data-ranking-brand title="{{ $row['brand'] }}">{{ $row['brand'] }}</span>
                                                 </td>
                                                 <td class="px-3 py-2 text-right font-medium text-gray-700">{{ $row['rate'] }}%</td>
                                                 <td class="px-3 py-2 text-right font-medium text-gray-700">{{ $row['rank'] }}</td>
@@ -323,26 +326,27 @@
                                     </tbody>
                                 </table>
                             </div>
-                            <div class="mt-4 flex items-center gap-2 rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700">
-                                <span class="rounded bg-orange-600 px-1.5 py-0.5 text-white">1</span>
-                                {{ $recordAverageRankTarget['brand'] }} {{ $recordAverageRankTarget['rank'] }}
+                            <div class="mt-auto flex items-center gap-2 rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700" data-ranking-target="average_rank" title="{{ $recordAverageRankTarget['brand'] ?? $record['brand'] }}">
+                                <span class="rounded bg-orange-600 px-1.5 py-0.5 text-white">{{ $recordAverageRankTarget['display_rank'] ?? '99+' }}</span>
+                                <span class="truncate transition-colors hover:text-orange-800" data-ranking-brand title="{{ $recordAverageRankTarget['brand'] ?? $record['brand'] }}">{{ $recordAverageRankTarget['brand'] }}</span>
+                                <span class="shrink-0">{{ $recordAverageRankTarget['rank'] }}</span>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 <div class="mt-6 grid grid-cols-1 items-stretch gap-5 xl:grid-cols-2">
-                    <div class="flex h-full flex-col rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                    <div class="flex h-full flex-col rounded-lg border border-slate-200 bg-white p-4 shadow-sm xl:h-[640px]">
                         <div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                             <h3 class="text-base font-semibold text-gray-900">引用来源</h3>
                             @if (count($recordSources) > 0)
-                                <span class="text-xs text-gray-500">共 {{ count($recordSources) }} 条</span>
+                                <span class="text-xs text-gray-500" data-source-count>共 {{ count($recordSources) }} 条</span>
                             @endif
                         </div>
                         <div class="flex min-h-0 flex-1 flex-col" data-source-pager data-min-page-size="{{ $sourceMinPageSize }}">
                             <div class="flex-1 space-y-3" data-source-list>
                                 @forelse ($recordSources as $sourceIndex => $source)
-                                    <div @class(['hidden' => $sourceIndex >= $sourceMinPageSize, 'flex gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3']) data-source-item>
+                                    <div @class(['hidden' => $sourceIndex >= $sourceMinPageSize, 'flex gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3']) data-source-item data-platform-key="{{ $source['platform_key'] ?? '' }}">
                                         <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-white text-xs font-bold text-orange-700 shadow-sm">{{ $source['icon'] }}</div>
                                         <div class="min-w-0 flex-1">
                                             <div class="mb-1 flex flex-wrap items-center gap-2">
@@ -378,32 +382,54 @@
                         </div>
                     </div>
 
-                    <div class="flex h-full flex-col rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                    <div class="flex h-full flex-col rounded-lg border border-slate-200 bg-white p-4 shadow-sm xl:h-[640px]">
                         <h3 class="mb-4 text-base font-semibold text-gray-900">AI 对话记录</h3>
-                        <div class="flex-1 space-y-3">
+                        <div class="flex min-h-0 flex-1 flex-col" data-conversation-pager data-min-page-size="{{ $sourceMinPageSize }}">
+                            <div class="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1" data-conversation-list>
                             @forelse ($recordConversations as $conversation)
-                                <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                <div @class(['hidden' => $loop->index >= $sourceMinPageSize, 'rounded-lg border border-slate-200 bg-slate-50 p-3']) data-conversation-item data-platform-key="{{ $conversation['platform_key'] ?? '' }}">
+                                    <script type="application/json" data-conversation-detail>@json($conversation)</script>
                                     <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                         <div class="min-w-0">
-                                            <div class="truncate text-sm font-semibold text-gray-900">{{ $conversation['question'] }}</div>
-                                            <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                                            <div class="flex flex-wrap items-center gap-2">
+                                                <span class="rounded bg-orange-50 px-2 py-0.5 text-xs font-medium text-orange-700">{{ $conversation['platform'] ?? 'AI' }}</span>
+                                                <div class="truncate text-sm font-semibold text-gray-900">{{ $conversation['question'] }}</div>
+                                            </div>
+                                            <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500" data-visible-brand-list title="{{ implode('、', $conversation['brands'] ?? []) }}">
                                                 <span>提及品牌</span>
-                                                @forelse ($conversation['brands'] as $brand)
+                                                @forelse (($conversation['visible_brands'] ?? array_slice($conversation['brands'] ?? [], 0, 4)) as $brand)
                                                     <span class="rounded bg-blue-50 px-2 py-1 font-medium text-blue-700">{{ $brand }}</span>
                                                 @empty
                                                     <span class="rounded bg-slate-100 px-2 py-1 font-medium text-slate-500">未提及</span>
                                                 @endforelse
+                                                @if (($conversation['hidden_brand_count'] ?? max(0, count($conversation['brands'] ?? []) - 4)) > 0)
+                                                    <span class="rounded bg-slate-100 px-2 py-1 font-medium text-slate-500">...</span>
+                                                @endif
                                             </div>
                                             @if (! empty($conversation['answer']))
                                                 <p class="mt-2 line-clamp-2 text-xs leading-5 text-gray-600">{{ $conversation['answer'] }}</p>
                                             @endif
                                         </div>
-                                        <button type="button" class="inline-flex h-9 shrink-0 items-center justify-center rounded-md bg-orange-50 px-3 text-xs font-semibold text-orange-700">AI对话详情</button>
+                                        <button type="button" data-conversation-detail-open class="inline-flex h-9 shrink-0 items-center justify-center rounded-md bg-orange-50 px-3 text-xs font-semibold text-orange-700 hover:bg-orange-100">AI对话详情</button>
                                     </div>
                                 </div>
                             @empty
                                 <div class="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-gray-500">暂无 AI 对话记录，等待诊断完成。</div>
                             @endforelse
+                            </div>
+                            @if (count($recordConversations) > $sourceMinPageSize)
+                                <div class="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3" data-conversation-pagination>
+                                    <button type="button" data-conversation-prev class="inline-flex h-8 items-center gap-1 rounded-md border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45">
+                                        <i data-lucide="chevron-left" class="h-3.5 w-3.5"></i>
+                                        上一页
+                                    </button>
+                                    <span class="text-xs text-gray-500" data-conversation-page-label>第 1 页</span>
+                                    <button type="button" data-conversation-next class="inline-flex h-8 items-center gap-1 rounded-md border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45">
+                                        下一页
+                                        <i data-lucide="chevron-right" class="h-3.5 w-3.5"></i>
+                                    </button>
+                                </div>
+                            @endif
                         </div>
                     </div>
                 </div>
@@ -453,6 +479,39 @@
                             <i data-lucide="download" class="h-4 w-4 shrink-0 text-orange-600"></i>
                         </button>
                     @endforeach
+                </div>
+            </div>
+        </div>
+        <div
+            data-conversation-modal
+            class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/45 px-4 py-6"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="conversation-modal-title"
+        >
+            <div class="flex max-h-[86vh] w-full max-w-3xl flex-col rounded-lg bg-white shadow-xl">
+                <div class="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+                    <div class="min-w-0">
+                        <div class="mb-2 flex flex-wrap items-center gap-2">
+                            <span class="rounded bg-orange-50 px-2 py-0.5 text-xs font-medium text-orange-700" data-conversation-modal-platform>AI</span>
+                            <span class="text-xs text-gray-500" data-conversation-modal-status></span>
+                        </div>
+                        <h2 id="conversation-modal-title" class="text-base font-semibold text-gray-900">AI对话详情</h2>
+                        <p class="mt-1 text-sm text-gray-600" data-conversation-modal-question></p>
+                    </div>
+                    <button type="button" data-conversation-modal-close class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-slate-100" aria-label="关闭">
+                        <i data-lucide="x" class="h-4 w-4"></i>
+                    </button>
+                </div>
+                <div class="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+                    <section>
+                        <h3 class="mb-2 text-sm font-semibold text-gray-900">对话详情</h3>
+                        <div class="whitespace-pre-wrap rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-gray-700" data-conversation-modal-answer></div>
+                    </section>
+                    <section class="mt-5">
+                        <h3 class="mb-2 text-sm font-semibold text-gray-900">引用记录</h3>
+                        <div class="space-y-2" data-conversation-modal-sources></div>
+                    </section>
                 </div>
             </div>
         </div>
@@ -544,9 +603,279 @@
                 });
             });
 
+            const conversationModal = document.querySelector('[data-conversation-modal]');
+            const conversationPlatform = conversationModal?.querySelector('[data-conversation-modal-platform]');
+            const conversationStatus = conversationModal?.querySelector('[data-conversation-modal-status]');
+            const conversationQuestion = conversationModal?.querySelector('[data-conversation-modal-question]');
+            const conversationAnswer = conversationModal?.querySelector('[data-conversation-modal-answer]');
+            const conversationSources = conversationModal?.querySelector('[data-conversation-modal-sources]');
+
+            const closeConversationModal = () => {
+                conversationModal?.classList.add('hidden');
+                conversationModal?.classList.remove('flex');
+            };
+
+            const sourceLink = (source) => {
+                const row = document.createElement('div');
+                row.className = 'rounded-lg border border-slate-200 bg-white px-3 py-2';
+
+                const title = document.createElement(source?.url ? 'a' : 'div');
+                title.className = 'block text-sm font-semibold text-gray-900 hover:text-orange-700';
+                title.textContent = source?.title || source?.url || '未命名引用';
+                if (source?.url) {
+                    title.href = source.url;
+                    title.target = '_blank';
+                    title.rel = 'noopener noreferrer';
+                }
+
+                const meta = document.createElement('div');
+                meta.className = 'mt-1 text-xs text-gray-500';
+                meta.textContent = [source?.domain, source?.type].filter(Boolean).join(' · ') || '网页来源';
+
+                row.append(title, meta);
+                return row;
+            };
+
+            const openConversationModal = (conversation) => {
+                if (!conversationModal) return;
+                if (conversationPlatform) conversationPlatform.textContent = conversation?.platform || 'AI';
+                if (conversationStatus) conversationStatus.textContent = conversation?.status || '';
+                if (conversationQuestion) conversationQuestion.textContent = conversation?.question || '';
+                if (conversationAnswer) conversationAnswer.textContent = conversation?.answer || '暂无回答内容。';
+                if (conversationSources) {
+                    conversationSources.innerHTML = '';
+                    const sources = Array.isArray(conversation?.sources) ? conversation.sources : [];
+                    if (sources.length === 0) {
+                        const empty = document.createElement('div');
+                        empty.className = 'rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-gray-500';
+                        empty.textContent = '暂无引用记录。';
+                        conversationSources.appendChild(empty);
+                    } else {
+                        sources.forEach((source) => conversationSources.appendChild(sourceLink(source)));
+                    }
+                }
+                conversationModal.classList.remove('hidden');
+                conversationModal.classList.add('flex');
+            };
+
+            document.querySelectorAll('[data-conversation-detail-open]').forEach((button) => {
+                button.addEventListener('click', () => {
+                    const item = button.closest('[data-conversation-item]');
+                    const node = item?.querySelector('[data-conversation-detail]');
+                    if (!node) return;
+                    try {
+                        openConversationModal(JSON.parse(node.textContent || '{}'));
+                    } catch (error) {
+                        openConversationModal({});
+                    }
+                });
+            });
+
+            conversationModal?.querySelectorAll('[data-conversation-modal-close]').forEach((button) => {
+                button.addEventListener('click', closeConversationModal);
+            });
+
+            conversationModal?.addEventListener('click', (event) => {
+                if (event.target === conversationModal) {
+                    closeConversationModal();
+                }
+            });
+
+            const metricOrder = [
+                { key: 'score', suffix: '' },
+                { key: 'mention_rate', suffix: '%' },
+                { key: 'average_rank', suffix: '名' },
+                { key: 'mention_count', suffix: '次' },
+                { key: 'sentiment_rate', suffix: '%' },
+            ];
+            const widthClasses = ['w-0', 'w-1/12', 'w-2/12', 'w-3/12', 'w-4/12', 'w-5/12', 'w-6/12', 'w-7/12', 'w-8/12', 'w-9/12', 'w-10/12', 'w-11/12', 'w-full'];
+
+            const widthClass = (value, maxValue) => {
+                if (!value || !maxValue) return widthClasses[0];
+                const index = Math.max(1, Math.min(12, Math.ceil((Number(value) / Number(maxValue)) * 12)));
+                return widthClasses[index];
+            };
+
+            const readRecordPlatformData = (record) => {
+                if (record.platformDataCache) {
+                    return record.platformDataCache;
+                }
+                const node = record.querySelector('[data-record-platform-data]');
+                if (!node) return {};
+                try {
+                    record.platformDataCache = JSON.parse(node.textContent || '{}');
+                    return record.platformDataCache;
+                } catch (error) {
+                    return {};
+                }
+            };
+
+            const renderMetricCards = (record, metrics = {}) => {
+                record.querySelectorAll('[data-metric-card]').forEach((card, index) => {
+                    const item = metricOrder[index];
+                    if (!item) return;
+                    const value = metrics[item.key] ?? 0;
+                    card.textContent = `${value}${item.suffix}`;
+                });
+            };
+
+            const renderTarget = (container, row, suffix) => {
+                if (!container) return;
+                container.innerHTML = '';
+                container.title = row?.brand || '-';
+                const badge = document.createElement('span');
+                badge.className = 'rounded bg-orange-600 px-1.5 py-0.5 text-white';
+                badge.textContent = row?.display_rank || '99+';
+                container.appendChild(badge);
+                const brand = document.createElement('span');
+                brand.className = 'truncate transition-colors hover:text-orange-800';
+                brand.dataset.rankingBrand = '';
+                brand.title = row?.brand || '-';
+                brand.textContent = row?.brand || '-';
+                const value = document.createElement('span');
+                value.className = 'shrink-0';
+                value.textContent = `${row?.[suffix.key] ?? suffix.fallback}${suffix.text}`;
+                container.append(brand, value);
+            };
+
+            const renderMentionRanking = (record, key) => {
+                const data = readRecordPlatformData(record);
+                const payload = data[record.dataset.activePlatform || 'all'] || data.all || {};
+                const rows = payload.rankings?.[key] || [];
+                const list = record.querySelector(`[data-ranking-list="${key}"]`);
+                const target = rows.find((row) => row.is_target_brand) || rows[rows.length - 1] || {};
+                const nonTargetRows = rows.filter((row) => !row.is_target_brand).slice(0, 10);
+                const valueKey = key === 'mention_count' ? 'count' : 'rate';
+                const maxValue = Math.max(1, ...nonTargetRows.map((row) => Number(row[valueKey] || 0)));
+                if (!list) return;
+
+                list.innerHTML = '';
+                nonTargetRows.forEach((row, index) => {
+                    const item = document.createElement('div');
+                    item.className = key === 'mention_count'
+                        ? 'grid grid-cols-[24px_88px_1fr_32px] items-center gap-2 text-sm'
+                        : 'grid grid-cols-[24px_88px_1fr_40px] items-center gap-2 text-sm';
+
+                    const order = document.createElement('span');
+                    order.className = 'text-xs text-gray-500';
+                    order.textContent = String(row.display_rank || index + 1);
+                    const brand = document.createElement('span');
+                    brand.className = 'truncate font-medium text-gray-700 transition-colors hover:text-orange-700';
+                    brand.dataset.rankingBrand = '';
+                    brand.title = row.brand || '-';
+                    brand.textContent = row.brand || '-';
+                    const bar = document.createElement('span');
+                    bar.className = 'h-2 rounded-full bg-slate-100';
+                    const fill = document.createElement('span');
+                    fill.className = `block h-2 rounded-full bg-blue-600 ${widthClass(row[valueKey], maxValue)}`;
+                    bar.appendChild(fill);
+                    const value = document.createElement('span');
+                    value.className = 'text-right text-xs font-semibold text-blue-700';
+                    value.textContent = key === 'mention_count' ? String(row.count || 0) : `${row.rate || 0}%`;
+
+                    item.append(order, brand, bar, value);
+                    list.appendChild(item);
+                });
+
+                if (nonTargetRows.length === 0) {
+                    const empty = document.createElement('div');
+                    empty.className = 'rounded-md border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-center text-xs text-gray-500';
+                    empty.textContent = '暂无竞品提及数据';
+                    list.appendChild(empty);
+                }
+
+                renderTarget(
+                    record.querySelector(`[data-ranking-target="${key}"]`),
+                    target,
+                    key === 'mention_count' ? { key: 'count', fallback: 0, text: '' } : { key: 'rate', fallback: 0, text: '%' }
+                );
+            };
+
+            const renderAverageRanking = (record) => {
+                const data = readRecordPlatformData(record);
+                const payload = data[record.dataset.activePlatform || 'all'] || data.all || {};
+                const rows = payload.rankings?.average_rank || [];
+                const list = record.querySelector('[data-ranking-list="average_rank"]');
+                const target = rows.find((row) => row.is_target_brand) || rows[rows.length - 1] || {};
+                const nonTargetRows = rows.filter((row) => !row.is_target_brand).slice(0, 10);
+                if (!list) return;
+
+                list.innerHTML = '';
+                nonTargetRows.forEach((row, index) => {
+                    const tr = document.createElement('tr');
+                    const brand = document.createElement('td');
+                    brand.className = 'px-3 py-2';
+                    const order = document.createElement('span');
+                    order.className = 'mr-2 text-xs text-gray-500';
+                    order.textContent = String(row.display_rank || index + 1);
+                    const brandName = document.createElement('span');
+                    brandName.className = 'font-medium transition-colors hover:text-orange-700';
+                    brandName.dataset.rankingBrand = '';
+                    brandName.title = row.brand || '-';
+                    brandName.textContent = row.brand || '-';
+                    brand.appendChild(order);
+                    brand.appendChild(brandName);
+                    const rate = document.createElement('td');
+                    rate.className = 'px-3 py-2 text-right font-medium text-gray-700';
+                    rate.textContent = `${row.rate || 0}%`;
+                    const rank = document.createElement('td');
+                    rank.className = 'px-3 py-2 text-right font-medium text-gray-700';
+                    rank.textContent = row.rank || '0';
+                    tr.append(brand, rate, rank);
+                    list.appendChild(tr);
+                });
+
+                if (nonTargetRows.length === 0) {
+                    const tr = document.createElement('tr');
+                    const td = document.createElement('td');
+                    td.className = 'px-3 py-6 text-center text-xs text-gray-500';
+                    td.colSpan = 3;
+                    td.textContent = '暂无竞品排名数据';
+                    tr.appendChild(td);
+                    list.appendChild(tr);
+                }
+
+                renderTarget(record.querySelector('[data-ranking-target="average_rank"]'), target, { key: 'rank', fallback: '0', text: '' });
+            };
+
+            const renderRecordPlatform = (record, platform) => {
+                const data = readRecordPlatformData(record);
+                const payload = data[platform] || data.all || {};
+                record.dataset.activePlatform = data[platform] ? platform : 'all';
+                renderMetricCards(record, payload.metrics || {});
+                renderMentionRanking(record, 'mention_rate');
+                renderMentionRanking(record, 'mention_count');
+                renderAverageRanking(record);
+
+                const activePlatform = record.dataset.activePlatform || 'all';
+                const sourceCount = record.querySelector('[data-source-count]');
+                const sourceItems = Array.from(record.querySelectorAll('[data-source-item]'));
+                const activeSourceCount = sourceItems.filter((item) => activePlatform === 'all' || item.dataset.platformKey === activePlatform).length;
+                if (sourceCount) {
+                    sourceCount.textContent = `共 ${activeSourceCount} 条`;
+                }
+                record.querySelectorAll('[data-source-pager]').forEach((pager) => {
+                    if (typeof pager.resetSourcePage === 'function') {
+                        pager.resetSourcePage();
+                        return;
+                    }
+                    pager.renderSourcePage?.();
+                });
+
+                record.querySelectorAll('[data-conversation-item]').forEach((item) => {
+                    item.classList.toggle('hidden', activePlatform !== 'all' && item.dataset.platformKey !== activePlatform);
+                });
+                record.querySelectorAll('[data-conversation-pager]').forEach((pager) => {
+                    if (typeof pager.resetConversationPage === 'function') {
+                        pager.resetConversationPage();
+                        return;
+                    }
+                    pager.renderConversationPage?.();
+                });
+            };
+
             document.querySelectorAll('[data-source-pager]').forEach((pager) => {
                 const items = Array.from(pager.querySelectorAll('[data-source-item]'));
-                const list = pager.querySelector('[data-source-list]');
                 const minPageSize = Math.max(1, Number(pager.dataset.minPageSize || 5));
                 const prevButton = pager.querySelector('[data-source-prev]');
                 const nextButton = pager.querySelector('[data-source-next]');
@@ -555,29 +884,17 @@
                 let totalPages = Math.max(1, Math.ceil(items.length / pageSize));
                 let currentPage = 1;
 
-                const calculatePageSize = () => {
-                    const firstVisibleItem = items.find((item) => !item.classList.contains('hidden')) || items[0];
-                    if (!firstVisibleItem || !list) {
-                        return minPageSize;
-                    }
-
-                    const itemHeight = firstVisibleItem.getBoundingClientRect().height || 1;
-                    const styles = window.getComputedStyle(list);
-                    const rowGap = Number.parseFloat(styles.rowGap || styles.gap || '0') || 0;
-                    const availableHeight = list.getBoundingClientRect().height || itemHeight * minPageSize;
-                    const fitted = Math.floor((availableHeight + rowGap) / (itemHeight + rowGap));
-
-                    return Math.max(minPageSize, fitted || minPageSize);
-                };
-
                 const renderPage = () => {
-                    pageSize = Math.min(items.length || minPageSize, calculatePageSize());
-                    totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+                    const activePlatform = pager.closest('[data-diagnosis-record]')?.dataset.activePlatform || 'all';
+                    const eligibleItems = items.filter((item) => activePlatform === 'all' || item.dataset.platformKey === activePlatform);
+                    pageSize = minPageSize;
+                    totalPages = Math.max(1, Math.ceil(eligibleItems.length / pageSize));
                     currentPage = Math.min(currentPage, totalPages);
 
                     const start = (currentPage - 1) * pageSize;
                     const end = start + pageSize;
-                    items.forEach((item, index) => {
+                    items.forEach((item) => item.classList.add('hidden'));
+                    eligibleItems.forEach((item, index) => {
                         item.classList.toggle('hidden', index < start || index >= end);
                     });
 
@@ -602,8 +919,73 @@
                     renderPage();
                 });
 
-                window.addEventListener('resize', renderPage);
+                pager.renderSourcePage = renderPage;
+                pager.resetSourcePage = () => {
+                    currentPage = 1;
+                    renderPage();
+                };
                 renderPage();
+            });
+
+            document.querySelectorAll('[data-conversation-pager]').forEach((pager) => {
+                const items = Array.from(pager.querySelectorAll('[data-conversation-item]'));
+                const minPageSize = Math.max(1, Number(pager.dataset.minPageSize || 5));
+                const prevButton = pager.querySelector('[data-conversation-prev]');
+                const nextButton = pager.querySelector('[data-conversation-next]');
+                const pageLabel = pager.querySelector('[data-conversation-page-label]');
+                let pageSize = minPageSize;
+                let totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+                let currentPage = 1;
+
+                const renderPage = () => {
+                    const activePlatform = pager.closest('[data-diagnosis-record]')?.dataset.activePlatform || 'all';
+                    const eligibleItems = items.filter((item) => activePlatform === 'all' || item.dataset.platformKey === activePlatform);
+                    pageSize = minPageSize;
+                    totalPages = Math.max(1, Math.ceil(eligibleItems.length / pageSize));
+                    currentPage = Math.min(currentPage, totalPages);
+
+                    const start = (currentPage - 1) * pageSize;
+                    const end = start + pageSize;
+                    items.forEach((item) => item.classList.add('hidden'));
+                    eligibleItems.forEach((item, index) => {
+                        item.classList.toggle('hidden', index < start || index >= end);
+                    });
+
+                    if (pageLabel) {
+                        pageLabel.textContent = `第 ${currentPage} / ${totalPages} 页`;
+                    }
+                    if (prevButton) {
+                        prevButton.disabled = currentPage <= 1;
+                    }
+                    if (nextButton) {
+                        nextButton.disabled = currentPage >= totalPages;
+                    }
+                };
+
+                prevButton?.addEventListener('click', () => {
+                    currentPage = Math.max(1, currentPage - 1);
+                    renderPage();
+                });
+
+                nextButton?.addEventListener('click', () => {
+                    currentPage = Math.min(totalPages, currentPage + 1);
+                    renderPage();
+                });
+
+                pager.renderConversationPage = renderPage;
+                pager.resetConversationPage = () => {
+                    currentPage = 1;
+                    renderPage();
+                };
+                renderPage();
+            });
+
+            document.querySelectorAll('[data-platform-filter]').forEach((select) => {
+                select.addEventListener('change', () => {
+                    const record = select.closest('[data-diagnosis-record]');
+                    if (!record) return;
+                    renderRecordPlatform(record, select.value || 'all');
+                });
             });
 
         });

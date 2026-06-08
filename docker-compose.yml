@@ -1,5 +1,9 @@
 name: geoflow-laravel
 
+x-app-dns: &app-dns
+  - ${DOCKER_DNS_1:-223.5.5.5}
+  - ${DOCKER_DNS_2:-119.29.29.29}
+
 services:
   postgres:
     image: ${PGVECTOR_IMAGE:-pgvector/pgvector:pg16}
@@ -38,6 +42,7 @@ services:
     working_dir: /var/www/html
     env_file:
       - ./.env
+    dns: *app-dns
     # 交给 entrypoint 执行自动初始化（生成 APP_KEY / migrate / seed）
     command: ["php", "artisan", "about"]
     environment:
@@ -64,6 +69,7 @@ services:
     working_dir: /var/www/html
     env_file:
       - ./.env
+    dns: *app-dns
     command: ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8080"]
     ports:
       - "${APP_PORT:-18080}:8080"
@@ -86,7 +92,8 @@ services:
     working_dir: /var/www/html
     env_file:
       - ./.env
-    command: ["php", "artisan", "queue:work", "redis", "--queue=geoflow,distribution,default", "--sleep=1", "--tries=1", "--timeout=600"]
+    dns: *app-dns
+    command: ["php", "artisan", "queue:work", "redis", "--queue=geoflow,distribution,default", "--sleep=1", "--tries=3", "--timeout=${QUEUE_WORKER_TIMEOUT:-1200}"]
     volumes:
       - ./:/var/www/html
     depends_on:
@@ -106,6 +113,7 @@ services:
     working_dir: /var/www/html
     env_file:
       - ./.env
+    dns: *app-dns
     command: ["php", "artisan", "schedule:work"]
     volumes:
       - ./:/var/www/html
@@ -126,6 +134,7 @@ services:
     working_dir: /var/www/html
     env_file:
       - ./.env
+    dns: *app-dns
     command: ["php", "artisan", "reverb:start", "--host=0.0.0.0", "--port=8080"]
     ports:
       - "${REVERB_EXPOSE_PORT:-18081}:8080"

@@ -74,7 +74,7 @@ return [
             'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
             'queue' => env('REDIS_QUEUE', 'default'),
             // 必须大于最长队列任务的 timeout（URL 智能采集最长 600 秒），否则 Redis 会提前释放保留导致重复领取与 claim 失败
-            'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 660),
+            'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 1500),
             'block_for' => null,
             'after_commit' => false,
         ],

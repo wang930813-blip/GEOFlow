@@ -31,6 +31,8 @@ class AdminBrandDiagnosisPageTest extends TestCase
             ->assertSee('品牌诊断/报告')
             ->assertSee('action="'.route('admin.brand-diagnosis.store').'"', false)
             ->assertSee('name="brand_name"', false)
+            ->assertSee('value=""', false)
+            ->assertDontSee('value="策影GEO"', false)
             ->assertSee('name="platforms[]"', false)
             ->assertSee('value="doubao"', false)
             ->assertSee('data-platform-checkbox', false)
@@ -216,8 +218,390 @@ class AdminBrandDiagnosisPageTest extends TestCase
             ->assertSee('引用来源 6')
             ->getContent();
 
-        $this->assertSame(6, substr_count($html, ' data-source-item>'));
+        $this->assertSame(6, substr_count($html, 'data-source-item data-platform-key='));
         $this->assertStringContainsString('hidden flex gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3" data-source-item', $html);
+    }
+
+    public function test_brand_diagnosis_sources_group_duplicate_same_platform_url_and_show_platform_label(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('brand_source_group_admin');
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => '策影GEO',
+            'platforms' => ['doubao'],
+            'status' => 'completed',
+            'total_questions' => 2,
+            'completed_questions' => 2,
+            'failed_questions' => 0,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+        ]);
+        $questionOne = $run->questions()->create([
+            'site_id' => (int) $site->id,
+            'question' => 'AI搜索优化服务怎么选？',
+            'question_type' => '选择',
+            'sort_order' => 1,
+            'status' => 'completed',
+        ]);
+        $questionTwo = $run->questions()->create([
+            'site_id' => (int) $site->id,
+            'question' => 'AI内容诊断工具有哪些？',
+            'question_type' => '对比',
+            'sort_order' => 2,
+            'status' => 'completed',
+        ]);
+
+        foreach ([$questionOne, $questionTwo] as $question) {
+            $result = $question->results()->create([
+                'site_id' => (int) $site->id,
+                'run_id' => (int) $run->id,
+                'platform' => 'doubao',
+                'answer' => '豆包回答。',
+                'brand_mentioned' => false,
+                'mention_count' => 0,
+                'mention_rank' => 0,
+                'sentiment' => 'neutral',
+                'status' => 'success',
+                'checked_at' => now(),
+            ]);
+            $result->sources()->create([
+                'site_id' => (int) $site->id,
+                'run_id' => (int) $run->id,
+                'question_id' => (int) $question->id,
+                'platform' => 'doubao',
+                'title' => '同一篇引用文章',
+                'url' => 'https://example.com/shared-source',
+                'domain' => 'example.com',
+                'source_type' => 'url_citation',
+            ]);
+        }
+
+        $html = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.brand-diagnosis.index'))
+            ->assertOk()
+            ->assertSee('共 1 条')
+            ->assertSee('引用AI问题：2　引用平台：豆包')
+            ->assertDontSee('引用平台：1')
+            ->getContent();
+
+        $this->assertSame(1, substr_count($html, 'data-source-item data-platform-key='));
+    }
+
+    public function test_brand_diagnosis_conversation_brand_tags_show_first_four_with_full_title(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('brand_conversation_tags_admin');
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => '策影GEO',
+            'platforms' => ['doubao'],
+            'status' => 'completed',
+            'total_questions' => 1,
+            'completed_questions' => 1,
+            'failed_questions' => 0,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+        ]);
+        $question = $run->questions()->create([
+            'site_id' => (int) $site->id,
+            'question' => 'AI搜索优化服务怎么选？',
+            'question_type' => '选择',
+            'sort_order' => 1,
+            'status' => 'completed',
+        ]);
+        $result = $question->results()->create([
+            'site_id' => (int) $site->id,
+            'run_id' => (int) $run->id,
+            'platform' => 'doubao',
+            'answer' => '回答中提到多个品牌。',
+            'brand_mentioned' => true,
+            'mention_count' => 1,
+            'mention_rank' => 1,
+            'sentiment' => 'positive',
+            'status' => 'success',
+            'checked_at' => now(),
+        ]);
+
+        foreach (['品牌A', '品牌B', '品牌C', '品牌D', '品牌E'] as $index => $brand) {
+            $result->brandMentions()->create([
+                'site_id' => (int) $site->id,
+                'run_id' => (int) $run->id,
+                'question_id' => (int) $question->id,
+                'platform' => 'doubao',
+                'brand_name' => $brand,
+                'mention_count' => 1,
+                'mention_rank' => $index + 1,
+                'sentiment' => 'neutral',
+                'source_count' => 0,
+                'is_target_brand' => false,
+                'evidence' => '回答中出现'.$brand,
+            ]);
+        }
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.brand-diagnosis.index'))
+            ->assertOk()
+            ->assertSee('data-visible-brand-list', false)
+            ->assertSee('title="品牌A、品牌B、品牌C、品牌D、品牌E"', false)
+            ->assertSee('品牌A')
+            ->assertSee('品牌D')
+            ->assertSee('...', false);
+    }
+
+    public function test_brand_diagnosis_ranking_brand_names_expose_full_name_on_hover(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('brand_ranking_hover_admin');
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => '策影GEO',
+            'platforms' => ['doubao'],
+            'status' => 'completed',
+            'total_questions' => 1,
+            'completed_questions' => 1,
+            'failed_questions' => 0,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+        ]);
+        $question = $run->questions()->create([
+            'site_id' => (int) $site->id,
+            'question' => '成都本地AI服务商怎么选？',
+            'question_type' => '选择',
+            'sort_order' => 1,
+            'status' => 'completed',
+        ]);
+        $result = $question->results()->create([
+            'site_id' => (int) $site->id,
+            'run_id' => (int) $run->id,
+            'platform' => 'doubao',
+            'answer' => '回答提到成都汇云科建科技有限责任公司。',
+            'brand_mentioned' => false,
+            'mention_count' => 0,
+            'mention_rank' => 0,
+            'sentiment' => 'neutral',
+            'status' => 'success',
+            'checked_at' => now(),
+        ]);
+        $result->brandMentions()->create([
+            'site_id' => (int) $site->id,
+            'run_id' => (int) $run->id,
+            'question_id' => (int) $question->id,
+            'platform' => 'doubao',
+            'brand_name' => '成都汇云科建科技有限责任公司',
+            'mention_count' => 1,
+            'mention_rank' => 1,
+            'sentiment' => 'neutral',
+            'source_count' => 0,
+            'is_target_brand' => false,
+            'evidence' => '回答中出现成都汇云科建科技有限责任公司',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.brand-diagnosis.index'))
+            ->assertOk()
+            ->assertSee('data-ranking-brand', false)
+            ->assertSee('title="成都汇云科建科技有限责任公司"', false)
+            ->assertSee('hover:text-orange-700', false);
+    }
+
+    public function test_brand_diagnosis_conversations_are_paginated_with_five_visible_by_default(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('brand_conversation_pager_admin');
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => '策影GEO',
+            'platforms' => ['doubao'],
+            'status' => 'completed',
+            'total_questions' => 6,
+            'completed_questions' => 6,
+            'failed_questions' => 0,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+        ]);
+
+        for ($index = 1; $index <= 6; $index++) {
+            $question = $run->questions()->create([
+                'site_id' => (int) $site->id,
+                'question' => 'AI对话问题 '.$index,
+                'question_type' => '选择',
+                'sort_order' => $index,
+                'status' => 'completed',
+            ]);
+            $question->results()->create([
+                'site_id' => (int) $site->id,
+                'run_id' => (int) $run->id,
+                'platform' => 'doubao',
+                'answer' => 'AI对话回答 '.$index,
+                'brand_mentioned' => false,
+                'mention_count' => 0,
+                'mention_rank' => 0,
+                'sentiment' => 'neutral',
+                'status' => 'success',
+                'checked_at' => now(),
+            ]);
+        }
+
+        $html = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.brand-diagnosis.index'))
+            ->assertOk()
+            ->assertSee('data-conversation-pager', false)
+            ->assertSee('data-conversation-pagination', false)
+            ->assertSee('data-conversation-page-label', false)
+            ->assertSee('AI对话问题 6')
+            ->getContent();
+
+        $this->assertSame(6, substr_count($html, 'data-conversation-item data-platform-key='));
+        $this->assertStringContainsString('hidden rounded-lg border border-slate-200 bg-slate-50 p-3" data-conversation-item', $html);
+    }
+
+    public function test_brand_diagnosis_record_exposes_platform_specific_metrics_sources_and_conversations(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('brand_multi_platform_page_admin');
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => '策影GEO',
+            'platforms' => ['doubao', 'deepseek'],
+            'status' => 'completed',
+            'total_questions' => 1,
+            'completed_questions' => 1,
+            'failed_questions' => 0,
+            'brand_score' => 65,
+            'mention_rate' => 50,
+            'average_rank' => 2,
+            'mention_count' => 1,
+            'sentiment_rate' => 100,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+        ]);
+        $question = $run->questions()->create([
+            'site_id' => (int) $site->id,
+            'question' => 'AI搜索优化服务选哪家靠谱？',
+            'question_type' => '选择',
+            'sort_order' => 1,
+            'status' => 'completed',
+        ]);
+
+        $doubaoResult = $question->results()->create([
+            'site_id' => (int) $site->id,
+            'run_id' => (int) $run->id,
+            'platform' => 'doubao',
+            'answer' => '豆包答案提到泓动数据和策影GEO。',
+            'brand_mentioned' => true,
+            'mention_count' => 1,
+            'mention_rank' => 2,
+            'sentiment' => 'positive',
+            'status' => 'success',
+            'checked_at' => now(),
+        ]);
+        $deepseekResult = $question->results()->create([
+            'site_id' => (int) $site->id,
+            'run_id' => (int) $run->id,
+            'platform' => 'deepseek',
+            'answer' => 'DeepSeek答案提到蓝色光标，没有提到目标品牌。',
+            'brand_mentioned' => false,
+            'mention_count' => 0,
+            'mention_rank' => 0,
+            'sentiment' => 'neutral',
+            'status' => 'success',
+            'checked_at' => now(),
+        ]);
+
+        $doubaoResult->brandMentions()->create([
+            'site_id' => (int) $site->id,
+            'run_id' => (int) $run->id,
+            'question_id' => (int) $question->id,
+            'platform' => 'doubao',
+            'brand_name' => '泓动数据',
+            'mention_count' => 1,
+            'mention_rank' => 1,
+            'sentiment' => 'neutral',
+            'source_count' => 1,
+            'is_target_brand' => false,
+            'evidence' => '豆包回答中出现泓动数据',
+        ]);
+        $doubaoResult->brandMentions()->create([
+            'site_id' => (int) $site->id,
+            'run_id' => (int) $run->id,
+            'question_id' => (int) $question->id,
+            'platform' => 'doubao',
+            'brand_name' => '策影GEO',
+            'mention_count' => 1,
+            'mention_rank' => 2,
+            'sentiment' => 'positive',
+            'source_count' => 1,
+            'is_target_brand' => true,
+            'evidence' => '豆包回答中出现策影GEO',
+        ]);
+        $deepseekResult->brandMentions()->create([
+            'site_id' => (int) $site->id,
+            'run_id' => (int) $run->id,
+            'question_id' => (int) $question->id,
+            'platform' => 'deepseek',
+            'brand_name' => '蓝色光标',
+            'mention_count' => 2,
+            'mention_rank' => 1,
+            'sentiment' => 'neutral',
+            'source_count' => 1,
+            'is_target_brand' => false,
+            'evidence' => 'DeepSeek回答中出现蓝色光标',
+        ]);
+
+        $doubaoResult->sources()->create([
+            'site_id' => (int) $site->id,
+            'run_id' => (int) $run->id,
+            'question_id' => (int) $question->id,
+            'platform' => 'doubao',
+            'title' => '豆包来源',
+            'url' => 'https://example.com/doubao-source',
+            'domain' => 'example.com',
+            'source_type' => 'url_citation',
+        ]);
+        $deepseekResult->sources()->create([
+            'site_id' => (int) $site->id,
+            'run_id' => (int) $run->id,
+            'question_id' => (int) $question->id,
+            'platform' => 'deepseek',
+            'title' => 'DeepSeek来源',
+            'url' => 'https://example.com/deepseek-source',
+            'domain' => 'example.com',
+            'source_type' => 'url_citation',
+        ]);
+
+        $html = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.brand-diagnosis.index'))
+            ->assertOk()
+            ->assertSee('data-platform-filter', false)
+            ->assertSee('data-record-platform-data', false)
+            ->assertSee('豆包答案提到泓动数据和策影GEO。')
+            ->assertSee('DeepSeek答案提到蓝色光标，没有提到目标品牌。')
+            ->assertSee('蓝色光标')
+            ->assertSee('豆包来源')
+            ->assertSee('DeepSeek来源')
+            ->assertSee('value="all"', false)
+            ->assertSee('value="doubao"', false)
+            ->assertSee('value="deepseek"', false)
+            ->getContent();
+
+        $this->assertStringContainsString('"all"', $html);
+        $this->assertStringContainsString('"doubao"', $html);
+        $this->assertStringContainsString('"deepseek"', $html);
+        $this->assertStringContainsString('"mention_rate":50', $html);
+        $this->assertStringContainsString('"mention_rate":100', $html);
+        $this->assertStringContainsString('"mention_rate":0', $html);
+        $this->assertStringContainsString('"platform_key":"deepseek"', $html);
+        $this->assertStringContainsString('"display_rank":2', $html);
+        $this->assertStringContainsString('"display_rank":"99+"', $html);
+        $this->assertStringContainsString('data-conversation-detail', $html);
+        $this->assertStringContainsString('data-conversation-modal', $html);
+        $this->assertStringContainsString('"sources"', $html);
     }
 
     /**
