@@ -3,7 +3,9 @@
 @php
     $maxRate = max([1, ...array_map(static fn ($row) => (int) $row['rate'], $mentionRateRanking)]);
     $maxCount = max([1, ...array_map(static fn ($row) => (int) $row['count'], $mentionCountRanking)]);
-    $reportOptions = array_values(array_filter($diagnosisRecords, static fn ($record) => (bool) $record['has_report']));
+    $recordFilters = $diagnosisRecordFilters ?? ['brand' => '', 'start_date' => '', 'end_date' => ''];
+    $recordPaginator = $diagnosisRecordPaginator ?? null;
+    $reportOptions = array_values(array_filter($reportRecords ?? $diagnosisRecords, static fn ($record) => (bool) $record['has_report']));
     $reportPageSize = 5;
     $reportTotalPages = max(1, (int) ceil(count($reportOptions) / $reportPageSize));
     $singleReportPrintUrl = count($reportOptions) === 1
@@ -150,17 +152,20 @@
                     <h2 id="diagnosis-record-title" class="text-lg font-semibold text-gray-900">诊断记录</h2>
                     <p class="mt-1 text-sm text-gray-600">每次诊断都会生成一条独立记录，收起后保留摘要指标，方便快速对比。</p>
                 </div>
-                <form class="flex flex-col gap-3 sm:flex-row">
+                <form method="GET" action="{{ route('admin.brand-diagnosis.index') }}" class="flex flex-col gap-3 sm:flex-row">
                     <label class="sr-only" for="brand-keyword">品牌</label>
-                    <input id="brand-keyword" type="search" placeholder="品牌" class="h-10 w-full sm:w-44">
+                    <input id="brand-keyword" name="brand" type="search" value="{{ $recordFilters['brand'] ?? '' }}" placeholder="品牌" class="h-10 w-full sm:w-44">
                     <label class="sr-only" for="start-date">开始日期</label>
-                    <input id="start-date" type="text" placeholder="开始日期" class="h-10 w-full sm:w-32">
+                    <input id="start-date" name="start_date" type="date" value="{{ $recordFilters['start_date'] ?? '' }}" placeholder="开始日期" class="h-10 w-full sm:w-36">
                     <label class="sr-only" for="end-date">结束日期</label>
-                    <input id="end-date" type="text" placeholder="结束日期" class="h-10 w-full sm:w-32">
-                    <button type="button" class="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-orange-600 px-4 text-sm font-semibold text-white hover:bg-orange-700">
+                    <input id="end-date" name="end_date" type="date" value="{{ $recordFilters['end_date'] ?? '' }}" placeholder="结束日期" class="h-10 w-full sm:w-36">
+                    <button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-orange-600 px-4 text-sm font-semibold text-white hover:bg-orange-700">
                         <i data-lucide="search" class="h-4 w-4"></i>
                         搜索
                     </button>
+                    @if (($recordFilters['brand'] ?? '') !== '' || ($recordFilters['start_date'] ?? '') !== '' || ($recordFilters['end_date'] ?? '') !== '')
+                        <a href="{{ route('admin.brand-diagnosis.index') }}" class="inline-flex h-10 items-center justify-center rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600 hover:bg-slate-50">重置</a>
+                    @endif
                 </form>
             </div>
 
@@ -171,7 +176,12 @@
                         <div class="mt-2 text-sm text-gray-500">输入品牌名称并搜索后，每次诊断都会新增一条记录。</div>
                     </div>
                 @endif
-                <div class="space-y-4">
+                <div
+                    class="space-y-4"
+                    data-diagnosis-record-pager
+                    data-diagnosis-page-size="5"
+                    data-diagnosis-total-records="{{ $recordPaginator?->total() ?? count($diagnosisRecords) }}"
+                >
                     @foreach ($diagnosisRecords as $record)
                         @php
                             $recordQuestions = $record['questions'] ?? [];
@@ -458,6 +468,20 @@
                         </article>
                     @endforeach
                 </div>
+                @if ($recordPaginator)
+                    <div class="mt-5 border-t border-slate-200 pt-4">
+                        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div class="text-sm text-gray-500">
+                                共 {{ $recordPaginator->total() }} 条诊断记录，当前显示 {{ $recordPaginator->firstItem() ?? 0 }}-{{ $recordPaginator->lastItem() ?? 0 }} 条
+                            </div>
+                            @if ($recordPaginator->lastPage() > 1)
+                                <div class="min-w-0">
+                                    {{ $recordPaginator->onEachSide(1)->links() }}
+                                </div>
+                            @endif
+                        </div>
+                    </div>
+                @endif
             </div>
         </section>
 

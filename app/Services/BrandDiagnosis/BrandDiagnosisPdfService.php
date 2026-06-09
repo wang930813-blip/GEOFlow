@@ -110,29 +110,36 @@ class BrandDiagnosisPdfService
     {
         $x = self::LEFT;
         $w = self::WIDTH;
-        $h = 52.0;
+        $h = 58.0;
+        $heroTitleWidth = 108.0;
 
         $this->pdf->SetFillColor(3, 7, 22);
         $this->pdf->RoundedRect($x, $y, $w, $h, 2.5, '1111', 'F');
 
         $this->text('AI 搜索可见度诊断', $x + 7, $y + 6, 58, 5, 8, [254, 215, 170], 'B');
-        $this->text((string) ($record['brand'] ?? '-'), $x + 7, $y + 14, 96, 9, 23, [255, 255, 255], 'B');
-        $this->multiText('本报告基于本次品牌诊断采集的问题、AI 平台回答、引用来源与品牌提及数据生成，用于判断品牌在 AI 搜索场景下的可见度、提及强度、排名位置和内容引用基础。', $x + 7, $y + 27, 105, 13, 8, [226, 232, 240]);
+        $this->multiText((string) ($record['brand'] ?? '-'), $x + 7, $y + 13.5, $heroTitleWidth, 14, 17.5, [255, 255, 255], 'B');
+        $this->multiText('本报告基于本次品牌诊断采集的问题、AI 平台回答、引用来源与品牌提及数据生成，用于判断品牌在 AI 搜索场景下的可见度、提及强度、排名位置和内容引用基础。', $x + 7, $y + 30.5, 104, 10, 7.2, [226, 232, 240]);
 
-        $scoreX = $x + 126;
-        $scoreY = $y + 11;
-        $this->pdf->SetFillColor(255, 255, 255);
+        $scorePanelWidth = 40.0;
+        $scoreX = $x + 124;
+        $scoreY = $y + 10;
+        $this->pdf->SetFillColor(15, 23, 42);
+        $this->pdf->SetDrawColor(30, 41, 59);
+        $this->pdf->SetLineWidth(0.2);
+        $this->pdf->RoundedRect($scoreX, $scoreY, $scorePanelWidth, 31, 4, '1111', 'DF');
         $this->pdf->SetDrawColor(249, 115, 22);
-        $this->pdf->SetLineWidth(2.8);
-        $this->pdf->Circle($scoreX + 17, $scoreY + 17, 17, 0, 360, 'DF');
-        $this->text((string) $data['metrics']['score'], $scoreX + 5, $scoreY + 10, 24, 8, 20, [15, 23, 42], 'B', 'C');
-        $this->text('品牌得分 / 100', $scoreX + 2, $scoreY + 22, 30, 4, 6.5, [51, 65, 85], 'B', 'C');
+        $this->pdf->SetLineWidth(0.7);
+        $this->pdf->Line($scoreX + 5, $scoreY + 7, $scoreX + $scorePanelWidth - 5, $scoreY + 7);
+        $this->text('品牌得分', $scoreX + 5, $scoreY + 3.2, $scorePanelWidth - 10, 4, 6.3, [254, 215, 170], 'B', 'C');
+        $this->text((string) $data['metrics']['score'], $scoreX + 5, $scoreY + 10.5, $scorePanelWidth - 10, 8, 18, [255, 255, 255], 'B', 'C');
+        $this->text('/ 100', $scoreX + 5, $scoreY + 19.8, $scorePanelWidth - 10, 4, 6.3, [203, 213, 225], '', 'C');
+        $this->text('综合表现', $scoreX + 5, $scoreY + 24.5, $scorePanelWidth - 10, 4, 5.8, [148, 163, 184], '', 'C');
         $this->pdf->SetLineWidth(0.2);
 
-        $metaY = $y + 43;
-        $this->heroMeta('报告文件', $fileName, $x + 7, $metaY, 62);
-        $this->heroMeta('诊断时间', (string) ($record['created_at'] ?? '-'), $x + 74, $metaY, 42);
-        $this->heroMeta('数据平台', (string) $data['platform_labels'], $x + 121, $metaY, 45);
+        $metaY = $y + 45;
+        $this->heroMeta('报告文件', $fileName, $x + 7, $metaY, 58);
+        $this->heroMeta('诊断时间', (string) ($record['created_at'] ?? '-'), $x + 72, $metaY, 40);
+        $this->heroMeta('数据平台', (string) $data['platform_labels'], $x + 121, $metaY, 43);
 
         return $y + $h;
     }

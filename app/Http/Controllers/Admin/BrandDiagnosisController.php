@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Response;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
@@ -26,9 +27,11 @@ class BrandDiagnosisController extends Controller
         private readonly BrandDiagnosisPdfService $pdfService
     ) {}
 
-    public function index(): View
+    public function index(Request $request): View
     {
-        $records = $this->diagnosisRecords();
+        $filters = $this->diagnosisRecordFilters($request);
+        $recordPaginator = $this->diagnosisRecords($filters);
+        $records = $recordPaginator->getCollection()->all();
         $activeRecord = $records[0] ?? null;
 
         return view('admin.brand-diagnosis.index', [
@@ -43,6 +46,9 @@ class BrandDiagnosisController extends Controller
             'sources' => $this->sources($activeRecord),
             'conversations' => $this->conversations($activeRecord),
             'diagnosisRecords' => $records,
+            'diagnosisRecordPaginator' => $recordPaginator,
+            'diagnosisRecordFilters' => $filters,
+            'reportRecords' => $this->reportRecords(),
         ]);
     }
 
@@ -123,6 +129,40 @@ class BrandDiagnosisController extends Controller
     }
 
     /**
+     * @param  array{brand:string,start_date:string,end_date:string}  $filters
+     * @return LengthAwarePaginator<int,array{
+     *     id:int,
+     *     brand:string,
+     *     status:string,
+     *     created_at:string,
+     *     expanded:bool,
+     *     has_report:bool,
+     *     metrics:array{score:int,mention_rate:int,average_rank:string,mention_count:int,sentiment_rate:int},
+     *     questions:list<array{text:string,type:string,rank:int,status:string}>,
+     *     sources:list<array{platform:string,category:string,title:string,questions:int,models:string,icon:string,url:string}>,
+     *     conversations:list<array{question:string,brands:list<string>,visible_brands:list<string>,hidden_brand_count:int,answer:string,status:string}>
+     * }>
+     */
+    private function diagnosisRecords(array $filters): LengthAwarePaginator
+    {
+        $paginator = $this->diagnosisRunQuery()
+            ->when($filters['brand'] !== '', fn (Builder $query): Builder => $query->where('brand_name', 'like', '%'.$filters['brand'].'%'))
+            ->when($filters['start_date'] !== '', fn (Builder $query): Builder => $query->whereDate('created_at', '>=', $filters['start_date']))
+            ->when($filters['end_date'] !== '', fn (Builder $query): Builder => $query->whereDate('created_at', '<=', $filters['end_date']))
+            ->orderByDesc('created_at')
+            ->paginate(5)
+            ->withQueryString();
+
+        $paginator->setCollection(
+            $paginator->getCollection()
+                ->values()
+                ->map(fn (BrandDiagnosisRun $run, int $index): array => $this->formatRecord($run, $index === 0))
+        );
+
+        return $paginator;
+    }
+
+    /**
      * @return list<array{
      *     id:int,
      *     brand:string,
@@ -136,7 +176,22 @@ class BrandDiagnosisController extends Controller
      *     conversations:list<array{question:string,brands:list<string>,visible_brands:list<string>,hidden_brand_count:int,answer:string,status:string}>
      * }>
      */
-    private function diagnosisRecords(): array
+    private function reportRecords(): array
+    {
+        return $this->diagnosisRunQuery()
+            ->where('status', 'completed')
+            ->orderByDesc('created_at')
+            ->limit(50)
+            ->get()
+            ->values()
+            ->map(fn (BrandDiagnosisRun $run): array => $this->formatRecord($run, false))
+            ->all();
+    }
+
+    /**
+     * @return Builder<BrandDiagnosisRun>
+     */
+    private function diagnosisRunQuery(): Builder
     {
         $admin = auth('admin')->user();
         $isSuperAdmin = $admin instanceof Admin && $admin->isSuperAdmin();
@@ -149,13 +204,26 @@ class BrandDiagnosisController extends Controller
                 'questions' => fn ($query) => $query->orderBy('sort_order')->with(['results.sources', 'results.brandMentions']),
                 'sources',
                 'brandMentions',
-            ])
-            ->orderByDesc('created_at')
-            ->limit(20)
-            ->get()
-            ->values()
-            ->map(fn (BrandDiagnosisRun $run, int $index): array => $this->formatRecord($run, $index === 0))
-            ->all();
+            ]);
+    }
+
+    /**
+     * @return array{brand:string,start_date:string,end_date:string}
+     */
+    private function diagnosisRecordFilters(Request $request): array
+    {
+        return [
+            'brand' => Str::of((string) $request->query('brand', ''))->squish()->limit(120, '')->toString(),
+            'start_date' => $this->validDateFilter((string) $request->query('start_date', '')),
+            'end_date' => $this->validDateFilter((string) $request->query('end_date', '')),
+        ];
+    }
+
+    private function validDateFilter(string $date): string
+    {
+        $date = trim($date);
+
+        return preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) === 1 ? $date : '';
     }
 
     private function findReportRun(int $runId): BrandDiagnosisRun

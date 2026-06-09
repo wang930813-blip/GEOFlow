@@ -95,6 +95,98 @@ class AdminBrandDiagnosisPageTest extends TestCase
         );
     }
 
+    public function test_brand_diagnosis_records_can_be_filtered_by_brand_date_and_paginated(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('brand_record_filter_admin');
+
+        for ($index = 1; $index <= 6; $index++) {
+            $run = BrandDiagnosisRun::query()->create([
+                'site_id' => (int) $site->id,
+                'admin_id' => (int) $admin->id,
+                'brand_name' => 'Alpha Brand '.$index,
+                'platforms' => ['doubao'],
+                'status' => 'completed',
+                'total_questions' => 1,
+                'completed_questions' => 1,
+                'failed_questions' => 0,
+                'billing_mode' => 'daily_free',
+                'usage_date' => '2026-06-02',
+            ]);
+            $run->forceFill(['created_at' => now()->setDate(2026, 6, 2)->setTime(12, 0)->subMinutes($index)])->save();
+        }
+
+        $betaRun = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => 'Beta Brand',
+            'platforms' => ['doubao'],
+            'status' => 'completed',
+            'total_questions' => 1,
+            'completed_questions' => 1,
+            'failed_questions' => 0,
+            'billing_mode' => 'daily_free',
+            'usage_date' => '2026-06-02',
+        ]);
+        $betaRun->forceFill(['created_at' => now()->setDate(2026, 6, 2)->setTime(11, 0)])->save();
+
+        $outsideRun = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => 'Alpha Outside Date',
+            'platforms' => ['doubao'],
+            'status' => 'completed',
+            'total_questions' => 1,
+            'completed_questions' => 1,
+            'failed_questions' => 0,
+            'billing_mode' => 'daily_free',
+            'usage_date' => '2026-05-30',
+        ]);
+        $outsideRun->forceFill(['created_at' => now()->setDate(2026, 5, 30)->setTime(12, 0)])->save();
+
+        $html = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.brand-diagnosis.index', [
+                'brand' => 'Alpha',
+                'start_date' => '2026-06-01',
+                'end_date' => '2026-06-03',
+            ]))
+            ->assertOk()
+            ->assertSee('data-diagnosis-record-pager', false)
+            ->assertSee('data-diagnosis-page-size="5"', false)
+            ->assertSee('data-diagnosis-total-records="6"', false)
+            ->assertSee('name="brand"', false)
+            ->assertSee('value="Alpha"', false)
+            ->assertSee('name="start_date"', false)
+            ->assertSee('value="2026-06-01"', false)
+            ->assertSee('name="end_date"', false)
+            ->assertSee('value="2026-06-03"', false)
+            ->getContent();
+
+        $recordHtml = substr($html, 0, strpos($html, 'data-report-modal') ?: strlen($html));
+
+        $this->assertSame(5, substr_count($recordHtml, 'data-diagnosis-record data-active-platform'));
+        $this->assertStringContainsString('Alpha Brand 1', $recordHtml);
+        $this->assertStringNotContainsString('Alpha Brand 6', $recordHtml);
+        $this->assertStringNotContainsString('Beta Brand', $recordHtml);
+        $this->assertStringNotContainsString('Alpha Outside Date', $recordHtml);
+
+        $pageTwoHtml = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.brand-diagnosis.index', [
+                'brand' => 'Alpha',
+                'start_date' => '2026-06-01',
+                'end_date' => '2026-06-03',
+                'page' => 2,
+            ]))
+            ->assertOk()
+            ->getContent();
+
+        $pageTwoRecordHtml = substr($pageTwoHtml, 0, strpos($pageTwoHtml, 'data-report-modal') ?: strlen($pageTwoHtml));
+
+        $this->assertSame(1, substr_count($pageTwoRecordHtml, 'data-diagnosis-record data-active-platform'));
+        $this->assertStringContainsString('Alpha Brand 6', $pageTwoRecordHtml);
+    }
+
     public function test_export_report_modal_paginates_reports_five_per_page(): void
     {
         [$admin, $site] = $this->createAdminWithSite('brand_report_pager_admin');
@@ -392,6 +484,18 @@ class AdminBrandDiagnosisPageTest extends TestCase
         $this->assertStringNotContainsString('诊断状态', $serviceSource);
         $this->assertStringNotContainsString("view('admin.brand-diagnosis.pdf'", $serviceSource);
         $this->assertStringNotContainsString('writeHTML', $serviceSource);
+    }
+
+    public function test_brand_diagnosis_pdf_hero_reserves_score_area_for_long_brand_names(): void
+    {
+        $serviceSource = file_get_contents(app_path('Services/BrandDiagnosis/BrandDiagnosisPdfService.php'));
+
+        $this->assertIsString($serviceSource);
+        $this->assertStringContainsString('$heroTitleWidth = 108.0;', $serviceSource);
+        $this->assertStringContainsString('$scorePanelWidth = 40.0;', $serviceSource);
+        $this->assertStringContainsString('$this->multiText((string) ($record[\'brand\'] ?? \'-\')', $serviceSource);
+        $this->assertStringNotContainsString('$this->text((string) ($record[\'brand\'] ?? \'-\'), $x + 7, $y + 14, 96', $serviceSource);
+        $this->assertStringNotContainsString('$this->pdf->Circle($scoreX', $serviceSource);
     }
 
     public function test_materials_entry_moves_from_top_nav_to_user_menu_after_admin_management(): void
