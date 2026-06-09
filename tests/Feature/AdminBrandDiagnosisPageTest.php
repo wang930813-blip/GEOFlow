@@ -95,6 +95,305 @@ class AdminBrandDiagnosisPageTest extends TestCase
         );
     }
 
+    public function test_export_report_modal_paginates_reports_five_per_page(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('brand_report_pager_admin');
+        $runs = [];
+
+        for ($index = 1; $index <= 6; $index++) {
+            $runs[] = BrandDiagnosisRun::query()->create([
+                'site_id' => (int) $site->id,
+                'admin_id' => (int) $admin->id,
+                'brand_name' => '新知地(成都)人工智能科技有限公司',
+                'platforms' => ['doubao'],
+                'status' => 'completed',
+                'total_questions' => 5,
+                'completed_questions' => 5,
+                'failed_questions' => 0,
+                'brand_score' => 80,
+                'mention_rate' => 60,
+                'average_rank' => 2,
+                'mention_count' => 3,
+                'sentiment_rate' => 100,
+                'billing_mode' => 'daily_free',
+                'usage_date' => now()->toDateString(),
+                'created_at' => now()->subMinutes($index),
+            ]);
+        }
+
+        $html = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.brand-diagnosis.index'))
+            ->assertOk()
+            ->assertSee('data-report-pager', false)
+            ->assertSee('data-report-page-size="5"', false)
+            ->assertSee('data-report-total-pages="2"', false)
+            ->assertSee('data-report-pagination', false)
+            ->assertSee('data-report-page-label', false)
+            ->assertSee('data-report-prev', false)
+            ->assertSee('data-report-next', false)
+            ->getContent();
+
+        $this->assertSame(6, substr_count($html, '<div data-report-item'));
+        $this->assertSame(6, substr_count($html, 'data-report-option'."\n"));
+        $this->assertSame(6, substr_count($html, 'data-report-view'));
+        $this->assertSame(6, substr_count($html, 'data-report-download'));
+        $this->assertStringContainsString(route('admin.brand-diagnosis.report', ['run' => $runs[0]->id]), $html);
+        $this->assertStringContainsString(route('admin.brand-diagnosis.report.download', ['run' => $runs[0]->id]), $html);
+        $this->assertStringNotContainsString(route('admin.brand-diagnosis.report', ['run' => $runs[0]->id, 'print' => 1]), $html);
+        $this->assertSame(1, substr_count($html, 'data-report-item class="hidden"'));
+    }
+
+    public function test_export_report_modal_only_includes_completed_diagnoses(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('brand_report_completed_only_admin');
+        $completedRun = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => '策影GEO',
+            'platforms' => ['doubao'],
+            'status' => 'completed',
+            'total_questions' => 1,
+            'completed_questions' => 1,
+            'failed_questions' => 0,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+        ]);
+        $failedRun = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => '失败诊断品牌',
+            'platforms' => ['doubao'],
+            'status' => 'failed',
+            'total_questions' => 1,
+            'completed_questions' => 0,
+            'failed_questions' => 1,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+        ]);
+
+        $html = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.brand-diagnosis.index'))
+            ->assertOk()
+            ->assertSee('data-report-count="1"', false)
+            ->getContent();
+
+        $this->assertSame(1, substr_count($html, 'data-report-download'));
+        $this->assertStringContainsString(route('admin.brand-diagnosis.report.download', ['run' => $completedRun->id]), $html);
+        $this->assertStringNotContainsString(route('admin.brand-diagnosis.report.download', ['run' => $failedRun->id]), $html);
+    }
+
+    public function test_brand_diagnosis_report_page_uses_collected_diagnosis_data(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('brand_report_view_admin');
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => '策影GEO',
+            'platforms' => ['doubao', 'deepseek'],
+            'status' => 'completed',
+            'total_questions' => 2,
+            'completed_questions' => 2,
+            'failed_questions' => 0,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+            'created_at' => now()->setTime(10, 26, 23),
+        ]);
+        $question = $run->questions()->create([
+            'site_id' => (int) $site->id,
+            'question' => 'AI搜索优化服务怎么选？',
+            'question_type' => '选择',
+            'sort_order' => 1,
+            'status' => 'completed',
+        ]);
+        $result = $question->results()->create([
+            'site_id' => (int) $site->id,
+            'run_id' => (int) $run->id,
+            'platform' => 'doubao',
+            'answer' => '豆包回答提到策影GEO和泓动数据。',
+            'brand_mentioned' => true,
+            'mention_count' => 1,
+            'mention_rank' => 2,
+            'sentiment' => 'positive',
+            'status' => 'success',
+            'checked_at' => now(),
+        ]);
+        $result->brandMentions()->create([
+            'site_id' => (int) $site->id,
+            'run_id' => (int) $run->id,
+            'question_id' => (int) $question->id,
+            'platform' => 'doubao',
+            'brand_name' => '策影GEO',
+            'mention_count' => 1,
+            'mention_rank' => 2,
+            'sentiment' => 'positive',
+            'source_count' => 1,
+            'is_target_brand' => true,
+            'evidence' => '豆包回答中出现策影GEO',
+        ]);
+        $result->brandMentions()->create([
+            'site_id' => (int) $site->id,
+            'run_id' => (int) $run->id,
+            'question_id' => (int) $question->id,
+            'platform' => 'doubao',
+            'brand_name' => '泓动数据',
+            'mention_count' => 1,
+            'mention_rank' => 1,
+            'sentiment' => 'neutral',
+            'source_count' => 1,
+            'is_target_brand' => false,
+            'evidence' => '豆包回答中出现泓动数据',
+        ]);
+        $result->sources()->create([
+            'site_id' => (int) $site->id,
+            'run_id' => (int) $run->id,
+            'question_id' => (int) $question->id,
+            'platform' => 'doubao',
+            'title' => 'AI搜索优化案例文章',
+            'url' => 'https://example.com/geo-case',
+            'domain' => 'example.com',
+            'source_type' => 'url_citation',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.brand-diagnosis.report', ['run' => $run->id]))
+            ->assertOk()
+            ->assertSee('品牌诊断报告')
+            ->assertSee('策影GEO')
+            ->assertSee('整体表现')
+            ->assertSee('AI可见度分析')
+            ->assertSee('引用源分析')
+            ->assertSee('AI问题与对话明细')
+            ->assertSee('AI搜索优化服务怎么选？')
+            ->assertSee('豆包回答提到策影GEO和泓动数据。')
+            ->assertSee('AI搜索优化案例文章')
+            ->assertSee('泓动数据')
+            ->assertDontSee('诊断状态')
+            ->assertSee('data-report-download', false)
+            ->assertSee('data-report-section', false);
+    }
+
+    public function test_brand_diagnosis_report_legacy_print_mode_redirects_to_server_pdf_download(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('brand_report_print_admin');
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => '策影GEO',
+            'platforms' => ['doubao'],
+            'status' => 'completed',
+            'total_questions' => 0,
+            'completed_questions' => 0,
+            'failed_questions' => 0,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+        ]);
+        $run->forceFill(['created_at' => now()->setDate(2026, 6, 5)->setTime(10, 26, 23)])->save();
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.brand-diagnosis.report', ['run' => $run->id, 'print' => 1]))
+            ->assertOk()
+            ->assertSee('策影GEO_2026-06-05_诊断报告.pdf')
+            ->assertSee('data-auto-print="1"', false)
+            ->assertSee(route('admin.brand-diagnosis.report.download', ['run' => $run->id]), false)
+            ->assertDontSee('window.print()', false);
+    }
+
+    public function test_brand_diagnosis_report_can_be_downloaded_as_server_generated_pdf(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('brand_report_download_admin');
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => '策影GEO',
+            'platforms' => ['doubao'],
+            'status' => 'completed',
+            'total_questions' => 1,
+            'completed_questions' => 1,
+            'failed_questions' => 0,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+        ]);
+        $run->forceFill(['created_at' => now()->setDate(2026, 6, 5)->setTime(10, 26, 23)])->save();
+        $question = $run->questions()->create([
+            'site_id' => (int) $site->id,
+            'question' => 'AI搜索优化服务怎么选？',
+            'question_type' => '选择',
+            'sort_order' => 1,
+            'status' => 'completed',
+        ]);
+        $result = $question->results()->create([
+            'site_id' => (int) $site->id,
+            'run_id' => (int) $run->id,
+            'platform' => 'doubao',
+            'answer' => '豆包回答提到策影GEO。',
+            'brand_mentioned' => true,
+            'mention_count' => 1,
+            'mention_rank' => 1,
+            'sentiment' => 'positive',
+            'status' => 'success',
+            'checked_at' => now(),
+        ]);
+        $result->sources()->create([
+            'site_id' => (int) $site->id,
+            'run_id' => (int) $run->id,
+            'question_id' => (int) $question->id,
+            'platform' => 'doubao',
+            'title' => 'AI搜索优化案例文章',
+            'url' => 'https://example.com/geo-case',
+            'domain' => 'example.com',
+            'source_type' => 'url_citation',
+        ]);
+
+        $response = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.brand-diagnosis.report.download', ['run' => $run->id]));
+
+        $response
+            ->assertOk()
+            ->assertHeader('content-type', 'application/pdf');
+
+        $contentDisposition = (string) $response->headers->get('content-disposition');
+        $this->assertStringContainsString('策影GEO_2026-06-05_诊断报告.pdf', rawurldecode($contentDisposition));
+        $this->assertStringStartsWith('%PDF', $response->getContent());
+    }
+
+    public function test_brand_diagnosis_report_download_requires_completed_diagnosis(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('brand_report_download_failed_admin');
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => '失败诊断品牌',
+            'platforms' => ['doubao'],
+            'status' => 'failed',
+            'total_questions' => 1,
+            'completed_questions' => 0,
+            'failed_questions' => 1,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.brand-diagnosis.report.download', ['run' => $run->id]))
+            ->assertNotFound();
+    }
+
+    public function test_brand_diagnosis_pdf_renderer_uses_native_compact_layout_not_html_template(): void
+    {
+        $serviceSource = file_get_contents(app_path('Services/BrandDiagnosis/BrandDiagnosisPdfService.php'));
+
+        $this->assertIsString($serviceSource);
+        $this->assertStringContainsString('RoundedRect', $serviceSource);
+        $this->assertStringNotContainsString('诊断状态', $serviceSource);
+        $this->assertStringNotContainsString("view('admin.brand-diagnosis.pdf'", $serviceSource);
+        $this->assertStringNotContainsString('writeHTML', $serviceSource);
+    }
+
     public function test_materials_entry_moves_from_top_nav_to_user_menu_after_admin_management(): void
     {
         $admin = Admin::query()->create([

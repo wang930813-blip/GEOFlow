@@ -163,6 +163,48 @@ class AdminMaterialsPagesTest extends TestCase
         $this->assertGreaterThan(0, KnowledgeBase::query()->count());
     }
 
+    public function test_knowledge_base_index_keeps_create_button_in_header_when_records_exist(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'knowledge_header_create_admin',
+            'password' => 'secret-123',
+            'email' => 'knowledge-header-create-admin@example.com',
+            'display_name' => 'Knowledge Header Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'Knowledge Header Site',
+            'status' => 'active',
+        ]);
+        $site->members()->attach((int) $admin->id, ['role' => 'owner']);
+
+        KnowledgeBase::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => '已有知识库',
+            'description' => 'desc',
+            'content' => '知识内容',
+            'character_count' => 4,
+            'used_task_count' => 0,
+            'file_type' => 'markdown',
+            'file_path' => '',
+            'word_count' => 4,
+            'usage_count' => 0,
+        ]);
+
+        $html = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.knowledge-bases.index'))
+            ->assertOk()
+            ->assertSee('已有知识库')
+            ->assertSee(__('admin.knowledge_bases.upload'))
+            ->getContent();
+
+        $this->assertSame(1, substr_count($html, 'data-knowledge-create-button'));
+        $this->assertStringContainsString(__('admin.knowledge_bases.create_first'), $html);
+    }
+
     public function test_admin_can_refresh_knowledge_chunks_with_real_embedding_model(): void
     {
         Http::fake([

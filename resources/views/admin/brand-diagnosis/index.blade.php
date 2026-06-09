@@ -4,6 +4,11 @@
     $maxRate = max([1, ...array_map(static fn ($row) => (int) $row['rate'], $mentionRateRanking)]);
     $maxCount = max([1, ...array_map(static fn ($row) => (int) $row['count'], $mentionCountRanking)]);
     $reportOptions = array_values(array_filter($diagnosisRecords, static fn ($record) => (bool) $record['has_report']));
+    $reportPageSize = 5;
+    $reportTotalPages = max(1, (int) ceil(count($reportOptions) / $reportPageSize));
+    $singleReportPrintUrl = count($reportOptions) === 1
+        ? route('admin.brand-diagnosis.report.download', ['run' => $reportOptions[0]['id']])
+        : '';
     $sourceMinPageSize = 5;
     $metricDefinitions = [
         'score' => [
@@ -52,6 +57,7 @@
                     type="button"
                     data-export-report
                     data-report-count="{{ count($reportOptions) }}"
+                    data-single-report-download-url="{{ $singleReportPrintUrl }}"
                     class="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50"
                 >
                     <i data-lucide="download" class="h-4 w-4"></i>
@@ -266,7 +272,9 @@
                                         <span class="text-xs text-gray-500">{{ $index + 1 }}</span>
                                         <span class="truncate font-medium text-gray-700 transition-colors hover:text-orange-700" data-ranking-brand title="{{ $row['brand'] }}">{{ $row['brand'] }}</span>
                                         <span class="h-2 rounded-full bg-slate-100">
-                                            @php($rateWidth = (int) round(((int) $row['rate'] / $recordMaxRate) * 100))
+                                            @php
+                                                $rateWidth = (int) round(((int) $row['rate'] / $recordMaxRate) * 100);
+                                            @endphp
                                             <span class="block h-2 rounded-full bg-blue-600 w-[{{ max(4, $rateWidth) }}%]"></span>
                                         </span>
                                         <span class="text-right text-xs font-semibold text-blue-700">{{ $row['rate'] }}%</span>
@@ -288,7 +296,9 @@
                                         <span class="text-xs text-gray-500">{{ $index + 1 }}</span>
                                         <span class="truncate font-medium text-gray-700 transition-colors hover:text-orange-700" data-ranking-brand title="{{ $row['brand'] }}">{{ $row['brand'] }}</span>
                                         <span class="h-2 rounded-full bg-slate-100">
-                                            @php($countWidth = (int) round(((int) $row['count'] / $recordMaxCount) * 100))
+                                            @php
+                                                $countWidth = (int) round(((int) $row['count'] / $recordMaxCount) * 100);
+                                            @endphp
                                             <span class="block h-2 rounded-full bg-blue-600 w-[{{ max(4, $countWidth) }}%]"></span>
                                         </span>
                                         <span class="text-right text-xs font-semibold text-blue-700">{{ $row['count'] }}</span>
@@ -435,10 +445,10 @@
                 </div>
 
                                 <div class="mt-6 flex flex-wrap justify-center gap-3 border-t border-slate-200 pt-5">
-                    <button type="button" class="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                    <a href="{{ route('admin.brand-diagnosis.report', ['run' => $record['id']]) }}" target="_blank" rel="noopener noreferrer" class="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
                         <i data-lucide="file-text" class="h-4 w-4"></i>
                         查看报告
-                    </button>
+                    </a>
                     <button type="button" data-record-toggle class="inline-flex h-10 items-center gap-2 rounded-md border border-orange-200 bg-orange-50 px-5 text-sm font-semibold text-orange-700 hover:bg-orange-100">
                         <i data-lucide="chevrons-up" class="h-4 w-4"></i>
                         <span data-record-toggle-label>收起结果</span>
@@ -465,10 +475,20 @@
                         <i data-lucide="x" class="h-4 w-4"></i>
                     </button>
                 </div>
-                <div class="space-y-3 px-5 py-4">
+                <div
+                    class="px-5 py-4"
+                    data-report-pager
+                    data-report-page-size="{{ $reportPageSize }}"
+                    data-report-total-pages="{{ $reportTotalPages }}"
+                >
+                    <div class="space-y-3">
                     @foreach ($reportOptions as $report)
-                        <button
-                            type="button"
+                        @php
+                            $reportViewUrl = route('admin.brand-diagnosis.report', ['run' => $report['id']]);
+                            $reportDownloadUrl = route('admin.brand-diagnosis.report.download', ['run' => $report['id']]);
+                        @endphp
+                        <div data-report-item @class(['hidden' => $loop->index >= $reportPageSize])>
+                        <div
                             data-report-option
                             class="flex w-full items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 text-left hover:border-orange-200 hover:bg-orange-50"
                         >
@@ -476,9 +496,43 @@
                                 <span class="block truncate text-sm font-semibold text-gray-900">{{ $report['brand'] }} 报告</span>
                                 <span class="mt-1 block text-xs text-gray-500">{{ $report['created_at'] }}</span>
                             </span>
-                            <i data-lucide="download" class="h-4 w-4 shrink-0 text-orange-600"></i>
-                        </button>
+                            <span class="flex shrink-0 items-center gap-2">
+                                <a
+                                    href="{{ $reportViewUrl }}"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    data-report-view
+                                    data-report-link-action
+                                    class="inline-flex h-8 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 hover:border-orange-200 hover:text-orange-700"
+                                >
+                                    <i data-lucide="eye" class="h-3.5 w-3.5"></i>
+                                    查看
+                                </a>
+                                <a
+                                    href="{{ $reportDownloadUrl }}"
+                                    data-report-download
+                                    data-report-link-action
+                                    class="inline-flex h-8 items-center gap-1.5 rounded-md bg-orange-600 px-3 text-xs font-semibold text-white hover:bg-orange-700"
+                                >
+                                    <i data-lucide="download" class="h-3.5 w-3.5"></i>
+                                    导出PDF
+                                </a>
+                            </span>
+                        </div>
+                        </div>
                     @endforeach
+                    </div>
+                    @if (count($reportOptions) > $reportPageSize)
+                        <div class="mt-4 flex items-center justify-between gap-3 border-t border-slate-200 pt-3" data-report-pagination>
+                            <button type="button" data-report-prev class="inline-flex h-8 items-center justify-center rounded-md border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">
+                                上一页
+                            </button>
+                            <span class="text-xs text-gray-500" data-report-page-label>第 1 / {{ $reportTotalPages }} 页</span>
+                            <button type="button" data-report-next class="inline-flex h-8 items-center justify-center rounded-md border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">
+                                下一页
+                            </button>
+                        </div>
+                    @endif
                 </div>
             </div>
         </div>
@@ -561,8 +615,38 @@
             const exportButton = document.querySelector('[data-export-report]');
             const reportModal = document.querySelector('[data-report-modal]');
             const reportCount = Number(exportButton?.dataset.reportCount || 0);
+            const reportPager = reportModal?.querySelector('[data-report-pager]');
+            const reportItems = Array.from(reportPager?.querySelectorAll('[data-report-item]') || []);
+            const reportPageSize = Math.max(1, Number(reportPager?.dataset.reportPageSize || 5));
+            const reportPrevButton = reportPager?.querySelector('[data-report-prev]');
+            const reportNextButton = reportPager?.querySelector('[data-report-next]');
+            const reportPageLabel = reportPager?.querySelector('[data-report-page-label]');
+            let reportCurrentPage = 1;
+
+            const renderReportPage = () => {
+                const reportTotalPages = Math.max(1, Math.ceil(reportItems.length / reportPageSize));
+                reportCurrentPage = Math.max(1, Math.min(reportCurrentPage, reportTotalPages));
+                const start = (reportCurrentPage - 1) * reportPageSize;
+                const end = start + reportPageSize;
+
+                reportItems.forEach((item, index) => {
+                    item.classList.toggle('hidden', index < start || index >= end);
+                });
+
+                if (reportPageLabel) {
+                    reportPageLabel.textContent = `第 ${reportCurrentPage} / ${reportTotalPages} 页`;
+                }
+                if (reportPrevButton) {
+                    reportPrevButton.disabled = reportCurrentPage <= 1;
+                }
+                if (reportNextButton) {
+                    reportNextButton.disabled = reportCurrentPage >= reportTotalPages;
+                }
+            };
 
             const openReportModal = () => {
+                reportCurrentPage = 1;
+                renderReportPage();
                 reportModal?.classList.remove('hidden');
                 reportModal?.classList.add('flex');
             };
@@ -579,7 +663,10 @@
                 }
 
                 if (reportCount === 1) {
-                    window.alert('已选择当前唯一报告，真实 PDF 接口接入后将直接导出。');
+                    const url = exportButton.dataset.singleReportDownloadUrl;
+                    if (url) {
+                        window.open(url, '_blank', 'noopener,noreferrer');
+                    }
                     return;
                 }
 
@@ -596,10 +683,21 @@
                 }
             });
 
-            reportModal?.querySelectorAll('[data-report-option]').forEach((button) => {
-                button.addEventListener('click', () => {
+            reportPrevButton?.addEventListener('click', () => {
+                reportCurrentPage = Math.max(1, reportCurrentPage - 1);
+                renderReportPage();
+            });
+
+            reportNextButton?.addEventListener('click', () => {
+                reportCurrentPage += 1;
+                renderReportPage();
+            });
+
+            renderReportPage();
+
+            reportModal?.querySelectorAll('[data-report-link-action]').forEach((link) => {
+                link.addEventListener('click', () => {
                     closeReportModal();
-                    window.alert('已选择报告，真实 PDF 接口接入后将导出该报告。');
                 });
             });
 

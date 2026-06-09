@@ -2,7 +2,7 @@
 
 @section('content')
     <div class="px-4 sm:px-0">
-        <div class="mb-8 flex items-center justify-between">
+        <div class="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div class="flex items-center space-x-4">
                 <a href="{{ route('admin.materials.index') }}" class="text-gray-400 hover:text-gray-600">
                     <i data-lucide="arrow-left" class="w-5 h-5"></i>
@@ -12,10 +12,16 @@
                     <p class="mt-1 text-sm text-gray-600">{{ __('admin.knowledge_bases.subtitle') }}</p>
                 </div>
             </div>
-            <button type="button" onclick="showUploadModal()" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-orange-600 hover:bg-orange-700">
-                <i data-lucide="upload" class="w-4 h-4 mr-2"></i>
-                {{ __('admin.knowledge_bases.upload') }}
-            </button>
+            <div class="flex flex-wrap items-center gap-3 sm:justify-end">
+                <button type="button" onclick="showCreateModal()" data-knowledge-create-button class="inline-flex h-10 items-center rounded-md border border-orange-200 bg-white px-4 text-sm font-semibold text-orange-700 hover:bg-orange-50">
+                    <i data-lucide="plus" class="w-4 h-4 mr-2"></i>
+                    {{ __('admin.knowledge_bases.create_first') }}
+                </button>
+                <button type="button" onclick="showUploadModal()" class="inline-flex h-10 items-center rounded-md border border-transparent bg-orange-600 px-4 text-sm font-semibold text-white hover:bg-orange-700">
+                    <i data-lucide="upload" class="w-4 h-4 mr-2"></i>
+                    {{ __('admin.knowledge_bases.upload') }}
+                </button>
+            </div>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">

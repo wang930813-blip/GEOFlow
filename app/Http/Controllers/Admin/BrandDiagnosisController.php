@@ -6,18 +6,25 @@ use App\Http\Controllers\Controller;
 use App\Models\Admin;
 use App\Models\BrandDiagnosisRun;
 use App\Services\BrandDiagnosis\BrandDiagnosisLimitExceededException;
+use App\Services\BrandDiagnosis\BrandDiagnosisPdfService;
 use App\Services\BrandDiagnosis\BrandDiagnosisRunService;
 use App\Support\AdminWeb;
 use App\Support\CurrentSite;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\Response;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 use Throwable;
 
 class BrandDiagnosisController extends Controller
 {
-    public function __construct(private readonly BrandDiagnosisRunService $runService) {}
+    public function __construct(
+        private readonly BrandDiagnosisRunService $runService,
+        private readonly BrandDiagnosisPdfService $pdfService
+    ) {}
 
     public function index(): View
     {
@@ -36,6 +43,20 @@ class BrandDiagnosisController extends Controller
             'sources' => $this->sources($activeRecord),
             'conversations' => $this->conversations($activeRecord),
             'diagnosisRecords' => $records,
+        ]);
+    }
+
+    public function downloadReport(int $run): Response
+    {
+        $diagnosisRun = $this->findDownloadableReportRun($run);
+        $record = $this->formatRecord($diagnosisRun, true);
+        $reportFileName = $this->reportFileName($diagnosisRun);
+        $pdf = $this->pdfService->render($diagnosisRun, $record, $reportFileName);
+
+        return response($pdf, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => $this->contentDisposition($reportFileName),
+            'Cache-Control' => 'private, max-age=0, must-revalidate',
         ]);
     }
 
@@ -70,6 +91,22 @@ class BrandDiagnosisController extends Controller
         return redirect()
             ->route('admin.brand-diagnosis.index')
             ->with('message', '品牌诊断任务已创建，结果生成后会显示在诊断记录中。');
+    }
+
+    public function report(int $run, Request $request): View
+    {
+        $diagnosisRun = $this->findReportRun($run);
+        $record = $this->formatRecord($diagnosisRun, true);
+        $reportFileName = $this->reportFileName($diagnosisRun);
+
+        return view('admin.brand-diagnosis.report', [
+            'pageTitle' => $reportFileName,
+            'record' => $record,
+            'run' => $diagnosisRun,
+            'reportFileName' => $reportFileName,
+            'autoPrint' => $request->boolean('print') && (string) $diagnosisRun->status === 'completed',
+            'adminSiteName' => AdminWeb::siteName(),
+        ]);
     }
 
     /**
@@ -121,6 +158,68 @@ class BrandDiagnosisController extends Controller
             ->all();
     }
 
+    private function findReportRun(int $runId): BrandDiagnosisRun
+    {
+        return $this->reportRunQuery()
+            ->whereKey($runId)
+            ->whereIn('status', ['completed', 'failed'])
+            ->firstOrFail();
+    }
+
+    private function findDownloadableReportRun(int $runId): BrandDiagnosisRun
+    {
+        return $this->reportRunQuery()
+            ->whereKey($runId)
+            ->where('status', 'completed')
+            ->firstOrFail();
+    }
+
+    /**
+     * @return Builder<BrandDiagnosisRun>
+     */
+    private function reportRunQuery(): Builder
+    {
+        $admin = auth('admin')->user();
+        $isSuperAdmin = $admin instanceof Admin && $admin->isSuperAdmin();
+        $siteId = app(CurrentSite::class)->id();
+
+        return BrandDiagnosisRun::query()
+            ->when($isSuperAdmin, fn ($query) => $query->withoutGlobalScope('current_site'))
+            ->when(! $isSuperAdmin && $siteId !== null, fn ($query) => $query->where('site_id', $siteId))
+            ->with([
+                'questions' => fn ($query) => $query->orderBy('sort_order')->with(['results.sources', 'results.brandMentions']),
+                'sources',
+                'brandMentions',
+            ]);
+    }
+
+    private function reportFileName(BrandDiagnosisRun $run): string
+    {
+        $brand = Str::of((string) $run->brand_name)
+            ->replaceMatches('/[\\\\\/:*?"<>|]+/u', '')
+            ->squish()
+            ->limit(80, '')
+            ->toString();
+        $date = $run->created_at?->format('Y-m-d') ?? now()->format('Y-m-d');
+
+        return ($brand !== '' ? $brand : '品牌').'_'.$date.'_诊断报告.pdf';
+    }
+
+    private function contentDisposition(string $fileName): string
+    {
+        $fallback = Str::of($fileName)
+            ->ascii()
+            ->replaceMatches('/[^A-Za-z0-9._-]+/', '_')
+            ->trim('_')
+            ->toString();
+
+        if ($fallback === '') {
+            $fallback = 'brand-diagnosis-report.pdf';
+        }
+
+        return 'attachment; filename="'.$fallback.'"; filename*=UTF-8\'\''.rawurlencode($fileName);
+    }
+
     /**
      * @return array<string,mixed>
      */
@@ -143,7 +242,7 @@ class BrandDiagnosisController extends Controller
             'raw_status' => (string) $run->status,
             'created_at' => $run->created_at?->format('Y-m-d H:i:s') ?? '',
             'expanded' => $expanded,
-            'has_report' => in_array((string) $run->status, ['completed', 'failed'], true),
+            'has_report' => (string) $run->status === 'completed',
             'metrics' => $allPlatformData['metrics'],
             'questions' => $questions,
             'sources' => $allPlatformData['sources'],
