@@ -96,7 +96,44 @@ class BrandDiagnosisController extends Controller
 
         return redirect()
             ->route('admin.brand-diagnosis.index')
-            ->with('message', '品牌诊断任务已创建，结果生成后会显示在诊断记录中。');
+            ->with('message', 'AI 问题生成任务已创建，问题生成后请确认诊断。');
+    }
+
+    public function confirm(int $run, Request $request): RedirectResponse
+    {
+        $payload = $request->validate([
+            'questions' => ['required', 'array', 'min:1'],
+            'questions.*' => ['nullable', 'string', 'max:240'],
+        ], [
+            'questions.required' => '请确认至少一个 AI 问题',
+            'questions.min' => '请确认至少一个 AI 问题',
+            'questions.*.max' => 'AI 问题不能超过 240 个字符',
+        ]);
+
+        $admin = auth('admin')->user();
+        if (! $admin instanceof Admin) {
+            abort(403);
+        }
+
+        $diagnosisRun = $this->diagnosisRunQuery()
+            ->whereKey($run)
+            ->firstOrFail();
+
+        try {
+            $this->runService->confirm(
+                $admin,
+                $diagnosisRun,
+                (array) $payload['questions']
+            );
+        } catch (BrandDiagnosisLimitExceededException $exception) {
+            return back()->withErrors(['questions' => $exception->getMessage()])->withInput();
+        } catch (Throwable $exception) {
+            return back()->withErrors(['questions' => $exception->getMessage()])->withInput();
+        }
+
+        return redirect()
+            ->route('admin.brand-diagnosis.index')
+            ->with('message', '已确认诊断，系统开始调用所选模型抓取数据。');
     }
 
     public function report(int $run, Request $request): View
@@ -294,6 +331,7 @@ class BrandDiagnosisController extends Controller
     private function formatRecord(BrandDiagnosisRun $run, bool $expanded): array
     {
         $questions = $run->questions->map(static fn ($question): array => [
+            'id' => (int) $question->id,
             'rank' => (int) $question->sort_order,
             'text' => (string) $question->question,
             'type' => (string) $question->question_type,
@@ -325,6 +363,9 @@ class BrandDiagnosisController extends Controller
     {
         return match ($status) {
             'pending' => '排队中',
+            'questions_generating' => '生成问题中',
+            'questions_ready' => '待确认诊断',
+            'awaiting_confirmation' => '待确认诊断',
             'running' => '诊断中',
             'completed' => '已完成',
             'failed' => '诊断失败',

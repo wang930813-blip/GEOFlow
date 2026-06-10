@@ -2,13 +2,16 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\GenerateBrandDiagnosisQuestionsJob;
 use App\Jobs\ProcessBrandDiagnosisJob;
 use App\Models\Admin;
 use App\Models\BrandDiagnosisBrandMention;
 use App\Models\BrandDiagnosisResult;
 use App\Models\BrandDiagnosisRun;
 use App\Models\BrandDiagnosisSource;
+use App\Models\BrandDiagnosisUsageLimit;
 use App\Models\Site;
+use App\Services\BrandDiagnosis\BrandDiagnosisMentionBackfillService;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -36,7 +39,16 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         config()->set('brand_diagnosis.deepseek.timeout', 10);
     }
 
-    public function test_admin_can_create_new_doubao_brand_diagnosis_run(): void
+    public function test_brand_diagnosis_workflow_status_values_fit_database_column_length(): void
+    {
+        $statusColumnLength = 20;
+
+        foreach (['questions_generating', 'questions_ready', 'running', 'completed', 'failed'] as $status) {
+            $this->assertLessThanOrEqual($statusColumnLength, strlen($status), $status.' exceeds status column length.');
+        }
+    }
+
+    public function test_admin_can_create_brand_diagnosis_question_generation_run_without_using_quota(): void
     {
         Queue::fake();
         [$admin, $site] = $this->createAdminWithSite('brand_diagnosis_create_admin');
@@ -57,15 +69,18 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         $this->assertSame((int) $admin->id, (int) $run->admin_id);
         $this->assertSame('策影GEO', $run->brand_name);
         $this->assertSame(['doubao'], $run->platforms);
-        $this->assertSame('pending', $run->status);
-        $this->assertSame('daily_free', $run->billing_mode);
+        $this->assertSame('questions_generating', $run->status);
+        $this->assertSame('pending_confirmation', $run->billing_mode);
         $this->assertFalse((bool) $run->limit_bypassed);
+        $this->assertNull($run->usage_date);
         $this->assertSame(0, (int) $run->total_questions);
         $this->assertSame(0, $run->questions()->count());
+        $this->assertSame(0, BrandDiagnosisUsageLimit::query()->count());
 
-        Queue::assertPushedOn('geoflow', ProcessBrandDiagnosisJob::class, function (ProcessBrandDiagnosisJob $job) use ($run): bool {
+        Queue::assertPushedOn('geoflow', GenerateBrandDiagnosisQuestionsJob::class, function (GenerateBrandDiagnosisQuestionsJob $job) use ($run): bool {
             return $job->runId === (int) $run->id;
         });
+        Queue::assertNotPushed(ProcessBrandDiagnosisJob::class);
     }
 
     public function test_doubao_job_generates_industry_question_variants_before_collecting_answers(): void
@@ -123,7 +138,7 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
             'usage_date' => now()->toDateString(),
         ]);
 
-        (new ProcessBrandDiagnosisJob((int) $run->id))->handle();
+        (new GenerateBrandDiagnosisQuestionsJob((int) $run->id))->handle();
 
         $questions = $run->questions()->orderBy('sort_order')->pluck('question')->all();
         $this->assertSame([
@@ -135,7 +150,7 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         ], $questions);
 
         $recordedRequests = Http::recorded()->map(fn (array $record) => $record[0])->values();
-        $this->assertCount(7, $recordedRequests);
+        $this->assertCount(2, $recordedRequests);
         $firstPrompt = (string) data_get($recordedRequests[0]->data(), 'input.0.content.0.text');
         $secondPrompt = (string) data_get($recordedRequests[1]->data(), 'input.0.content.0.text');
         $selectionPrompt = (string) data_get($recordedRequests[1]->data(), 'input.0.content.0.text');
@@ -147,10 +162,213 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         $this->assertStringContainsString('成都AI项目合作流程是什么？', $selectionPrompt);
 
         $run->refresh();
-        $this->assertSame('completed', $run->status);
+        $this->assertSame('questions_ready', $run->status);
         $this->assertSame(5, (int) $run->total_questions);
-        $this->assertSame(5, (int) $run->completed_questions);
+        $this->assertSame(0, (int) $run->completed_questions);
         $this->assertSame(0, (int) $run->failed_questions);
+        $this->assertSame(0, BrandDiagnosisResult::query()->where('run_id', (int) $run->id)->count());
+    }
+
+    public function test_question_generation_job_stores_questions_and_waits_for_confirmation_without_collecting_answers(): void
+    {
+        config()->set('brand_diagnosis.question_count', 3);
+
+        Http::fake([
+            'ark.cn-beijing.volces.com/api/v3/responses' => Http::sequence()
+                ->push([
+                    'id' => 'resp-question-generation-only',
+                    'output_text' => json_encode([
+                        'questions' => [
+                            ['question' => '成都本地AI服务公司口碑怎么样？', 'type' => '认知'],
+                            ['question' => '成都AI项目合作流程是什么？', 'type' => '流程'],
+                            ['question' => '本地人工智能团队怎么比较？', 'type' => '对比'],
+                        ],
+                    ], JSON_UNESCAPED_UNICODE),
+                ], 200)
+                ->push([
+                    'id' => 'resp-question-selection-only',
+                    'output_text' => json_encode([
+                        'questions' => [
+                            ['question' => '成都本地AI服务公司口碑怎么样？', 'type' => '认知'],
+                            ['question' => '成都AI项目合作流程是什么？', 'type' => '流程'],
+                            ['question' => '本地人工智能团队怎么比较？', 'type' => '对比'],
+                        ],
+                    ], JSON_UNESCAPED_UNICODE),
+                ], 200),
+        ]);
+
+        [$admin, $site] = $this->createAdminWithSite('brand_diagnosis_generate_questions_admin');
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => '策影GEO',
+            'platforms' => ['doubao'],
+            'status' => 'questions_generating',
+            'total_questions' => 0,
+            'completed_questions' => 0,
+            'failed_questions' => 0,
+            'billing_mode' => 'pending_confirmation',
+            'usage_date' => null,
+        ]);
+
+        (new GenerateBrandDiagnosisQuestionsJob((int) $run->id))->handle();
+
+        $this->assertSame([
+            '成都本地AI服务公司口碑怎么样？',
+            '成都AI项目合作流程是什么？',
+            '本地人工智能团队怎么比较？',
+        ], $run->questions()->orderBy('sort_order')->pluck('question')->all());
+        $this->assertSame(0, BrandDiagnosisResult::query()->where('run_id', (int) $run->id)->count());
+        $this->assertSame(0, BrandDiagnosisUsageLimit::query()->count());
+
+        $run->refresh();
+        $this->assertSame('questions_ready', $run->status);
+        $this->assertSame(3, (int) $run->total_questions);
+        $this->assertSame(0, (int) $run->completed_questions);
+        $this->assertSame(0, (int) $run->failed_questions);
+    }
+
+    public function test_confirming_editable_questions_reserves_usage_and_dispatches_diagnosis_job(): void
+    {
+        Queue::fake();
+        [$admin, $site] = $this->createAdminWithSite('brand_diagnosis_confirm_admin');
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => '策影GEO',
+            'platforms' => ['doubao'],
+            'status' => 'questions_ready',
+            'total_questions' => 2,
+            'completed_questions' => 0,
+            'failed_questions' => 0,
+            'billing_mode' => 'pending_confirmation',
+            'usage_date' => null,
+        ]);
+        $questionOne = $run->questions()->create([
+            'site_id' => (int) $site->id,
+            'question' => 'AI搜索优化服务怎么选？',
+            'question_type' => '选择',
+            'sort_order' => 1,
+            'status' => 'pending',
+        ]);
+        $questionTwo = $run->questions()->create([
+            'site_id' => (int) $site->id,
+            'question' => 'GEO品牌诊断工具有哪些？',
+            'question_type' => '对比',
+            'sort_order' => 2,
+            'status' => 'pending',
+        ]);
+
+        $response = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.brand-diagnosis.confirm', ['run' => $run->id]), [
+                'questions' => [
+                    (int) $questionOne->id => '企业AI搜索优化服务怎么选？',
+                    (int) $questionTwo->id => 'GEO品牌诊断工具有哪些？',
+                ],
+            ]);
+
+        $response->assertRedirect(route('admin.brand-diagnosis.index'));
+
+        $run->refresh();
+        $this->assertSame('running', $run->status);
+        $this->assertSame('daily_free', $run->billing_mode);
+        $this->assertSame(now()->toDateString(), $run->usage_date?->toDateString());
+        $this->assertSame('企业AI搜索优化服务怎么选？', $questionOne->refresh()->question);
+        $this->assertSame(1, BrandDiagnosisUsageLimit::query()->value('free_runs_used'));
+
+        Queue::assertPushedOn('geoflow', ProcessBrandDiagnosisJob::class, function (ProcessBrandDiagnosisJob $job) use ($run): bool {
+            return $job->runId === (int) $run->id;
+        });
+    }
+
+    public function test_confirming_completed_record_creates_new_diagnosis_run_and_counts_usage(): void
+    {
+        Queue::fake();
+        [$admin, $site] = $this->createAdminWithSite('brand_diagnosis_reconfirm_admin', 'super_admin');
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => '策影GEO',
+            'platforms' => ['doubao', 'deepseek'],
+            'status' => 'completed',
+            'total_questions' => 1,
+            'completed_questions' => 1,
+            'failed_questions' => 0,
+            'billing_mode' => 'admin_unlimited',
+            'usage_date' => now()->toDateString(),
+            'limit_bypassed' => true,
+            'limit_bypass_reason' => 'super_admin',
+        ]);
+        $question = $run->questions()->create([
+            'site_id' => (int) $site->id,
+            'question' => 'AI搜索优化服务怎么选？',
+            'question_type' => '选择',
+            'sort_order' => 1,
+            'status' => 'completed',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.brand-diagnosis.confirm', ['run' => $run->id]), [
+                'questions' => [
+                    (int) $question->id => '企业AI搜索优化服务商怎么比较？',
+                ],
+            ])
+            ->assertRedirect(route('admin.brand-diagnosis.index'));
+
+        $this->assertSame(2, BrandDiagnosisRun::query()->count());
+        $run->refresh();
+        $this->assertSame('completed', $run->status);
+
+        $newRun = BrandDiagnosisRun::query()->whereKeyNot((int) $run->id)->firstOrFail();
+        $this->assertSame('running', $newRun->status);
+        $this->assertSame('策影GEO', $newRun->brand_name);
+        $this->assertSame(['doubao', 'deepseek'], $newRun->platforms);
+        $this->assertSame('admin_unlimited', $newRun->billing_mode);
+        $this->assertTrue((bool) $newRun->limit_bypassed);
+        $this->assertSame('企业AI搜索优化服务商怎么比较？', $newRun->questions()->value('question'));
+
+        Queue::assertPushedOn('geoflow', ProcessBrandDiagnosisJob::class, function (ProcessBrandDiagnosisJob $job) use ($newRun): bool {
+            return $job->runId === (int) $newRun->id;
+        });
+    }
+
+    public function test_confirming_running_record_is_rejected_to_prevent_duplicate_collection(): void
+    {
+        Queue::fake();
+        [$admin, $site] = $this->createAdminWithSite('brand_diagnosis_duplicate_confirm_admin');
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => '策影GEO',
+            'platforms' => ['doubao'],
+            'status' => 'running',
+            'total_questions' => 1,
+            'completed_questions' => 0,
+            'failed_questions' => 0,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+        ]);
+        $question = $run->questions()->create([
+            'site_id' => (int) $site->id,
+            'question' => 'AI搜索优化服务怎么选？',
+            'question_type' => '选择',
+            'sort_order' => 1,
+            'status' => 'pending',
+        ]);
+
+        $response = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.brand-diagnosis.confirm', ['run' => $run->id]), [
+                'questions' => [
+                    (int) $question->id => 'AI搜索优化服务怎么选？',
+                ],
+            ]);
+
+        $response->assertSessionHasErrors('questions');
+        $this->assertSame(1, BrandDiagnosisRun::query()->count());
+        Queue::assertNothingPushed();
     }
 
     public function test_doubao_generated_question_count_uses_configuration(): void
@@ -204,10 +422,10 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
             'usage_date' => now()->toDateString(),
         ]);
 
-        (new ProcessBrandDiagnosisJob((int) $run->id))->handle();
+        (new GenerateBrandDiagnosisQuestionsJob((int) $run->id))->handle();
 
         $recordedRequests = Http::recorded()->map(fn (array $record) => $record[0])->values();
-        $this->assertCount(5, $recordedRequests);
+        $this->assertCount(2, $recordedRequests);
         $this->assertStringContainsString('生成 3 个', (string) data_get($recordedRequests[0]->data(), 'input.0.content.0.text'));
 
         $this->assertSame([
@@ -218,7 +436,8 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
 
         $run->refresh();
         $this->assertSame(3, (int) $run->total_questions);
-        $this->assertSame(3, (int) $run->completed_questions);
+        $this->assertSame('questions_ready', $run->status);
+        $this->assertSame(0, (int) $run->completed_questions);
     }
 
     public function test_question_generation_prompt_does_not_force_geo_context_for_unrelated_brand(): void
@@ -335,7 +554,7 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
             'usage_date' => now()->toDateString(),
         ]);
 
-        (new ProcessBrandDiagnosisJob((int) $run->id))->handle();
+        (new GenerateBrandDiagnosisQuestionsJob((int) $run->id))->handle();
 
         $this->assertSame([
             '成都本地AI服务公司口碑怎么样？',
@@ -346,7 +565,7 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         ], $run->questions()->orderBy('sort_order')->pluck('question')->all());
 
         $recordedRequests = Http::recorded()->map(fn (array $record) => $record[0])->values();
-        $this->assertCount(13, $recordedRequests);
+        $this->assertCount(3, $recordedRequests);
 
         $doubaoPrompt = (string) data_get($recordedRequests[0]->data(), 'input.0.content.0.text');
         $deepseekPrompt = (string) data_get($recordedRequests[1]->data(), 'input.0.content.0.text');
@@ -361,9 +580,9 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         $this->assertStringContainsString('最终问题默认不得出现目标品牌名称或简称', $selectionPrompt);
 
         $run->refresh();
-        $this->assertSame('completed', $run->status);
+        $this->assertSame('questions_ready', $run->status);
         $this->assertSame(5, (int) $run->total_questions);
-        $this->assertSame(5, (int) $run->completed_questions);
+        $this->assertSame(0, (int) $run->completed_questions);
         $this->assertSame(0, (int) $run->mention_rate);
         $this->assertSame(0, (int) $run->mention_count);
     }
@@ -426,7 +645,7 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
             'usage_date' => now()->toDateString(),
         ]);
 
-        (new ProcessBrandDiagnosisJob((int) $run->id))->handle();
+        (new GenerateBrandDiagnosisQuestionsJob((int) $run->id))->handle();
 
         $this->assertSame([
             '成都本地AI服务公司口碑怎么样？',
@@ -435,12 +654,12 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
             '成都智能化方案怎么选？',
             '企业AI项目交付怎么判断？',
         ], $run->questions()->orderBy('sort_order')->pluck('question')->all());
-        $this->assertSame(10, BrandDiagnosisResult::query()->where('run_id', (int) $run->id)->count());
+        $this->assertSame(0, BrandDiagnosisResult::query()->where('run_id', (int) $run->id)->count());
 
         $run->refresh();
-        $this->assertSame('completed', $run->status);
+        $this->assertSame('questions_ready', $run->status);
         $this->assertSame(5, (int) $run->total_questions);
-        $this->assertSame(5, (int) $run->completed_questions);
+        $this->assertSame(0, (int) $run->completed_questions);
     }
 
     public function test_question_pool_uses_candidate_fallback_when_final_selection_request_fails(): void
@@ -484,7 +703,7 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
             'usage_date' => now()->toDateString(),
         ]);
 
-        (new ProcessBrandDiagnosisJob((int) $run->id))->handle();
+        (new GenerateBrandDiagnosisQuestionsJob((int) $run->id))->handle();
 
         $this->assertSame([
             '成都本地AI服务公司口碑怎么样？',
@@ -495,12 +714,12 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         ], $run->questions()->orderBy('sort_order')->pluck('question')->all());
 
         $run->refresh();
-        $this->assertSame('completed', $run->status);
+        $this->assertSame('questions_ready', $run->status);
         $this->assertSame(5, (int) $run->total_questions);
-        $this->assertSame(5, (int) $run->completed_questions);
+        $this->assertSame(0, (int) $run->completed_questions);
     }
 
-    public function test_standard_admin_can_only_create_one_free_diagnosis_per_day(): void
+    public function test_standard_admin_can_generate_questions_but_can_only_confirm_one_free_diagnosis_per_day(): void
     {
         Queue::fake();
         [$admin, $site] = $this->createAdminWithSite('brand_diagnosis_limit_admin');
@@ -518,16 +737,41 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
             'usage_date' => now()->toDateString(),
         ]);
 
-        $response = $this->actingAs($admin, 'admin')
+        $this->actingAs($admin, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
             ->post(route('admin.brand-diagnosis.store'), [
                 'brand_name' => '策影GEO',
                 'platforms' => ['doubao'],
+            ])
+            ->assertRedirect(route('admin.brand-diagnosis.index'));
+
+        $draftRun = BrandDiagnosisRun::query()->orderByDesc('id')->firstOrFail();
+        $this->assertSame('questions_generating', $draftRun->status);
+        Queue::assertPushed(GenerateBrandDiagnosisQuestionsJob::class);
+
+        $question = $draftRun->questions()->create([
+            'site_id' => (int) $site->id,
+            'question' => 'AI搜索优化服务怎么选？',
+            'question_type' => '选择',
+            'sort_order' => 1,
+            'status' => 'pending',
+        ]);
+        $draftRun->update([
+            'status' => 'questions_ready',
+            'total_questions' => 1,
+        ]);
+
+        $response = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.brand-diagnosis.confirm', ['run' => $draftRun->id]), [
+                'questions' => [
+                    (int) $question->id => 'AI搜索优化服务怎么选？',
+                ],
             ]);
 
-        $response->assertSessionHasErrors('brand_name');
-        $this->assertSame(1, BrandDiagnosisRun::query()->count());
-        Queue::assertNothingPushed();
+        $response->assertSessionHasErrors('questions');
+        $this->assertSame(2, BrandDiagnosisRun::query()->count());
+        Queue::assertNotPushed(ProcessBrandDiagnosisJob::class);
     }
 
     public function test_super_admin_can_bypass_daily_free_limit(): void
@@ -559,10 +803,36 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
             ->assertRedirect(route('admin.brand-diagnosis.index'));
 
         $latest = BrandDiagnosisRun::query()->orderByDesc('id')->firstOrFail();
+        $this->assertSame('pending_confirmation', $latest->billing_mode);
+        $this->assertFalse((bool) $latest->limit_bypassed);
+
+        $question = $latest->questions()->create([
+            'site_id' => (int) $site->id,
+            'question' => 'AI搜索优化服务怎么选？',
+            'question_type' => '选择',
+            'sort_order' => 1,
+            'status' => 'pending',
+        ]);
+        $latest->update([
+            'status' => 'questions_ready',
+            'total_questions' => 1,
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.brand-diagnosis.confirm', ['run' => $latest->id]), [
+                'questions' => [
+                    (int) $question->id => 'AI搜索优化服务怎么选？',
+                ],
+            ])
+            ->assertRedirect(route('admin.brand-diagnosis.index'));
+
+        $latest->refresh();
         $this->assertSame('admin_unlimited', $latest->billing_mode);
         $this->assertTrue((bool) $latest->limit_bypassed);
         $this->assertSame('super_admin', $latest->limit_bypass_reason);
         $this->assertSame(2, BrandDiagnosisRun::query()->count());
+        Queue::assertPushed(ProcessBrandDiagnosisJob::class);
     }
 
     public function test_doubao_job_persists_answers_sources_and_metrics(): void
@@ -1354,6 +1624,310 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         $result = BrandDiagnosisResult::query()->firstOrFail();
         $this->assertSame('deepseek', $result->platform);
         $this->assertSame('success', $result->status);
+    }
+
+    public function test_deepseek_extracts_clean_competitor_brands_from_answer_when_brand_mentions_payload_is_empty(): void
+    {
+        Http::fake([
+            'ark.cn-beijing.volces.com/api/v3/responses' => Http::sequence()
+                ->push([
+                    'id' => 'resp-deepseek-empty-brand-mentions',
+                    'output_text' => json_encode([
+                        'answer' => '根据公开信息，成都能做RAG私有知识库搭建的本地服务商主要有：1. **中科联腾（成都）科技集团**：支持AI数字员工部署、RAG私有知识库搭建。2. **成都智元奇点科技有限公司**：提供企业知识库和智能问答系统。3. 成都定业通软件有限公司：可按需交付企业软件定制服务。',
+                        'brand_mentions' => [],
+                    ], JSON_UNESCAPED_UNICODE),
+                ], 200)
+                ->push([
+                    'id' => 'resp-deepseek-mention-extraction',
+                    'output_text' => json_encode([
+                        'brand_mentions' => [
+                            [
+                                'brand' => '中科联腾（成都）科技集团',
+                                'mention_count' => 1,
+                                'mention_rank' => 1,
+                                'sentiment' => 'neutral',
+                                'evidence' => '回答正文第1项真实出现',
+                            ],
+                            [
+                                'brand' => '成都智元奇点科技有限公司',
+                                'mention_count' => 1,
+                                'mention_rank' => 2,
+                                'sentiment' => 'neutral',
+                                'evidence' => '回答正文第2项真实出现',
+                            ],
+                            [
+                                'brand' => '成都定业通软件有限公司',
+                                'mention_count' => 1,
+                                'mention_rank' => 3,
+                                'sentiment' => 'neutral',
+                                'evidence' => '回答正文第3项真实出现',
+                            ],
+                            [
+                                'brand' => '不存在的竞品',
+                                'mention_count' => 1,
+                                'mention_rank' => 4,
+                                'sentiment' => 'neutral',
+                                'evidence' => '回答正文并没有出现',
+                            ],
+                        ],
+                    ], JSON_UNESCAPED_UNICODE),
+                ], 200),
+        ]);
+
+        [$admin, $site] = $this->createAdminWithSite('brand_diagnosis_deepseek_text_mentions_admin');
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => '新知地(成都)人工智能科技有限公司',
+            'platforms' => ['deepseek'],
+            'status' => 'pending',
+            'total_questions' => 1,
+            'completed_questions' => 0,
+            'failed_questions' => 0,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+        ]);
+        $run->questions()->create([
+            'site_id' => (int) $site->id,
+            'question' => '成都能做RAG私有知识库搭建的本地服务商有哪些推荐？',
+            'question_type' => '选择',
+            'sort_order' => 1,
+            'status' => 'pending',
+        ]);
+
+        (new ProcessBrandDiagnosisJob((int) $run->id))->handle();
+
+        $result = BrandDiagnosisResult::query()->where('run_id', (int) $run->id)->firstOrFail();
+        $this->assertSame('deepseek', $result->platform);
+        $this->assertFalse((bool) $result->brand_mentioned);
+
+        $mentions = BrandDiagnosisBrandMention::query()
+            ->where('run_id', (int) $run->id)
+            ->orderBy('mention_rank')
+            ->pluck('brand_name')
+            ->all();
+
+        $this->assertSame([
+            '中科联腾（成都）科技集团',
+            '成都智元奇点科技有限公司',
+            '成都定业通软件有限公司',
+        ], $mentions);
+
+        $this->assertDatabaseMissing('brand_diagnosis_brand_mentions', [
+            'run_id' => (int) $run->id,
+            'brand_name' => '不存在的竞品',
+        ]);
+        $this->assertDatabaseMissing('brand_diagnosis_brand_mentions', [
+            'run_id' => (int) $run->id,
+            'brand_name' => '新知地(成都)人工智能科技有限公司',
+        ]);
+    }
+
+    public function test_deepseek_message_json_is_parsed_when_response_contains_reasoning_output(): void
+    {
+        Http::fake([
+            'ark.cn-beijing.volces.com/api/v3/responses' => Http::response([
+                'id' => 'resp-deepseek-reasoning-json',
+                'output' => [
+                    [
+                        'type' => 'reasoning',
+                        'content' => [
+                            [
+                                'type' => 'output_text',
+                                'text' => '我需要先检索成都业务系统定制服务商。',
+                            ],
+                        ],
+                    ],
+                    [
+                        'type' => 'web_search_call',
+                        'status' => 'completed',
+                    ],
+                    [
+                        'type' => 'message',
+                        'content' => [
+                            [
+                                'type' => 'output_text',
+                                'text' => json_encode([
+                                    'answer' => '在成都定制业务系统，1. **成都智码智创软件有限公司**：提供模块化定制方案。2. **成都创智联恒科技有限公司**：专注中小企业管理系统定制。3. **成都快跑科技**：聚焦零售、电商领域的仓储和人力资源场景。',
+                                    'brand_mentions' => [
+                                        [
+                                            'brand' => '成都智码智创软件有限公司',
+                                            'mention_count' => 1,
+                                            'mention_rank' => 1,
+                                            'sentiment' => 'positive',
+                                            'evidence' => '回答正文第1项真实出现',
+                                        ],
+                                        [
+                                            'brand' => '成都创智联恒科技有限公司',
+                                            'mention_count' => 1,
+                                            'mention_rank' => 2,
+                                            'sentiment' => 'positive',
+                                            'evidence' => '回答正文第2项真实出现',
+                                        ],
+                                        [
+                                            'brand' => '成都快跑科技',
+                                            'mention_count' => 1,
+                                            'mention_rank' => 3,
+                                            'sentiment' => 'positive',
+                                            'evidence' => '回答正文第3项真实出现',
+                                        ],
+                                    ],
+                                ], JSON_UNESCAPED_UNICODE),
+                            ],
+                        ],
+                    ],
+                ],
+            ], 200),
+        ]);
+
+        [$admin, $site] = $this->createAdminWithSite('brand_diagnosis_deepseek_reasoning_json_admin');
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => '新知地(成都)人工智能科技有限公司',
+            'platforms' => ['deepseek'],
+            'status' => 'pending',
+            'total_questions' => 1,
+            'completed_questions' => 0,
+            'failed_questions' => 0,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+        ]);
+        $run->questions()->create([
+            'site_id' => (int) $site->id,
+            'question' => '企业想要定制业务系统成都这边有什么高性价比的选项？',
+            'question_type' => '选择',
+            'sort_order' => 1,
+            'status' => 'pending',
+        ]);
+
+        (new ProcessBrandDiagnosisJob((int) $run->id))->handle();
+
+        $mentions = BrandDiagnosisBrandMention::query()
+            ->where('run_id', (int) $run->id)
+            ->orderBy('mention_rank')
+            ->pluck('brand_name')
+            ->all();
+
+        $this->assertSame([
+            '成都智码智创软件有限公司',
+            '成都创智联恒科技有限公司',
+            '成都快跑科技',
+        ], $mentions);
+    }
+
+    public function test_deepseek_raw_response_brand_mentions_are_parsed_when_answer_json_has_literal_newlines(): void
+    {
+        $text = <<<'JSON'
+{"answer":"在成都定制业务系统，想找高性价比的选项：
+
+1. **成都智码智创软件有限公司**：提供高性价比的模块化定制方案。
+2. **成都创智联恒科技有限公司**：专注中小企业管理系统定制。","brand_mentions":[{"brand":"成都智码智创软件有限公司","mention_count":1,"mention_rank":1,"sentiment":"positive","evidence":"回答正文第1项真实出现"},{"brand":"成都创智联恒科技有限公司","mention_count":1,"mention_rank":2,"sentiment":"positive","evidence":"回答正文第2项真实出现"}]}
+JSON;
+
+        $mentions = app(\App\Services\BrandDiagnosis\DoubaoBrandDiagnosisClient::class)
+            ->extractBrandMentionsFromRawResponse([
+                'output' => [
+                    [
+                        'type' => 'reasoning',
+                        'summary' => [
+                            [
+                                'type' => 'summary_text',
+                                'text' => '先分析搜索结果。',
+                            ],
+                        ],
+                    ],
+                    [
+                        'type' => 'message',
+                        'content' => [
+                            [
+                                'type' => 'output_text',
+                                'text' => $text,
+                            ],
+                        ],
+                    ],
+                ],
+            ]);
+
+        $this->assertSame([
+            '成都智码智创软件有限公司',
+            '成都创智联恒科技有限公司',
+        ], array_column($mentions, 'brand'));
+    }
+
+    public function test_backfill_uses_raw_response_mentions_without_calling_model_extraction(): void
+    {
+        Http::fake();
+        [$admin, $site] = $this->createAdminWithSite('brand_diagnosis_backfill_raw_mentions_admin');
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => '新知地(成都)人工智能科技有限公司',
+            'platforms' => ['deepseek'],
+            'status' => 'completed',
+            'total_questions' => 1,
+            'completed_questions' => 1,
+            'failed_questions' => 0,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+        ]);
+        $question = $run->questions()->create([
+            'site_id' => (int) $site->id,
+            'question' => '企业想要定制业务系统成都这边有什么高性价比的选项？',
+            'question_type' => '选择',
+            'sort_order' => 1,
+            'status' => 'completed',
+        ]);
+
+        $answer = '在成都定制业务系统，1. **成都智码智创软件有限公司**：提供高性价比的模块化定制方案。2. **成都创智联恒科技有限公司**：专注中小企业管理系统定制。';
+        $question->results()->create([
+            'site_id' => (int) $site->id,
+            'run_id' => (int) $run->id,
+            'platform' => 'deepseek',
+            'answer' => $answer,
+            'brand_mentioned' => false,
+            'mention_count' => 0,
+            'mention_rank' => 0,
+            'sentiment' => 'neutral',
+            'status' => 'success',
+            'raw_response' => [
+                'output' => [
+                    [
+                        'type' => 'message',
+                        'content' => [
+                            [
+                                'type' => 'output_text',
+                                'text' => <<<'JSON'
+{"answer":"在成都定制业务系统：
+
+1. **成都智码智创软件有限公司**：提供高性价比的模块化定制方案。
+2. **成都创智联恒科技有限公司**：专注中小企业管理系统定制。","brand_mentions":[{"brand":"成都智码智创软件有限公司","mention_count":1,"mention_rank":1,"sentiment":"positive","evidence":"回答正文第1项真实出现"},{"brand":"成都创智联恒科技有限公司","mention_count":1,"mention_rank":2,"sentiment":"positive","evidence":"回答正文第2项真实出现"}]}
+JSON,
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+            'checked_at' => now(),
+        ]);
+
+        $stats = app(BrandDiagnosisMentionBackfillService::class)->backfillRun($run);
+
+        $this->assertSame(1, $stats['updated']);
+        $this->assertSame(0, $stats['failed']);
+        $this->assertDatabaseHas('brand_diagnosis_brand_mentions', [
+            'run_id' => (int) $run->id,
+            'brand_name' => '成都智码智创软件有限公司',
+            'mention_count' => 1,
+            'mention_rank' => 1,
+        ]);
+        $this->assertDatabaseHas('brand_diagnosis_brand_mentions', [
+            'run_id' => (int) $run->id,
+            'brand_name' => '成都创智联恒科技有限公司',
+            'mention_count' => 1,
+            'mention_rank' => 2,
+        ]);
+        Http::assertNothingSent();
     }
 
     public function test_answer_prompt_does_not_include_target_brand_name_to_avoid_forced_mentions(): void

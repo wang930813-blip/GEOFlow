@@ -28,6 +28,7 @@ class BrandDiagnosisUsagePolicy
                 ->where('site_id', $siteId)
                 ->where('admin_id', (int) $admin->id)
                 ->whereDate('usage_date', $today)
+                ->whereNotIn('billing_mode', ['pending_confirmation'])
                 ->count();
 
             $usage = BrandDiagnosisUsageLimit::query()

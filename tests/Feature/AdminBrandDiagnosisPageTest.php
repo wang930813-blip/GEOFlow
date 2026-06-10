@@ -66,6 +66,43 @@ class AdminBrandDiagnosisPageTest extends TestCase
             ->assertSee('is-active font-medium', false);
     }
 
+    public function test_brand_diagnosis_questions_are_editable_before_confirming_diagnosis(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('brand_question_confirm_page_admin');
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => '策影GEO',
+            'platforms' => ['doubao'],
+            'status' => 'questions_ready',
+            'total_questions' => 1,
+            'completed_questions' => 0,
+            'failed_questions' => 0,
+            'billing_mode' => 'pending_confirmation',
+            'usage_date' => null,
+        ]);
+        $question = $run->questions()->create([
+            'site_id' => (int) $site->id,
+            'question' => 'AI搜索优化服务怎么选？',
+            'question_type' => '选择',
+            'sort_order' => 1,
+            'status' => 'pending',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.brand-diagnosis.index'))
+            ->assertOk()
+            ->assertSee('待确认诊断')
+            ->assertSee('action="'.route('admin.brand-diagnosis.confirm', ['run' => $run->id]).'"', false)
+            ->assertSee('data-confirm-diagnosis-form', false)
+            ->assertSee('data-confirm-diagnosis-submit', false)
+            ->assertSee('确认诊断')
+            ->assertSee('name="questions['.$question->id.']"', false)
+            ->assertSee('AI搜索优化服务怎么选？')
+            ->assertSee('诊断中...', false);
+    }
+
     public function test_brand_diagnosis_nav_sits_between_geo_reports_and_analytics(): void
     {
         $admin = Admin::query()->create([

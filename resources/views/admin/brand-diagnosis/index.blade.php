@@ -250,18 +250,43 @@
                                     记录 #{{ $record['id'] }} 当前状态：{{ $record['status'] }}。诊断完成后会展示所选模型真实联网回答和引用来源。
                                 </div>
 
-                        <div class="mt-5 rounded-lg border border-slate-200 bg-white p-4">
-                            <div class="mb-3 text-sm font-semibold text-gray-900">AI问题</div>
-                            <div class="flex flex-wrap gap-2">
-                                @foreach ($recordQuestions as $question)
-                            <span class="inline-flex min-h-8 items-center gap-2 rounded-md bg-blue-50 px-3 text-xs font-medium text-blue-700">
-                                <span class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-[11px] font-bold text-white">{{ $question['rank'] }}</span>
-                                {{ $question['text'] }}
-                                <span class="rounded bg-orange-50 px-1.5 py-0.5 text-[11px] text-orange-700">{{ $question['type'] }}</span>
-                            </span>
-                        @endforeach
-                    </div>
-                </div>
+                        <form method="POST" action="{{ route('admin.brand-diagnosis.confirm', ['run' => $record['id']]) }}" class="mt-5 rounded-lg border border-slate-200 bg-white p-4" data-confirm-diagnosis-form>
+                            @csrf
+                            <div class="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                <div>
+                                    <div class="text-sm font-semibold text-gray-900">AI问题</div>
+                                    <div class="mt-1 text-xs text-gray-500">可修改问题后再确认诊断，确认后将开始调用所选模型并计入一次诊断。</div>
+                                </div>
+                                @if (in_array($record['raw_status'] ?? '', ['questions_ready', 'awaiting_confirmation', 'completed', 'failed'], true) && count($recordQuestions) > 0)
+                                    <button type="submit" class="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md bg-orange-600 px-4 text-sm font-semibold text-white hover:bg-orange-700 disabled:cursor-not-allowed disabled:bg-orange-300" data-confirm-diagnosis-submit>
+                                        <i data-lucide="play" class="h-4 w-4"></i>
+                                        确认诊断
+                                    </button>
+                                @endif
+                            </div>
+                            @if ($errors->has('questions'))
+                                <div class="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-600">{{ $errors->first('questions') }}</div>
+                            @endif
+                            <div class="grid gap-3 lg:grid-cols-2">
+                                @forelse ($recordQuestions as $question)
+                                    <label class="block rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                        <span class="mb-2 flex items-center gap-2 text-xs font-medium text-slate-600">
+                                            <span class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-[11px] font-bold text-white">{{ $question['rank'] }}</span>
+                                            <span class="rounded bg-orange-50 px-1.5 py-0.5 text-[11px] text-orange-700">{{ $question['type'] }}</span>
+                                        </span>
+                                        <textarea
+                                            name="questions[{{ $question['id'] }}]"
+                                            rows="2"
+                                            maxlength="240"
+                                            class="w-full resize-y rounded-md border border-slate-200 bg-white text-sm leading-6 text-gray-800 focus:border-orange-400 focus:ring-orange-400"
+                                            @if (! in_array($record['raw_status'] ?? '', ['questions_ready', 'awaiting_confirmation', 'completed', 'failed'], true)) readonly @endif
+                                        >{{ old('questions.'.$question['id'], $question['text']) }}</textarea>
+                                    </label>
+                                @empty
+                                    <div class="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-gray-500 lg:col-span-2">AI 问题生成后会显示在这里。</div>
+                                @endforelse
+                            </div>
+                        </form>
 
                 <div class="mt-6">
                     <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -722,6 +747,16 @@
             reportModal?.querySelectorAll('[data-report-link-action]').forEach((link) => {
                 link.addEventListener('click', () => {
                     closeReportModal();
+                });
+            });
+
+            document.querySelectorAll('[data-confirm-diagnosis-form]').forEach((form) => {
+                form.addEventListener('submit', () => {
+                    const button = form.querySelector('[data-confirm-diagnosis-submit]');
+                    if (!button) return;
+
+                    button.disabled = true;
+                    button.innerHTML = '<span class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white"></span>诊断中...';
                 });
             });
 

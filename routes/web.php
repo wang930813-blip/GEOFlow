@@ -86,6 +86,9 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
         Route::get('geo-reports', [GeoReportController::class, 'index'])->name('geo-reports.index');
         Route::get('brand-diagnosis', [BrandDiagnosisController::class, 'index'])->name('brand-diagnosis.index');
         Route::post('brand-diagnosis', [BrandDiagnosisController::class, 'store'])->name('brand-diagnosis.store');
+        Route::post('brand-diagnosis/{run}/confirm', [BrandDiagnosisController::class, 'confirm'])
+            ->name('brand-diagnosis.confirm')
+            ->whereNumber('run');
         Route::get('brand-diagnosis/{run}/report', [BrandDiagnosisController::class, 'report'])
             ->name('brand-diagnosis.report')
             ->whereNumber('run');

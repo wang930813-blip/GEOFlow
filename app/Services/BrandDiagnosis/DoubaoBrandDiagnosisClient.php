@@ -98,22 +98,70 @@ class DoubaoBrandDiagnosisClient
         $platform = $this->normalizePlatform($platform);
         $data = $this->postResponses($this->buildAnswerPrompt($brandName, $question), $platform);
         $parsed = $this->parseAnswerPayload($this->extractText($data));
+        $sources = $this->extractSources($data);
+        $brandMentions = $parsed['brand_mentions'];
+        $mentionExtractionMeta = [
+            'status' => 'not_needed',
+        ];
 
         if ($parsed['answer'] === '') {
             throw new RuntimeException($this->platformLabel($platform).'品牌诊断返回为空。');
         }
 
+        if ($brandMentions === []) {
+            try {
+                $extractionData = $this->postResponses(
+                    $this->buildBrandMentionExtractionPrompt($parsed['answer'], $sources),
+                    $platform,
+                    false
+                );
+                $brandMentions = $this->parseAnswerPayload($this->extractText($extractionData))['brand_mentions'];
+                $mentionExtractionMeta = [
+                    'status' => 'success',
+                    'response_id' => (string) ($extractionData['id'] ?? ''),
+                    'usage' => Arr::get($extractionData, 'usage', []),
+                ];
+            } catch (Throwable $exception) {
+                $mentionExtractionMeta = [
+                    'status' => 'failed',
+                    'error' => $exception->getMessage(),
+                ];
+            }
+        }
+
         return new BrandDiagnosisAiResponse(
             answer: $parsed['answer'],
-            sources: $this->extractSources($data),
+            sources: $sources,
             rawResponse: $data,
             meta: [
                 'platform' => $platform,
                 'response_id' => (string) ($data['id'] ?? ''),
                 'usage' => Arr::get($data, 'usage', []),
+                'mention_extraction' => $mentionExtractionMeta,
             ],
-            brandMentions: $parsed['brand_mentions'],
+            brandMentions: $brandMentions,
         );
+    }
+
+    /**
+     * @param  array<string,mixed>  $rawResponse
+     * @return list<array{brand:string,mention_count:int,mention_rank:int,sentiment:string,evidence:string,source_count?:int,meta?:array<string,mixed>}>
+     */
+    public function extractBrandMentionsFromRawResponse(array $rawResponse): array
+    {
+        return $this->parseAnswerPayload($this->extractText($rawResponse))['brand_mentions'];
+    }
+
+    /**
+     * @param  list<array{title:string,url:string,type:string,meta:array<string,mixed>}>  $sources
+     * @return list<array{brand:string,mention_count:int,mention_rank:int,sentiment:string,evidence:string,source_count?:int,meta?:array<string,mixed>}>
+     */
+    public function extractBrandMentionsFromEvidence(string $answer, array $sources, string $platform): array
+    {
+        $platform = $this->normalizePlatform($platform);
+        $data = $this->postResponses($this->buildBrandMentionExtractionPrompt($answer, $sources), $platform, false);
+
+        return $this->parseAnswerPayload($this->extractText($data))['brand_mentions'];
     }
 
     /**
@@ -139,7 +187,7 @@ class DoubaoBrandDiagnosisClient
     /**
      * @return array<string,mixed>
      */
-    private function postResponses(string $prompt, string $platform): array
+    private function postResponses(string $prompt, string $platform, bool $withWebSearch = true): array
     {
         $platform = $this->normalizePlatform($platform);
         $label = $this->platformLabel($platform);
@@ -171,13 +219,16 @@ class DoubaoBrandDiagnosisClient
                     ],
                 ],
             ],
-            'tools' => [
+        ];
+
+        if ($withWebSearch) {
+            $payload['tools'] = [
                 [
                     'type' => 'web_search',
                     'max_keyword' => max(1, (int) config('brand_diagnosis.'.$platform.'.max_keywords', 5)),
                 ],
-            ],
-        ];
+            ];
+        }
 
         $response = Http::withToken($apiKey)
             ->acceptJson()
@@ -264,6 +315,29 @@ class DoubaoBrandDiagnosisClient
     }
 
     /**
+     * @param  list<array{title:string,url:string,type:string,meta:array<string,mixed>}>  $sources
+     */
+    private function buildBrandMentionExtractionPrompt(string $answer, array $sources): string
+    {
+        return implode("\n", [
+            '请只基于下面给出的“AI回答正文”和“引用来源资料”抽取真实出现的品牌、竞品、机构、门店、产品或服务商名称。',
+            '严格规则：',
+            '1. 只抽取原文中逐字真实出现的名称；不要猜测、补全、联想或生成不存在的竞品。',
+            '2. 不要抽取行业词、能力词、地区词、普通名词、泛称或状态描述，例如“本地服务商”“AI公司”“暂无竞品”“未提及品牌”。',
+            '3. 如果名称只出现在“未检索到、未被推荐、暂未出现、无法确认、没有提及”等否定语境，不要抽取。',
+            '4. 清洗品牌名称，去掉序号、Markdown 符号、冒号、解释文字和多余空格，保留正确干净的公司/品牌名。',
+            '5. mention_count 固定填 1；mention_rank 按回答里的推荐/排名顺位填写，没有顺位填 0；sentiment 只能是 positive、neutral、negative。',
+            '6. 只输出 JSON，不要 Markdown，不要解释。',
+            'JSON 格式：',
+            '{"brand_mentions":[{"brand":"干净品牌名","mention_count":1,"mention_rank":1,"sentiment":"positive|neutral|negative","evidence":"原文依据"}]}',
+            'AI回答正文：',
+            mb_substr($answer, 0, 10000, 'UTF-8'),
+            '引用来源资料：',
+            mb_substr($this->sourceEvidenceText($sources), 0, 8000, 'UTF-8'),
+        ]);
+    }
+
+    /**
      * @return array{answer:string,brand_mentions:list<array{brand:string,mention_count:int,mention_rank:int,sentiment:string,evidence:string,source_count?:int,meta?:array<string,mixed>}>}
      */
     private function parseAnswerPayload(string $text): array
@@ -277,10 +351,11 @@ class DoubaoBrandDiagnosisClient
         $decoded = json_decode($json, true);
         if (! is_array($decoded)) {
             $looseAnswer = $this->extractLooseJsonAnswer($json);
-            if ($looseAnswer !== '') {
+            $looseMentions = $this->extractLooseJsonBrandMentions($json);
+            if ($looseAnswer !== '' || $looseMentions !== []) {
                 return [
-                    'answer' => $looseAnswer,
-                    'brand_mentions' => [],
+                    'answer' => $looseAnswer !== '' ? $looseAnswer : trim($text),
+                    'brand_mentions' => $looseMentions,
                 ];
             }
 
@@ -295,7 +370,21 @@ class DoubaoBrandDiagnosisClient
             $answer = trim((string) Arr::get($decoded, 'content', ''));
         }
 
-        $mentions = collect((array) ($decoded['brand_mentions'] ?? []))
+        $mentions = $this->normalizeParsedBrandMentions((array) ($decoded['brand_mentions'] ?? []));
+
+        return [
+            'answer' => $answer !== '' ? $answer : trim($text),
+            'brand_mentions' => $mentions,
+        ];
+    }
+
+    /**
+     * @param  list<array<string,mixed>>|array<int,array<string,mixed>>  $mentions
+     * @return list<array{brand:string,mention_count:int,mention_rank:int,sentiment:string,evidence:string,source_count?:int,meta?:array<string,mixed>}>
+     */
+    private function normalizeParsedBrandMentions(array $mentions): array
+    {
+        return collect($mentions)
             ->filter(static fn (mixed $item): bool => is_array($item))
             ->map(function (array $item): array {
                 $brand = trim((string) ($item['brand'] ?? $item['brand_name'] ?? ''));
@@ -313,11 +402,6 @@ class DoubaoBrandDiagnosisClient
             ->filter(static fn (array $item): bool => $item['brand'] !== '')
             ->values()
             ->all();
-
-        return [
-            'answer' => $answer !== '' ? $answer : trim($text),
-            'brand_mentions' => $mentions,
-        ];
     }
 
     private function extractLooseJsonAnswer(string $text): string
@@ -358,6 +442,77 @@ class DoubaoBrandDiagnosisClient
         $answer = preg_replace('/\s+/u', ' ', $answer) ?? $answer;
 
         return trim($answer);
+    }
+
+    /**
+     * @return list<array{brand:string,mention_count:int,mention_rank:int,sentiment:string,evidence:string,source_count?:int,meta?:array<string,mixed>}>
+     */
+    private function extractLooseJsonBrandMentions(string $text): array
+    {
+        if (mb_stripos($text, '"brand_mentions"', 0, 'UTF-8') === false) {
+            return [];
+        }
+
+        if (! preg_match('/"brand_mentions"\s*:\s*\[/u', $text, $matches, PREG_OFFSET_CAPTURE)) {
+            return [];
+        }
+
+        $arrayStart = (int) $matches[0][1] + strlen((string) $matches[0][0]) - 1;
+        $arrayJson = $this->extractJsonArrayAt($text, $arrayStart);
+        if ($arrayJson === '') {
+            return [];
+        }
+
+        /** @var mixed $decoded */
+        $decoded = json_decode($arrayJson, true);
+        if (! is_array($decoded)) {
+            return [];
+        }
+
+        return $this->normalizeParsedBrandMentions($decoded);
+    }
+
+    private function extractJsonArrayAt(string $text, int $start): string
+    {
+        $length = strlen($text);
+        if ($start < 0 || $start >= $length || $text[$start] !== '[') {
+            return '';
+        }
+
+        $depth = 0;
+        $inString = false;
+        $escaped = false;
+        for ($index = $start; $index < $length; $index++) {
+            $char = $text[$index];
+            if ($inString) {
+                if ($escaped) {
+                    $escaped = false;
+                } elseif ($char === '\\') {
+                    $escaped = true;
+                } elseif ($char === '"') {
+                    $inString = false;
+                }
+
+                continue;
+            }
+
+            if ($char === '"') {
+                $inString = true;
+
+                continue;
+            }
+
+            if ($char === '[') {
+                $depth++;
+            } elseif ($char === ']') {
+                $depth--;
+                if ($depth === 0) {
+                    return substr($text, $start, $index - $start + 1);
+                }
+            }
+        }
+
+        return '';
     }
 
     /**
@@ -547,13 +702,16 @@ class DoubaoBrandDiagnosisClient
      */
     private function extractText(array $data): string
     {
-        $texts = [];
+        $preferredTexts = [];
+        $fallbackTexts = [];
 
         foreach ((array) ($data['output'] ?? []) as $output) {
             if (! is_array($output)) {
                 continue;
             }
 
+            $type = strtolower(trim((string) ($output['type'] ?? '')));
+            $isPreferred = in_array($type, ['message', 'assistant', 'response'], true);
             foreach ((array) ($output['content'] ?? []) as $content) {
                 if (! is_array($content)) {
                     continue;
@@ -561,17 +719,25 @@ class DoubaoBrandDiagnosisClient
 
                 $text = trim((string) ($content['text'] ?? ''));
                 if ($text !== '') {
-                    $texts[] = $text;
+                    if ($isPreferred) {
+                        $preferredTexts[] = $text;
+                    } elseif (empty($fallbackTexts)) {
+                        $fallbackTexts[] = $text;
+                    }
                 }
             }
         }
 
         $fallback = trim((string) Arr::get($data, 'output_text', ''));
-        if ($texts === [] && $fallback !== '') {
-            $texts[] = $fallback;
+        if ($preferredTexts !== []) {
+            return trim(implode("\n\n", $preferredTexts));
         }
 
-        return trim(implode("\n\n", $texts));
+        if ($fallback !== '') {
+            return $fallback;
+        }
+
+        return trim(implode("\n\n", $fallbackTexts));
     }
 
     private function normalizePlatform(string $platform): string
@@ -591,6 +757,28 @@ class DoubaoBrandDiagnosisClient
         $sentiment = strtolower(trim($sentiment));
 
         return in_array($sentiment, ['positive', 'neutral', 'negative'], true) ? $sentiment : 'neutral';
+    }
+
+    /**
+     * @param  list<array{title:string,url:string,type:string,meta:array<string,mixed>}>  $sources
+     */
+    private function sourceEvidenceText(array $sources): string
+    {
+        return collect($sources)
+            ->map(static function (array $source): string {
+                $text = collect([
+                    (string) ($source['title'] ?? ''),
+                    (string) data_get($source, 'meta.summary', ''),
+                    (string) data_get($source, 'meta.snippet', ''),
+                    (string) data_get($source, 'meta.content', ''),
+                ])
+                    ->filter(static fn (string $value): bool => trim($value) !== '')
+                    ->implode(' ');
+
+                return trim((string) preg_replace('/\s+/u', ' ', $text));
+            })
+            ->filter(static fn (string $value): bool => trim($value) !== '')
+            ->implode(BrandDiagnosisMetricsCalculator::SOURCE_UNIT_SEPARATOR);
     }
 
     /**

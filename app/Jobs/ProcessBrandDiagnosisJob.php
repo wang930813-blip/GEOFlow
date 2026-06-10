@@ -54,37 +54,16 @@ class ProcessBrandDiagnosisJob implements ShouldQueue
         ]);
 
         if ($run->questions->isEmpty()) {
-            try {
-                $questions = app(DoubaoBrandDiagnosisClient::class)->generateQuestionPool(
-                    (string) $run->brand_name,
-                    max(1, (int) config('brand_diagnosis.question_count', 5)),
-                    (array) $run->platforms
-                );
+            $run->update([
+                'status' => 'failed',
+                'total_questions' => 0,
+                'completed_questions' => 0,
+                'failed_questions' => 0,
+                'error_message' => '请先生成并确认 AI 问题后再开始诊断。',
+                'completed_at' => now(),
+            ]);
 
-                foreach ($questions as $index => $question) {
-                    $run->questions()->create([
-                        'site_id' => (int) $run->site_id,
-                        'question' => (string) $question['question'],
-                        'question_type' => (string) $question['type'],
-                        'sort_order' => $index + 1,
-                        'status' => 'pending',
-                    ]);
-                }
-
-                $run->update(['total_questions' => count($questions)]);
-                $run->load(['questions' => fn ($query) => $query->orderBy('sort_order')]);
-            } catch (Throwable $exception) {
-                $run->update([
-                    'status' => 'failed',
-                    'total_questions' => 0,
-                    'completed_questions' => 0,
-                    'failed_questions' => 0,
-                    'error_message' => $exception->getMessage(),
-                    'completed_at' => now(),
-                ]);
-
-                return;
-            }
+            return;
         }
 
         foreach ($run->questions as $question) {
@@ -144,6 +123,7 @@ class ProcessBrandDiagnosisJob implements ShouldQueue
                             'site_id' => (int) $run->site_id,
                             'run_id' => (int) $run->id,
                             'question_id' => (int) $question->id,
+                            'result_id' => (int) $result->id,
                             'platform' => $platform,
                             'title' => (string) $source['title'],
                             'url' => (string) $source['url'],
