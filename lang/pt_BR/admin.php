@@ -1638,7 +1638,7 @@ return array_replace_recursive($base, [
         'error' => [
             'select_images' => 'Escolha imagens para enviar',
             'upload_none' => 'Nenhuma imagem foi enviada com sucesso.',
-            'upload_failed_detail' => 'Falha no envio da imagem: :message. Verifique se o diretório storage/app/public tem permissão de escrita e execute php artisan storage:link.',
+            'upload_failed_detail' => 'Falha no envio da imagem: :message. As imagens são enviadas para o serviço externo de hospedagem; verifique IMAGE_HOST_UPLOAD_URL, IMAGE_HOST_TOKEN, a conectividade do servidor com a API de hospedagem e o status do serviço.',
             'no_records' => 'Nenhum registro de imagem encontrado para excluir',
             'select_delete' => 'Selecione as imagens para excluir',
         ],

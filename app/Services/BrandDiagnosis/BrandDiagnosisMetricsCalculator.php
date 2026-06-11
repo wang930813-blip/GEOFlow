@@ -9,6 +9,8 @@ class BrandDiagnosisMetricsCalculator
 {
     public const SOURCE_UNIT_SEPARATOR = "\n---BRAND_DIAGNOSIS_SOURCE---\n";
 
+    public function __construct(private ?BrandEntityResolver $brandEntityResolver = null) {}
+
     public function classifySentiment(string $answer): string
     {
         $negativeWords = ['风险', '不足', '负面', '投诉', '差评', '问题', '不推荐', '谨慎'];
@@ -30,7 +32,7 @@ class BrandDiagnosisMetricsCalculator
 
     public function mentionCount(string $answer, string $brandName): int
     {
-        $aliases = collect($this->brandAliases($brandName))
+        $aliases = collect($this->brandEntityResolver()->aliases($brandName))
             ->sortByDesc(static fn (string $alias): int => mb_strlen($alias, 'UTF-8'))
             ->values()
             ->all();
@@ -45,20 +47,13 @@ class BrandDiagnosisMetricsCalculator
 
     public function isSameBrand(string $brandName, string $targetBrandName): bool
     {
-        $brandKey = $this->normalizeBrandName($brandName);
-        if ($brandKey === '') {
-            return false;
-        }
-
-        return collect($this->brandAliases($targetBrandName))
-            ->map(fn (string $alias): string => $this->normalizeBrandName($alias))
-            ->contains($brandKey);
+        return $this->brandEntityResolver()->isSameBrand($brandName, $targetBrandName);
     }
 
     public function mentionRank(string $answer, string $brandName): int
     {
         $position = false;
-        foreach ($this->brandAliases($brandName) as $alias) {
+        foreach ($this->brandEntityResolver()->aliases($brandName) as $alias) {
             $aliasPosition = mb_stripos($answer, $alias, 0, 'UTF-8');
             if ($aliasPosition !== false && ($position === false || $aliasPosition < $position)) {
                 $position = $aliasPosition;
@@ -89,8 +84,8 @@ class BrandDiagnosisMetricsCalculator
             }
 
             $brandName = trim((string) ($mention['brand'] ?? $mention['brand_name'] ?? ''));
-            $brandKey = $this->normalizeBrandName($brandName);
-            if ($brandKey === '') {
+            $brandKey = $this->brandEntityResolver()->canonicalKey($brandName);
+            if ($brandKey === '' || ! $this->brandEntityResolver()->isValidBrandName($brandName)) {
                 continue;
             }
             $evidence = trim((string) ($mention['evidence'] ?? ''));
@@ -117,9 +112,25 @@ class BrandDiagnosisMetricsCalculator
                 if ($normalized[$brandKey]['sentiment'] !== 'negative') {
                     $normalized[$brandKey]['sentiment'] = $sentiment;
                 }
+                $existingMeta = (array) ($normalized[$brandKey]['meta'] ?? []);
+                $existingMeta['aliases'] = collect((array) ($existingMeta['aliases'] ?? []))
+                    ->merge($this->brandEntityResolver()->aliases($brandName))
+                    ->push($brandName)
+                    ->filter()
+                    ->unique(fn (string $alias): string => mb_strtolower($alias, 'UTF-8'))
+                    ->values()
+                    ->all();
+                $existingMeta['canonical_name'] = (string) ($existingMeta['canonical_name'] ?? $this->brandEntityResolver()->canonicalName($brandName));
+                $existingMeta['canonical_key'] = $brandKey;
+                $normalized[$brandKey]['meta'] = $existingMeta;
 
                 continue;
             }
+
+            $mentionMeta = (array) ($mention['meta'] ?? $mention);
+            $mentionMeta['canonical_name'] = $this->brandEntityResolver()->canonicalName($brandName);
+            $mentionMeta['canonical_key'] = $brandKey;
+            $mentionMeta['aliases'] = $this->brandEntityResolver()->aliases($brandName);
 
             $normalized[$brandKey] = [
                 'brand' => $brandName,
@@ -128,11 +139,11 @@ class BrandDiagnosisMetricsCalculator
                 'sentiment' => $sentiment,
                 'evidence' => $evidence,
                 'source_count' => max(0, (int) ($mention['source_count'] ?? 0)),
-                'meta' => $mention,
+                'meta' => $mentionMeta,
             ];
         }
 
-        $targetKey = $this->normalizeBrandName($targetBrandName);
+        $targetKey = $this->brandEntityResolver()->canonicalKey($targetBrandName);
         $targetMentionCount = $this->validatedMentionCount($fallbackAnswer, $sourceEvidence, $targetBrandName, true);
         if ($targetKey !== '' && $targetMentionCount > 0) {
             if (isset($normalized[$targetKey])) {
@@ -213,55 +224,11 @@ class BrandDiagnosisMetricsCalculator
         ]);
     }
 
-    private function normalizeBrandName(string $brandName): string
-    {
-        $brandName = trim($brandName);
-        $brandName = preg_replace('/[（(].*?[）)]/u', '', $brandName) ?? $brandName;
-        $brandName = preg_replace('/(股份)?有限公司$/u', '', $brandName) ?? $brandName;
-        $brandName = preg_replace('/(人工智能|科技|技术|信息|网络|软件|数字|智能|成都|北京|上海|深圳|广州|杭州|有限公司|公司)+$/u', '', $brandName) ?? $brandName;
-
-        return mb_strtolower(trim($brandName), 'UTF-8');
-    }
-
     private function normalizeSentiment(string $sentiment): string
     {
         $sentiment = strtolower(trim($sentiment));
 
         return in_array($sentiment, ['positive', 'neutral', 'negative'], true) ? $sentiment : 'neutral';
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function brandAliases(string $brandName): array
-    {
-        $brandName = trim($brandName);
-        if ($brandName === '') {
-            return [];
-        }
-
-        $aliases = [$brandName];
-        $withoutParentheses = preg_replace('/[（(].*?[）)]/u', '', $brandName);
-        if (is_string($withoutParentheses) && trim($withoutParentheses) !== '') {
-            $aliases[] = trim($withoutParentheses);
-        }
-
-        $shortName = preg_replace('/(股份)?有限公司$/u', '', trim((string) $withoutParentheses));
-        if (is_string($shortName) && trim($shortName) !== '') {
-            $aliases[] = trim($shortName);
-        }
-
-        $shortName = preg_replace('/(人工智能|科技|技术|信息|网络|软件|数字|智能|公司)+$/u', '', trim((string) $shortName));
-        if (is_string($shortName) && trim($shortName) !== '') {
-            $aliases[] = trim($shortName);
-        }
-
-        return collect($aliases)
-            ->map(static fn (string $alias): string => trim($alias))
-            ->filter(static fn (string $alias): bool => $alias !== '')
-            ->unique(static fn (string $alias): string => mb_strtolower($alias, 'UTF-8'))
-            ->values()
-            ->all();
     }
 
     private function hasValidTargetEvidence(string $answer, string $sourceEvidence, string $brandName, string $targetBrandName, string $evidence): bool
@@ -274,7 +241,10 @@ class BrandDiagnosisMetricsCalculator
         }
 
         $haystack = $answer."\n".$sourceEvidence;
-        $aliases = array_values(array_unique(array_merge($this->brandAliases($targetBrandName), $this->brandAliases($brandName))));
+        $aliases = array_values(array_unique(array_merge(
+            $this->brandEntityResolver()->aliases($targetBrandName),
+            $this->brandEntityResolver()->aliases($brandName)
+        )));
         foreach ($aliases as $alias) {
             if (mb_stripos($haystack, $alias, 0, 'UTF-8') !== false) {
                 return true;
@@ -312,7 +282,7 @@ class BrandDiagnosisMetricsCalculator
 
     private function onlyNegatedMentions(string $answer, string $brandName): bool
     {
-        $aliases = collect($this->brandAliases($brandName))
+        $aliases = collect($this->brandEntityResolver()->aliases($brandName))
             ->sortByDesc(static fn (string $alias): int => mb_strlen($alias, 'UTF-8'))
             ->values();
         if ($aliases->isEmpty()) {
@@ -364,5 +334,10 @@ class BrandDiagnosisMetricsCalculator
         }
 
         return $answer;
+    }
+
+    private function brandEntityResolver(): BrandEntityResolver
+    {
+        return $this->brandEntityResolver ??= app(BrandEntityResolver::class);
     }
 }

@@ -1205,6 +1205,83 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         $this->assertSame(0, (int) $run->mention_rate);
     }
 
+    public function test_competitor_aliases_are_merged_and_generic_false_brands_are_filtered(): void
+    {
+        Http::fake([
+            'ark.cn-beijing.volces.com/api/v3/responses' => Http::response([
+                'id' => 'resp-competitor-alias-merge',
+                'output_text' => json_encode([
+                    'answer' => '成都软件开发服务商对比中，四川推来客网络科技有限公司被列为架构能力较强的团队，推来客网络也常被客户简称提到。另一个本地服务商只是泛称，不是品牌。',
+                    'brand_mentions' => [
+                        [
+                            'brand' => '四川推来客网络科技有限公司',
+                            'mention_count' => 1,
+                            'mention_rank' => 1,
+                            'sentiment' => 'positive',
+                            'evidence' => '回答正文出现四川推来客网络科技有限公司',
+                        ],
+                        [
+                            'brand' => '推来客网络',
+                            'mention_count' => 1,
+                            'mention_rank' => 2,
+                            'sentiment' => 'positive',
+                            'evidence' => '回答正文出现推来客网络',
+                        ],
+                        [
+                            'brand' => '本地服务商',
+                            'mention_count' => 1,
+                            'mention_rank' => 3,
+                            'sentiment' => 'neutral',
+                            'evidence' => '泛称，不应保存为品牌',
+                        ],
+                        [
+                            'brand' => '不存在的竞品',
+                            'mention_count' => 1,
+                            'mention_rank' => 4,
+                            'sentiment' => 'neutral',
+                            'evidence' => '模型编造名称',
+                        ],
+                    ],
+                ], JSON_UNESCAPED_UNICODE),
+            ], 200),
+        ]);
+
+        [$admin, $site] = $this->createAdminWithSite('brand_diagnosis_alias_merge_admin');
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => '策影GEO',
+            'platforms' => ['doubao'],
+            'status' => 'pending',
+            'total_questions' => 1,
+            'completed_questions' => 0,
+            'failed_questions' => 0,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+        ]);
+        $run->questions()->create([
+            'site_id' => (int) $site->id,
+            'question' => '成都软件开发服务商哪些更值得看？',
+            'question_type' => '对比',
+            'sort_order' => 1,
+            'status' => 'pending',
+        ]);
+
+        (new ProcessBrandDiagnosisJob((int) $run->id))->handle();
+
+        $mentions = BrandDiagnosisBrandMention::query()
+            ->where('run_id', (int) $run->id)
+            ->get();
+
+        $this->assertCount(1, $mentions);
+        $mention = $mentions->firstOrFail();
+        $this->assertSame('四川推来客网络科技有限公司', $mention->brand_name);
+        $this->assertSame(1, (int) $mention->mention_rank);
+        $this->assertSame(1, (int) $mention->mention_count);
+        $this->assertSame('推来客', data_get($mention->meta, 'canonical_key'));
+        $this->assertContains('推来客网络', data_get($mention->meta, 'aliases'));
+    }
+
     public function test_target_brand_metrics_stay_zero_when_target_is_not_in_answer_or_source_evidence(): void
     {
         Http::fake([

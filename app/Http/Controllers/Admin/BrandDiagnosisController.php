@@ -8,6 +8,7 @@ use App\Models\BrandDiagnosisRun;
 use App\Services\BrandDiagnosis\BrandDiagnosisLimitExceededException;
 use App\Services\BrandDiagnosis\BrandDiagnosisPdfService;
 use App\Services\BrandDiagnosis\BrandDiagnosisRunService;
+use App\Services\BrandDiagnosis\BrandEntityResolver;
 use App\Support\AdminWeb;
 use App\Support\CurrentSite;
 use Illuminate\Database\Eloquent\Builder;
@@ -24,7 +25,8 @@ class BrandDiagnosisController extends Controller
 {
     public function __construct(
         private readonly BrandDiagnosisRunService $runService,
-        private readonly BrandDiagnosisPdfService $pdfService
+        private readonly BrandDiagnosisPdfService $pdfService,
+        private readonly BrandEntityResolver $brandEntityResolver
     ) {}
 
     public function index(Request $request): View
@@ -669,15 +671,44 @@ class BrandDiagnosisController extends Controller
         $totalConversations = max(1, $successResults->count());
 
         $grouped = $mentions
-            ->groupBy(static fn ($mention): string => mb_strtolower(trim((string) $mention->brand_name), 'UTF-8'))
+            ->groupBy(function ($mention): string {
+                $meta = (array) ($mention->meta ?? []);
+                $canonicalKey = trim((string) ($meta['canonical_key'] ?? ''));
+                if ($canonicalKey !== '') {
+                    return mb_strtolower($canonicalKey, 'UTF-8');
+                }
+
+                return $this->brandEntityResolver->canonicalKey((string) $mention->brand_name);
+            })
             ->map(function (Collection $group) use ($totalConversations): array {
                 $first = $group->first();
                 $conversationCount = $group->pluck('result_id')->unique()->count();
                 $mentionCount = (int) $group->sum('mention_count');
                 $averageRank = (float) ($group->where('mention_rank', '>', 0)->avg('mention_rank') ?: 0);
+                $aliases = $group
+                    ->flatMap(function ($mention): array {
+                        $meta = (array) ($mention->meta ?? []);
+                        return array_merge(
+                            [$mention->brand_name],
+                            (array) ($meta['aliases'] ?? [])
+                        );
+                    })
+                    ->filter()
+                    ->map(fn (string $value): string => trim($value))
+                    ->unique(fn (string $value): string => mb_strtolower($value, 'UTF-8'))
+                    ->values()
+                    ->all();
+                $canonicalName = (string) (data_get($first, 'meta.canonical_name') ?: $first?->brand_name);
+                $title = collect($aliases)
+                    ->prepend($canonicalName)
+                    ->filter()
+                    ->unique(fn (string $value): string => mb_strtolower($value, 'UTF-8'))
+                    ->implode('、');
 
                 return [
-                    'brand' => (string) $first?->brand_name,
+                    'brand' => $canonicalName,
+                    'aliases' => $aliases,
+                    'title' => $title !== '' ? $title : $canonicalName,
                     'rate' => (int) round(($conversationCount / $totalConversations) * 100),
                     'count' => $mentionCount,
                     'rank_value' => $averageRank,
@@ -690,6 +721,8 @@ class BrandDiagnosisController extends Controller
 
         $targetRow = $grouped->firstWhere('is_target_brand', true) ?? [
             'brand' => (string) $run->brand_name,
+            'aliases' => [$run->brand_name],
+            'title' => (string) $run->brand_name,
             'rate' => 0,
             'count' => 0,
             'rank_value' => 0.0,
@@ -708,6 +741,8 @@ class BrandDiagnosisController extends Controller
             'average_rank' => $this->topRowsWithTargetLast($averageRankRows, $targetRow, 'rank_sort')
                 ->map(static fn (array $row): array => [
                     'brand' => (string) $row['brand'],
+                    'aliases' => (array) ($row['aliases'] ?? []),
+                    'title' => (string) ($row['title'] ?? $row['brand']),
                     'rate' => (int) $row['rate'],
                     'count' => (int) $row['count'],
                     'rank' => (string) $row['rank'],

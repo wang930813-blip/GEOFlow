@@ -630,17 +630,7 @@ class DoubaoBrandDiagnosisClient
 
     private function questionContainsBrandAlias(string $question, string $brandName): bool
     {
-        foreach ($this->brandAliases($brandName) as $alias) {
-            if (mb_strlen($alias, 'UTF-8') < 2) {
-                continue;
-            }
-
-            if (mb_stripos($question, $alias, 0, 'UTF-8') !== false) {
-                return true;
-            }
-        }
-
-        return false;
+        return app(BrandEntityResolver::class)->containsBrandAlias($question, $brandName);
     }
 
     private function questionContainsStaleTemplateTerms(string $question, string $brandName): bool
@@ -661,40 +651,6 @@ class DoubaoBrandDiagnosisClient
         }
 
         return false;
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function brandAliases(string $brandName): array
-    {
-        $brandName = trim($brandName);
-        if ($brandName === '') {
-            return [];
-        }
-
-        $aliases = [$brandName];
-        $withoutParentheses = preg_replace('/[（(].*?[）)]/u', '', $brandName);
-        if (is_string($withoutParentheses) && trim($withoutParentheses) !== '') {
-            $aliases[] = trim($withoutParentheses);
-        }
-
-        $shortName = preg_replace('/(股份)?有限公司$/u', '', trim((string) $withoutParentheses));
-        if (is_string($shortName) && trim($shortName) !== '') {
-            $aliases[] = trim($shortName);
-        }
-
-        $shortName = preg_replace('/(人工智能|科技|技术|信息|网络|软件|数字|智能|公司)+$/u', '', trim((string) $shortName));
-        if (is_string($shortName) && trim($shortName) !== '') {
-            $aliases[] = trim($shortName);
-        }
-
-        return collect($aliases)
-            ->map(static fn (string $alias): string => trim($alias))
-            ->filter(static fn (string $alias): bool => $alias !== '')
-            ->unique(static fn (string $alias): string => mb_strtolower($alias, 'UTF-8'))
-            ->values()
-            ->all();
     }
 
     /**

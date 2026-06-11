@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Services\GeoFlow\ExternalImageHostClient;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -42,6 +43,20 @@ class ExternalImageHostClientTest extends TestCase
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('图床上传地址或 Token 未配置');
+
+        app(ExternalImageHostClient::class)->upload('binary-image', 'image/png', 'example.png');
+    }
+
+    public function test_it_reports_image_host_connection_errors(): void
+    {
+        Config::set('geoflow.image_host.upload_url', 'https://files.example.com/api/upload');
+        Config::set('geoflow.image_host.token', 'secret-token');
+        Http::fake(function (): never {
+            throw new ConnectionException('cURL error 52: Empty reply from server');
+        });
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('图床请求失败: cURL error 52: Empty reply from server');
 
         app(ExternalImageHostClient::class)->upload('binary-image', 'image/png', 'example.png');
     }

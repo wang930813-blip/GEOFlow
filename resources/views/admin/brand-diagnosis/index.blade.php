@@ -305,7 +305,7 @@
                                 @foreach ($recordMentionRateRows as $index => $row)
                                     <div class="grid grid-cols-[24px_88px_1fr_40px] items-center gap-2 text-sm">
                                         <span class="text-xs text-gray-500">{{ $index + 1 }}</span>
-                                        <span class="truncate font-medium text-gray-700 transition-colors hover:text-orange-700" data-ranking-brand title="{{ $row['brand'] }}">{{ $row['brand'] }}</span>
+                                        <span class="truncate font-medium text-gray-700 transition-colors hover:text-orange-700" data-ranking-brand title="{{ $row['title'] ?? $row['brand'] }}">{{ $row['brand'] }}</span>
                                         <span class="h-2 rounded-full bg-slate-100">
                                             @php
                                                 $rateWidth = (int) round(((int) $row['rate'] / $recordMaxRate) * 100);
@@ -316,9 +316,9 @@
                                     </div>
                                 @endforeach
                             </div>
-                            <div class="mt-auto flex items-center gap-2 rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700" data-ranking-target="mention_rate" title="{{ $recordMentionRateTarget['brand'] ?? $record['brand'] }}">
+                            <div class="mt-auto flex items-center gap-2 rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700" data-ranking-target="mention_rate" title="{{ $recordMentionRateTarget['title'] ?? $recordMentionRateTarget['brand'] ?? $record['brand'] }}">
                                 <span class="rounded bg-orange-600 px-1.5 py-0.5 text-white">{{ $recordMentionRateTarget['display_rank'] ?? '99+' }}</span>
-                                <span class="truncate transition-colors hover:text-orange-800" data-ranking-brand title="{{ $recordMentionRateTarget['brand'] ?? $record['brand'] }}">{{ $recordMentionRateTarget['brand'] }}</span>
+                                <span class="truncate transition-colors hover:text-orange-800" data-ranking-brand title="{{ $recordMentionRateTarget['title'] ?? $recordMentionRateTarget['brand'] ?? $record['brand'] }}">{{ $recordMentionRateTarget['brand'] }}</span>
                                 <span class="shrink-0">{{ $recordMentionRateTarget['rate'] }}%</span>
                             </div>
                         </div>
@@ -329,7 +329,7 @@
                                 @foreach ($recordMentionCountRows as $index => $row)
                                     <div class="grid grid-cols-[24px_88px_1fr_32px] items-center gap-2 text-sm">
                                         <span class="text-xs text-gray-500">{{ $index + 1 }}</span>
-                                        <span class="truncate font-medium text-gray-700 transition-colors hover:text-orange-700" data-ranking-brand title="{{ $row['brand'] }}">{{ $row['brand'] }}</span>
+                                        <span class="truncate font-medium text-gray-700 transition-colors hover:text-orange-700" data-ranking-brand title="{{ $row['title'] ?? $row['brand'] }}">{{ $row['brand'] }}</span>
                                         <span class="h-2 rounded-full bg-slate-100">
                                             @php
                                                 $countWidth = (int) round(((int) $row['count'] / $recordMaxCount) * 100);
@@ -340,9 +340,9 @@
                                     </div>
                                 @endforeach
                             </div>
-                            <div class="mt-auto flex items-center gap-2 rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700" data-ranking-target="mention_count" title="{{ $recordMentionCountTarget['brand'] ?? $record['brand'] }}">
+                            <div class="mt-auto flex items-center gap-2 rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700" data-ranking-target="mention_count" title="{{ $recordMentionCountTarget['title'] ?? $recordMentionCountTarget['brand'] ?? $record['brand'] }}">
                                 <span class="rounded bg-orange-600 px-1.5 py-0.5 text-white">{{ $recordMentionCountTarget['display_rank'] ?? '99+' }}</span>
-                                <span class="truncate transition-colors hover:text-orange-800" data-ranking-brand title="{{ $recordMentionCountTarget['brand'] ?? $record['brand'] }}">{{ $recordMentionCountTarget['brand'] }}</span>
+                                <span class="truncate transition-colors hover:text-orange-800" data-ranking-brand title="{{ $recordMentionCountTarget['title'] ?? $recordMentionCountTarget['brand'] ?? $record['brand'] }}">{{ $recordMentionCountTarget['brand'] }}</span>
                                 <span class="shrink-0">{{ $recordMentionCountTarget['count'] }}</span>
                             </div>
                         </div>
@@ -362,7 +362,7 @@
                                         @foreach ($recordAverageRankRows as $index => $row)
                                             <tr>
                                                 <td class="px-3 py-2">
-                                                    <span class="mr-2 text-xs text-gray-500">{{ $index + 1 }}</span><span class="font-medium transition-colors hover:text-orange-700" data-ranking-brand title="{{ $row['brand'] }}">{{ $row['brand'] }}</span>
+                                                    <span class="mr-2 text-xs text-gray-500">{{ $index + 1 }}</span><span class="font-medium transition-colors hover:text-orange-700" data-ranking-brand title="{{ $row['title'] ?? $row['brand'] }}">{{ $row['brand'] }}</span>
                                                 </td>
                                                 <td class="px-3 py-2 text-right font-medium text-gray-700">{{ $row['rate'] }}%</td>
                                                 <td class="px-3 py-2 text-right font-medium text-gray-700">{{ $row['rank'] }}</td>
@@ -371,9 +371,9 @@
                                     </tbody>
                                 </table>
                             </div>
-                            <div class="mt-auto flex items-center gap-2 rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700" data-ranking-target="average_rank" title="{{ $recordAverageRankTarget['brand'] ?? $record['brand'] }}">
+                            <div class="mt-auto flex items-center gap-2 rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700" data-ranking-target="average_rank" title="{{ $recordAverageRankTarget['title'] ?? $recordAverageRankTarget['brand'] ?? $record['brand'] }}">
                                 <span class="rounded bg-orange-600 px-1.5 py-0.5 text-white">{{ $recordAverageRankTarget['display_rank'] ?? '99+' }}</span>
-                                <span class="truncate transition-colors hover:text-orange-800" data-ranking-brand title="{{ $recordAverageRankTarget['brand'] ?? $record['brand'] }}">{{ $recordAverageRankTarget['brand'] }}</span>
+                                <span class="truncate transition-colors hover:text-orange-800" data-ranking-brand title="{{ $recordAverageRankTarget['title'] ?? $recordAverageRankTarget['brand'] ?? $record['brand'] }}">{{ $recordAverageRankTarget['brand'] }}</span>
                                 <span class="shrink-0">{{ $recordAverageRankTarget['rank'] }}</span>
                             </div>
                         </div>
@@ -879,7 +879,7 @@
             const renderTarget = (container, row, suffix) => {
                 if (!container) return;
                 container.innerHTML = '';
-                container.title = row?.brand || '-';
+                container.title = row?.title || row?.brand || '-';
                 const badge = document.createElement('span');
                 badge.className = 'rounded bg-orange-600 px-1.5 py-0.5 text-white';
                 badge.textContent = row?.display_rank || '99+';
@@ -887,7 +887,7 @@
                 const brand = document.createElement('span');
                 brand.className = 'truncate transition-colors hover:text-orange-800';
                 brand.dataset.rankingBrand = '';
-                brand.title = row?.brand || '-';
+                brand.title = row?.title || row?.brand || '-';
                 brand.textContent = row?.brand || '-';
                 const value = document.createElement('span');
                 value.className = 'shrink-0';
@@ -919,7 +919,7 @@
                     const brand = document.createElement('span');
                     brand.className = 'truncate font-medium text-gray-700 transition-colors hover:text-orange-700';
                     brand.dataset.rankingBrand = '';
-                    brand.title = row.brand || '-';
+                    brand.title = row.title || row.brand || '-';
                     brand.textContent = row.brand || '-';
                     const bar = document.createElement('span');
                     bar.className = 'h-2 rounded-full bg-slate-100';
@@ -968,7 +968,7 @@
                     const brandName = document.createElement('span');
                     brandName.className = 'font-medium transition-colors hover:text-orange-700';
                     brandName.dataset.rankingBrand = '';
-                    brandName.title = row.brand || '-';
+                    brandName.title = row.title || row.brand || '-';
                     brandName.textContent = row.brand || '-';
                     brand.appendChild(order);
                     brand.appendChild(brandName);

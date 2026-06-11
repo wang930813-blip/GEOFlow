@@ -848,6 +848,76 @@ class AdminBrandDiagnosisPageTest extends TestCase
             ->assertSee('hover:text-orange-700', false);
     }
 
+    public function test_brand_diagnosis_rankings_merge_canonical_brand_aliases(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('brand_ranking_alias_merge_admin');
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => '策影GEO',
+            'platforms' => ['doubao'],
+            'status' => 'completed',
+            'total_questions' => 1,
+            'completed_questions' => 1,
+            'failed_questions' => 0,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+        ]);
+        $question = $run->questions()->create([
+            'site_id' => (int) $site->id,
+            'question' => '成都软件开发服务商哪些更值得看？',
+            'question_type' => '对比',
+            'sort_order' => 1,
+            'status' => 'completed',
+        ]);
+        $result = $question->results()->create([
+            'site_id' => (int) $site->id,
+            'run_id' => (int) $run->id,
+            'platform' => 'doubao',
+            'answer' => '四川推来客网络科技有限公司和推来客网络都被提到。',
+            'brand_mentioned' => false,
+            'mention_count' => 0,
+            'mention_rank' => 0,
+            'sentiment' => 'neutral',
+            'status' => 'success',
+            'checked_at' => now(),
+        ]);
+        foreach ([
+            ['brand' => '四川推来客网络科技有限公司', 'count' => 1, 'rank' => 1],
+            ['brand' => '推来客网络', 'count' => 1, 'rank' => 2],
+        ] as $mention) {
+            $result->brandMentions()->create([
+                'site_id' => (int) $site->id,
+                'run_id' => (int) $run->id,
+                'question_id' => (int) $question->id,
+                'platform' => 'doubao',
+                'brand_name' => $mention['brand'],
+                'mention_count' => $mention['count'],
+                'mention_rank' => $mention['rank'],
+                'sentiment' => 'positive',
+                'source_count' => 0,
+                'is_target_brand' => false,
+                'evidence' => '回答中出现'.$mention['brand'],
+                'meta' => [
+                    'canonical_name' => '四川推来客网络科技有限公司',
+                    'canonical_key' => '推来客',
+                    'aliases' => ['四川推来客网络科技有限公司', '推来客网络', '推来客'],
+                ],
+            ]);
+        }
+
+        $html = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.brand-diagnosis.index'))
+            ->assertOk()
+            ->assertSee('四川推来客网络科技有限公司')
+            ->assertSee('title="四川推来客网络科技有限公司、推来客网络、推来客"', false)
+            ->getContent();
+
+        $this->assertStringContainsString('"count":2', $html);
+        $this->assertGreaterThanOrEqual(1, substr_count($html, 'title="四川推来客网络科技有限公司、推来客网络、推来客"'));
+    }
+
     public function test_brand_diagnosis_conversations_are_paginated_with_five_visible_by_default(): void
     {
         [$admin, $site] = $this->createAdminWithSite('brand_conversation_pager_admin');

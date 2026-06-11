@@ -1638,7 +1638,7 @@ return [
         'error' => [
             'select_images' => 'Please choose images to upload',
             'upload_none' => 'No images were uploaded successfully. ',
-            'upload_failed_detail' => 'Image upload failed: :message. Please check whether storage/app/public is writable and run php artisan storage:link.',
+            'upload_failed_detail' => 'Image upload failed: :message. Images are uploaded to the external image host; please check IMAGE_HOST_UPLOAD_URL, IMAGE_HOST_TOKEN, network connectivity from the server to the image host API, and the image host service status.',
             'no_records' => 'No image records found to delete',
             'select_delete' => 'Please select images to delete',
         ],

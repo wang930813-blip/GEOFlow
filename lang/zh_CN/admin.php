@@ -1638,7 +1638,7 @@ return [
         'error' => [
             'select_images' => '请选择要上传的图片',
             'upload_none' => '没有成功上传任何图片。',
-            'upload_failed_detail' => '图片上传失败：:message。请检查 storage/app/public 是否可写，并确认已执行 php artisan storage:link。',
+            'upload_failed_detail' => '图片上传失败：:message。当前图片上传使用图床，请检查 IMAGE_HOST_UPLOAD_URL、IMAGE_HOST_TOKEN、服务器到图床接口的网络连通性以及图床服务状态。',
             'no_records' => '没有找到可删除的图片记录',
             'select_delete' => '请选择要删除的图片',
         ],

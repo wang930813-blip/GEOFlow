@@ -2,6 +2,7 @@
 
 namespace App\Services\GeoFlow;
 
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
@@ -18,15 +19,21 @@ class ExternalImageHostClient
             throw new RuntimeException('图床上传地址或 Token 未配置');
         }
 
-        $response = Http::withToken($token)
-            ->timeout(60)
-            ->connectTimeout(15)
-            ->attach('file', $binary, $filename, ['Content-Type' => $mimeType])
-            ->post($uploadUrl, ['useHashName' => 'true']);
+        try {
+            $response = Http::withToken($token)
+                ->timeout(60)
+                ->connectTimeout(15)
+                ->attach('file', $binary, $filename, ['Content-Type' => $mimeType])
+                ->post($uploadUrl, ['useHashName' => 'true']);
+        } catch (ConnectionException $exception) {
+            throw new RuntimeException('图床请求失败: '.$exception->getMessage(), 0, $exception);
+        }
 
         $json = $response->json();
         if (! $response->successful() || ! is_array($json) || ($json['success'] ?? false) !== true || empty($json['data']['url'])) {
-            throw new RuntimeException('图床上传失败: '.trim($response->body()));
+            $responseBody = trim($response->body());
+
+            throw new RuntimeException('图床上传失败: '.($responseBody !== '' ? $responseBody : '图床未返回有效响应'));
         }
 
         $data = is_array($json['data'] ?? null) ? $json['data'] : [];
