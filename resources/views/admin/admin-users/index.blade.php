@@ -182,15 +182,16 @@
 
     <div id="create-admin-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden z-50">
         <div class="flex items-center justify-center min-h-screen p-4">
-            <div class="bg-white rounded-lg shadow-xl max-w-lg w-full">
-                <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+            <div class="flex max-h-[calc(100vh-2rem)] w-full max-w-3xl flex-col overflow-hidden rounded-lg bg-white shadow-xl">
+                <div class="shrink-0 px-6 py-4 border-b border-gray-200 flex items-center justify-between">
                     <h3 class="text-lg font-medium text-gray-900">{{ __('admin.admin_users.modal_create') }}</h3>
                     <button type="button" onclick="hideCreateAdminModal()" class="text-gray-400 hover:text-gray-600">
                         <i data-lucide="x" class="w-5 h-5"></i>
                     </button>
                 </div>
-                <form method="POST" action="{{ route('admin.admin-users.store') }}" class="px-6 py-5 space-y-4">
+                <form method="POST" action="{{ route('admin.admin-users.store') }}" class="flex min-h-0 flex-1 flex-col">
                     @csrf
+                    <div class="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5">
                     <div>
                         <label for="username" class="block text-sm font-medium text-gray-700 mb-1">{{ __('admin.admin_users.field_username') }}</label>
                         <input type="text" name="username" id="username" required class="block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500" placeholder="{{ __('admin.admin_users.placeholder_username') }}" value="{{ old('username') }}">
@@ -230,7 +231,69 @@
                         {{ __('admin.admin_users.create_help') }}
                     </div>
 
-                    <div class="flex justify-end gap-3 pt-2">
+                    <div id="customer-onboarding-panel" class="hidden rounded-lg border border-emerald-200 bg-emerald-50/60 p-4">
+                        <label class="flex items-start gap-3">
+                            <input type="checkbox" name="open_customer_subscription" value="1" id="open_customer_subscription" class="mt-1 h-4 w-4 rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500">
+                            <span>
+                                <span class="block text-sm font-semibold text-emerald-950">同步创建分站点并开通规格</span>
+                                <span class="mt-1 block text-xs leading-5 text-emerald-800">适用于代理/直客开户。独立“客户开通”页面仍用于后续续费、换规格和手动调整有效期。</span>
+                            </span>
+                        </label>
+
+                        <div id="customer-onboarding-fields" class="mt-4 hidden space-y-4">
+                            <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                <div>
+                                    <label for="site_name" class="mb-1 block text-sm font-medium text-gray-700">站点名称</label>
+                                    <input type="text" name="site_name" id="site_name" class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" value="{{ old('site_name') }}" placeholder="客户品牌或公司名称">
+                                </div>
+                                <div>
+                                    <label for="site_domain" class="mb-1 block text-sm font-medium text-gray-700">站点域名</label>
+                                    <input type="text" name="site_domain" id="site_domain" class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" value="{{ old('site_domain') }}" placeholder="example.com">
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                <div>
+                                    <label for="plan_id" class="mb-1 block text-sm font-medium text-gray-700">开通规格</label>
+                                    <select name="plan_id" id="plan_id" class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                        <option value="">请选择规格</option>
+                                        @foreach ($plans as $plan)
+                                            <option value="{{ $plan->id }}" data-audience="{{ $plan->audience }}" @selected((string) old('plan_id') === (string) $plan->id)>
+                                                {{ $plan->name }} / {{ $plan->duration_days }} 天 / {{ ['agent' => '代理', 'direct' => '直客', 'both' => '通用'][$plan->audience] ?? $plan->audience }}
+                                            </option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="mb-1 block text-sm font-medium text-gray-700">发放积分</label>
+                                    <label class="flex h-10 items-center gap-2 rounded-md border border-emerald-200 bg-white px-3 text-sm text-gray-700">
+                                        <input type="checkbox" name="grant_credits" value="1" checked class="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500">
+                                        <span>开通时发放规格积分</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                <div>
+                                    <label for="starts_at" class="mb-1 block text-sm font-medium text-gray-700">开始时间</label>
+                                    <input type="datetime-local" name="starts_at" id="starts_at" class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" value="{{ old('starts_at') }}">
+                                </div>
+                                <div>
+                                    <label for="ends_at" class="mb-1 block text-sm font-medium text-gray-700">到期时间</label>
+                                    <input type="datetime-local" name="ends_at" id="ends_at" class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" value="{{ old('ends_at') }}">
+                                    <p class="mt-1 text-xs text-emerald-800">不填则按规格服务天数自动计算；填写后覆盖规格默认天数。</p>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label for="subscription_remark" class="mb-1 block text-sm font-medium text-gray-700">开户备注</label>
+                                <input type="text" name="subscription_remark" id="subscription_remark" class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" value="{{ old('subscription_remark') }}" placeholder="线下转账后同步开户">
+                            </div>
+                        </div>
+                    </div>
+                    </div>
+
+                    <div class="shrink-0 flex justify-end gap-3 border-t border-gray-200 bg-white px-6 py-4">
                         <button type="button" onclick="hideCreateAdminModal()" class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 bg-white hover:bg-gray-50">{{ __('admin.button.cancel') }}</button>
                         <button type="submit" class="px-4 py-2 border border-transparent rounded-md text-white bg-indigo-600 hover:bg-indigo-700">{{ __('admin.admin_users.create_admin_submit') }}</button>
                     </div>
@@ -314,8 +377,41 @@
         const updateAdminRouteTemplate = @json(route('admin.admin-users.update', ['adminId' => '__ADMIN_ID__']));
         const currentAdminId = @json($currentAdminId);
 
+        function syncCustomerOnboardingPanel() {
+            const role = document.getElementById('role')?.value || 'admin';
+            const panel = document.getElementById('customer-onboarding-panel');
+            const checkbox = document.getElementById('open_customer_subscription');
+            const fields = document.getElementById('customer-onboarding-fields');
+            const planSelect = document.getElementById('plan_id');
+            const canOpen = role === 'agent_admin' || role === 'direct_admin';
+            const mode = role === 'agent_admin' ? 'agent' : 'direct';
+
+            if (!panel || !checkbox || !fields || !planSelect) {
+                return;
+            }
+
+            panel.classList.toggle('hidden', !canOpen);
+            if (!canOpen) {
+                checkbox.checked = false;
+            }
+            fields.classList.toggle('hidden', !canOpen || !checkbox.checked);
+
+            Array.from(planSelect.options).forEach((option) => {
+                const audience = option.dataset.audience || '';
+                const visible = option.value === '' || audience === 'both' || audience === mode;
+                option.hidden = !visible;
+                option.disabled = !visible;
+            });
+
+            const selected = planSelect.options[planSelect.selectedIndex];
+            if (selected && selected.disabled) {
+                planSelect.value = '';
+            }
+        }
+
         function showCreateAdminModal() {
             document.getElementById('create-admin-modal').classList.remove('hidden');
+            syncCustomerOnboardingPanel();
         }
 
         function hideCreateAdminModal() {
@@ -344,5 +440,11 @@
         function hideEditAdminModal() {
             document.getElementById('edit-admin-modal').classList.add('hidden');
         }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('role')?.addEventListener('change', syncCustomerOnboardingPanel);
+            document.getElementById('open_customer_subscription')?.addEventListener('change', syncCustomerOnboardingPanel);
+            syncCustomerOnboardingPanel();
+        });
     </script>
 @endpush

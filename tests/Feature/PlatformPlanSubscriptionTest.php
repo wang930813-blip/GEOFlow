@@ -105,6 +105,58 @@ class PlatformPlanSubscriptionTest extends TestCase
             ->assertSee('客户开通');
     }
 
+    public function test_super_admin_can_create_agent_user_with_site_and_plan_subscription(): void
+    {
+        $superAdmin = $this->createAdmin('onboard_root_admin', 'super_admin');
+        $plan = $this->createPlan('代理开户规格', [
+            'credits' => ['quota_value' => 1200, 'quota_period' => 'cycle', 'unit' => 'points'],
+            'team_members' => ['quota_value' => 3, 'quota_period' => 'cycle', 'unit' => 'accounts'],
+        ]);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.admin-users.store'), [
+                'username' => 'agent_onboard_user',
+                'display_name' => '代理开户用户',
+                'email' => 'agent-onboard@example.com',
+                'role' => 'agent_admin',
+                'password' => 'password-123',
+                'confirm_password' => 'password-123',
+                'open_customer_subscription' => '1',
+                'site_name' => '代理开户站点',
+                'site_domain' => 'agent-onboard.example.com',
+                'plan_id' => (int) $plan->id,
+                'starts_at' => '2026-06-12T10:00',
+                'ends_at' => '2026-09-10T10:00',
+                'grant_credits' => '1',
+                'subscription_remark' => '创建用户时同步开户',
+            ])
+            ->assertRedirect(route('admin.admin-users.index'));
+
+        $admin = Admin::query()->where('username', 'agent_onboard_user')->firstOrFail();
+        $site = Site::query()->where('name', '代理开户站点')->firstOrFail();
+
+        $this->assertSame('agent_admin', (string) $admin->role);
+        $this->assertSame((int) $admin->id, (int) $site->owner_admin_id);
+        $this->assertSame('agent', (string) $site->customer_mode);
+        $this->assertSame((int) $admin->id, (int) $site->agent_admin_id);
+        $this->assertDatabaseHas('site_members', [
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'role' => 'owner',
+        ]);
+        $this->assertDatabaseHas('site_plan_subscriptions', [
+            'site_id' => (int) $site->id,
+            'plan_id' => (int) $plan->id,
+            'mode' => 'agent',
+            'owner_admin_id' => (int) $admin->id,
+            'status' => 'active',
+        ]);
+        $this->assertDatabaseHas('site_credit_accounts', [
+            'site_id' => (int) $site->id,
+            'balance' => '1200.00',
+        ]);
+    }
+
     /**
      * @param  array<string,array{quota_value:int,quota_period:string,unit:string}>  $resources
      */
