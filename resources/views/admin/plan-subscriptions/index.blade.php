@@ -24,6 +24,16 @@
                 </div>
             </div>
 
+            <div class="mb-5 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
+                <div class="flex gap-2">
+                    <i data-lucide="info" class="mt-0.5 h-4 w-4 shrink-0"></i>
+                    <div>
+                        <span class="font-medium">时间规则：</span>
+                        手动填写到期时间时，以手动时间为准；未填写到期时间时，系统按所选规格的服务天数自动计算。续费未到期客户时，如需顺延，请手动填写“原到期时间 + 购买时长”后的新到期时间。
+                    </div>
+                </div>
+            </div>
+
             <form method="POST" action="{{ route('admin.plan-subscriptions.store') }}" class="grid grid-cols-1 gap-4 lg:grid-cols-12">
                 @csrf
                 <div class="lg:col-span-3">
@@ -75,7 +85,7 @@
                 <div class="lg:col-span-3">
                     <label class="mb-1 block text-sm font-medium text-gray-700">到期时间</label>
                     <input name="ends_at" type="datetime-local" value="{{ old('ends_at') }}" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
-                    <p class="mt-1 text-xs text-gray-400">不填则按规格服务天数自动计算。</p>
+                    <p class="mt-1 text-xs text-gray-400">不填则按规格服务天数自动计算；填写后会覆盖规格默认天数。</p>
                 </div>
                 <div class="lg:col-span-4">
                     <label class="mb-1 block text-sm font-medium text-gray-700">备注</label>
