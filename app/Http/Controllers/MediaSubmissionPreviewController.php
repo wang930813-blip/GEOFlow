@@ -33,9 +33,12 @@ class MediaSubmissionPreviewController extends Controller
             return '';
         }
 
-        return $this->looksLikeRenderedHtml($content) && ! $this->looksLikeMarkdown($content)
-            ? $content
-            : ArticleHtmlPresenter::markdownToHtml($this->htmlLineBreaksToMarkdownNewlines($content));
+        $decoded = $this->decodeHtmlEntities($content);
+        if ($this->looksLikeRenderedHtml($decoded) && ! $this->looksLikeMarkdown($decoded)) {
+            return $decoded;
+        }
+
+        return ArticleHtmlPresenter::markdownToHtml($this->htmlLineBreaksToMarkdownNewlines($content));
     }
 
     private function looksLikeRenderedHtml(string $content): bool
@@ -58,6 +61,11 @@ class MediaSubmissionPreviewController extends Controller
     {
         $content = preg_replace('/<br\s*\/?>\s*/i', "\n", $content) ?? $content;
 
+        return $this->decodeHtmlEntities($content);
+    }
+
+    private function decodeHtmlEntities(string $content): string
+    {
         return html_entity_decode($content, ENT_QUOTES | ENT_HTML5, 'UTF-8');
     }
 }

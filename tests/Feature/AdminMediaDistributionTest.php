@@ -1017,6 +1017,25 @@ class AdminMediaDistributionTest extends TestCase
             ->assertSee('<p>Already rendered.</p>', false);
     }
 
+    public function test_media_submission_preview_decodes_escaped_html_snapshot(): void
+    {
+        [$submission] = $this->createPreviewSubmissionWithSnapshot(
+            htmlspecialchars('<h2>Escaped HTML</h2><p>Rendered content should remain visible.</p>', ENT_QUOTES | ENT_HTML5, 'UTF-8'),
+            'escaped-html-preview-token'
+        );
+
+        $response = $this->get(route('media-submission-preview.show', [
+            'submission' => (int) $submission->id,
+            'token' => 'escaped-html-preview-token',
+        ]));
+
+        $response
+            ->assertOk()
+            ->assertSee('<h2>Escaped HTML</h2>', false)
+            ->assertSee('<p>Rendered content should remain visible.</p>', false)
+            ->assertDontSee('&lt;h2&gt;', false);
+    }
+
     private function createPreviewSubmissionWithSnapshot(string $contentSnapshot, string $token): array
     {
         $site = Site::query()->create(['name' => 'Preview Site '.Str::random(6), 'domain' => Str::random(8).'.test', 'status' => 'active']);
