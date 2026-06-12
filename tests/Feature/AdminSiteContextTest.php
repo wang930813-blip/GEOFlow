@@ -140,6 +140,7 @@ class AdminSiteContextTest extends TestCase
             'status' => 'active',
         ]);
         $site->members()->attach($admin->id, ['role' => 'owner']);
+        $this->openTestingPlanForSite($site, $admin);
 
         $this->actingAs($admin, 'admin')
             ->get(route('admin.api-tokens.index'))

@@ -13,6 +13,7 @@ use App\Http\Middleware\AuthenticateAdminWeb;
 use App\Http\Middleware\AuthenticateApiToken;
 use App\Http\Middleware\AutoFollowRedirectBody;
 use App\Http\Middleware\EnsureApiScope;
+use App\Http\Middleware\EnsureAgentAdmin;
 use App\Http\Middleware\EnsureCurrentSite;
 use App\Http\Middleware\EnsureSuperAdmin;
 use App\Http\Middleware\LogAdminActivity;
@@ -71,6 +72,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'site.view_log' => RecordSiteViewLog::class,
             // Blade 后台：仅超级管理员
             'admin.super' => EnsureSuperAdmin::class,
+            // Blade 后台：仅代理管理员
+            'admin.agent' => EnsureAgentAdmin::class,
             // Blade 后台：写操作日志
             'admin.activity' => LogAdminActivity::class,
         ]);

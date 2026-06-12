@@ -4,12 +4,16 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Jobs\ProcessUrlImportJob;
+use App\Models\Admin;
 use App\Models\KeywordLibrary;
 use App\Models\KnowledgeBase;
+use App\Models\PlatformPlan;
 use App\Models\TitleLibrary;
 use App\Models\UrlImportJob;
 use App\Models\UrlImportJobLog;
+use App\Services\Billing\ResourceQuotaService;
 use App\Services\GeoFlow\UrlImportProcessingService;
+use App\Support\CurrentSite;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -19,7 +23,10 @@ use Illuminate\View\View;
 
 class UrlImportController extends Controller
 {
-    public function __construct(private readonly UrlImportProcessingService $urlImportProcessingService) {}
+    public function __construct(
+        private readonly UrlImportProcessingService $urlImportProcessingService,
+        private readonly ResourceQuotaService $quotaService,
+    ) {}
 
     public function index(): View
     {
@@ -58,6 +65,15 @@ class UrlImportController extends Controller
                 ->withInput()
                 ->withErrors(['ai_model' => $exception->getMessage()]);
         }
+        $siteId = (int) (app(CurrentSite::class)->id() ?? 0);
+        $admin = Auth::guard('admin')->user();
+        if ($siteId > 0 && ! ($admin instanceof Admin && $admin->isSuperAdmin())) {
+            try {
+                $this->quotaService->assertCanUse($siteId, PlatformPlan::RESOURCE_URL_IMPORTS, 1);
+            } catch (\Throwable $exception) {
+                return back()->withInput()->withErrors(['url' => $exception->getMessage()]);
+            }
+        }
 
         $job = UrlImportJob::query()->create([
             'url' => $validated['url'],
@@ -78,6 +94,15 @@ class UrlImportController extends Controller
             'error_message' => '',
             'created_by' => Auth::guard('admin')->user()?->username ?? '',
         ]);
+        if ($siteId > 0 && ! ($admin instanceof Admin && $admin->isSuperAdmin())) {
+            $this->quotaService->consume($siteId, PlatformPlan::RESOURCE_URL_IMPORTS, 1, [
+                'actor_admin_id' => $admin instanceof Admin ? (int) $admin->id : null,
+                'subject_type' => UrlImportJob::class,
+                'subject_id' => (int) $job->id,
+                'idempotency_key' => 'url-import:'.(int) $job->id,
+                'remark' => 'URL 采集任务消耗',
+            ]);
+        }
 
         UrlImportJobLog::query()->create([
             'job_id' => $job->id,

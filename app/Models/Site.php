@@ -6,6 +6,7 @@ use App\Services\SiteDefaultContentPromptService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Site extends Model
 {
@@ -14,6 +15,9 @@ class Site extends Model
         'name',
         'domain',
         'status',
+        'customer_mode',
+        'agent_admin_id',
+        'plan_status',
         'settings',
     ];
 
@@ -21,6 +25,7 @@ class Site extends Model
     {
         return [
             'owner_admin_id' => 'integer',
+            'agent_admin_id' => 'integer',
             'settings' => 'array',
         ];
     }
@@ -42,5 +47,15 @@ class Site extends Model
         return $this->belongsToMany(Admin::class, 'site_members')
             ->withPivot('role')
             ->withTimestamps();
+    }
+
+    public function agentAdmin(): BelongsTo
+    {
+        return $this->belongsTo(Admin::class, 'agent_admin_id');
+    }
+
+    public function planSubscriptions(): HasMany
+    {
+        return $this->hasMany(SitePlanSubscription::class);
     }
 }

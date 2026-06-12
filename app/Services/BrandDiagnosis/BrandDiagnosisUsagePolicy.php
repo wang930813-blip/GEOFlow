@@ -5,10 +5,16 @@ namespace App\Services\BrandDiagnosis;
 use App\Models\Admin;
 use App\Models\BrandDiagnosisRun;
 use App\Models\BrandDiagnosisUsageLimit;
+use App\Models\PlatformPlan;
+use App\Services\Billing\ResourceQuotaService;
 use Illuminate\Support\Facades\DB;
 
 class BrandDiagnosisUsagePolicy
 {
+    public function __construct(
+        private readonly ResourceQuotaService $quotaService
+    ) {}
+
     public function reserve(Admin $admin, int $siteId): BrandDiagnosisUsageDecision
     {
         if ($admin->isSuperAdmin()) {
@@ -19,6 +25,17 @@ class BrandDiagnosisUsagePolicy
             );
         }
 
+        $this->quotaService->consume($siteId, PlatformPlan::RESOURCE_BRAND_DIAGNOSES, 1, [
+            'actor_admin_id' => (int) $admin->id,
+            'idempotency_key' => 'brand-diagnosis:'.(int) $admin->id.':'.$siteId.':'.now()->timestamp.':'.str()->random(8),
+            'remark' => '品牌诊断确认消耗',
+        ]);
+
+        return new BrandDiagnosisUsageDecision('plan_quota', false, '');
+    }
+
+    public function reserveDailyFree(Admin $admin, int $siteId): BrandDiagnosisUsageDecision
+    {
         $today = now()->toDateString();
         $limit = max(1, (int) config('brand_diagnosis.daily_free_limit', 1));
 

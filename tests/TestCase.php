@@ -39,4 +39,54 @@ abstract class TestCase extends BaseTestCase
             putenv($key.'='.$value);
         }
     }
+
+    /**
+     * Open an active testing subscription for flows that are intentionally
+     * exercising business actions behind the platform-plan gate.
+     *
+     * @param  array<string,array{quota_value?:int,quota_period?:string,unit?:string}>  $resourceOverrides
+     */
+    protected function openTestingPlanForSite(
+        \App\Models\Site $site,
+        ?\App\Models\Admin $owner = null,
+        array $resourceOverrides = [],
+        string $mode = 'direct'
+    ): \App\Models\SitePlanSubscription {
+        $plan = \App\Models\PlatformPlan::query()->create([
+            'name' => 'Testing Unlimited Plan '.str()->random(8),
+            'code' => 'testing-unlimited-'.str()->random(12),
+            'audience' => 'both',
+            'duration_days' => 365,
+            'price' => null,
+            'market_price' => null,
+            'description' => 'Testing-only plan subscription.',
+            'status' => 'active',
+            'sort_order' => 0,
+            'created_by' => $owner?->id,
+        ]);
+
+        foreach (\App\Models\PlatformPlan::resourceCatalog() as $resourceKey => $definition) {
+            $override = $resourceOverrides[$resourceKey] ?? [];
+            $plan->entitlements()->create([
+                'resource_key' => $resourceKey,
+                'enabled' => true,
+                'quota_value' => (int) ($override['quota_value'] ?? 0),
+                'quota_period' => (string) ($override['quota_period'] ?? 'unlimited'),
+                'unit' => (string) ($override['unit'] ?? $definition['unit']),
+                'meta' => [],
+            ]);
+        }
+
+        return app(\App\Services\Billing\PlanSubscriptionService::class)->open(
+            site: $site,
+            plan: $plan,
+            mode: $mode,
+            ownerAdmin: $owner,
+            operator: $owner,
+            startsAt: now()->subMinute(),
+            endsAt: now()->addYear(),
+            grantCredits: false,
+            remark: 'Testing subscription'
+        );
+    }
 }

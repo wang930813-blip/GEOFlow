@@ -61,6 +61,14 @@
                         <option value="inactive" @selected(old('status') === 'inactive')>停用</option>
                     </select>
                 </div>
+                <div class="lg:col-span-2">
+                    <label class="mb-1 block text-sm font-medium text-gray-700" for="create-customer-mode">客户模式</label>
+                    <select id="create-customer-mode" name="customer_mode" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
+                        <option value="internal" @selected(old('customer_mode', 'internal') === 'internal')>内部站点</option>
+                        <option value="agent" @selected(old('customer_mode') === 'agent')>代理</option>
+                        <option value="direct" @selected(old('customer_mode') === 'direct')>直客</option>
+                    </select>
+                </div>
                 <div class="flex items-end lg:col-span-2">
                     <button type="submit" class="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 text-sm font-medium text-white transition hover:bg-indigo-700">
                         <i data-lucide="save" class="h-4 w-4"></i>
@@ -93,6 +101,8 @@
                             <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">站点</th>
                             <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">前台域名</th>
                             <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">负责人</th>
+                            <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">客户模式</th>
+                            <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">规格</th>
                             <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">成员</th>
                             <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">状态</th>
                             <th class="px-5 py-3 text-right text-xs font-medium uppercase tracking-wider text-slate-500">操作</th>
@@ -119,6 +129,18 @@
                                     {{ $site->owner?->name ?? '未指定' }}
                                 </td>
                                 <td class="px-5 py-4 align-top text-sm text-gray-600">
+                                    {{ ['agent' => '代理', 'direct' => '直客', 'internal' => '内部'][$site->customer_mode ?? 'internal'] ?? $site->customer_mode }}
+                                </td>
+                                <td class="px-5 py-4 align-top text-sm text-gray-600">
+                                    @php($latestSubscription = $site->planSubscriptions->first())
+                                    @if ($latestSubscription)
+                                        <div>{{ $latestSubscription->plan?->name ?? '规格已删除' }}</div>
+                                        <div class="mt-1 text-xs text-gray-400">{{ $latestSubscription->ends_at?->format('Y-m-d') ?? '-' }} 到期</div>
+                                    @else
+                                        <span class="text-gray-400">未开通</span>
+                                    @endif
+                                </td>
+                                <td class="px-5 py-4 align-top text-sm text-gray-600">
                                     {{ $site->members_count }} 人
                                 </td>
                                 <td class="px-5 py-4 align-top">
@@ -141,7 +163,7 @@
                                 </td>
                             </tr>
                             <tr id="site-edit-{{ $site->id }}" class="hidden bg-slate-50/70">
-                                <td colspan="6" class="px-5 py-5">
+                                <td colspan="8" class="px-5 py-5">
                                     <form method="POST" action="{{ route('admin.sites.manage.update', ['site' => $site->id]) }}" class="grid grid-cols-1 gap-4 lg:grid-cols-12">
                                         @csrf
                                         <div class="lg:col-span-3">
@@ -170,6 +192,14 @@
                                                 <option value="inactive" @selected($site->status === 'inactive')>停用</option>
                                             </select>
                                         </div>
+                                        <div class="lg:col-span-2">
+                                            <label class="mb-1 block text-sm font-medium text-gray-700" for="site-customer-mode-{{ $site->id }}">客户模式</label>
+                                            <select id="site-customer-mode-{{ $site->id }}" name="customer_mode" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
+                                                <option value="internal" @selected(($site->customer_mode ?? 'internal') === 'internal')>内部站点</option>
+                                                <option value="agent" @selected(($site->customer_mode ?? 'internal') === 'agent')>代理</option>
+                                                <option value="direct" @selected(($site->customer_mode ?? 'internal') === 'direct')>直客</option>
+                                            </select>
+                                        </div>
                                         <div class="flex items-end lg:col-span-2">
                                             <button type="submit" class="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 text-sm font-medium text-white transition hover:bg-indigo-700">
                                                 <i data-lucide="save" class="h-4 w-4"></i>
@@ -192,7 +222,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="6" class="px-5 py-10 text-center text-sm text-gray-500">暂无站点</td>
+                                <td colspan="8" class="px-5 py-10 text-center text-sm text-gray-500">暂无站点</td>
                             </tr>
                         @endforelse
                     </tbody>

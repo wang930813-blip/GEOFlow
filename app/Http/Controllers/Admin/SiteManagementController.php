@@ -19,7 +19,11 @@ class SiteManagementController extends Controller
     public function index(): View
     {
         $sites = Site::query()
-            ->with(['owner:id,username,display_name', 'members:id,username,display_name,role,status'])
+            ->with([
+                'owner:id,username,display_name',
+                'members:id,username,display_name,role,status',
+                'planSubscriptions' => fn ($query) => $query->with('plan:id,name,code')->latest()->limit(1),
+            ])
             ->withCount('members')
             ->orderBy('id')
             ->get();
@@ -49,6 +53,8 @@ class SiteManagementController extends Controller
                 'name',
                 'domain',
                 'status',
+                'customer_mode',
+                'agent_admin_id',
             ]));
 
             $this->syncMembers($site, $payload);
@@ -67,6 +73,8 @@ class SiteManagementController extends Controller
                 'name',
                 'domain',
                 'status',
+                'customer_mode',
+                'agent_admin_id',
             ]));
 
             $this->syncMembers($site, $payload);
@@ -102,6 +110,7 @@ class SiteManagementController extends Controller
                 'regex:/^[A-Za-z0-9.-]+$/',
             ],
             'status' => ['required', Rule::in(['active', 'inactive'])],
+            'customer_mode' => ['nullable', Rule::in(['agent', 'direct', 'internal'])],
             'owner_admin_id' => ['nullable', 'integer', Rule::exists('admins', 'id')],
             'member_ids' => ['nullable', 'array'],
             'member_ids.*' => ['integer', Rule::exists('admins', 'id')],
@@ -141,6 +150,8 @@ class SiteManagementController extends Controller
             'name' => trim((string) $payload['name']),
             'domain' => trim((string) ($payload['domain'] ?? '')),
             'status' => (string) $payload['status'],
+            'customer_mode' => (string) ($payload['customer_mode'] ?? 'internal'),
+            'agent_admin_id' => (string) ($payload['customer_mode'] ?? 'internal') === 'agent' && $ownerAdminId > 0 ? $ownerAdminId : null,
             'member_ids' => $memberIds,
         ];
     }

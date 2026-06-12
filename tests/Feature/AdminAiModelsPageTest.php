@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Admin;
 use App\Models\AiModel;
+use App\Models\Site;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -23,9 +24,12 @@ class AdminAiModelsPageTest extends TestCase
             ]),
         ]);
 
-        $model = $this->createAiModel('chat');
+        $admin = $this->createAdmin();
+        $site = $this->createSiteForAdmin($admin);
+        $model = $this->createAiModel('chat', $site);
 
-        $response = $this->actingAs($this->createAdmin(), 'admin')
+        $response = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
             ->postJson(route('admin.ai-models.test', ['modelId' => (int) $model->id]));
 
         $response
@@ -41,9 +45,12 @@ class AdminAiModelsPageTest extends TestCase
 
     public function test_admin_models_page_shows_test_action(): void
     {
-        $this->createAiModel('chat');
+        $admin = $this->createAdmin();
+        $site = $this->createSiteForAdmin($admin);
+        $this->createAiModel('chat', $site);
 
-        $response = $this->actingAs($this->createAdmin(), 'admin')
+        $response = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
             ->get(route('admin.ai-models.index'));
 
         $response->assertOk()
@@ -60,9 +67,12 @@ class AdminAiModelsPageTest extends TestCase
             ]),
         ]);
 
-        $model = $this->createAiModel('embedding');
+        $admin = $this->createAdmin();
+        $site = $this->createSiteForAdmin($admin);
+        $model = $this->createAiModel('embedding', $site);
 
-        $response = $this->actingAs($this->createAdmin(), 'admin')
+        $response = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
             ->postJson(route('admin.ai-models.test', ['modelId' => (int) $model->id]));
 
         $response
@@ -82,9 +92,12 @@ class AdminAiModelsPageTest extends TestCase
             'https://ai.test/v1/chat/completions' => Http::response(['detail' => 'API Key invalid'], 401),
         ]);
 
-        $model = $this->createAiModel('chat');
+        $admin = $this->createAdmin();
+        $site = $this->createSiteForAdmin($admin);
+        $model = $this->createAiModel('chat', $site);
 
-        $response = $this->actingAs($this->createAdmin(), 'admin')
+        $response = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
             ->postJson(route('admin.ai-models.test', ['modelId' => (int) $model->id]));
 
         $response
@@ -105,9 +118,22 @@ class AdminAiModelsPageTest extends TestCase
         ]);
     }
 
-    private function createAiModel(string $type): AiModel
+    private function createSiteForAdmin(Admin $admin): Site
+    {
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'AI Model Test Site',
+            'status' => 'active',
+        ]);
+        $site->members()->attach((int) $admin->id, ['role' => 'owner']);
+
+        return $site;
+    }
+
+    private function createAiModel(string $type, Site $site): AiModel
     {
         return AiModel::query()->create([
+            'site_id' => (int) $site->id,
             'name' => $type === 'embedding' ? 'Test Embedding' : 'Test Chat',
             'version' => 'test',
             'api_key' => app(ApiKeyCrypto::class)->encrypt('test-api-key'),

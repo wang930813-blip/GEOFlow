@@ -65,7 +65,7 @@ class WorkerExecutionSiteIsolationTest extends TestCase
     {
         config(['geoflow.api_key_crypto_roots' => ['worker-limit-pause-test-key']]);
 
-        $site = Site::query()->create([
+        $site = $this->createSite([
             'name' => 'Limit Pause Site',
             'status' => 'active',
         ]);
@@ -136,7 +136,7 @@ class WorkerExecutionSiteIsolationTest extends TestCase
     {
         config(['geoflow.api_key_crypto_roots' => ['worker-site-isolation-test-key']]);
 
-        $site = Site::query()->create([
+        $site = $this->createSite([
             'name' => 'Default Site',
             'status' => 'active',
         ]);
@@ -225,7 +225,7 @@ class WorkerExecutionSiteIsolationTest extends TestCase
     {
         config(['geoflow.api_key_crypto_roots' => ['worker-special-prompts-test-key']]);
 
-        $site = Site::query()->create([
+        $site = $this->createSite([
             'name' => 'Special Prompt Site',
             'status' => 'active',
         ]);
@@ -315,7 +315,7 @@ class WorkerExecutionSiteIsolationTest extends TestCase
     {
         config(['geoflow.api_key_crypto_roots' => ['worker-category-site-test-key']]);
 
-        $otherSite = Site::query()->create([
+        $otherSite = $this->createSite([
             'name' => 'Other Site',
             'status' => 'active',
         ]);
@@ -326,7 +326,7 @@ class WorkerExecutionSiteIsolationTest extends TestCase
             'sort_order' => 0,
         ]);
 
-        $site = Site::query()->create([
+        $site = $this->createSite([
             'name' => 'Task Site',
             'status' => 'active',
         ]);
@@ -412,5 +412,16 @@ class WorkerExecutionSiteIsolationTest extends TestCase
                 ],
             ],
         ];
+    }
+
+    /**
+     * @param  array<string,mixed>  $attributes
+     */
+    private function createSite(array $attributes): Site
+    {
+        $site = Site::query()->create($attributes);
+        $this->openTestingPlanForSite($site);
+
+        return $site;
     }
 }

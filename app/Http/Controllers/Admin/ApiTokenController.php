@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Admin;
 use App\Exceptions\ApiException;
 use App\Http\Controllers\Controller;
 use App\Models\Admin;
+use App\Models\PlatformPlan;
 use App\Models\Site;
+use App\Services\Billing\ResourceQuotaService;
 use App\Services\Api\ApiTokenService;
 use App\Support\AdminWeb;
 use App\Support\CurrentSite;
@@ -25,7 +27,8 @@ use Throwable;
 class ApiTokenController extends Controller
 {
     public function __construct(
-        private readonly ApiTokenService $apiTokenService
+        private readonly ApiTokenService $apiTokenService,
+        private readonly ResourceQuotaService $quotaService,
     ) {}
 
     /**
@@ -68,6 +71,9 @@ class ApiTokenController extends Controller
 
         try {
             $siteId = $this->tokenSiteId(isset($payload['site_id']) ? (int) $payload['site_id'] : null);
+            if ($siteId !== null) {
+                $this->assertCanCreateTokenForSite($siteId);
+            }
             $created = $this->apiTokenService->createToken(
                 (string) $payload['name'],
                 is_array($payload['scopes']) ? $payload['scopes'] : [],
@@ -132,5 +138,30 @@ class ApiTokenController extends Controller
         abort_unless($siteId !== null && $siteId > 0, 403);
 
         return (int) $siteId;
+    }
+
+    private function assertCanCreateTokenForSite(int $siteId): void
+    {
+        $admin = auth('admin')->user();
+        if ($admin instanceof Admin && $admin->isSuperAdmin()) {
+            return;
+        }
+
+        $remaining = $this->quotaService->remaining($siteId, PlatformPlan::RESOURCE_API_TOKENS);
+        if ($remaining['quota'] === null) {
+            return;
+        }
+
+        $activeTokenCount = \Laravel\Sanctum\PersonalAccessToken::query()
+            ->where('tokenable_type', Admin::class)
+            ->where('site_id', $siteId)
+            ->where(function ($query): void {
+                $query->whereNull('expires_at')->orWhere('expires_at', '>', now());
+            })
+            ->count();
+
+        if ($activeTokenCount >= (int) $remaining['quota']) {
+            throw new ApiException('quota_exceeded', '当前规格 API Token 数量不足', 422);
+        }
     }
 }

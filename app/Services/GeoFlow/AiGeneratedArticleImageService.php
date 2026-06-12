@@ -4,7 +4,9 @@ namespace App\Services\GeoFlow;
 
 use App\Ai\Agents\MarkdownContentWriterAgent;
 use App\Models\AiModel;
+use App\Models\PlatformPlan;
 use App\Models\Task;
+use App\Services\Billing\ResourceQuotaService;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
 use Illuminate\Support\Facades\DB;
@@ -18,6 +20,7 @@ class AiGeneratedArticleImageService
         private readonly ApiKeyCrypto $apiKeyCrypto,
         private readonly AiArticleImagePlanner $planner,
         private readonly ExternalImageHostClient $imageHostClient,
+        private readonly ResourceQuotaService $quotaService,
     ) {}
 
     /**
@@ -29,6 +32,10 @@ class AiGeneratedArticleImageService
         if ($imageCount <= 0) {
             return ['content' => $content, 'blocks' => []];
         }
+        $siteId = (int) ($task->site_id ?? 0);
+        if ($siteId > 0) {
+            $this->quotaService->assertCanUse($siteId, PlatformPlan::RESOURCE_AI_IMAGE_GENERATIONS, $imageCount);
+        }
 
         $imageModel = $this->resolveImageModel($task);
         $plannedBlocks = $this->planImages($chatModel, $content, $title, $keyword, $imageCount);
@@ -36,6 +43,14 @@ class AiGeneratedArticleImageService
 
         foreach (array_slice($plannedBlocks, 0, $imageCount) as $index => $plan) {
             $uploaded = $this->generateOne($imageModel, (string) ($plan['prompt'] ?? ''), $index + 1);
+            if ($siteId > 0) {
+                $this->quotaService->consume($siteId, PlatformPlan::RESOURCE_AI_IMAGE_GENERATIONS, 1, [
+                    'subject_type' => Task::class,
+                    'subject_id' => (int) $task->id,
+                    'idempotency_key' => 'ai-image:'.$task->id.':'.($uploaded['key'] ?? $index + 1),
+                    'remark' => 'AI 配图生成消耗',
+                ]);
+            }
             $generatedBlocks[] = [
                 'paragraph_after' => (int) ($plan['paragraph_after'] ?? 1),
                 'alt' => (string) ($plan['alt'] ?? $title),

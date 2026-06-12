@@ -10,7 +10,9 @@ use App\Models\BrandDiagnosisResult;
 use App\Models\BrandDiagnosisRun;
 use App\Models\BrandDiagnosisSource;
 use App\Models\BrandDiagnosisUsageLimit;
+use App\Models\PlatformPlan;
 use App\Models\Site;
+use App\Models\SiteResourceUsage;
 use App\Services\BrandDiagnosis\BrandDiagnosisMentionBackfillService;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -232,6 +234,13 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
     {
         Queue::fake();
         [$admin, $site] = $this->createAdminWithSite('brand_diagnosis_confirm_admin');
+        $this->openTestingPlanForSite($site, $admin, [
+            PlatformPlan::RESOURCE_BRAND_DIAGNOSES => [
+                'quota_value' => 2,
+                'quota_period' => 'cycle',
+                'unit' => 'times',
+            ],
+        ]);
         $run = BrandDiagnosisRun::query()->create([
             'site_id' => (int) $site->id,
             'admin_id' => (int) $admin->id,
@@ -272,10 +281,14 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
 
         $run->refresh();
         $this->assertSame('running', $run->status);
-        $this->assertSame('daily_free', $run->billing_mode);
+        $this->assertSame('plan_quota', $run->billing_mode);
         $this->assertSame(now()->toDateString(), $run->usage_date?->toDateString());
         $this->assertSame('企业AI搜索优化服务怎么选？', $questionOne->refresh()->question);
-        $this->assertSame(1, BrandDiagnosisUsageLimit::query()->value('free_runs_used'));
+        $this->assertSame(0, BrandDiagnosisUsageLimit::query()->count());
+        $this->assertSame(1, SiteResourceUsage::query()
+            ->where('site_id', (int) $site->id)
+            ->where('resource_key', PlatformPlan::RESOURCE_BRAND_DIAGNOSES)
+            ->value('used_amount'));
 
         Queue::assertPushedOn('geoflow', ProcessBrandDiagnosisJob::class, function (ProcessBrandDiagnosisJob $job) use ($run): bool {
             return $job->runId === (int) $run->id;

@@ -3,12 +3,15 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\Keyword;
 use App\Models\KeywordLibrary;
+use App\Models\PlatformPlan;
 use App\Models\Task;
 use App\Models\Title;
 use App\Models\TitleLibrary;
+use App\Services\Billing\ResourceQuotaService;
 use App\Services\GeoFlow\TitleAiGenerationService;
 use App\Support\AdminWeb;
 use Illuminate\Http\RedirectResponse;
@@ -27,7 +30,8 @@ class TitleLibraryController extends Controller
     private const DETAIL_PER_PAGE = 20;
 
     public function __construct(
-        private TitleAiGenerationService $titleAiGenerationService
+        private TitleAiGenerationService $titleAiGenerationService,
+        private ResourceQuotaService $quotaService,
     ) {}
 
     /**
@@ -143,6 +147,15 @@ class TitleLibraryController extends Controller
         if ($keywords->isEmpty()) {
             return back()->withErrors(__('admin.title_ai_generate.error.no_keywords'));
         }
+        $admin = auth('admin')->user();
+        $siteId = (int) ($library->site_id ?? 0);
+        if ($siteId > 0 && ! ($admin instanceof Admin && $admin->isSuperAdmin())) {
+            try {
+                $this->quotaService->assertCanUse($siteId, PlatformPlan::RESOURCE_AI_TITLE_GENERATIONS, (int) $payload['title_count']);
+            } catch (\Throwable $exception) {
+                return back()->withErrors($exception->getMessage());
+            }
+        }
 
         $generationResult = $this->titleAiGenerationService->generateTitles(
             $aiModel,
@@ -192,6 +205,19 @@ class TitleLibraryController extends Controller
         }
         if (($generationResult['fallback_used'] ?? false) === true) {
             $message .= '（AI服务不可用，已使用模板兜底）';
+        }
+        if ($savedCount > 0 && $siteId > 0 && ! ($admin instanceof Admin && $admin->isSuperAdmin())) {
+            try {
+                $this->quotaService->consume($siteId, PlatformPlan::RESOURCE_AI_TITLE_GENERATIONS, $savedCount, [
+                    'actor_admin_id' => (int) (auth('admin')->id() ?? 0),
+                    'subject_type' => TitleLibrary::class,
+                    'subject_id' => (int) $library->id,
+                    'idempotency_key' => 'title-ai-generation:'.$library->id.':'.md5(implode('|', $generatedTitles)),
+                    'remark' => 'AI 标题生成消耗',
+                ]);
+            } catch (\Throwable $exception) {
+                return back()->withErrors($exception->getMessage());
+            }
         }
 
         return redirect()->route('admin.title-libraries.detail', ['libraryId' => $libraryId])->with('message', $message);

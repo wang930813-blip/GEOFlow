@@ -6,6 +6,7 @@ use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\Keyword;
 use App\Models\KeywordLibrary;
+use App\Models\Site;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
@@ -26,13 +27,16 @@ class AdminKeywordSuggestionTest extends TestCase
     public function test_bulk_keyword_store_adds_new_keywords_and_skips_duplicates(): void
     {
         $admin = $this->createAdmin();
+        $site = $this->createSiteForAdmin($admin);
         $library = KeywordLibrary::query()->create([
+            'site_id' => (int) $site->id,
             'name' => 'GEO Keywords',
             'description' => '',
             'keyword_count' => 1,
         ]);
 
         Keyword::query()->create([
+            'site_id' => (int) $site->id,
             'library_id' => (int) $library->id,
             'keyword' => 'GEO优化',
             'used_count' => 0,
@@ -40,6 +44,7 @@ class AdminKeywordSuggestionTest extends TestCase
         ]);
 
         $response = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
             ->post(route('admin.keyword-libraries.keywords.bulk-store', ['libraryId' => (int) $library->id]), [
                 'keywords' => ['GEO优化', 'AI搜索优化', '品牌内容被AI引用', 'AI搜索优化', '  '],
             ]);
@@ -67,13 +72,16 @@ class AdminKeywordSuggestionTest extends TestCase
     public function test_suggest_keywords_requires_active_chat_model(): void
     {
         $admin = $this->createAdmin('keyword_suggestion_no_model_admin');
+        $site = $this->createSiteForAdmin($admin);
         $library = KeywordLibrary::query()->create([
+            'site_id' => (int) $site->id,
             'name' => 'GEO Keywords',
             'description' => '',
             'keyword_count' => 0,
         ]);
 
         $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
             ->postJson(route('admin.keyword-libraries.keywords.suggest', ['libraryId' => (int) $library->id]), [
                 'seed_keyword' => 'GEO优化',
                 'count' => 20,
@@ -96,12 +104,15 @@ class AdminKeywordSuggestionTest extends TestCase
         ]);
 
         $admin = $this->createAdmin('keyword_suggestion_success_admin');
+        $site = $this->createSiteForAdmin($admin);
         $library = KeywordLibrary::query()->create([
+            'site_id' => (int) $site->id,
             'name' => 'GEO Keywords',
             'description' => '',
             'keyword_count' => 0,
         ]);
         AiModel::query()->create([
+            'site_id' => (int) $site->id,
             'name' => 'Keyword Chat',
             'version' => '',
             'api_key' => app(ApiKeyCrypto::class)->encrypt('test-key'),
@@ -116,6 +127,7 @@ class AdminKeywordSuggestionTest extends TestCase
         ]);
 
         $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
             ->postJson(route('admin.keyword-libraries.keywords.suggest', ['libraryId' => (int) $library->id]), [
                 'seed_keyword' => 'GEO优化',
                 'count' => 20,
@@ -138,5 +150,17 @@ class AdminKeywordSuggestionTest extends TestCase
             'role' => 'admin',
             'status' => 'active',
         ]);
+    }
+
+    private function createSiteForAdmin(Admin $admin): Site
+    {
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'Keyword Suggestion Test Site',
+            'status' => 'active',
+        ]);
+        $site->members()->attach((int) $admin->id, ['role' => 'owner']);
+
+        return $site;
     }
 }

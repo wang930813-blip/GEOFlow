@@ -69,6 +69,7 @@ class AdminUserController extends Controller
             ],
             'display_name' => ['nullable', 'string', 'max:100'],
             'email' => ['nullable', 'email', 'max:191'],
+            'role' => ['nullable', Rule::in(['admin', 'agent_admin', 'direct_admin', 'site_user'])],
             'status' => ['required', Rule::in(['active', 'inactive'])],
             'password' => ['nullable', 'string', 'min:8', 'same:confirm_password'],
             'confirm_password' => ['nullable', 'string', 'min:8'],
@@ -88,6 +89,7 @@ class AdminUserController extends Controller
                 'username' => trim((string) $payload['username']),
                 'display_name' => trim((string) ($payload['display_name'] ?? '')),
                 'email' => trim((string) ($payload['email'] ?? '')),
+                'role' => $targetAdmin->isSuperAdmin() ? (string) $targetAdmin->role : (string) ($payload['role'] ?? $targetAdmin->role ?? 'admin'),
                 'status' => $isSelf ? (string) $targetAdmin->status : (string) $payload['status'],
             ];
 
@@ -112,6 +114,7 @@ class AdminUserController extends Controller
             'username' => ['required', 'string', 'regex:/^[A-Za-z0-9_.-]{3,50}$/', 'unique:admins,username'],
             'display_name' => ['nullable', 'string', 'max:100'],
             'email' => ['nullable', 'email', 'max:191'],
+            'role' => ['nullable', Rule::in(['admin', 'agent_admin', 'direct_admin'])],
             'password' => ['required', 'string', 'min:8', 'same:confirm_password'],
             'confirm_password' => ['required', 'string', 'min:8'],
         ], [
@@ -131,7 +134,7 @@ class AdminUserController extends Controller
                 'display_name' => trim((string) ($payload['display_name'] ?? '')),
                 'email' => trim((string) ($payload['email'] ?? '')),
                 'password' => (string) $payload['password'],
-                'role' => 'admin',
+                'role' => (string) ($payload['role'] ?? 'admin'),
                 'status' => 'active',
                 'created_by' => (int) (auth('admin')->id() ?? 0),
             ]);
@@ -259,13 +262,14 @@ class AdminUserController extends Controller
 
         $admins = $query->get();
 
-        return $admins->map(static function (Admin $admin): array {
+        return $admins->map(function (Admin $admin): array {
             return [
                 'id' => (int) $admin->id,
                 'username' => (string) ($admin->username ?? ''),
                 'email' => (string) ($admin->email ?? ''),
                 'display_name' => (string) ($admin->display_name ?? ''),
                 'role' => (string) ($admin->role ?? 'admin'),
+                'role_label' => $this->roleLabel((string) ($admin->role ?? 'admin')),
                 'status' => (string) ($admin->status ?? 'active'),
                 'is_super_admin' => $admin->isSuperAdmin(),
                 'last_login' => $admin->last_login?->format('Y-m-d H:i:s') ?? '',
@@ -274,5 +278,16 @@ class AdminUserController extends Controller
                 'activity_count' => (int) ($admin->activity_count ?? 0),
             ];
         })->all();
+    }
+
+    private function roleLabel(string $role): string
+    {
+        return match ($role) {
+            'super_admin', 'superadmin' => __('admin.admin_users.role_super_admin'),
+            'agent_admin' => '代理管理员',
+            'direct_admin' => '直客管理员',
+            'site_user' => '站点普通用户',
+            default => __('admin.admin_users.role_admin'),
+        };
     }
 }

@@ -73,6 +73,21 @@ class Admin extends Authenticatable
         return in_array($role, ['super_admin', 'superadmin'], true);
     }
 
+    public function isAgentAdmin(): bool
+    {
+        return trim(strtolower((string) ($this->role ?? ''))) === 'agent_admin';
+    }
+
+    public function isDirectAdmin(): bool
+    {
+        return trim(strtolower((string) ($this->role ?? ''))) === 'direct_admin';
+    }
+
+    public function isSiteUser(): bool
+    {
+        return trim(strtolower((string) ($this->role ?? ''))) === 'site_user';
+    }
+
     public function creator(): BelongsTo
     {
         return $this->belongsTo(self::class, 'created_by');

@@ -2270,6 +2270,7 @@ class AdminMediaDistributionTest extends TestCase
             'status' => 'active',
         ]);
         $site->members()->attach($admin->id, ['role' => 'owner']);
+        $this->openTestingPlanForSite($site, $admin);
 
         return [$admin, $site];
     }

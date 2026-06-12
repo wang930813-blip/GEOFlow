@@ -5,6 +5,7 @@
 
 use App\Http\Controllers\Admin\AdminActivityLogController;
 use App\Http\Controllers\Admin\AdminAuthController;
+use App\Http\Controllers\Admin\AgentUserController;
 use App\Http\Controllers\Admin\AdminUserController;
 use App\Http\Controllers\Admin\AdminWelcomeController;
 use App\Http\Controllers\Admin\AiModelController;
@@ -29,6 +30,8 @@ use App\Http\Controllers\Admin\MediaDistribution\ReportController as MediaDistri
 use App\Http\Controllers\Admin\MediaDistribution\ResourceController as MediaDistributionResourceController;
 use App\Http\Controllers\Admin\MediaDistribution\SettingController as MediaDistributionSettingController;
 use App\Http\Controllers\Admin\MediaDistribution\SubmissionController as MediaDistributionSubmissionController;
+use App\Http\Controllers\Admin\PlanSubscriptionController;
+use App\Http\Controllers\Admin\PlatformPlanController;
 use App\Http\Controllers\Admin\SecuritySettingsController;
 use App\Http\Controllers\Admin\SiteContextController;
 use App\Http\Controllers\Admin\SiteManagementController;
@@ -331,6 +334,11 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::post('/', [ApiTokenController::class, 'store'])->name('store');
             Route::post('{tokenId}/revoke', [ApiTokenController::class, 'revoke'])->name('revoke');
         });
+        Route::middleware('admin.agent')->prefix('agent-users')->name('agent-users.')->group(function () {
+            Route::get('/', [AgentUserController::class, 'index'])->name('index');
+            Route::post('/', [AgentUserController::class, 'store'])->name('store');
+            Route::post('{adminId}/toggle-status', [AgentUserController::class, 'toggleStatus'])->name('toggle-status');
+        });
         // Super admin routes
         Route::middleware('admin.super')->group(function () {
             Route::prefix('sites/manage')->name('sites.manage.')->group(function () {
@@ -338,6 +346,15 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
                 Route::post('/', [SiteManagementController::class, 'store'])->name('store');
                 Route::post('{site}', [SiteManagementController::class, 'update'])->name('update');
                 Route::post('{site}/toggle-status', [SiteManagementController::class, 'toggleStatus'])->name('toggle-status');
+            });
+            Route::prefix('platform-plans')->name('platform-plans.')->group(function () {
+                Route::get('/', [PlatformPlanController::class, 'index'])->name('index');
+                Route::post('/', [PlatformPlanController::class, 'store'])->name('store');
+                Route::post('{plan}', [PlatformPlanController::class, 'update'])->name('update');
+            });
+            Route::prefix('plan-subscriptions')->name('plan-subscriptions.')->group(function () {
+                Route::get('/', [PlanSubscriptionController::class, 'index'])->name('index');
+                Route::post('/', [PlanSubscriptionController::class, 'store'])->name('store');
             });
             Route::prefix('admin-users')->name('admin-users.')->group(function () {
                 Route::get('/', [AdminUserController::class, 'index'])->name('index');

@@ -11,9 +11,11 @@ use App\Models\Category;
 use App\Models\Image;
 use App\Models\KnowledgeBase;
 use App\Models\KnowledgeChunk;
+use App\Models\PlatformPlan;
 use App\Models\Prompt;
 use App\Models\Task;
 use App\Models\Title;
+use App\Services\Billing\ResourceQuotaService;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\ArticleWorkflow;
 use App\Support\GeoFlow\ImageUrlNormalizer;
@@ -33,7 +35,8 @@ class WorkerExecutionService
         private readonly KnowledgeChunkSyncService $knowledgeChunkSyncService,
         private readonly AiGeneratedArticleImageService $aiGeneratedArticleImageService,
         private readonly GeoArticleContextService $geoArticleContextService,
-        private readonly DistributionOrchestrator $distributionOrchestrator
+        private readonly DistributionOrchestrator $distributionOrchestrator,
+        private readonly ResourceQuotaService $quotaService
     ) {}
 
     /**
@@ -70,6 +73,9 @@ class WorkerExecutionService
                     'reason' => $generationBlockReason,
                 ],
             ];
+        }
+        if ((int) ($task->site_id ?? 0) > 0) {
+            $this->quotaService->assertCanUse((int) $task->site_id, PlatformPlan::RESOURCE_ARTICLE_GENERATIONS, 1);
         }
 
         $titleRow = $this->pickTitle($task);
@@ -166,6 +172,14 @@ class WorkerExecutionService
 
             return (int) $article->id;
         });
+        if ((int) ($task->site_id ?? 0) > 0) {
+            $this->quotaService->consume((int) $task->site_id, PlatformPlan::RESOURCE_ARTICLE_GENERATIONS, 1, [
+                'subject_type' => Article::class,
+                'subject_id' => $articleId,
+                'idempotency_key' => 'article-generation:'.$articleId,
+                'remark' => 'AI 文章生成消耗',
+            ]);
+        }
 
         return [
             'article_id' => $articleId,

@@ -7,6 +7,7 @@ use App\Models\Article;
 use App\Models\MediaResource;
 use App\Models\MediaResourceSitePrice;
 use App\Models\MediaSubmission;
+use App\Services\Billing\ResourceQuotaService;
 use App\Support\MediaDistribution\MediaPlatform;
 use App\Support\Site\ArticleHtmlPresenter;
 use Illuminate\Support\Facades\DB;
@@ -18,6 +19,7 @@ class MediaSubmissionService
     public function __construct(
         private readonly MediaPlatformClientManager $clients,
         private readonly SiteCreditService $credits,
+        private readonly ResourceQuotaService $quotaService,
     ) {}
 
     public function submit(Article $article, MediaResource $resource, Admin $admin, string $remark = ''): MediaSubmission
@@ -31,6 +33,8 @@ class MediaSubmissionService
         if (trim((string) $article->content) === '') {
             throw new RuntimeException('文章内容不能为空');
         }
+
+        $this->quotaService->assertSubscriptionActive((int) $article->site_id, $admin);
 
         $salePrice = $this->salePriceForSite($resource, (int) $article->site_id);
         $this->credits->ensureSufficient((int) $article->site_id, $salePrice);

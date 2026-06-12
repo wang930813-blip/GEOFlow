@@ -17,6 +17,7 @@
     $notificationGithubUrl = (string) ($updateLinks['github'] ?? 'https://github.com/yaojingang/GEOFlow');
     $currentSite = $currentSite ?? null;
     $availableSites = collect($availableSites ?? []);
+    $isAgentAdmin = $currentAdmin && method_exists($currentAdmin, 'isAgentAdmin') && $currentAdmin->isAgentAdmin();
     $menu = [
         'dashboard' => ['route' => 'admin.dashboard', 'name' => __('admin.nav.dashboard')],
         'geo_reports' => ['route' => 'admin.geo-reports.index', 'name' => 'GEO 报表'],
@@ -255,6 +256,14 @@
                                 <i data-lucide="globe-2" class="w-4 h-4 inline mr-2"></i>
                                 站点管理
                             </a>
+                            <a href="{{ route('admin.platform-plans.index') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                <i data-lucide="package" class="w-4 h-4 inline mr-2"></i>
+                                平台规格
+                            </a>
+                            <a href="{{ route('admin.plan-subscriptions.index') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                <i data-lucide="badge-check" class="w-4 h-4 inline mr-2"></i>
+                                客户开通
+                            </a>
                             <a href="{{ route('admin.admin-users.index') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
                                 <i data-lucide="users" class="w-4 h-4 inline mr-2"></i>
                                 {{ __('admin.nav.admin_management') }}
@@ -268,6 +277,12 @@
                                 {{ __('admin.nav.activity_logs') }}
                             </a>
                         @else
+                            @if($isAgentAdmin)
+                                <a href="{{ route('admin.agent-users.index') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                    <i data-lucide="user-plus" class="w-4 h-4 inline mr-2"></i>
+                                    代理用户管理
+                                </a>
+                            @endif
                             <a href="{{ route('admin.materials.index') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
                                 <i data-lucide="folder-kanban" class="w-4 h-4 inline mr-2"></i>
                                 {{ __('admin.nav.materials') }}

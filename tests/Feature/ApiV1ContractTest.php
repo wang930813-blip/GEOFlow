@@ -604,6 +604,7 @@ class ApiV1ContractTest extends TestCase
             'name' => 'API Media Site',
             'status' => 'active',
         ]);
+        $this->openTestingPlanForSite($site, $admin);
         $category = Category::query()->create([
             'site_id' => $site->id,
             'name' => 'API Category '.$site->id,

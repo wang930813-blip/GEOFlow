@@ -488,6 +488,7 @@ class AdminGeoInclusionCheckPhaseTwoTest extends TestCase
             'status' => 'active',
         ]);
         $site->members()->attach($admin->id, ['role' => 'owner']);
+        $this->openTestingPlanForSite($site, $admin);
 
         return $site;
     }

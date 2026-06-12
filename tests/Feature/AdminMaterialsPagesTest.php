@@ -41,11 +41,13 @@ class AdminMaterialsPagesTest extends TestCase
         parent::setUp();
 
         $this->withoutMiddleware(ValidateCsrfToken::class);
+        Config::set('queue.default', 'sync');
     }
 
-    private function createReadyUrlImportAiModel(string $apiUrl = 'https://ai.test/v1'): AiModel
+    private function createReadyUrlImportAiModel(string $apiUrl = 'https://ai.test/v1', ?Site $site = null): AiModel
     {
         return AiModel::query()->create([
+            'site_id' => $site?->id,
             'name' => 'URL Import AI Model',
             'version' => '',
             'api_key' => app(ApiKeyCrypto::class)->encrypt('test-key'),
@@ -58,6 +60,22 @@ class AdminMaterialsPagesTest extends TestCase
             'total_used' => 0,
             'status' => 'active',
         ]);
+    }
+
+    private function createSiteForAdmin(Admin $admin, bool $openPlan = false): Site
+    {
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $admin->id,
+            'name' => $admin->username.' Test Site',
+            'status' => 'active',
+        ]);
+        $site->members()->attach((int) $admin->id, ['role' => 'owner']);
+
+        if ($openPlan) {
+            $this->openTestingPlanForSite($site, $admin);
+        }
+
+        return $site;
     }
 
     public function test_guest_is_redirected_from_material_pages(): void
@@ -224,7 +242,10 @@ class AdminMaterialsPagesTest extends TestCase
             'status' => 'active',
         ]);
 
+        $site = $this->createSiteForAdmin($admin);
+
         $embeddingModel = AiModel::query()->create([
+            'site_id' => (int) $site->id,
             'name' => 'Test Embedding',
             'version' => '',
             'api_key' => app(ApiKeyCrypto::class)->encrypt('test-api-key'),
@@ -239,6 +260,7 @@ class AdminMaterialsPagesTest extends TestCase
         ]);
 
         $knowledgeBase = KnowledgeBase::query()->create([
+            'site_id' => (int) $site->id,
             'name' => '待向量化知识库',
             'description' => 'desc',
             'content' => 'GEOFlow 支持知识库切片和向量化检索。',
@@ -248,11 +270,13 @@ class AdminMaterialsPagesTest extends TestCase
         ]);
 
         $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
             ->get(route('admin.knowledge-bases.index'))
             ->assertOk()
             ->assertSee(__('admin.knowledge_bases.refresh_chunks'));
 
         $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
             ->post(route('admin.knowledge-bases.chunks.refresh', ['knowledgeBaseId' => (int) $knowledgeBase->id]))
             ->assertRedirect(route('admin.knowledge-bases.index'))
             ->assertSessionHas('message');
@@ -275,8 +299,10 @@ class AdminMaterialsPagesTest extends TestCase
             'role' => 'admin',
             'status' => 'active',
         ]);
+        $site = $this->createSiteForAdmin($admin);
 
         $knowledgeBase = KnowledgeBase::query()->create([
+            'site_id' => (int) $site->id,
             'name' => '无向量模型知识库',
             'description' => 'desc',
             'content' => '没有 embedding 模型时不能把 fallback 当作真实向量。',
@@ -286,6 +312,7 @@ class AdminMaterialsPagesTest extends TestCase
         ]);
 
         $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
             ->post(route('admin.knowledge-bases.chunks.refresh', ['knowledgeBaseId' => (int) $knowledgeBase->id]))
             ->assertRedirect(route('admin.knowledge-bases.index'))
             ->assertSessionHasErrors();
@@ -312,9 +339,11 @@ class AdminMaterialsPagesTest extends TestCase
             'role' => 'admin',
             'status' => 'active',
         ]);
-        $this->createReadyUrlImportAiModel();
+        $site = $this->createSiteForAdmin($admin, true);
+        $this->createReadyUrlImportAiModel('https://ai.test/v1', $site);
 
         $response = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
             ->post(route('admin.url-import.store'), [
                 'url' => 'example.test/report',
                 'project_name' => '示例项目',
@@ -332,6 +361,7 @@ class AdminMaterialsPagesTest extends TestCase
 
         $job = UrlImportJob::withoutGlobalScope('current_site')->firstOrFail();
         $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
             ->get(route('admin.url-import.show', ['jobId' => (int) $job->id]))
             ->assertOk()
             ->assertSee('name="csrf-token"', false)
@@ -358,8 +388,10 @@ class AdminMaterialsPagesTest extends TestCase
             'role' => 'admin',
             'status' => 'active',
         ]);
+        $site = $this->createSiteForAdmin($admin, true);
 
         $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
             ->post(route('admin.url-import.store'), [
                 'url' => 'example.test/report',
                 'outputs' => ['knowledge', 'keywords', 'titles'],
@@ -383,9 +415,11 @@ class AdminMaterialsPagesTest extends TestCase
             'role' => 'admin',
             'status' => 'active',
         ]);
-        $this->createReadyUrlImportAiModel();
+        $site = $this->createSiteForAdmin($admin, true);
+        $this->createReadyUrlImportAiModel('https://ai.test/v1', $site);
 
         $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
             ->post(route('admin.url-import.store'), [
                 'url' => 'example.test/report',
                 'outputs' => ['knowledge', 'keywords', 'titles'],
@@ -395,6 +429,7 @@ class AdminMaterialsPagesTest extends TestCase
         $job = UrlImportJob::withoutGlobalScope('current_site')->firstOrFail();
 
         $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
             ->postJson(route('admin.url-import.run', ['jobId' => (int) $job->id]))
             ->assertOk()
             ->assertJsonPath('status', 'running')
@@ -509,9 +544,11 @@ class AdminMaterialsPagesTest extends TestCase
             'role' => 'admin',
             'status' => 'active',
         ]);
-        $this->createReadyUrlImportAiModel();
+        $site = $this->createSiteForAdmin($admin, true);
+        $this->createReadyUrlImportAiModel('https://ai.test/v1', $site);
 
         $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
             ->post(route('admin.url-import.store'), [
                 'url' => 'example.test/report',
                 'outputs' => ['knowledge', 'keywords', 'titles'],
@@ -521,6 +558,7 @@ class AdminMaterialsPagesTest extends TestCase
         $job = UrlImportJob::withoutGlobalScope('current_site')->firstOrFail();
 
         $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
             ->postJson(route('admin.url-import.run', ['jobId' => (int) $job->id]))
             ->assertOk()
             ->assertJsonPath('status', 'completed')
@@ -541,6 +579,7 @@ class AdminMaterialsPagesTest extends TestCase
         ]);
 
         $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
             ->post(route('admin.url-import.commit', ['jobId' => (int) $job->id]))
             ->assertRedirect(route('admin.url-import.show', ['jobId' => (int) $job->id]));
 
@@ -636,7 +675,17 @@ class AdminMaterialsPagesTest extends TestCase
             'content' => '请生成真实可信内容',
             'variables' => '',
         ]);
+        $admin = Admin::query()->create([
+            'username' => 'url_import_ai_runner',
+            'password' => 'secret-123',
+            'email' => 'url-import-ai-runner@example.com',
+            'display_name' => 'Url Import AI Runner',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $site = $this->createSiteForAdmin($admin, true);
         AiModel::query()->create([
+            'site_id' => (int) $site->id,
             'name' => 'AI Test Model',
             'version' => '',
             'api_key' => app(ApiKeyCrypto::class)->encrypt('test-key'),
@@ -650,16 +699,8 @@ class AdminMaterialsPagesTest extends TestCase
             'status' => 'active',
         ]);
 
-        $admin = Admin::query()->create([
-            'username' => 'url_import_ai_runner',
-            'password' => 'secret-123',
-            'email' => 'url-import-ai-runner@example.com',
-            'display_name' => 'Url Import AI Runner',
-            'role' => 'admin',
-            'status' => 'active',
-        ]);
-
         $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
             ->post(route('admin.url-import.store'), [
                 'url' => 'source.test/report',
                 'outputs' => ['knowledge', 'keywords', 'titles'],
@@ -668,6 +709,7 @@ class AdminMaterialsPagesTest extends TestCase
 
         $job = UrlImportJob::withoutGlobalScope('current_site')->firstOrFail();
         $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
             ->postJson(route('admin.url-import.run', ['jobId' => (int) $job->id]))
             ->assertOk()
             ->assertJsonPath('status', 'completed');
@@ -717,9 +759,11 @@ class AdminMaterialsPagesTest extends TestCase
             'role' => 'admin',
             'status' => 'active',
         ]);
-        $this->createReadyUrlImportAiModel();
+        $site = $this->createSiteForAdmin($admin, true);
+        $this->createReadyUrlImportAiModel('https://ai.test/v1', $site);
 
         $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
             ->post(route('admin.url-import.store'), [
                 'url' => 'source.test/wrapped-json',
                 'outputs' => ['knowledge', 'keywords', 'titles'],
@@ -729,6 +773,7 @@ class AdminMaterialsPagesTest extends TestCase
         $job = UrlImportJob::withoutGlobalScope('current_site')->firstOrFail();
 
         $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
             ->postJson(route('admin.url-import.run', ['jobId' => (int) $job->id]))
             ->assertOk()
             ->assertJsonPath('status', 'completed');
@@ -775,9 +820,11 @@ class AdminMaterialsPagesTest extends TestCase
             'role' => 'admin',
             'status' => 'active',
         ]);
-        $this->createReadyUrlImportAiModel();
+        $site = $this->createSiteForAdmin($admin, true);
+        $this->createReadyUrlImportAiModel('https://ai.test/v1', $site);
 
         $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
             ->post(route('admin.url-import.store'), [
                 'url' => 'source.test/plain-lists',
                 'outputs' => ['knowledge', 'keywords', 'titles'],
@@ -787,6 +834,7 @@ class AdminMaterialsPagesTest extends TestCase
         $job = UrlImportJob::withoutGlobalScope('current_site')->firstOrFail();
 
         $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
             ->postJson(route('admin.url-import.run', ['jobId' => (int) $job->id]))
             ->assertOk()
             ->assertJsonPath('status', 'completed');
@@ -834,8 +882,10 @@ class AdminMaterialsPagesTest extends TestCase
             'role' => 'admin',
             'status' => 'active',
         ]);
+        $site = $this->createSiteForAdmin($admin, true);
 
         AiModel::query()->create([
+            'site_id' => (int) $site->id,
             'name' => 'Bad Model',
             'version' => '',
             'api_key' => app(ApiKeyCrypto::class)->encrypt('bad-key'),
@@ -848,9 +898,10 @@ class AdminMaterialsPagesTest extends TestCase
             'total_used' => 0,
             'status' => 'active',
         ]);
-        $this->createReadyUrlImportAiModel();
+        $this->createReadyUrlImportAiModel('https://ai.test/v1', $site);
 
         $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
             ->post(route('admin.url-import.store'), [
                 'url' => 'source.test/failover',
                 'outputs' => ['knowledge', 'keywords', 'titles'],
@@ -860,6 +911,7 @@ class AdminMaterialsPagesTest extends TestCase
         $job = UrlImportJob::withoutGlobalScope('current_site')->firstOrFail();
 
         $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
             ->postJson(route('admin.url-import.run', ['jobId' => (int) $job->id]))
             ->assertOk()
             ->assertJsonPath('status', 'completed');
@@ -913,9 +965,11 @@ class AdminMaterialsPagesTest extends TestCase
             'role' => 'admin',
             'status' => 'active',
         ]);
-        $this->createReadyUrlImportAiModel();
+        $site = $this->createSiteForAdmin($admin, true);
+        $this->createReadyUrlImportAiModel('https://ai.test/v1', $site);
 
         $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
             ->post(route('admin.url-import.store'), [
                 'url' => 'source.test/transient',
                 'outputs' => ['knowledge', 'keywords', 'titles'],
@@ -925,6 +979,7 @@ class AdminMaterialsPagesTest extends TestCase
         $job = UrlImportJob::withoutGlobalScope('current_site')->firstOrFail();
 
         $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
             ->postJson(route('admin.url-import.run', ['jobId' => (int) $job->id]))
             ->assertOk()
             ->assertJsonPath('status', 'completed');
@@ -1092,13 +1147,16 @@ class AdminMaterialsPagesTest extends TestCase
             'role' => 'admin',
             'status' => 'active',
         ]);
+        $site = $this->createSiteForAdmin($admin);
 
         $keywordLibrary = KeywordLibrary::query()->create([
+            'site_id' => (int) $site->id,
             'name' => '关键词库B',
             'description' => 'desc',
             'keyword_count' => 0,
         ]);
         $titleLibrary = TitleLibrary::query()->create([
+            'site_id' => (int) $site->id,
             'name' => '标题库B',
             'description' => 'desc',
             'title_count' => 0,
@@ -1107,7 +1165,9 @@ class AdminMaterialsPagesTest extends TestCase
             'is_ai_generated' => 0,
         ]);
 
-        $this->actingAs($admin, 'admin')->post(route('admin.keyword-libraries.keywords.store', ['libraryId' => (int) $keywordLibrary->id]), [
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.keyword-libraries.keywords.store', ['libraryId' => (int) $keywordLibrary->id]), [
             'keyword' => '增长策略',
         ])->assertRedirect(route('admin.keyword-libraries.detail', ['libraryId' => (int) $keywordLibrary->id]));
         $this->assertDatabaseHas('keywords', [
@@ -1115,7 +1175,9 @@ class AdminMaterialsPagesTest extends TestCase
             'keyword' => '增长策略',
         ]);
 
-        $this->actingAs($admin, 'admin')->post(route('admin.title-libraries.titles.store', ['libraryId' => (int) $titleLibrary->id]), [
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.title-libraries.titles.store', ['libraryId' => (int) $titleLibrary->id]), [
             'title' => '增长策略完整指南',
             'keyword' => '增长策略',
         ])->assertRedirect(route('admin.title-libraries.detail', ['libraryId' => (int) $titleLibrary->id]));
@@ -1124,7 +1186,9 @@ class AdminMaterialsPagesTest extends TestCase
             'title' => '增长策略完整指南',
         ]);
 
-        $this->actingAs($admin, 'admin')->post(route('admin.title-libraries.import', ['libraryId' => (int) $titleLibrary->id]), [
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.title-libraries.import', ['libraryId' => (int) $titleLibrary->id]), [
             'titles_text' => "标题A|关键词A\n标题B",
         ])->assertRedirect(route('admin.title-libraries.detail', ['libraryId' => (int) $titleLibrary->id]));
         $this->assertDatabaseHas('titles', [
@@ -1132,7 +1196,9 @@ class AdminMaterialsPagesTest extends TestCase
             'title' => '标题A',
         ]);
 
-        $this->actingAs($admin, 'admin')->post(route('admin.title-libraries.ai-generate.submit', ['libraryId' => (int) $titleLibrary->id]), [
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.title-libraries.ai-generate.submit', ['libraryId' => (int) $titleLibrary->id]), [
             'keyword_library_id' => (int) $keywordLibrary->id,
             'ai_model_id' => 1,
             'title_count' => 3,
@@ -1237,7 +1303,19 @@ class AdminMaterialsPagesTest extends TestCase
 
     public function test_admin_can_upload_image_and_knowledge_file_from_detail_flow(): void
     {
-        Storage::fake('public');
+        Config::set('geoflow.image_host.upload_url', 'https://files.example.com/api/upload');
+        Config::set('geoflow.image_host.token', 'secret-token');
+        Http::fake([
+            'https://files.example.com/api/upload' => Http::response([
+                'success' => true,
+                'data' => [
+                    'key' => '2026-05-26/banner.png',
+                    'url' => 'https://cdn.example.com/2026-05-26/banner.png',
+                    'size' => 4567,
+                    'mimeType' => 'image/png',
+                ],
+            ]),
+        ]);
 
         $admin = Admin::query()->create([
             'username' => 'materials_upload_admin',
@@ -1247,8 +1325,10 @@ class AdminMaterialsPagesTest extends TestCase
             'role' => 'admin',
             'status' => 'active',
         ]);
+        $site = $this->createSiteForAdmin($admin);
 
         $imageLibrary = ImageLibrary::query()->create([
+            'site_id' => (int) $site->id,
             'name' => '图片库C',
             'description' => 'desc',
             'image_count' => 0,
@@ -1256,7 +1336,9 @@ class AdminMaterialsPagesTest extends TestCase
         ]);
 
         $image = UploadedFile::fake()->image('banner.png', 100, 100);
-        $this->actingAs($admin, 'admin')->post(route('admin.image-libraries.images.upload', ['libraryId' => (int) $imageLibrary->id]), [
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.image-libraries.images.upload', ['libraryId' => (int) $imageLibrary->id]), [
             'images' => [$image],
         ])->assertRedirect(route('admin.image-libraries.detail', ['libraryId' => (int) $imageLibrary->id]));
 
@@ -1269,11 +1351,13 @@ class AdminMaterialsPagesTest extends TestCase
             ->where('library_id', (int) $imageLibrary->id)
             ->where('original_name', 'banner.png')
             ->firstOrFail();
-        $this->assertStringStartsWith('storage/uploads/images/', (string) $storedImage->file_path);
-        Storage::disk('public')->assertExists(str_replace('storage/', '', (string) $storedImage->file_path));
+        $this->assertSame('https://cdn.example.com/2026-05-26/banner.png', (string) $storedImage->file_path);
+        $this->assertSame(4567, (int) $storedImage->file_size);
 
         $knowledgeFile = UploadedFile::fake()->createWithContent('manual.md', "# 标题\n内容段落");
-        $this->actingAs($admin, 'admin')->post(route('admin.knowledge-bases.upload'), [
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.knowledge-bases.upload'), [
             'name' => '上传知识库',
             'description' => '测试上传',
             'knowledge_file' => $knowledgeFile,

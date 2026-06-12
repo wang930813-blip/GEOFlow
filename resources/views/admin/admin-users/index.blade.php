@@ -107,6 +107,12 @@
                                 <td class="px-6 py-4 whitespace-nowrap">
                                     @if ($admin['is_super_admin'])
                                         <span class="inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">{{ __('admin.admin_users.role_super_admin') }}</span>
+                                    @elseif (($admin['role'] ?? '') === 'agent_admin')
+                                        <span class="inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">代理管理员</span>
+                                    @elseif (($admin['role'] ?? '') === 'direct_admin')
+                                        <span class="inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">直客管理员</span>
+                                    @elseif (($admin['role'] ?? '') === 'site_user')
+                                        <span class="inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-700">站点普通用户</span>
                                     @else
                                         <span class="inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">{{ __('admin.admin_users.role_admin') }}</span>
                                     @endif
@@ -191,6 +197,15 @@
                     </div>
 
                     <div>
+                        <label for="role" class="block text-sm font-medium text-gray-700 mb-1">角色</label>
+                        <select name="role" id="role" class="block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                            <option value="admin">普通管理员</option>
+                            <option value="agent_admin">代理管理员</option>
+                            <option value="direct_admin">直客管理员</option>
+                        </select>
+                    </div>
+
+                    <div>
                         <label for="display_name" class="block text-sm font-medium text-gray-700 mb-1">{{ __('admin.admin_users.field_display_name') }}</label>
                         <input type="text" name="display_name" id="display_name" class="block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500" placeholder="{{ __('admin.admin_users.placeholder_display_name') }}" value="{{ old('display_name') }}">
                     </div>
@@ -259,6 +274,16 @@
                         </select>
                     </div>
 
+                    <div>
+                        <label for="edit_role" class="block text-sm font-medium text-gray-700 mb-1">角色</label>
+                        <select name="role" id="edit_role" class="block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
+                            <option value="admin">普通管理员</option>
+                            <option value="agent_admin">代理管理员</option>
+                            <option value="direct_admin">直客管理员</option>
+                            <option value="site_user">站点普通用户</option>
+                        </select>
+                    </div>
+
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                             <label for="edit_password" class="block text-sm font-medium text-gray-700 mb-1">{{ __('admin.admin_users.field_new_password') }}</label>
@@ -306,6 +331,7 @@
             document.getElementById('edit_username').value = admin.username || '';
             document.getElementById('edit_display_name').value = admin.display_name || '';
             document.getElementById('edit_email').value = admin.email || '';
+            document.getElementById('edit_role').value = admin.role || 'admin';
             statusSelect.value = admin.status || 'active';
             statusSelect.disabled = isSelf;
             statusHidden.disabled = !isSelf;

@@ -4,12 +4,15 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Jobs\ProcessGeoInclusionCheckJob;
+use App\Models\Admin;
 use App\Models\Article;
 use App\Models\GeoInclusionCheckResult;
 use App\Models\GeoInclusionCheckRun;
 use App\Models\Keyword;
 use App\Models\KeywordLibrary;
 use App\Models\KeywordQuestionVariant;
+use App\Models\PlatformPlan;
+use App\Services\Billing\ResourceQuotaService;
 use App\Services\GeoFlow\GeoKeywordSuggestionService;
 use App\Services\GeoFlow\GeoQuestionVariantService;
 use App\Support\AdminWeb;
@@ -35,6 +38,7 @@ class KeywordLibraryController extends Controller
     public function __construct(
         private readonly GeoKeywordSuggestionService $keywordSuggestionService,
         private readonly GeoQuestionVariantService $questionVariantService,
+        private readonly ResourceQuotaService $quotaService,
     ) {}
 
     /**
@@ -388,6 +392,7 @@ class KeywordLibraryController extends Controller
         ]);
 
         try {
+            $this->assertQuotaForLibrary($library, PlatformPlan::RESOURCE_KEYWORD_QUESTION_GENERATIONS, 1);
             $questions = $this->questionVariantService->generate($keyword, $library, (int) ($payload['count'] ?? 5));
             foreach ($questions as $question) {
                 KeywordQuestionVariant::query()->firstOrCreate([
@@ -395,6 +400,7 @@ class KeywordLibraryController extends Controller
                     'question' => $question,
                 ]);
             }
+            $this->consumeQuotaForLibrary($library, PlatformPlan::RESOURCE_KEYWORD_QUESTION_GENERATIONS, 1, '关键词问题生成消耗', Keyword::class, (int) $keyword->id);
 
             return response()->json([
                 'success' => true,
@@ -428,6 +434,11 @@ class KeywordLibraryController extends Controller
         }
 
         $totalChecks = $questions->count() * count($platforms);
+        try {
+            $this->assertQuotaForLibrary($library, PlatformPlan::RESOURCE_INCLUSION_CHECKS, 1);
+        } catch (Throwable $exception) {
+            return back()->withErrors($exception->getMessage());
+        }
         $run = GeoInclusionCheckRun::query()->create([
             'keyword_library_id' => (int) $library->id,
             'platforms' => $platforms,
@@ -436,6 +447,7 @@ class KeywordLibraryController extends Controller
             'completed_checks' => 0,
             'failed_checks' => 0,
         ]);
+        $this->consumeQuotaForLibrary($library, PlatformPlan::RESOURCE_INCLUSION_CHECKS, 1, 'GEO 收录/引用检测消耗', GeoInclusionCheckRun::class, (int) $run->id);
 
         foreach ($questions as $question) {
             foreach ($platforms as $platform) {
@@ -451,6 +463,40 @@ class KeywordLibraryController extends Controller
         return redirect()
             ->route('admin.keyword-libraries.detail', ['libraryId' => $libraryId])
             ->with('message', '收录检测任务已创建，共 '.$totalChecks.' 个检测项');
+    }
+
+    private function assertQuotaForLibrary(KeywordLibrary $library, string $resourceKey, int $amount): void
+    {
+        $admin = auth('admin')->user();
+        if ($admin instanceof Admin && $admin->isSuperAdmin()) {
+            return;
+        }
+
+        $siteId = (int) ($library->site_id ?? 0);
+        if ($siteId > 0) {
+            $this->quotaService->assertCanUse($siteId, $resourceKey, $amount);
+        }
+    }
+
+    private function consumeQuotaForLibrary(KeywordLibrary $library, string $resourceKey, int $amount, string $remark, string $subjectType, int $subjectId): void
+    {
+        $admin = auth('admin')->user();
+        if ($admin instanceof Admin && $admin->isSuperAdmin()) {
+            return;
+        }
+
+        $siteId = (int) ($library->site_id ?? 0);
+        if ($siteId <= 0) {
+            return;
+        }
+
+        $this->quotaService->consume($siteId, $resourceKey, $amount, [
+            'actor_admin_id' => $admin instanceof Admin ? (int) $admin->id : null,
+            'subject_type' => $subjectType,
+            'subject_id' => $subjectId,
+            'idempotency_key' => $resourceKey.':'.$subjectType.':'.$subjectId,
+            'remark' => $remark,
+        ]);
     }
 
     public function pauseInclusionRun(int $libraryId, int $run): RedirectResponse
