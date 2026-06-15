@@ -67,16 +67,7 @@
                                 <input type="checkbox" name="resources[{{ $key }}][enabled]" value="1" class="h-4 w-4 rounded border-slate-300 text-indigo-600">
                                 <span>{{ $resource['label'] }}</span>
                             </label>
-                            <div class="mt-3 grid grid-cols-2 gap-2">
-                                <input name="resources[{{ $key }}][quota_value]" type="number" min="0" value="0" class="block h-9 rounded-md border border-slate-200 bg-white px-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" placeholder="数量">
-                                <select name="resources[{{ $key }}][quota_period]" class="block h-9 rounded-md border border-slate-200 bg-white px-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
-                                    <option value="cycle">服务周期</option>
-                                    <option value="day">每日</option>
-                                    <option value="month">每月</option>
-                                    <option value="year">每年</option>
-                                    <option value="unlimited">不限</option>
-                                </select>
-                            </div>
+                            <input name="resources[{{ $key }}][quota_value]" type="number" min="0" value="0" class="mt-3 block h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" placeholder="数量">
                         </div>
                     @endforeach
                 </div>
@@ -126,7 +117,7 @@
                                         @foreach ($plan->entitlements->where('enabled', true) as $entitlement)
                                             <span class="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-700">
                                                 {{ $resourceCatalog[$entitlement->resource_key]['label'] ?? $entitlement->resource_key }}：
-                                                {{ $entitlement->quota_period === 'unlimited' ? '不限' : $entitlement->quota_value }}
+                                                {{ $entitlement->quota_value }}
                                             </span>
                                         @endforeach
                                     </div>

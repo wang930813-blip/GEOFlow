@@ -108,7 +108,6 @@ class PlatformPlanController extends Controller
             'resources' => ['nullable', 'array'],
             'resources.*.enabled' => ['nullable'],
             'resources.*.quota_value' => ['nullable', 'integer', 'min:0', 'max:999999999'],
-            'resources.*.quota_period' => ['nullable', Rule::in(['cycle', 'day', 'month', 'year', 'unlimited'])],
         ], [
             'name.required' => '请填写规格名称',
             'code.required' => '请填写规格编码',
@@ -129,7 +128,7 @@ class PlatformPlanController extends Controller
             $resources[$key] = [
                 'enabled' => $enabled,
                 'quota_value' => (int) ($input['quota_value'] ?? 0),
-                'quota_period' => (string) ($input['quota_period'] ?? 'cycle'),
+                'quota_period' => 'cycle',
                 'unit' => (string) $meta['unit'],
             ];
         }

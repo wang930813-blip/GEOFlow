@@ -105,6 +105,49 @@ class PlatformPlanSubscriptionTest extends TestCase
             ->assertSee('客户开通');
     }
 
+    public function test_platform_plan_resources_are_saved_as_cycle_quotas_for_compatibility(): void
+    {
+        $superAdmin = $this->createAdmin('plan_cycle_admin', 'super_admin');
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.platform-plans.store'), [
+                'name' => '数量版规格',
+                'code' => 'quantity_only_plan',
+                'audience' => 'both',
+                'duration_days' => 30,
+                'sort_order' => 0,
+                'status' => 'active',
+                'resources' => [
+                    'credits' => [
+                        'enabled' => '1',
+                        'quota_value' => '1000',
+                        'quota_period' => 'unlimited',
+                    ],
+                    'brand_diagnoses' => [
+                        'enabled' => '1',
+                        'quota_value' => '20',
+                        'quota_period' => 'day',
+                    ],
+                ],
+            ])
+            ->assertRedirect(route('admin.platform-plans.index'));
+
+        $plan = PlatformPlan::query()->where('code', 'quantity_only_plan')->firstOrFail();
+
+        $this->assertDatabaseHas('platform_plan_entitlements', [
+            'plan_id' => (int) $plan->id,
+            'resource_key' => 'credits',
+            'quota_value' => 1000,
+            'quota_period' => 'cycle',
+        ]);
+        $this->assertDatabaseHas('platform_plan_entitlements', [
+            'plan_id' => (int) $plan->id,
+            'resource_key' => 'brand_diagnoses',
+            'quota_value' => 20,
+            'quota_period' => 'cycle',
+        ]);
+    }
+
     public function test_super_admin_can_create_agent_user_with_site_and_plan_subscription(): void
     {
         $superAdmin = $this->createAdmin('onboard_root_admin', 'super_admin');
