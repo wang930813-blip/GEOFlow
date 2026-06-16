@@ -7,7 +7,7 @@ use App\Models\Article;
 use App\Models\MediaResource;
 use App\Models\MediaResourceSitePrice;
 use App\Models\MediaSubmission;
-use App\Services\Billing\ResourceQuotaService;
+use App\Services\Billing\AdminResourceQuotaService;
 use App\Support\MediaDistribution\MediaPlatform;
 use App\Support\Site\ArticleHtmlPresenter;
 use Illuminate\Support\Facades\DB;
@@ -18,8 +18,8 @@ class MediaSubmissionService
 {
     public function __construct(
         private readonly MediaPlatformClientManager $clients,
-        private readonly SiteCreditService $credits,
-        private readonly ResourceQuotaService $quotaService,
+        private readonly AdminCreditService $credits,
+        private readonly AdminResourceQuotaService $quotaService,
     ) {}
 
     public function submit(Article $article, MediaResource $resource, Admin $admin, string $remark = ''): MediaSubmission
@@ -34,16 +34,17 @@ class MediaSubmissionService
             throw new RuntimeException('文章内容不能为空');
         }
 
-        $this->quotaService->assertSubscriptionActive((int) $article->site_id, $admin);
+        $this->quotaService->assertSubscriptionActive((int) $admin->id, (int) $article->site_id, $admin);
 
         $salePrice = $this->salePriceForSite($resource, (int) $article->site_id);
-        $this->credits->ensureSufficient((int) $article->site_id, $salePrice);
+        $this->credits->ensureSufficient((int) $admin->id, (int) $article->site_id, $salePrice);
 
         $submission = DB::transaction(function () use ($article, $resource, $admin, $remark, $salePrice): MediaSubmission {
             $platformId = (int) ($resource->platform_id ?: MediaPlatform::CEYING_MEDIA_1);
 
             return MediaSubmission::query()->create([
                 'site_id' => (int) $article->site_id,
+                'owner_admin_id' => (int) $admin->id,
                 'article_id' => (int) $article->id,
                 'media_resource_id' => (int) $resource->id,
                 'platform_id' => $platformId,
@@ -63,7 +64,7 @@ class MediaSubmissionService
 
         $deducted = false;
         try {
-            $this->credits->deductForSubmission($submission, (int) $admin->id);
+            $this->credits->deductForSubmission($submission, (int) $admin->id, (int) $admin->id);
             $deducted = true;
             $response = $this->clients
                 ->forPlatform((int) ($submission->platform_id ?: MediaPlatform::CEYING_MEDIA_1))
@@ -79,7 +80,7 @@ class MediaSubmissionService
             ])->save();
         } catch (\Throwable $e) {
             if ($deducted) {
-                $this->credits->refundForSubmission($submission, (int) $admin->id);
+                $this->credits->refundForSubmission($submission, (int) $admin->id, (int) $admin->id);
             }
             $submission->forceFill([
                 'status' => 'failed',
@@ -117,7 +118,10 @@ class MediaSubmissionService
 
         if (in_array((string) $submission->status, ['rejected', 'cancelled'], true)
             && ! in_array($previousStatus, ['rejected', 'cancelled'], true)) {
-            $this->credits->refundForSubmission($submission, null, '媒体订单'.$submission->status.'自动退回');
+            $adminId = $this->submissionOwnerAdminId($submission);
+            if ($adminId > 0) {
+                $this->credits->refundForSubmission($submission, $adminId, null, '媒体订单'.$submission->status.'自动退回');
+            }
         }
 
         return $submission;
@@ -173,7 +177,10 @@ class MediaSubmissionService
             'cancelled_at' => now(),
             'raw_cancel_response' => $response,
         ])->save();
-        $this->credits->refundForSubmission($submission, null, '媒体订单取消退回');
+        $adminId = $this->submissionOwnerAdminId($submission);
+        if ($adminId > 0) {
+            $this->credits->refundForSubmission($submission, $adminId, null, '媒体订单取消退回');
+        }
 
         return $submission;
     }
@@ -199,6 +206,11 @@ class MediaSubmissionService
         ])->save();
 
         return $submission;
+    }
+
+    private function submissionOwnerAdminId(MediaSubmission $submission): int
+    {
+        return (int) ($submission->owner_admin_id ?: $submission->submitted_by_admin_id);
     }
 
     private function contentAsHtml(string $content): string

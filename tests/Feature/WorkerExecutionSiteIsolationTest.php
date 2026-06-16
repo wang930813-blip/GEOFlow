@@ -3,9 +3,11 @@
 namespace Tests\Feature;
 
 use App\Models\AiModel;
+use App\Models\Admin;
 use App\Models\Article;
 use App\Models\Author;
 use App\Models\Category;
+use App\Models\PlatformPlan;
 use App\Models\Prompt;
 use App\Models\Site;
 use App\Models\Task;
@@ -219,6 +221,99 @@ class WorkerExecutionSiteIsolationTest extends TestCase
         app(CurrentSite::class)->set($site);
 
         $this->assertTrue(Article::query()->whereKey((int) $article->id)->exists());
+    }
+
+    public function test_worker_consumes_article_generation_quota_for_task_owner_and_sets_article_owner(): void
+    {
+        config(['geoflow.api_key_crypto_roots' => ['worker-owner-quota-test-key']]);
+
+        $owner = Admin::query()->create([
+            'username' => 'worker_owner_quota_admin',
+            'password' => 'secret-123',
+            'email' => 'worker-owner-quota@example.com',
+            'display_name' => 'Worker Owner Quota Admin',
+            'role' => 'site_user',
+            'status' => 'active',
+        ]);
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $owner->id,
+            'name' => 'Worker Owner Quota Site',
+            'status' => 'active',
+        ]);
+        $site->members()->attach((int) $owner->id, ['role' => 'member']);
+        $this->openTestingPlanForSite($site, $owner, [
+            PlatformPlan::RESOURCE_ARTICLE_GENERATIONS => ['quota_value' => 1, 'quota_period' => 'cycle', 'unit' => 'times'],
+        ]);
+
+        $titleLibrary = TitleLibrary::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $owner->id,
+            'name' => 'Owner Quota Titles',
+        ]);
+        Title::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $owner->id,
+            'library_id' => (int) $titleLibrary->id,
+            'title' => 'Owner Quota Article',
+            'keyword' => 'owner quota',
+        ]);
+        $prompt = Prompt::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Owner Quota Prompt',
+            'type' => 'content',
+            'content' => 'Write about {{title}}.',
+        ]);
+        $author = Author::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $owner->id,
+            'name' => 'Owner Quota Author',
+        ]);
+        Category::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $owner->id,
+            'name' => 'Owner Quota Category',
+            'slug' => 'owner-quota-category',
+        ]);
+        $aiModel = AiModel::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Owner Quota Chat',
+            'model_id' => 'deepseek-chat',
+            'model_type' => 'chat',
+            'api_url' => 'https://ai.example.test',
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('test-api-key'),
+            'status' => 'active',
+        ]);
+        $task = Task::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $owner->id,
+            'name' => 'Owner quota task',
+            'title_library_id' => (int) $titleLibrary->id,
+            'prompt_id' => (int) $prompt->id,
+            'ai_model_id' => (int) $aiModel->id,
+            'author_id' => (int) $author->id,
+            'need_review' => 1,
+            'status' => 'active',
+            'schedule_enabled' => 1,
+            'draft_limit' => 5,
+            'article_limit' => 5,
+        ]);
+
+        app(CurrentSite::class)->set(null);
+
+        Http::fake([
+            'https://ai.example.test/v1/chat/completions' => Http::response($this->chatCompletion("# Owner Quota Article\n\nGenerated body.")),
+        ]);
+
+        $result = app(WorkerExecutionService::class)->executeTask((int) $task->id);
+
+        $article = Article::withoutGlobalScopes()->findOrFail((int) $result['article_id']);
+        $this->assertSame((int) $owner->id, (int) $article->owner_admin_id);
+        $this->assertDatabaseHas('admin_resource_usages', [
+            'admin_id' => (int) $owner->id,
+            'site_id' => (int) $site->id,
+            'resource_key' => PlatformPlan::RESOURCE_ARTICLE_GENERATIONS,
+            'used_amount' => 1,
+        ]);
     }
 
     public function test_worker_applies_special_keyword_and_description_prompts_to_generated_article(): void

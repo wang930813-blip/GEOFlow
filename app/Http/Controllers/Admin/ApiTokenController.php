@@ -7,7 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Admin;
 use App\Models\PlatformPlan;
 use App\Models\Site;
-use App\Services\Billing\ResourceQuotaService;
+use App\Services\Billing\AdminResourceQuotaService;
 use App\Services\Api\ApiTokenService;
 use App\Support\AdminWeb;
 use App\Support\CurrentSite;
@@ -28,7 +28,7 @@ class ApiTokenController extends Controller
 {
     public function __construct(
         private readonly ApiTokenService $apiTokenService,
-        private readonly ResourceQuotaService $quotaService,
+        private readonly AdminResourceQuotaService $quotaService,
     ) {}
 
     /**
@@ -147,13 +147,15 @@ class ApiTokenController extends Controller
             return;
         }
 
-        $remaining = $this->quotaService->remaining($siteId, PlatformPlan::RESOURCE_API_TOKENS);
+        $adminId = $this->currentAdminId($admin);
+        $remaining = $this->quotaService->remaining($adminId, $siteId, PlatformPlan::RESOURCE_API_TOKENS);
         if ($remaining['quota'] === null) {
             return;
         }
 
         $activeTokenCount = \Laravel\Sanctum\PersonalAccessToken::query()
             ->where('tokenable_type', Admin::class)
+            ->where('tokenable_id', $adminId)
             ->where('site_id', $siteId)
             ->where(function ($query): void {
                 $query->whereNull('expires_at')->orWhere('expires_at', '>', now());
@@ -163,5 +165,14 @@ class ApiTokenController extends Controller
         if ($activeTokenCount >= (int) $remaining['quota']) {
             throw new ApiException('quota_exceeded', '当前规格 API Token 数量不足', 422);
         }
+    }
+
+    private function currentAdminId(mixed $admin): int
+    {
+        if (! $admin instanceof Admin || (int) $admin->id <= 0) {
+            abort(403);
+        }
+
+        return (int) $admin->id;
     }
 }

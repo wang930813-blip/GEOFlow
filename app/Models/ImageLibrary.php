@@ -2,18 +2,21 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToAdminOwner;
 use App\Models\Concerns\BelongsToSite;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ImageLibrary extends Model
 {
+    use BelongsToAdminOwner;
     use BelongsToSite;
 
     protected $table = 'image_libraries';
 
     protected $fillable = [
         'site_id',
+        'owner_admin_id',
         'name',
         'description',
         'image_count',
@@ -25,6 +28,7 @@ class ImageLibrary extends Model
         return [
             'image_count' => 'integer',
             'site_id' => 'integer',
+            'owner_admin_id' => 'integer',
             'used_task_count' => 'integer',
         ];
     }

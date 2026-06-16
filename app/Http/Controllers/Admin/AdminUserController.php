@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Admin;
 use App\Models\PlatformPlan;
 use App\Models\Site;
+use App\Services\Billing\AdminPlanSubscriptionService;
 use App\Services\Billing\PlanSubscriptionService;
 use App\Support\AdminWeb;
 use Carbon\Carbon;
@@ -29,7 +30,8 @@ use Throwable;
 class AdminUserController extends Controller
 {
     public function __construct(
-        private readonly PlanSubscriptionService $subscriptionService
+        private readonly PlanSubscriptionService $subscriptionService,
+        private readonly AdminPlanSubscriptionService $adminSubscriptionService
     ) {}
 
     /**
@@ -232,11 +234,24 @@ class AdminUserController extends Controller
                     ? Carbon::parse((string) $payload['ends_at'])
                     : null;
 
+                $plan = PlatformPlan::query()->with('entitlements')->findOrFail((int) $payload['plan_id']);
                 $this->subscriptionService->open(
                     site: $site,
-                    plan: PlatformPlan::query()->with('entitlements')->findOrFail((int) $payload['plan_id']),
+                    plan: $plan,
                     mode: $mode,
                     ownerAdmin: $admin,
+                    operator: $operator,
+                    startsAt: $startsAt,
+                    endsAt: $endsAt,
+                    grantCredits: (bool) ($payload['grant_credits'] ?? false),
+                    remark: (string) ($payload['subscription_remark'] ?? '')
+                );
+
+                $this->adminSubscriptionService->openOwner(
+                    admin: $admin,
+                    site: $site,
+                    plan: $plan,
+                    mode: $mode === 'agent' ? 'agent_owner' : 'direct_owner',
                     operator: $operator,
                     startsAt: $startsAt,
                     endsAt: $endsAt,

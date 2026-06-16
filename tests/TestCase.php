@@ -77,7 +77,7 @@ abstract class TestCase extends BaseTestCase
             ]);
         }
 
-        return app(\App\Services\Billing\PlanSubscriptionService::class)->open(
+        $siteSubscription = app(\App\Services\Billing\PlanSubscriptionService::class)->open(
             site: $site,
             plan: $plan,
             mode: $mode,
@@ -88,5 +88,21 @@ abstract class TestCase extends BaseTestCase
             grantCredits: false,
             remark: 'Testing subscription'
         );
+
+        if ($owner instanceof \App\Models\Admin) {
+            app(\App\Services\Billing\AdminPlanSubscriptionService::class)->openOwner(
+                admin: $owner,
+                site: $site,
+                plan: $plan,
+                mode: $mode === 'agent' ? 'agent_owner' : 'direct_owner',
+                operator: $owner,
+                startsAt: now()->subMinute(),
+                endsAt: now()->addYear(),
+                grantCredits: false,
+                remark: 'Testing account subscription'
+            );
+        }
+
+        return $siteSubscription;
     }
 }

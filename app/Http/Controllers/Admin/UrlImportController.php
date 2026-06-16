@@ -11,7 +11,7 @@ use App\Models\PlatformPlan;
 use App\Models\TitleLibrary;
 use App\Models\UrlImportJob;
 use App\Models\UrlImportJobLog;
-use App\Services\Billing\ResourceQuotaService;
+use App\Services\Billing\AdminResourceQuotaService;
 use App\Services\GeoFlow\UrlImportProcessingService;
 use App\Support\CurrentSite;
 use Illuminate\Http\JsonResponse;
@@ -25,7 +25,7 @@ class UrlImportController extends Controller
 {
     public function __construct(
         private readonly UrlImportProcessingService $urlImportProcessingService,
-        private readonly ResourceQuotaService $quotaService,
+        private readonly AdminResourceQuotaService $quotaService,
     ) {}
 
     public function index(): View
@@ -69,13 +69,15 @@ class UrlImportController extends Controller
         $admin = Auth::guard('admin')->user();
         if ($siteId > 0 && ! ($admin instanceof Admin && $admin->isSuperAdmin())) {
             try {
-                $this->quotaService->assertCanUse($siteId, PlatformPlan::RESOURCE_URL_IMPORTS, 1);
+                $this->quotaService->assertCanUse($this->currentAdminId($admin), $siteId, PlatformPlan::RESOURCE_URL_IMPORTS, 1, $admin instanceof Admin ? $admin : null);
             } catch (\Throwable $exception) {
                 return back()->withInput()->withErrors(['url' => $exception->getMessage()]);
             }
         }
 
         $job = UrlImportJob::query()->create([
+            'site_id' => $siteId > 0 ? $siteId : null,
+            'owner_admin_id' => $admin instanceof Admin ? (int) $admin->id : null,
             'url' => $validated['url'],
             'normalized_url' => $normalized['url'],
             'source_domain' => $normalized['host'],
@@ -95,7 +97,7 @@ class UrlImportController extends Controller
             'created_by' => Auth::guard('admin')->user()?->username ?? '',
         ]);
         if ($siteId > 0 && ! ($admin instanceof Admin && $admin->isSuperAdmin())) {
-            $this->quotaService->consume($siteId, PlatformPlan::RESOURCE_URL_IMPORTS, 1, [
+            $this->quotaService->consume($this->currentAdminId($admin), $siteId, PlatformPlan::RESOURCE_URL_IMPORTS, 1, [
                 'actor_admin_id' => $admin instanceof Admin ? (int) $admin->id : null,
                 'subject_type' => UrlImportJob::class,
                 'subject_id' => (int) $job->id,
@@ -106,6 +108,8 @@ class UrlImportController extends Controller
 
         UrlImportJobLog::query()->create([
             'job_id' => $job->id,
+            'site_id' => $siteId > 0 ? $siteId : null,
+            'owner_admin_id' => $admin instanceof Admin ? (int) $admin->id : null,
             'step' => 'queued',
             'level' => 'info',
             'message' => __('admin.url_import.section.new_job_desc'),
@@ -266,6 +270,15 @@ class UrlImportController extends Controller
             'keyword_libraries' => KeywordLibrary::query()->count(),
             'title_libraries' => TitleLibrary::query()->count(),
         ];
+    }
+
+    private function currentAdminId(mixed $admin): int
+    {
+        if (! $admin instanceof Admin || (int) $admin->id <= 0) {
+            abort(403);
+        }
+
+        return (int) $admin->id;
     }
 
     /**

@@ -7,7 +7,7 @@ use App\Models\Article;
 use App\Models\MediaResource;
 use App\Models\MediaSubmission;
 use App\Services\MediaDistribution\MediaSubmissionService;
-use App\Services\MediaDistribution\SiteCreditService;
+use App\Services\MediaDistribution\AdminCreditService;
 use App\Support\AdminWeb;
 use App\Support\CurrentSite;
 use Illuminate\Http\RedirectResponse;
@@ -23,7 +23,9 @@ class SubmissionController extends Controller
         $admin = auth('admin')->user();
         $isSuperAdmin = (bool) $admin?->isSuperAdmin();
         $siteId = app(CurrentSite::class)->id();
-        $account = $siteId !== null ? app(SiteCreditService::class)->accountForSite($siteId) : null;
+        $account = ($siteId !== null && $admin !== null)
+            ? app(AdminCreditService::class)->accountForAdmin((int) $admin->id, (int) $siteId)
+            : null;
 
         $submissions = MediaSubmission::query()
             ->when($isSuperAdmin, fn ($query) => $query->withoutGlobalScope('current_site'))

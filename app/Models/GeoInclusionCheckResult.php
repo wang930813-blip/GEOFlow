@@ -3,17 +3,20 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToSite;
+use App\Models\Concerns\BelongsToAdminOwner;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class GeoInclusionCheckResult extends Model
 {
     use BelongsToSite;
+    use BelongsToAdminOwner;
 
     protected $table = 'geo_inclusion_check_results';
 
     protected $fillable = [
         'site_id',
+        'owner_admin_id',
         'run_id',
         'keyword_library_id',
         'keyword_id',
@@ -34,6 +37,7 @@ class GeoInclusionCheckResult extends Model
         return [
             'run_id' => 'integer',
             'site_id' => 'integer',
+            'owner_admin_id' => 'integer',
             'keyword_library_id' => 'integer',
             'keyword_id' => 'integer',
             'question_variant_id' => 'integer',

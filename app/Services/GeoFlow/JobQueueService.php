@@ -94,7 +94,7 @@ class JobQueueService
             $taskRow = Task::query()
                 ->whereKey($taskId)
                 ->lockForUpdate()
-                ->first(['id', 'site_id', 'max_retry_count']);
+                ->first(['id', 'site_id', 'owner_admin_id', 'max_retry_count']);
             if (! $taskRow) {
                 return null;
             }
@@ -115,6 +115,7 @@ class JobQueueService
             // 建立“待执行记录”，作为后续状态流转的唯一主记录。
             return TaskRun::query()->create([
                 'site_id' => (int) ($taskRow->site_id ?? 0) > 0 ? (int) $taskRow->site_id : null,
+                'owner_admin_id' => (int) ($taskRow->owner_admin_id ?? 0) > 0 ? (int) $taskRow->owner_admin_id : null,
                 'task_id' => $taskId,
                 'status' => 'pending',
                 'meta' => [

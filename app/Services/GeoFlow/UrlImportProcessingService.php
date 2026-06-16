@@ -220,8 +220,13 @@ final class UrlImportProcessingService
             throw new \RuntimeException(__('admin.url_import.error.ai_titles_missing'));
         }
 
-        $summary = DB::transaction(function () use ($baseName, $knowledgeContent, $analysis, $keywords, $titles): array {
+        $summary = DB::transaction(function () use ($job, $baseName, $knowledgeContent, $analysis, $keywords, $titles): array {
+            $siteId = (int) ($job->site_id ?? 0) ?: null;
+            $ownerAdminId = (int) ($job->owner_admin_id ?? 0) ?: null;
+
             $knowledgeBase = KnowledgeBase::query()->create([
+                'site_id' => $siteId,
+                'owner_admin_id' => $ownerAdminId,
                 'name' => $baseName.' 知识库',
                 'description' => (string) ($analysis['summary'] ?? ''),
                 'content' => $knowledgeContent,
@@ -234,6 +239,8 @@ final class UrlImportProcessingService
             ]);
 
             $keywordLibrary = KeywordLibrary::query()->create([
+                'site_id' => $siteId,
+                'owner_admin_id' => $ownerAdminId,
                 'name' => $baseName.' 关键词库',
                 'description' => 'URL智能采集自动生成',
                 'keyword_count' => 0,
@@ -241,12 +248,19 @@ final class UrlImportProcessingService
             foreach ($keywords as $keyword) {
                 Keyword::query()->firstOrCreate(
                     ['library_id' => (int) $keywordLibrary->id, 'keyword' => $keyword],
-                    ['used_count' => 0, 'usage_count' => 0]
+                    [
+                        'site_id' => $siteId,
+                        'owner_admin_id' => $ownerAdminId,
+                        'used_count' => 0,
+                        'usage_count' => 0,
+                    ]
                 );
             }
             $keywordLibrary->update(['keyword_count' => Keyword::query()->where('library_id', (int) $keywordLibrary->id)->count()]);
 
             $titleLibrary = TitleLibrary::query()->create([
+                'site_id' => $siteId,
+                'owner_admin_id' => $ownerAdminId,
                 'name' => $baseName.' 标题库',
                 'description' => 'URL智能采集自动生成',
                 'title_count' => 0,
@@ -258,6 +272,8 @@ final class UrlImportProcessingService
                 Title::query()->firstOrCreate(
                     ['library_id' => (int) $titleLibrary->id, 'title' => $title],
                     [
+                        'site_id' => $siteId,
+                        'owner_admin_id' => $ownerAdminId,
                         'keyword' => $keywords[$index % max(1, count($keywords))] ?? '',
                         'is_ai_generated' => true,
                         'used_count' => 0,
@@ -1271,6 +1287,8 @@ PROMPT;
     {
         UrlImportJobLog::query()->create([
             'job_id' => (int) $job->id,
+            'site_id' => (int) ($job->site_id ?? 0) ?: null,
+            'owner_admin_id' => (int) ($job->owner_admin_id ?? 0) ?: null,
             'step' => $step ?: (string) ($job->current_step ?: 'queued'),
             'level' => $level,
             'message' => $message,

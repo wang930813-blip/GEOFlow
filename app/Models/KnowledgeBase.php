@@ -2,18 +2,21 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToAdminOwner;
 use App\Models\Concerns\BelongsToSite;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class KnowledgeBase extends Model
 {
+    use BelongsToAdminOwner;
     use BelongsToSite;
 
     protected $table = 'knowledge_bases';
 
     protected $fillable = [
         'site_id',
+        'owner_admin_id',
         'name',
         'description',
         'content',
@@ -30,6 +33,7 @@ class KnowledgeBase extends Model
         return [
             'character_count' => 'integer',
             'site_id' => 'integer',
+            'owner_admin_id' => 'integer',
             'used_task_count' => 'integer',
             'word_count' => 'integer',
             'usage_count' => 'integer',

@@ -15,7 +15,7 @@ use App\Models\PlatformPlan;
 use App\Models\Prompt;
 use App\Models\Task;
 use App\Models\Title;
-use App\Services\Billing\ResourceQuotaService;
+use App\Services\Billing\AdminResourceQuotaService;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\ArticleWorkflow;
 use App\Support\GeoFlow\ImageUrlNormalizer;
@@ -36,7 +36,7 @@ class WorkerExecutionService
         private readonly AiGeneratedArticleImageService $aiGeneratedArticleImageService,
         private readonly GeoArticleContextService $geoArticleContextService,
         private readonly DistributionOrchestrator $distributionOrchestrator,
-        private readonly ResourceQuotaService $quotaService
+        private readonly AdminResourceQuotaService $quotaService
     ) {}
 
     /**
@@ -74,8 +74,9 @@ class WorkerExecutionService
                 ],
             ];
         }
-        if ((int) ($task->site_id ?? 0) > 0) {
-            $this->quotaService->assertCanUse((int) $task->site_id, PlatformPlan::RESOURCE_ARTICLE_GENERATIONS, 1);
+        $quotaAdminId = $this->quotaAdminId($task);
+        if ((int) ($task->site_id ?? 0) > 0 && $quotaAdminId !== null) {
+            $this->quotaService->assertCanUse($quotaAdminId, (int) $task->site_id, PlatformPlan::RESOURCE_ARTICLE_GENERATIONS, 1);
         }
 
         $titleRow = $this->pickTitle($task);
@@ -119,6 +120,7 @@ class WorkerExecutionService
 
             $article = Article::query()->create([
                 'site_id' => $siteId > 0 ? $siteId : null,
+                'owner_admin_id' => (int) ($task->owner_admin_id ?? 0) > 0 ? (int) $task->owner_admin_id : null,
                 'title' => (string) $titleRow->title,
                 'slug' => ArticleWorkflow::generateUniqueSlug((string) $titleRow->title),
                 'excerpt' => $excerpt,
@@ -172,8 +174,8 @@ class WorkerExecutionService
 
             return (int) $article->id;
         });
-        if ((int) ($task->site_id ?? 0) > 0) {
-            $this->quotaService->consume((int) $task->site_id, PlatformPlan::RESOURCE_ARTICLE_GENERATIONS, 1, [
+        if ((int) ($task->site_id ?? 0) > 0 && $quotaAdminId !== null) {
+            $this->quotaService->consume($quotaAdminId, (int) $task->site_id, PlatformPlan::RESOURCE_ARTICLE_GENERATIONS, 1, [
                 'subject_type' => Article::class,
                 'subject_id' => $articleId,
                 'idempotency_key' => 'article-generation:'.$articleId,
@@ -1184,6 +1186,13 @@ class WorkerExecutionService
         ]);
 
         return $content;
+    }
+
+    private function quotaAdminId(Task $task): ?int
+    {
+        $adminId = (int) ($task->owner_admin_id ?? 0);
+
+        return $adminId > 0 ? $adminId : null;
     }
 
     /**

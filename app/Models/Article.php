@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToAdminOwner;
 use App\Models\Concerns\BelongsToSite;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -11,6 +12,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Article extends Model
 {
+    use BelongsToAdminOwner;
     use BelongsToSite;
     use SoftDeletes;
 
@@ -19,6 +21,7 @@ class Article extends Model
     protected $fillable = [
         'title',
         'site_id',
+        'owner_admin_id',
         'slug',
         'excerpt',
         'content',
@@ -42,6 +45,7 @@ class Article extends Model
         return [
             'category_id' => 'integer',
             'site_id' => 'integer',
+            'owner_admin_id' => 'integer',
             'author_id' => 'integer',
             'task_id' => 'integer',
             'view_count' => 'integer',

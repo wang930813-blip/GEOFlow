@@ -6,7 +6,7 @@ use App\Ai\Agents\MarkdownContentWriterAgent;
 use App\Models\AiModel;
 use App\Models\PlatformPlan;
 use App\Models\Task;
-use App\Services\Billing\ResourceQuotaService;
+use App\Services\Billing\AdminResourceQuotaService;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
 use Illuminate\Support\Facades\DB;
@@ -20,7 +20,7 @@ class AiGeneratedArticleImageService
         private readonly ApiKeyCrypto $apiKeyCrypto,
         private readonly AiArticleImagePlanner $planner,
         private readonly ExternalImageHostClient $imageHostClient,
-        private readonly ResourceQuotaService $quotaService,
+        private readonly AdminResourceQuotaService $quotaService,
     ) {}
 
     /**
@@ -33,8 +33,9 @@ class AiGeneratedArticleImageService
             return ['content' => $content, 'blocks' => []];
         }
         $siteId = (int) ($task->site_id ?? 0);
-        if ($siteId > 0) {
-            $this->quotaService->assertCanUse($siteId, PlatformPlan::RESOURCE_AI_IMAGE_GENERATIONS, $imageCount);
+        $quotaAdminId = $this->quotaAdminId($task);
+        if ($siteId > 0 && $quotaAdminId !== null) {
+            $this->quotaService->assertCanUse($quotaAdminId, $siteId, PlatformPlan::RESOURCE_AI_IMAGE_GENERATIONS, $imageCount);
         }
 
         $imageModel = $this->resolveImageModel($task);
@@ -43,8 +44,8 @@ class AiGeneratedArticleImageService
 
         foreach (array_slice($plannedBlocks, 0, $imageCount) as $index => $plan) {
             $uploaded = $this->generateOne($imageModel, (string) ($plan['prompt'] ?? ''), $index + 1);
-            if ($siteId > 0) {
-                $this->quotaService->consume($siteId, PlatformPlan::RESOURCE_AI_IMAGE_GENERATIONS, 1, [
+            if ($siteId > 0 && $quotaAdminId !== null) {
+                $this->quotaService->consume($quotaAdminId, $siteId, PlatformPlan::RESOURCE_AI_IMAGE_GENERATIONS, 1, [
                     'subject_type' => Task::class,
                     'subject_id' => (int) $task->id,
                     'idempotency_key' => 'ai-image:'.$task->id.':'.($uploaded['key'] ?? $index + 1),
@@ -187,6 +188,13 @@ class AiGeneratedArticleImageService
         ]);
 
         return $uploaded;
+    }
+
+    private function quotaAdminId(Task $task): ?int
+    {
+        $adminId = (int) ($task->owner_admin_id ?? 0);
+
+        return $adminId > 0 ? $adminId : null;
     }
 
     private function filenameFor(string $mime, int $index): string

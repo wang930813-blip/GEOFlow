@@ -148,6 +148,16 @@ class PlatformPlanSubscriptionTest extends TestCase
         ]);
     }
 
+    public function test_platform_plan_catalog_contains_video_and_crebee_resources(): void
+    {
+        $catalog = PlatformPlan::resourceCatalog();
+
+        $this->assertArrayHasKey('video_generations', $catalog);
+        $this->assertSame('生成视频次数', $catalog['video_generations']['label']);
+        $this->assertArrayHasKey('crebee_publishes', $catalog);
+        $this->assertSame('CreBee 发布次数', $catalog['crebee_publishes']['label']);
+    }
+
     public function test_super_admin_can_create_agent_user_with_site_and_plan_subscription(): void
     {
         $superAdmin = $this->createAdmin('onboard_root_admin', 'super_admin');
@@ -197,6 +207,62 @@ class PlatformPlanSubscriptionTest extends TestCase
         $this->assertDatabaseHas('site_credit_accounts', [
             'site_id' => (int) $site->id,
             'balance' => '1200.00',
+        ]);
+        $this->assertDatabaseHas('admin_plan_subscriptions', [
+            'admin_id' => (int) $admin->id,
+            'site_id' => (int) $site->id,
+            'plan_id' => (int) $plan->id,
+            'mode' => 'agent_owner',
+            'status' => 'active',
+        ]);
+        $this->assertDatabaseHas('admin_credit_accounts', [
+            'admin_id' => (int) $admin->id,
+            'site_id' => (int) $site->id,
+            'balance' => '1200.00',
+        ]);
+    }
+
+    public function test_plan_subscription_page_also_opens_account_subscription_for_owner(): void
+    {
+        $superAdmin = $this->createAdmin('plan_open_root_admin', 'super_admin');
+        $agent = $this->createAdmin('plan_open_agent_admin', 'agent_admin');
+        $site = $this->createSite('客户开通代理站点', $agent);
+        $plan = $this->createPlan('客户开通同步规格', [
+            'credits' => ['quota_value' => 800, 'quota_period' => 'cycle', 'unit' => 'points'],
+            'brand_diagnoses' => ['quota_value' => 6, 'quota_period' => 'cycle', 'unit' => 'times'],
+        ]);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.plan-subscriptions.store'), [
+                'site_id' => (int) $site->id,
+                'plan_id' => (int) $plan->id,
+                'mode' => 'agent',
+                'owner_admin_id' => (int) $agent->id,
+                'starts_at' => '2026-06-15T10:00',
+                'ends_at' => '2026-09-15T10:00',
+                'grant_credits' => '1',
+                'remark' => '线下收款后开通',
+            ])
+            ->assertRedirect(route('admin.plan-subscriptions.index'));
+
+        $siteSubscription = \App\Models\SitePlanSubscription::query()
+            ->where('site_id', (int) $site->id)
+            ->where('plan_id', (int) $plan->id)
+            ->where('mode', 'agent')
+            ->firstOrFail();
+
+        $this->assertDatabaseHas('admin_plan_subscriptions', [
+            'admin_id' => (int) $agent->id,
+            'site_id' => (int) $site->id,
+            'plan_id' => (int) $plan->id,
+            'source_subscription_id' => (int) $siteSubscription->id,
+            'mode' => 'agent_owner',
+            'status' => 'active',
+        ]);
+        $this->assertDatabaseHas('admin_credit_accounts', [
+            'admin_id' => (int) $agent->id,
+            'site_id' => (int) $site->id,
+            'balance' => '800.00',
         ]);
     }
 

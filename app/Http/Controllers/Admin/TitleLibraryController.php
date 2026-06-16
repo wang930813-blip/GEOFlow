@@ -11,7 +11,7 @@ use App\Models\PlatformPlan;
 use App\Models\Task;
 use App\Models\Title;
 use App\Models\TitleLibrary;
-use App\Services\Billing\ResourceQuotaService;
+use App\Services\Billing\AdminResourceQuotaService;
 use App\Services\GeoFlow\TitleAiGenerationService;
 use App\Support\AdminWeb;
 use Illuminate\Http\RedirectResponse;
@@ -31,7 +31,7 @@ class TitleLibraryController extends Controller
 
     public function __construct(
         private TitleAiGenerationService $titleAiGenerationService,
-        private ResourceQuotaService $quotaService,
+        private AdminResourceQuotaService $quotaService,
     ) {}
 
     /**
@@ -151,7 +151,7 @@ class TitleLibraryController extends Controller
         $siteId = (int) ($library->site_id ?? 0);
         if ($siteId > 0 && ! ($admin instanceof Admin && $admin->isSuperAdmin())) {
             try {
-                $this->quotaService->assertCanUse($siteId, PlatformPlan::RESOURCE_AI_TITLE_GENERATIONS, (int) $payload['title_count']);
+                $this->quotaService->assertCanUse($this->currentAdminId($admin), $siteId, PlatformPlan::RESOURCE_AI_TITLE_GENERATIONS, (int) $payload['title_count'], $admin instanceof Admin ? $admin : null);
             } catch (\Throwable $exception) {
                 return back()->withErrors($exception->getMessage());
             }
@@ -168,7 +168,7 @@ class TitleLibraryController extends Controller
 
         $savedCount = 0;
         $duplicateCount = 0;
-        DB::transaction(function () use ($generatedTitles, $keywords, $libraryId, &$savedCount, &$duplicateCount): void {
+        DB::transaction(function () use ($generatedTitles, $keywords, $library, $libraryId, $admin, &$savedCount, &$duplicateCount): void {
             foreach ($generatedTitles as $titleText) {
                 $title = $this->normalizeGeneratedTitle($titleText);
                 if ($title === '' || mb_strlen($title, 'UTF-8') > 500) {
@@ -186,6 +186,8 @@ class TitleLibraryController extends Controller
                 }
 
                 Title::query()->create([
+                    'site_id' => (int) ($library->site_id ?? 0) ?: null,
+                    'owner_admin_id' => $this->ownerAdminIdForLibrary($library, $admin instanceof Admin ? $admin : null),
                     'library_id' => $libraryId,
                     'title' => $title,
                     'keyword' => $keywords->random(),
@@ -208,7 +210,7 @@ class TitleLibraryController extends Controller
         }
         if ($savedCount > 0 && $siteId > 0 && ! ($admin instanceof Admin && $admin->isSuperAdmin())) {
             try {
-                $this->quotaService->consume($siteId, PlatformPlan::RESOURCE_AI_TITLE_GENERATIONS, $savedCount, [
+                $this->quotaService->consume($this->currentAdminId($admin), $siteId, PlatformPlan::RESOURCE_AI_TITLE_GENERATIONS, $savedCount, [
                     'actor_admin_id' => (int) (auth('admin')->id() ?? 0),
                     'subject_type' => TitleLibrary::class,
                     'subject_id' => (int) $library->id,
@@ -251,6 +253,8 @@ class TitleLibraryController extends Controller
         }
 
         Title::query()->create([
+            'site_id' => (int) ($library->site_id ?? 0) ?: null,
+            'owner_admin_id' => $this->ownerAdminIdForLibrary($library, auth('admin')->user()),
             'library_id' => $libraryId,
             'title' => $title,
             'keyword' => trim((string) ($payload['keyword'] ?? '')),
@@ -351,7 +355,7 @@ class TitleLibraryController extends Controller
 
         $importedCount = 0;
         $duplicateCount = 0;
-        DB::transaction(function () use ($entries, $libraryId, &$importedCount, &$duplicateCount): void {
+        DB::transaction(function () use ($entries, $library, $libraryId, &$importedCount, &$duplicateCount): void {
             foreach ($entries as $entry) {
                 $exists = Title::query()
                     ->where('library_id', $libraryId)
@@ -364,6 +368,8 @@ class TitleLibraryController extends Controller
                 }
 
                 Title::query()->create([
+                    'site_id' => (int) ($library->site_id ?? 0) ?: null,
+                    'owner_admin_id' => $this->ownerAdminIdForLibrary($library, auth('admin')->user()),
                     'library_id' => $libraryId,
                     'title' => $entry['title'],
                     'keyword' => $entry['keyword'],
@@ -680,5 +686,24 @@ class TitleLibraryController extends Controller
         }
 
         return $taskPreview;
+    }
+
+    private function currentAdminId(mixed $admin): int
+    {
+        if (! $admin instanceof Admin || (int) $admin->id <= 0) {
+            abort(403);
+        }
+
+        return (int) $admin->id;
+    }
+
+    private function ownerAdminIdForLibrary(TitleLibrary $library, mixed $fallbackAdmin): ?int
+    {
+        $ownerAdminId = (int) ($library->owner_admin_id ?? 0);
+        if ($ownerAdminId > 0) {
+            return $ownerAdminId;
+        }
+
+        return $fallbackAdmin instanceof Admin && (int) $fallbackAdmin->id > 0 ? (int) $fallbackAdmin->id : null;
     }
 }

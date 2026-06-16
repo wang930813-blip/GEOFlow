@@ -3,17 +3,20 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToSite;
+use App\Models\Concerns\BelongsToAdminOwner;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class UrlImportJob extends Model
 {
     use BelongsToSite;
+    use BelongsToAdminOwner;
 
     protected $table = 'url_import_jobs';
 
     protected $fillable = [
         'site_id',
+        'owner_admin_id',
         'url',
         'normalized_url',
         'source_domain',
@@ -34,6 +37,7 @@ class UrlImportJob extends Model
         return [
             'progress_percent' => 'integer',
             'site_id' => 'integer',
+            'owner_admin_id' => 'integer',
             'started_at' => 'datetime',
             'finished_at' => 'datetime',
         ];

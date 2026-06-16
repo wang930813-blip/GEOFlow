@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Admin;
+use App\Models\PlatformPlan;
 use App\Models\Site;
 use App\Support\CurrentSite;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -160,6 +161,58 @@ class AdminSiteContextTest extends TestCase
         $this->assertDatabaseHas('personal_access_tokens', [
             'name' => 'Site Editor Token',
             'site_id' => $site->id,
+        ]);
+    }
+
+    public function test_api_token_quota_counts_current_account_tokens_only(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'site_token_account_quota_admin',
+            'password' => 'secret-123',
+            'email' => 'site-token-account-quota-admin@example.com',
+            'display_name' => 'Site Token Account Quota Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $otherAdmin = Admin::query()->create([
+            'username' => 'site_token_account_quota_other',
+            'password' => 'secret-123',
+            'email' => 'site-token-account-quota-other@example.com',
+            'display_name' => 'Site Token Account Quota Other',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $site = Site::query()->create([
+            'owner_admin_id' => $admin->id,
+            'name' => 'Token Account Quota Site',
+            'status' => 'active',
+        ]);
+        $site->members()->attach($admin->id, ['role' => 'owner']);
+        $site->members()->attach($otherAdmin->id, ['role' => 'member']);
+        $this->openTestingPlanForSite($site, $admin, [
+            PlatformPlan::RESOURCE_API_TOKENS => ['quota_value' => 1, 'quota_period' => 'cycle', 'unit' => 'tokens'],
+        ]);
+        $this->openTestingPlanForSite($site, $otherAdmin, [
+            PlatformPlan::RESOURCE_API_TOKENS => ['quota_value' => 1, 'quota_period' => 'cycle', 'unit' => 'tokens'],
+        ]);
+
+        $otherToken = $otherAdmin->createToken('Other Account Token', ['catalog:read'])->accessToken;
+        $otherToken->forceFill(['site_id' => $site->id])->save();
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.api-tokens.store'), [
+                'name' => 'Own Account Token',
+                'scopes' => ['catalog:read'],
+                'expires_at' => now()->addDay()->format('Y-m-d\TH:i'),
+                'site_id' => '',
+            ])
+            ->assertRedirect(route('admin.api-tokens.index'));
+
+        $this->assertDatabaseHas('personal_access_tokens', [
+            'tokenable_id' => (int) $admin->id,
+            'name' => 'Own Account Token',
+            'site_id' => (int) $site->id,
         ]);
     }
 

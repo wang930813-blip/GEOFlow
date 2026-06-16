@@ -18,6 +18,8 @@ class PlatformPlan extends Model
     public const RESOURCE_AI_IMAGE_GENERATIONS = 'ai_image_generations';
     public const RESOURCE_TEAM_MEMBERS = 'team_members';
     public const RESOURCE_API_TOKENS = 'api_tokens';
+    public const RESOURCE_VIDEO_GENERATIONS = 'video_generations';
+    public const RESOURCE_CREBEE_PUBLISHES = 'crebee_publishes';
 
     /**
      * @return array<string,array{label:string,unit:string}>
@@ -35,6 +37,8 @@ class PlatformPlan extends Model
             self::RESOURCE_AI_IMAGE_GENERATIONS => ['label' => 'AI 配图次数', 'unit' => 'times'],
             self::RESOURCE_TEAM_MEMBERS => ['label' => '子账号数量', 'unit' => 'accounts'],
             self::RESOURCE_API_TOKENS => ['label' => 'API Token 数量', 'unit' => 'tokens'],
+            self::RESOURCE_VIDEO_GENERATIONS => ['label' => '生成视频次数', 'unit' => 'times'],
+            self::RESOURCE_CREBEE_PUBLISHES => ['label' => 'CreBee 发布次数', 'unit' => 'times'],
         ];
     }
 

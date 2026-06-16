@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToSite;
+use App\Models\Concerns\BelongsToAdminOwner;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -10,11 +11,13 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class TitleLibrary extends Model
 {
     use BelongsToSite;
+    use BelongsToAdminOwner;
 
     protected $table = 'title_libraries';
 
     protected $fillable = [
         'site_id',
+        'owner_admin_id',
         'name',
         'description',
         'title_count',
@@ -31,6 +34,7 @@ class TitleLibrary extends Model
         return [
             'title_count' => 'integer',
             'site_id' => 'integer',
+            'owner_admin_id' => 'integer',
             'keyword_library_id' => 'integer',
             'ai_model_id' => 'integer',
             'prompt_id' => 'integer',

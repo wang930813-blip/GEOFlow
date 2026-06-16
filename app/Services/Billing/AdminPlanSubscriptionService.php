@@ -1,0 +1,221 @@
+<?php
+
+namespace App\Services\Billing;
+
+use App\Models\Admin;
+use App\Models\AdminPlanSubscription;
+use App\Models\PlatformPlan;
+use App\Models\Site;
+use App\Models\SitePlanSubscription;
+use App\Services\MediaDistribution\AdminCreditService;
+use Carbon\CarbonInterface;
+use Illuminate\Support\Facades\DB;
+use RuntimeException;
+
+class AdminPlanSubscriptionService
+{
+    public function __construct(
+        private readonly PlanSubscriptionService $siteSubscriptionService,
+        private readonly AdminCreditService $creditService
+    ) {}
+
+    public function openOwner(
+        Admin $admin,
+        Site $site,
+        PlatformPlan $plan,
+        string $mode,
+        ?Admin $operator,
+        ?CarbonInterface $startsAt = null,
+        ?CarbonInterface $endsAt = null,
+        bool $grantCredits = true,
+        string $remark = '',
+        ?int $sourceSubscriptionId = null
+    ): AdminPlanSubscription {
+        $mode = $this->normalizeMode($mode);
+        $startsAt ??= now();
+        $endsAt ??= $startsAt->copy()->addDays(max(1, (int) $plan->duration_days));
+        if ($endsAt->lessThanOrEqualTo($startsAt)) {
+            throw new RuntimeException('到期时间必须晚于开始时间');
+        }
+
+        return DB::transaction(function () use ($admin, $site, $plan, $mode, $operator, $startsAt, $endsAt, $grantCredits, $remark, $sourceSubscriptionId): AdminPlanSubscription {
+            AdminPlanSubscription::query()
+                ->where('admin_id', (int) $admin->id)
+                ->where('site_id', (int) $site->id)
+                ->where('status', 'active')
+                ->update(['status' => 'cancelled']);
+
+            $snapshotMode = str_starts_with($mode, 'direct') ? 'direct' : 'agent';
+            $snapshot = $this->siteSubscriptionService->entitlementSnapshot($plan, $snapshotMode);
+
+            $subscription = AdminPlanSubscription::query()->create([
+                'admin_id' => (int) $admin->id,
+                'site_id' => (int) $site->id,
+                'plan_id' => (int) $plan->id,
+                'source_subscription_id' => $sourceSubscriptionId,
+                'inherited_from_admin_id' => null,
+                'mode' => $mode,
+                'status' => 'active',
+                'starts_at' => $startsAt,
+                'ends_at' => $endsAt,
+                'entitlements_snapshot' => $snapshot,
+                'remark' => $remark,
+            ]);
+
+            if ($grantCredits) {
+                $this->grantCreditsFromSnapshot($admin, $site, $snapshot, $operator, '规格开通赠送：'.$plan->name);
+            }
+
+            return $subscription;
+        });
+    }
+
+    public function inheritForAgentUser(
+        Admin $agent,
+        Admin $user,
+        Site $site,
+        ?Admin $operator,
+        string $remark = '代理创建用户继承规格'
+    ): AdminPlanSubscription {
+        $source = $this->activeOrBackfilledSubscriptionForAdmin($agent, $site);
+
+        return DB::transaction(function () use ($agent, $user, $site, $operator, $remark, $source): AdminPlanSubscription {
+            AdminPlanSubscription::query()
+                ->where('admin_id', (int) $user->id)
+                ->where('site_id', (int) $site->id)
+                ->where('status', 'active')
+                ->update(['status' => 'cancelled']);
+
+            $snapshot = (array) $source->entitlements_snapshot;
+            $subscription = AdminPlanSubscription::query()->create([
+                'admin_id' => (int) $user->id,
+                'site_id' => (int) $site->id,
+                'plan_id' => $source->plan_id,
+                'source_subscription_id' => $source->source_subscription_id,
+                'inherited_from_admin_id' => (int) $agent->id,
+                'mode' => 'agent_user',
+                'status' => 'active',
+                'starts_at' => $source->starts_at,
+                'ends_at' => $source->ends_at,
+                'entitlements_snapshot' => $snapshot,
+                'remark' => $remark,
+            ]);
+
+            $this->grantCreditsFromSnapshot($user, $site, $snapshot, $operator, '代理用户继承规格赠送');
+
+            return $subscription;
+        });
+    }
+
+    public function activeSubscriptionForAdmin(int $adminId, int $siteId): AdminPlanSubscription
+    {
+        $subscription = AdminPlanSubscription::query()
+            ->where('admin_id', $adminId)
+            ->where('site_id', $siteId)
+            ->activeNow()
+            ->orderByDesc('ends_at')
+            ->orderByDesc('id')
+            ->first();
+
+        if (! $subscription instanceof AdminPlanSubscription) {
+            $admin = Admin::query()->find($adminId);
+            $site = Site::query()->find($siteId);
+            if ($admin instanceof Admin && $site instanceof Site && ! $admin->isSiteUser()) {
+                $siteSubscription = $this->activeSiteSubscriptionForAdmin($admin, $site);
+                if ($siteSubscription instanceof SitePlanSubscription) {
+                    return $this->backfillFromSiteSubscription($admin, $site, $siteSubscription);
+                }
+            }
+
+            throw new RuntimeException('当前账号规格已到期，请联系平台续费');
+        }
+
+        return $subscription;
+    }
+
+    public function activeOrBackfilledSubscriptionForAdmin(Admin $admin, Site $site): AdminPlanSubscription
+    {
+        try {
+            return $this->activeSubscriptionForAdmin((int) $admin->id, (int) $site->id);
+        } catch (RuntimeException) {
+            $siteSubscription = $this->activeSiteSubscriptionForAdmin($admin, $site);
+
+            if (! $siteSubscription instanceof SitePlanSubscription) {
+                throw new RuntimeException('当前账号规格已到期，请联系平台续费');
+            }
+
+            return $this->backfillFromSiteSubscription($admin, $site, $siteSubscription);
+        }
+    }
+
+    public function backfillFromSiteSubscription(Admin $admin, Site $site, SitePlanSubscription $siteSubscription): AdminPlanSubscription
+    {
+        return AdminPlanSubscription::query()->firstOrCreate(
+            [
+                'admin_id' => (int) $admin->id,
+                'site_id' => (int) $site->id,
+                'source_subscription_id' => (int) $siteSubscription->id,
+            ],
+            [
+                'plan_id' => $siteSubscription->plan_id,
+                'inherited_from_admin_id' => null,
+                'mode' => match ((string) $siteSubscription->mode) {
+                    'agent' => 'agent_owner',
+                    'direct' => 'direct_owner',
+                    default => 'internal',
+                },
+                'status' => $siteSubscription->status,
+                'starts_at' => $siteSubscription->starts_at,
+                'ends_at' => $siteSubscription->ends_at,
+                'entitlements_snapshot' => (array) $siteSubscription->entitlements_snapshot,
+                'remark' => '由站点规格兼容迁移生成',
+            ]
+        );
+    }
+
+    private function activeSiteSubscriptionForAdmin(Admin $admin, Site $site): ?SitePlanSubscription
+    {
+        return SitePlanSubscription::query()
+            ->where('site_id', (int) $site->id)
+            ->where('status', 'active')
+            ->where(function ($query) use ($admin): void {
+                $query->where('owner_admin_id', (int) $admin->id)
+                    ->orWhere('agent_admin_id', (int) $admin->id);
+            })
+            ->where(function ($query): void {
+                $query->whereNull('starts_at')->orWhere('starts_at', '<=', now());
+            })
+            ->where(function ($query): void {
+                $query->whereNull('ends_at')->orWhere('ends_at', '>=', now());
+            })
+            ->orderByDesc('ends_at')
+            ->orderByDesc('id')
+            ->first();
+    }
+
+    private function grantCreditsFromSnapshot(Admin $admin, Site $site, array $snapshot, ?Admin $operator, string $remark): void
+    {
+        $credits = (int) data_get($snapshot, PlatformPlan::RESOURCE_CREDITS.'.quota_value', 0);
+        if ($credits <= 0) {
+            return;
+        }
+
+        $this->creditService->grant(
+            adminId: (int) $admin->id,
+            siteId: (int) $site->id,
+            amount: number_format($credits, 2, '.', ''),
+            operatorAdminId: $operator?->id,
+            remark: $remark
+        );
+    }
+
+    private function normalizeMode(string $mode): string
+    {
+        $mode = strtolower(trim($mode));
+        if (! in_array($mode, ['agent_owner', 'agent_user', 'direct_owner', 'internal'], true)) {
+            throw new RuntimeException('账号规格模式不正确');
+        }
+
+        return $mode;
+    }
+}

@@ -7,17 +7,20 @@ use App\Models\Admin;
 use App\Models\PlatformPlan;
 use App\Models\Site;
 use App\Models\SitePlanSubscription;
+use App\Services\Billing\AdminPlanSubscriptionService;
 use App\Services\Billing\PlanSubscriptionService;
 use App\Support\AdminWeb;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class PlanSubscriptionController extends Controller
 {
     public function __construct(
-        private readonly PlanSubscriptionService $subscriptionService
+        private readonly PlanSubscriptionService $subscriptionService,
+        private readonly AdminPlanSubscriptionService $adminSubscriptionService
     ) {}
 
     public function index(): View
@@ -61,20 +64,49 @@ class PlanSubscriptionController extends Controller
         $operator = auth('admin')->user();
         abort_unless($operator instanceof Admin, 403);
 
+        if (! $owner instanceof Admin) {
+            return back()->withErrors('请先为站点绑定负责人，或手动选择开通账号')->withInput();
+        }
+
+        $mode = (string) $payload['mode'];
+        if ($mode === 'agent' && ! $owner->isAgentAdmin()) {
+            return back()->withErrors('代理模式需要选择代理管理员账号')->withInput();
+        }
+        if ($mode === 'direct' && ! $owner->isDirectAdmin()) {
+            return back()->withErrors('直客模式需要选择直客管理员账号')->withInput();
+        }
+
         $startsAt = isset($payload['starts_at']) && (string) $payload['starts_at'] !== '' ? \Carbon\Carbon::parse((string) $payload['starts_at']) : now();
         $endsAt = isset($payload['ends_at']) && (string) $payload['ends_at'] !== '' ? \Carbon\Carbon::parse((string) $payload['ends_at']) : null;
 
-        $this->subscriptionService->open(
-            site: $site,
-            plan: $plan,
-            mode: (string) $payload['mode'],
-            ownerAdmin: $owner,
-            operator: $operator,
-            startsAt: $startsAt,
-            endsAt: $endsAt,
-            grantCredits: (bool) ($payload['grant_credits'] ?? false),
-            remark: (string) ($payload['remark'] ?? '')
-        );
+        DB::transaction(function () use ($site, $plan, $mode, $owner, $operator, $startsAt, $endsAt, $payload): void {
+            $subscription = $this->subscriptionService->open(
+                site: $site,
+                plan: $plan,
+                mode: $mode,
+                ownerAdmin: $owner,
+                operator: $operator,
+                startsAt: $startsAt,
+                endsAt: $endsAt,
+                grantCredits: (bool) ($payload['grant_credits'] ?? false),
+                remark: (string) ($payload['remark'] ?? '')
+            );
+
+            if (in_array($mode, ['agent', 'direct'], true)) {
+                $this->adminSubscriptionService->openOwner(
+                    admin: $owner,
+                    site: $site,
+                    plan: $plan,
+                    mode: $mode === 'agent' ? 'agent_owner' : 'direct_owner',
+                    operator: $operator,
+                    startsAt: $startsAt,
+                    endsAt: $endsAt,
+                    grantCredits: (bool) ($payload['grant_credits'] ?? false),
+                    remark: (string) ($payload['remark'] ?? ''),
+                    sourceSubscriptionId: (int) $subscription->id
+                );
+            }
+        });
 
         return redirect()->route('admin.plan-subscriptions.index')->with('message', '客户规格已开通');
     }

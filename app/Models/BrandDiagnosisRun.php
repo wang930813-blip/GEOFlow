@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToAdminOwner;
 use App\Models\Concerns\BelongsToSite;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -9,10 +10,12 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class BrandDiagnosisRun extends Model
 {
+    use BelongsToAdminOwner;
     use BelongsToSite;
 
     protected $fillable = [
         'site_id',
+        'owner_admin_id',
         'admin_id',
         'brand_name',
         'platforms',
@@ -40,6 +43,7 @@ class BrandDiagnosisRun extends Model
     {
         return [
             'site_id' => 'integer',
+            'owner_admin_id' => 'integer',
             'admin_id' => 'integer',
             'platforms' => 'array',
             'total_questions' => 'integer',

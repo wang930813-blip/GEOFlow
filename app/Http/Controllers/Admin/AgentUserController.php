@@ -6,7 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Admin;
 use App\Models\PlatformPlan;
 use App\Models\SiteMember;
-use App\Services\Billing\ResourceQuotaService;
+use App\Services\Billing\AdminPlanSubscriptionService;
+use App\Services\Billing\AdminResourceQuotaService;
 use App\Support\AdminWeb;
 use App\Support\CurrentSite;
 use Illuminate\Http\RedirectResponse;
@@ -17,7 +18,8 @@ use Illuminate\View\View;
 class AgentUserController extends Controller
 {
     public function __construct(
-        private readonly ResourceQuotaService $quotaService
+        private readonly AdminResourceQuotaService $quotaService,
+        private readonly AdminPlanSubscriptionService $adminSubscriptionService
     ) {}
 
     public function index(): View
@@ -74,6 +76,16 @@ class AgentUserController extends Controller
             ]);
 
             $site->members()->attach((int) $admin->id, ['role' => 'member']);
+
+            $agent = auth('admin')->user();
+            if ($agent instanceof Admin) {
+                $this->adminSubscriptionService->inheritForAgentUser(
+                    agent: $agent,
+                    user: $admin,
+                    site: $site,
+                    operator: $agent
+                );
+            }
         });
 
         return redirect()->route('admin.agent-users.index')->with('message', '普通用户已创建');
@@ -105,9 +117,13 @@ class AgentUserController extends Controller
     private function teamMemberQuota(int $siteId): array
     {
         $activeMemberCount = $this->activeMemberCount($siteId);
+        $admin = auth('admin')->user();
+        if (! $admin instanceof Admin) {
+            return ['quota' => 0, 'used' => $activeMemberCount, 'remaining' => 0, 'period' => 'cycle'];
+        }
 
         try {
-            $quota = $this->quotaService->remaining($siteId, PlatformPlan::RESOURCE_TEAM_MEMBERS);
+            $quota = $this->quotaService->remaining((int) $admin->id, $siteId, PlatformPlan::RESOURCE_TEAM_MEMBERS);
 
             return [
                 'quota' => $quota['quota'],

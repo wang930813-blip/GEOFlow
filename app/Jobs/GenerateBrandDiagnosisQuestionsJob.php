@@ -62,6 +62,7 @@ class GenerateBrandDiagnosisQuestionsJob implements ShouldQueue
             foreach ($questions as $index => $question) {
                 $run->questions()->create([
                     'site_id' => (int) $run->site_id,
+                    'owner_admin_id' => (int) ($run->owner_admin_id ?? 0) ?: null,
                     'question' => (string) $question['question'],
                     'question_type' => (string) $question['type'],
                     'sort_order' => $index + 1,

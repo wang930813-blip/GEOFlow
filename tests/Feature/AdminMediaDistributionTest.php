@@ -7,6 +7,8 @@ use App\Models\Admin;
 use App\Models\Article;
 use App\Models\Author;
 use App\Models\Category;
+use App\Models\AdminCreditAccount;
+use App\Models\AdminCreditLedger;
 use App\Models\MediaApiSetting;
 use App\Models\MediaResource;
 use App\Models\MediaResourceSyncRun;
@@ -793,13 +795,7 @@ class AdminMediaDistributionTest extends TestCase
             'cost_price' => '27.00',
             'sale_price' => '88.00',
         ]);
-        SiteCreditAccount::query()->create([
-            'site_id' => $site->id,
-            'balance' => '100.00',
-            'frozen_balance' => '0.00',
-            'total_recharged' => '100.00',
-            'total_consumed' => '0.00',
-        ]);
+        $this->grantAdminCredits($admin, $site, '100.00');
 
         Http::fake([
             '*/api/media/send' => Http::response([
@@ -839,7 +835,10 @@ class AdminMediaDistributionTest extends TestCase
 
         $this->assertSame('submitted', $submission->status);
         $this->assertSame('123456', $submission->external_order_nid);
-        $this->assertSame('12.00', SiteCreditAccount::query()->where('site_id', $site->id)->value('balance'));
+        $this->assertSame('12.00', AdminCreditAccount::query()
+            ->where('admin_id', (int) $admin->id)
+            ->where('site_id', (int) $site->id)
+            ->value('balance'));
 
         $this->actingAs($admin, 'admin')
             ->withSession(['current_site_id' => $site->id])
@@ -851,18 +850,119 @@ class AdminMediaDistributionTest extends TestCase
         $this->assertSame('https://example.com/published.html', $submission->published_url);
     }
 
+    public function test_media_submission_deducts_account_credits_independently_per_site_user(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+
+        $agent = Admin::query()->create([
+            'username' => 'media_credit_agent',
+            'password' => 'secret-123',
+            'email' => 'media-credit-agent@example.com',
+            'display_name' => 'Media Credit Agent',
+            'role' => 'agent_admin',
+            'status' => 'active',
+        ]);
+        $userOne = Admin::query()->create([
+            'username' => 'media_credit_user_one',
+            'password' => 'secret-123',
+            'email' => 'media-credit-user-one@example.com',
+            'display_name' => 'Media Credit User One',
+            'role' => 'site_user',
+            'status' => 'active',
+            'created_by' => (int) $agent->id,
+        ]);
+        $userTwo = Admin::query()->create([
+            'username' => 'media_credit_user_two',
+            'password' => 'secret-123',
+            'email' => 'media-credit-user-two@example.com',
+            'display_name' => 'Media Credit User Two',
+            'role' => 'site_user',
+            'status' => 'active',
+            'created_by' => (int) $agent->id,
+        ]);
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $agent->id,
+            'name' => 'Media Credit Agent Site',
+            'status' => 'active',
+            'customer_mode' => 'agent',
+            'agent_admin_id' => (int) $agent->id,
+        ]);
+        $site->members()->attach((int) $agent->id, ['role' => 'owner']);
+        $site->members()->attach((int) $userOne->id, ['role' => 'member']);
+        $site->members()->attach((int) $userTwo->id, ['role' => 'member']);
+        $this->openTestingPlanForSite($site, $agent, [], 'agent');
+        app(\App\Services\Billing\AdminPlanSubscriptionService::class)->inheritForAgentUser($agent, $userOne, $site, $agent);
+        app(\App\Services\Billing\AdminPlanSubscriptionService::class)->inheritForAgentUser($agent, $userTwo, $site, $agent);
+        AdminCreditAccount::query()->create([
+            'admin_id' => (int) $userOne->id,
+            'site_id' => (int) $site->id,
+            'balance' => '100.00',
+            'frozen_balance' => '0.00',
+            'total_granted' => '100.00',
+            'total_consumed' => '0.00',
+        ]);
+        AdminCreditAccount::query()->create([
+            'admin_id' => (int) $userTwo->id,
+            'site_id' => (int) $site->id,
+            'balance' => '100.00',
+            'frozen_balance' => '0.00',
+            'total_granted' => '100.00',
+            'total_consumed' => '0.00',
+        ]);
+        SiteCreditAccount::query()->create([
+            'site_id' => (int) $site->id,
+            'balance' => '999.00',
+            'frozen_balance' => '0.00',
+            'total_recharged' => '999.00',
+            'total_consumed' => '0.00',
+        ]);
+
+        [$articleOne, $resource] = $this->createArticleAndResource($site, 'account-credit-one');
+        [$articleTwo] = $this->createArticleAndResource($site, 'account-credit-two');
+        $articleOne->forceFill(['owner_admin_id' => (int) $userOne->id])->save();
+        $articleTwo->forceFill(['owner_admin_id' => (int) $userTwo->id])->save();
+
+        Http::fake([
+            '*/api/media/send' => Http::sequence()
+                ->push(['code' => 1, 'msg' => 'success', 'data' => ['order_nid' => 'account-credit-order-one']], 200)
+                ->push(['code' => 1, 'msg' => 'success', 'data' => ['order_nid' => 'account-credit-order-two']], 200),
+        ]);
+
+        $this->actingAs($userOne, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.media-distribution.submissions.store'), [
+                'article_id' => (int) $articleOne->id,
+                'media_resource_id' => (int) $resource->id,
+            ])
+            ->assertRedirect(route('admin.media-distribution.submissions.index'));
+
+        $this->actingAs($userTwo, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.media-distribution.submissions.store'), [
+                'article_id' => (int) $articleTwo->id,
+                'media_resource_id' => (int) $resource->id,
+            ])
+            ->assertRedirect(route('admin.media-distribution.submissions.index'));
+
+        $this->assertSame('12.00', AdminCreditAccount::query()
+            ->where('admin_id', (int) $userOne->id)
+            ->where('site_id', (int) $site->id)
+            ->value('balance'));
+        $this->assertSame('12.00', AdminCreditAccount::query()
+            ->where('admin_id', (int) $userTwo->id)
+            ->where('site_id', (int) $site->id)
+            ->value('balance'));
+        $this->assertSame('999.00', SiteCreditAccount::query()->where('site_id', (int) $site->id)->value('balance'));
+        $this->assertSame(2, AdminCreditLedger::query()->where('site_id', (int) $site->id)->where('type', 'deduct')->count());
+        $this->assertSame(0, SiteCreditLedger::query()->where('site_id', (int) $site->id)->where('type', 'deduct')->count());
+    }
+
     public function test_media_submission_uses_form_urlencoded_payload_for_remote_send(): void
     {
         $this->withoutMiddleware(ValidateCsrfToken::class);
         [$admin, $site] = $this->createAdminWithSite('media_form_submit_admin', 'admin');
         [$article, $resource] = $this->createArticleAndResource($site, 'form-encoded-submit');
-        SiteCreditAccount::query()->create([
-            'site_id' => $site->id,
-            'balance' => '100.00',
-            'frozen_balance' => '0.00',
-            'total_recharged' => '100.00',
-            'total_consumed' => '0.00',
-        ]);
+        $this->grantAdminCredits($admin, $site, '100.00');
 
         Http::fake([
             '*/api/media/send' => function ($request) use ($resource) {
@@ -915,13 +1015,7 @@ class AdminMediaDistributionTest extends TestCase
             'status' => 'active',
             'price_multiplier' => '1.00',
         ]);
-        SiteCreditAccount::query()->create([
-            'site_id' => $site->id,
-            'balance' => '100.00',
-            'frozen_balance' => '0.00',
-            'total_recharged' => '100.00',
-            'total_consumed' => '0.00',
-        ]);
+        $this->grantAdminCredits($admin, $site, '100.00');
 
         Http::fake([
             '*/we-media/order' => function ($request) use ($resource) {
@@ -1088,18 +1182,12 @@ class AdminMediaDistributionTest extends TestCase
         return [$submission, $site, $article, $resource];
     }
 
-    public function test_submission_requires_enough_site_credits(): void
+    public function test_submission_requires_enough_account_credits(): void
     {
         $this->withoutMiddleware(ValidateCsrfToken::class);
         [$admin, $site] = $this->createAdminWithSite('media_low_credit_admin', 'admin');
         [$article, $resource] = $this->createArticleAndResource($site, 'low-credit-article');
-        SiteCreditAccount::query()->create([
-            'site_id' => $site->id,
-            'balance' => '10.00',
-            'frozen_balance' => '0.00',
-            'total_recharged' => '10.00',
-            'total_consumed' => '0.00',
-        ]);
+        $this->grantAdminCredits($admin, $site, '10.00');
         Http::fake();
 
         $this->actingAs($admin, 'admin')
@@ -1113,7 +1201,10 @@ class AdminMediaDistributionTest extends TestCase
         $this->assertDatabaseMissing('media_submissions', [
             'article_id' => $article->id,
         ]);
-        $this->assertSame('10.00', SiteCreditAccount::query()->where('site_id', $site->id)->value('balance'));
+        $this->assertSame('10.00', AdminCreditAccount::query()
+            ->where('admin_id', (int) $admin->id)
+            ->where('site_id', (int) $site->id)
+            ->value('balance'));
         Http::assertNothingSent();
     }
 
@@ -1122,13 +1213,7 @@ class AdminMediaDistributionTest extends TestCase
         $this->withoutMiddleware(ValidateCsrfToken::class);
         [$admin, $site] = $this->createAdminWithSite('media_failed_submit_admin', 'admin');
         [$article, $resource] = $this->createArticleAndResource($site, 'failed-submit-article');
-        SiteCreditAccount::query()->create([
-            'site_id' => $site->id,
-            'balance' => '100.00',
-            'frozen_balance' => '0.00',
-            'total_recharged' => '100.00',
-            'total_consumed' => '0.00',
-        ]);
+        $this->grantAdminCredits($admin, $site, '100.00');
         Http::fake([
             '*/api/media/send' => Http::response([
                 'code' => 0,
@@ -1146,8 +1231,12 @@ class AdminMediaDistributionTest extends TestCase
 
         $submission = MediaSubmission::query()->where('article_id', $article->id)->firstOrFail();
         $this->assertSame('failed', $submission->status);
-        $this->assertSame('100.00', SiteCreditAccount::query()->where('site_id', $site->id)->value('balance'));
-        $this->assertDatabaseHas('site_credit_ledger', [
+        $this->assertSame('100.00', AdminCreditAccount::query()
+            ->where('admin_id', (int) $admin->id)
+            ->where('site_id', (int) $site->id)
+            ->value('balance'));
+        $this->assertDatabaseHas('admin_credit_ledger', [
+            'admin_id' => (int) $admin->id,
             'site_id' => $site->id,
             'submission_id' => $submission->id,
             'type' => 'refund',
@@ -1607,13 +1696,7 @@ class AdminMediaDistributionTest extends TestCase
         [$admin, $site] = $this->createAdminWithSite('media_bulk_submit_admin', 'admin');
         [$articleA, $resource] = $this->createArticleAndResource($site, 'bulk-submit-a');
         [$articleB] = $this->createArticleAndResource($site, 'bulk-submit-b');
-        SiteCreditAccount::query()->create([
-            'site_id' => $site->id,
-            'balance' => '200.00',
-            'frozen_balance' => '0.00',
-            'total_recharged' => '200.00',
-            'total_consumed' => '0.00',
-        ]);
+        $this->grantAdminCredits($admin, $site, '200.00');
         Http::fake([
             '*/api/media/send' => Http::response([
                 'code' => 1,
@@ -1632,7 +1715,10 @@ class AdminMediaDistributionTest extends TestCase
             ->assertRedirect(route('admin.media-distribution.submissions.index'));
 
         $this->assertSame(2, MediaSubmission::query()->where('media_resource_id', $resource->id)->count());
-        $this->assertSame('24.00', SiteCreditAccount::query()->where('site_id', $site->id)->value('balance'));
+        $this->assertSame('24.00', AdminCreditAccount::query()
+            ->where('admin_id', (int) $admin->id)
+            ->where('site_id', (int) $site->id)
+            ->value('balance'));
         $this->assertSame(2, Http::recorded(fn ($request): bool => str_contains($request->url(), '/api/media/send'))->count());
     }
 
@@ -1642,13 +1728,7 @@ class AdminMediaDistributionTest extends TestCase
         [$admin, $site] = $this->createAdminWithSite('media_bulk_matrix_admin', 'admin');
         [$articleA, $resourceA] = $this->createArticleAndResource($site, 'bulk-matrix-a');
         [$articleB, $resourceB] = $this->createArticleAndResource($site, 'bulk-matrix-b');
-        SiteCreditAccount::query()->create([
-            'site_id' => $site->id,
-            'balance' => '500.00',
-            'frozen_balance' => '0.00',
-            'total_recharged' => '500.00',
-            'total_consumed' => '0.00',
-        ]);
+        $this->grantAdminCredits($admin, $site, '500.00');
         Http::fake([
             '*/api/media/send' => Http::response([
                 'code' => 1,
@@ -1687,7 +1767,10 @@ class AdminMediaDistributionTest extends TestCase
         $this->assertSame(4, MediaSubmission::query()->count());
         $this->assertSame(2, MediaSubmission::query()->where('media_resource_id', $resourceA->id)->count());
         $this->assertSame(2, MediaSubmission::query()->where('media_resource_id', $resourceB->id)->count());
-        $this->assertSame('148.00', SiteCreditAccount::query()->where('site_id', $site->id)->value('balance'));
+        $this->assertSame('148.00', AdminCreditAccount::query()
+            ->where('admin_id', (int) $admin->id)
+            ->where('site_id', (int) $site->id)
+            ->value('balance'));
         $this->assertSame(4, Http::recorded(fn ($request): bool => str_contains($request->url(), '/api/media/send'))->count());
     }
 
@@ -1947,7 +2030,7 @@ class AdminMediaDistributionTest extends TestCase
     public function test_super_admin_can_export_media_submissions_and_credit_ledger_csv(): void
     {
         [$superAdmin] = $this->createAdminWithSite('media_export_root', 'super_admin');
-        [, $site] = $this->createAdminWithSite('media_export_site', 'admin');
+        [$admin, $site] = $this->createAdminWithSite('media_export_site', 'admin');
         [$article, $resource] = $this->createArticleAndResource($site, 'export-article');
         $submission = MediaSubmission::query()->create([
             'site_id' => $site->id,
@@ -1962,13 +2045,7 @@ class AdminMediaDistributionTest extends TestCase
             'points_amount' => '88.00',
             'status' => 'submitted',
         ]);
-        SiteCreditAccount::query()->create([
-            'site_id' => $site->id,
-            'balance' => '100.00',
-            'frozen_balance' => '0.00',
-            'total_recharged' => '100.00',
-            'total_consumed' => '0.00',
-        ]);
+        $this->grantAdminCredits($admin, $site, '100.00');
 
         $submissionsCsv = $this->actingAs($superAdmin, 'admin')
             ->get(route('admin.media-distribution.submissions.export'));
@@ -1998,13 +2075,7 @@ class AdminMediaDistributionTest extends TestCase
         [$admin, $site] = $this->createAdminWithSite('media_site_price_admin', 'admin');
         [, $otherSite] = $this->createAdminWithSite('media_site_price_other', 'admin');
         [$article, $resource] = $this->createArticleAndResource($site, 'site-price-article');
-        SiteCreditAccount::query()->create([
-            'site_id' => $site->id,
-            'balance' => '100.00',
-            'frozen_balance' => '0.00',
-            'total_recharged' => '100.00',
-            'total_consumed' => '0.00',
-        ]);
+        $this->grantAdminCredits($admin, $site, '100.00');
         Http::fake([
             '*/api/media/send' => Http::response([
                 'code' => 1,
@@ -2037,7 +2108,10 @@ class AdminMediaDistributionTest extends TestCase
         $submission = MediaSubmission::query()->where('article_id', $article->id)->firstOrFail();
         $this->assertSame('55.00', $submission->sale_price_snapshot);
         $this->assertSame('55.00', $submission->points_amount);
-        $this->assertSame('45.00', SiteCreditAccount::query()->where('site_id', $site->id)->value('balance'));
+        $this->assertSame('45.00', AdminCreditAccount::query()
+            ->where('admin_id', (int) $admin->id)
+            ->where('site_id', (int) $site->id)
+            ->value('balance'));
         $this->assertDatabaseMissing('media_resource_site_prices', [
             'site_id' => $otherSite->id,
             'media_resource_id' => $resource->id,
@@ -2049,15 +2123,17 @@ class AdminMediaDistributionTest extends TestCase
         $this->withoutMiddleware(ValidateCsrfToken::class);
         [$admin, $site] = $this->createAdminWithSite('media_refund_admin', 'admin');
         [$article, $resource] = $this->createArticleAndResource($site, 'refund-article');
-        SiteCreditAccount::query()->create([
-            'site_id' => $site->id,
+        AdminCreditAccount::query()->create([
+            'admin_id' => (int) $admin->id,
+            'site_id' => (int) $site->id,
             'balance' => '12.00',
             'frozen_balance' => '0.00',
-            'total_recharged' => '100.00',
+            'total_granted' => '100.00',
             'total_consumed' => '88.00',
         ]);
         $submission = MediaSubmission::query()->create([
             'site_id' => $site->id,
+            'owner_admin_id' => (int) $admin->id,
             'article_id' => $article->id,
             'media_resource_id' => $resource->id,
             'source_type' => $resource->source_type,
@@ -2068,6 +2144,7 @@ class AdminMediaDistributionTest extends TestCase
             'sale_price_snapshot' => '88.00',
             'points_amount' => '88.00',
             'status' => 'submitted',
+            'submitted_by_admin_id' => (int) $admin->id,
         ]);
         Http::fake([
             '*/api/media/cancel_order' => Http::response(['code' => 1, 'msg' => 'cancelled', 'data' => []]),
@@ -2085,8 +2162,11 @@ class AdminMediaDistributionTest extends TestCase
             ])
             ->assertRedirect(route('admin.media-distribution.submissions.show', ['submission' => $submission->id]));
 
-        $this->assertSame('100.00', SiteCreditAccount::query()->where('site_id', $site->id)->value('balance'));
-        $this->assertSame(1, SiteCreditLedger::query()->where('submission_id', $submission->id)->where('type', 'refund')->count());
+        $this->assertSame('100.00', AdminCreditAccount::query()
+            ->where('admin_id', (int) $admin->id)
+            ->where('site_id', (int) $site->id)
+            ->value('balance'));
+        $this->assertSame(1, AdminCreditLedger::query()->where('submission_id', $submission->id)->where('type', 'refund')->count());
 
         $submission->forceFill(['status' => 'submitted'])->save();
         $this->actingAs($admin, 'admin')
@@ -2094,8 +2174,11 @@ class AdminMediaDistributionTest extends TestCase
             ->post(route('admin.media-distribution.submissions.sync', ['submission' => $submission->id]))
             ->assertRedirect(route('admin.media-distribution.submissions.show', ['submission' => $submission->id]));
 
-        $this->assertSame('100.00', SiteCreditAccount::query()->where('site_id', $site->id)->value('balance'));
-        $this->assertSame(1, SiteCreditLedger::query()->where('submission_id', $submission->id)->where('type', 'refund')->count());
+        $this->assertSame('100.00', AdminCreditAccount::query()
+            ->where('admin_id', (int) $admin->id)
+            ->where('site_id', (int) $site->id)
+            ->value('balance'));
+        $this->assertSame(1, AdminCreditLedger::query()->where('submission_id', $submission->id)->where('type', 'refund')->count());
     }
 
     public function test_chaojimeijie_sync_status_and_appeal_use_agent_order_sn(): void
@@ -2116,15 +2199,17 @@ class AdminMediaDistributionTest extends TestCase
             'status' => 'active',
             'price_multiplier' => '1.00',
         ]);
-        SiteCreditAccount::query()->create([
-            'site_id' => $site->id,
+        AdminCreditAccount::query()->create([
+            'admin_id' => (int) $admin->id,
+            'site_id' => (int) $site->id,
             'balance' => '12.00',
             'frozen_balance' => '0.00',
-            'total_recharged' => '100.00',
+            'total_granted' => '100.00',
             'total_consumed' => '88.00',
         ]);
         $submission = MediaSubmission::query()->create([
             'site_id' => $site->id,
+            'owner_admin_id' => (int) $admin->id,
             'article_id' => $article->id,
             'media_resource_id' => $resource->id,
             'platform_id' => MediaPlatform::CEYING_MEDIA_2,
@@ -2138,6 +2223,7 @@ class AdminMediaDistributionTest extends TestCase
             'sale_price_snapshot' => '88.00',
             'points_amount' => '88.00',
             'status' => 'submitted',
+            'submitted_by_admin_id' => (int) $admin->id,
         ]);
 
         Http::fake([
@@ -2173,8 +2259,11 @@ class AdminMediaDistributionTest extends TestCase
 
         $submission->refresh();
         $this->assertSame('rejected', $submission->status);
-        $this->assertSame('100.00', SiteCreditAccount::query()->where('site_id', $site->id)->value('balance'));
-        $this->assertSame(1, SiteCreditLedger::query()->where('submission_id', $submission->id)->where('type', 'refund')->count());
+        $this->assertSame('100.00', AdminCreditAccount::query()
+            ->where('admin_id', (int) $admin->id)
+            ->where('site_id', (int) $site->id)
+            ->value('balance'));
+        $this->assertSame(1, AdminCreditLedger::query()->where('submission_id', $submission->id)->where('type', 'refund')->count());
 
         $submission->forceFill(['status' => 'rejected'])->save();
         $this->actingAs($admin, 'admin')
@@ -2328,6 +2417,18 @@ class AdminMediaDistributionTest extends TestCase
         ]);
 
         return [$article, $resource];
+    }
+
+    private function grantAdminCredits(Admin $admin, Site $site, string $amount): AdminCreditAccount
+    {
+        return AdminCreditAccount::query()->create([
+            'admin_id' => (int) $admin->id,
+            'site_id' => (int) $site->id,
+            'balance' => $amount,
+            'frozen_balance' => '0.00',
+            'total_granted' => $amount,
+            'total_consumed' => '0.00',
+        ]);
     }
 
     /**

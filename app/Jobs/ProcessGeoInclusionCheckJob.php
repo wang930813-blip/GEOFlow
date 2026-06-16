@@ -68,6 +68,7 @@ class ProcessGeoInclusionCheckJob implements ShouldQueue
                 ],
                 [
                     'site_id' => (int) ($run->site_id ?? $library->site_id ?? 0) ?: null,
+                    'owner_admin_id' => (int) ($run->owner_admin_id ?? $library->owner_admin_id ?? 0) ?: null,
                     'keyword_library_id' => (int) $library->id,
                     'keyword_id' => (int) $keyword->id,
                     'question' => $question,
@@ -91,6 +92,7 @@ class ProcessGeoInclusionCheckJob implements ShouldQueue
                 ],
                 [
                     'site_id' => (int) ($run->site_id ?? $library->site_id ?? 0) ?: null,
+                    'owner_admin_id' => (int) ($run->owner_admin_id ?? $library->owner_admin_id ?? 0) ?: null,
                     'keyword_library_id' => (int) $library->id,
                     'keyword_id' => (int) $keyword->id,
                     'question' => $question,

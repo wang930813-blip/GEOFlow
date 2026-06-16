@@ -15,6 +15,7 @@ use App\Models\TitleLibrary;
 use App\Models\UrlImportJob;
 use App\Models\UrlImportJobLog;
 use App\Jobs\ProcessUrlImportJob;
+use App\Models\PlatformPlan;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -375,6 +376,112 @@ class AdminMaterialsPagesTest extends TestCase
             'id' => (int) $job->id,
             'status' => 'queued',
             'current_step' => 'queued',
+        ]);
+    }
+
+    public function test_url_import_consumes_account_quota_and_sets_owner(): void
+    {
+        Http::fake([
+            'https://example.test/account-quota' => Http::response(
+                '<!doctype html><html><head><title>账号额度测试</title></head><body><main><h1>账号额度测试</h1><p>内容</p></main></body></html>',
+                200,
+                ['Content-Type' => 'text/html; charset=utf-8']
+            ),
+        ]);
+
+        $admin = Admin::query()->create([
+            'username' => 'url_import_account_quota_admin',
+            'password' => 'secret-123',
+            'email' => 'url-import-account-quota@example.com',
+            'display_name' => 'Url Import Account Quota Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $site = $this->createSiteForAdmin($admin, false);
+        $this->openTestingPlanForSite($site, $admin, [
+            PlatformPlan::RESOURCE_URL_IMPORTS => ['quota_value' => 3, 'quota_period' => 'cycle', 'unit' => 'times'],
+        ]);
+        $this->createReadyUrlImportAiModel('https://ai.test/v1', $site);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.url-import.store'), [
+                'url' => 'example.test/account-quota',
+                'project_name' => '账号额度测试',
+                'outputs' => ['knowledge'],
+            ])
+            ->assertRedirect();
+
+        $job = UrlImportJob::withoutGlobalScopes()->firstOrFail();
+        $this->assertSame((int) $admin->id, (int) $job->owner_admin_id);
+        $this->assertDatabaseHas('admin_resource_usages', [
+            'admin_id' => (int) $admin->id,
+            'site_id' => (int) $site->id,
+            'resource_key' => PlatformPlan::RESOURCE_URL_IMPORTS,
+            'used_amount' => 1,
+        ]);
+        $this->assertDatabaseMissing('site_resource_usages', [
+            'site_id' => (int) $site->id,
+            'resource_key' => PlatformPlan::RESOURCE_URL_IMPORTS,
+        ]);
+    }
+
+    public function test_url_import_commit_resources_inherit_job_owner(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'url_import_commit_owner_admin',
+            'password' => 'secret-123',
+            'email' => 'url-import-commit-owner@example.com',
+            'display_name' => 'Url Import Commit Owner Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $site = $this->createSiteForAdmin($admin, true);
+        $job = UrlImportJob::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'url' => 'https://example.test/commit-owner',
+            'normalized_url' => 'https://example.test/commit-owner',
+            'source_domain' => 'example.test',
+            'page_title' => 'Commit Owner',
+            'status' => 'completed',
+            'current_step' => 'preview',
+            'progress_percent' => 100,
+            'options_json' => '{}',
+            'result_json' => json_encode([
+                'page' => ['title' => 'Commit Owner', 'text' => 'Commit owner content'],
+                'analysis' => [
+                    'library_name' => 'Commit Owner',
+                    'summary' => 'Commit owner summary',
+                    'knowledge_markdown' => '# Commit Owner',
+                    'keywords' => ['owner keyword'],
+                    'titles' => ['Owner title'],
+                ],
+                'import' => ['status' => 'preview', 'summary' => null],
+            ], JSON_UNESCAPED_UNICODE),
+            'error_message' => '',
+            'created_by' => $admin->username,
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.url-import.commit', ['jobId' => (int) $job->id]))
+            ->assertRedirect(route('admin.url-import.show', ['jobId' => (int) $job->id]));
+
+        $this->assertDatabaseHas('knowledge_bases', [
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'Commit Owner 知识库',
+        ]);
+        $this->assertDatabaseHas('keyword_libraries', [
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'Commit Owner 关键词库',
+        ]);
+        $this->assertDatabaseHas('title_libraries', [
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'Commit Owner 标题库',
         ]);
     }
 

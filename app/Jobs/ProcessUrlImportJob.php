@@ -61,6 +61,8 @@ class ProcessUrlImportJob implements ShouldQueue
 
         UrlImportJobLog::query()->create([
             'job_id' => (int) $job->id,
+            'site_id' => (int) ($job->site_id ?? 0) ?: null,
+            'owner_admin_id' => (int) ($job->owner_admin_id ?? 0) ?: null,
             'step' => (string) ($job->current_step ?: 'queued'),
             'level' => 'error',
             'message' => __('admin.url_import.log.failed', ['message' => $message]),

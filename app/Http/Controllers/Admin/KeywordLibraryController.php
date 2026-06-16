@@ -12,7 +12,7 @@ use App\Models\Keyword;
 use App\Models\KeywordLibrary;
 use App\Models\KeywordQuestionVariant;
 use App\Models\PlatformPlan;
-use App\Services\Billing\ResourceQuotaService;
+use App\Services\Billing\AdminResourceQuotaService;
 use App\Services\GeoFlow\GeoKeywordSuggestionService;
 use App\Services\GeoFlow\GeoQuestionVariantService;
 use App\Support\AdminWeb;
@@ -38,7 +38,7 @@ class KeywordLibraryController extends Controller
     public function __construct(
         private readonly GeoKeywordSuggestionService $keywordSuggestionService,
         private readonly GeoQuestionVariantService $questionVariantService,
-        private readonly ResourceQuotaService $quotaService,
+        private readonly AdminResourceQuotaService $quotaService,
     ) {}
 
     /**
@@ -185,6 +185,8 @@ class KeywordLibraryController extends Controller
         }
 
         Keyword::query()->create([
+            'site_id' => (int) ($library->site_id ?? 0) ?: null,
+            'owner_admin_id' => $this->ownerAdminIdForLibrary($library, auth('admin')->user()),
             'library_id' => $libraryId,
             'keyword' => $keyword,
             'used_count' => 0,
@@ -217,7 +219,7 @@ class KeywordLibraryController extends Controller
         $insertedCount = 0;
         $duplicateCount = 0;
 
-        DB::transaction(function () use ($keywords, $libraryId, &$insertedCount, &$duplicateCount): void {
+        DB::transaction(function () use ($keywords, $library, $libraryId, &$insertedCount, &$duplicateCount): void {
             foreach ($keywords as $keyword) {
                 $exists = Keyword::query()
                     ->where('library_id', $libraryId)
@@ -231,6 +233,8 @@ class KeywordLibraryController extends Controller
                 }
 
                 Keyword::query()->create([
+                    'site_id' => (int) ($library->site_id ?? 0) ?: null,
+                    'owner_admin_id' => $this->ownerAdminIdForLibrary($library, auth('admin')->user()),
                     'library_id' => $libraryId,
                     'keyword' => $keyword,
                     'used_count' => 0,
@@ -326,6 +330,9 @@ class KeywordLibraryController extends Controller
         KeywordQuestionVariant::query()->firstOrCreate([
             'keyword_id' => (int) $keyword->id,
             'question' => $question,
+        ], [
+            'site_id' => (int) ($keyword->site_id ?? 0) ?: null,
+            'owner_admin_id' => (int) ($keyword->owner_admin_id ?? 0) ?: $this->ownerAdminIdForLibrary($keyword->library, auth('admin')->user()),
         ]);
 
         return redirect()
@@ -398,6 +405,9 @@ class KeywordLibraryController extends Controller
                 KeywordQuestionVariant::query()->firstOrCreate([
                     'keyword_id' => (int) $keyword->id,
                     'question' => $question,
+                ], [
+                    'site_id' => (int) ($keyword->site_id ?? $library->site_id ?? 0) ?: null,
+                    'owner_admin_id' => (int) ($keyword->owner_admin_id ?? $library->owner_admin_id ?? 0) ?: $this->currentAdminId(auth('admin')->user()),
                 ]);
             }
             $this->consumeQuotaForLibrary($library, PlatformPlan::RESOURCE_KEYWORD_QUESTION_GENERATIONS, 1, '关键词问题生成消耗', Keyword::class, (int) $keyword->id);
@@ -440,6 +450,8 @@ class KeywordLibraryController extends Controller
             return back()->withErrors($exception->getMessage());
         }
         $run = GeoInclusionCheckRun::query()->create([
+            'site_id' => (int) ($library->site_id ?? 0) ?: null,
+            'owner_admin_id' => (int) ($library->owner_admin_id ?? 0) ?: $this->currentAdminId(auth('admin')->user()),
             'keyword_library_id' => (int) $library->id,
             'platforms' => $platforms,
             'status' => 'pending',
@@ -474,7 +486,7 @@ class KeywordLibraryController extends Controller
 
         $siteId = (int) ($library->site_id ?? 0);
         if ($siteId > 0) {
-            $this->quotaService->assertCanUse($siteId, $resourceKey, $amount);
+            $this->quotaService->assertCanUse($this->currentAdminId($admin), $siteId, $resourceKey, $amount, $admin instanceof Admin ? $admin : null);
         }
     }
 
@@ -490,7 +502,7 @@ class KeywordLibraryController extends Controller
             return;
         }
 
-        $this->quotaService->consume($siteId, $resourceKey, $amount, [
+        $this->quotaService->consume($this->currentAdminId($admin), $siteId, $resourceKey, $amount, [
             'actor_admin_id' => $admin instanceof Admin ? (int) $admin->id : null,
             'subject_type' => $subjectType,
             'subject_id' => $subjectId,
@@ -609,7 +621,7 @@ class KeywordLibraryController extends Controller
         $importedCount = 0;
         $duplicateCount = 0;
 
-        DB::transaction(function () use ($keywords, $libraryId, &$importedCount, &$duplicateCount): void {
+        DB::transaction(function () use ($keywords, $library, $libraryId, &$importedCount, &$duplicateCount): void {
             foreach ($keywords as $keyword) {
                 $exists = Keyword::query()
                     ->where('library_id', $libraryId)
@@ -622,6 +634,8 @@ class KeywordLibraryController extends Controller
                 }
 
                 Keyword::query()->create([
+                    'site_id' => (int) ($library->site_id ?? 0) ?: null,
+                    'owner_admin_id' => $this->ownerAdminIdForLibrary($library, auth('admin')->user()),
                     'library_id' => $libraryId,
                     'keyword' => $keyword,
                     'used_count' => 0,
@@ -1056,5 +1070,24 @@ class KeywordLibraryController extends Controller
             'channel' => 'admin.keyword-libraries.'.$libraryId,
             'snapshot_url' => route('admin.keyword-libraries.inclusion-snapshot', ['libraryId' => $libraryId]),
         ];
+    }
+
+    private function currentAdminId(mixed $admin): int
+    {
+        if (! $admin instanceof Admin || (int) $admin->id <= 0) {
+            abort(403);
+        }
+
+        return (int) $admin->id;
+    }
+
+    private function ownerAdminIdForLibrary(KeywordLibrary $library, mixed $fallbackAdmin): ?int
+    {
+        $ownerAdminId = (int) ($library->owner_admin_id ?? 0);
+        if ($ownerAdminId > 0) {
+            return $ownerAdminId;
+        }
+
+        return $fallbackAdmin instanceof Admin && (int) $fallbackAdmin->id > 0 ? (int) $fallbackAdmin->id : null;
     }
 }

@@ -6,13 +6,13 @@ use App\Models\Admin;
 use App\Models\BrandDiagnosisRun;
 use App\Models\BrandDiagnosisUsageLimit;
 use App\Models\PlatformPlan;
-use App\Services\Billing\ResourceQuotaService;
+use App\Services\Billing\AdminResourceQuotaService;
 use Illuminate\Support\Facades\DB;
 
 class BrandDiagnosisUsagePolicy
 {
     public function __construct(
-        private readonly ResourceQuotaService $quotaService
+        private readonly AdminResourceQuotaService $quotaService
     ) {}
 
     public function reserve(Admin $admin, int $siteId): BrandDiagnosisUsageDecision
@@ -25,7 +25,7 @@ class BrandDiagnosisUsagePolicy
             );
         }
 
-        $this->quotaService->consume($siteId, PlatformPlan::RESOURCE_BRAND_DIAGNOSES, 1, [
+        $this->quotaService->consume((int) $admin->id, $siteId, PlatformPlan::RESOURCE_BRAND_DIAGNOSES, 1, [
             'actor_admin_id' => (int) $admin->id,
             'idempotency_key' => 'brand-diagnosis:'.(int) $admin->id.':'.$siteId.':'.now()->timestamp.':'.str()->random(8),
             'remark' => '品牌诊断确认消耗',

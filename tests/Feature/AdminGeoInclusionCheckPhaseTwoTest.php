@@ -10,6 +10,7 @@ use App\Models\GeoInclusionCheckRun;
 use App\Models\Keyword;
 use App\Models\KeywordLibrary;
 use App\Models\KeywordQuestionVariant;
+use App\Models\PlatformPlan;
 use App\Models\Site;
 use App\Services\GeoFlow\AiSearchCheckResponse;
 use App\Services\GeoFlow\AiSearchPlatformChecker;
@@ -55,6 +56,39 @@ class AdminGeoInclusionCheckPhaseTwoTest extends TestCase
         $this->assertSame(3, (int) $run->total_checks);
 
         Queue::assertPushed(ProcessGeoInclusionCheckJob::class, 3);
+    }
+
+    public function test_inclusion_check_consumes_account_quota_and_sets_owner(): void
+    {
+        Queue::fake();
+
+        $admin = $this->createAdmin('inclusion_account_quota_admin');
+        $site = $this->createSiteForAdmin($admin);
+        $this->openTestingPlanForSite($site, $admin, [
+            PlatformPlan::RESOURCE_INCLUSION_CHECKS => ['quota_value' => 3, 'quota_period' => 'cycle', 'unit' => 'times'],
+        ]);
+        $library = $this->createLibraryWithQuestion((int) $site->id);
+        $library->forceFill(['owner_admin_id' => (int) $admin->id])->save();
+        $library->keywords()->update(['owner_admin_id' => (int) $admin->id]);
+        KeywordQuestionVariant::query()
+            ->whereIn('keyword_id', $library->keywords()->select('id'))
+            ->update(['owner_admin_id' => (int) $admin->id]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.keyword-libraries.inclusion-checks.store', ['libraryId' => (int) $library->id]), [
+                'platforms' => ['doubao'],
+            ])
+            ->assertRedirect(route('admin.keyword-libraries.detail', ['libraryId' => (int) $library->id]));
+
+        $run = GeoInclusionCheckRun::withoutGlobalScopes()->firstOrFail();
+        $this->assertSame((int) $admin->id, (int) $run->owner_admin_id);
+        $this->assertDatabaseHas('admin_resource_usages', [
+            'admin_id' => (int) $admin->id,
+            'site_id' => (int) $site->id,
+            'resource_key' => PlatformPlan::RESOURCE_INCLUSION_CHECKS,
+            'used_amount' => 1,
+        ]);
     }
 
     public function test_inclusion_check_job_persists_platform_result(): void
@@ -111,6 +145,57 @@ class AdminGeoInclusionCheckPhaseTwoTest extends TestCase
         $this->assertSame(0, (int) $run->failed_checks);
 
         $this->assertSame(1, GeoInclusionCheckResult::query()->count());
+    }
+
+    public function test_inclusion_check_job_result_inherits_run_owner(): void
+    {
+        $owner = $this->createAdmin('inclusion_result_owner_admin');
+        $site = $this->createSiteForAdmin($owner);
+        $library = $this->createLibraryWithQuestion((int) $site->id);
+        $library->forceFill(['owner_admin_id' => (int) $owner->id])->save();
+        $keyword = $library->keywords()->firstOrFail();
+        $keyword->forceFill(['owner_admin_id' => (int) $owner->id])->save();
+        $question = $keyword->questionVariants()->firstOrFail();
+        $question->forceFill(['owner_admin_id' => (int) $owner->id])->save();
+        $run = GeoInclusionCheckRun::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $owner->id,
+            'keyword_library_id' => (int) $library->id,
+            'platforms' => ['doubao'],
+            'status' => 'pending',
+            'total_checks' => 1,
+            'completed_checks' => 0,
+            'failed_checks' => 0,
+        ]);
+
+        $this->app->bind(AiSearchPlatformChecker::class, static fn () => new class implements AiSearchPlatformChecker {
+            public function check(string $platform, string $question, KeywordLibrary $library, Keyword $keyword): AiSearchCheckResponse
+            {
+                return new AiSearchCheckResponse(
+                    platform: $platform,
+                    question: $question,
+                    answer: 'Acme is mentioned.',
+                    keywordHit: true,
+                    brandHit: true,
+                    status: 'success',
+                    errorMessage: null,
+                    meta: []
+                );
+            }
+        });
+
+        (new ProcessGeoInclusionCheckJob(
+            runId: (int) $run->id,
+            keywordId: (int) $keyword->id,
+            questionVariantId: (int) $question->id,
+            platform: 'doubao'
+        ))->handle($this->app->make(AiSearchPlatformChecker::class));
+
+        $this->assertDatabaseHas('geo_inclusion_check_results', [
+            'run_id' => (int) $run->id,
+            'owner_admin_id' => (int) $owner->id,
+            'platform' => 'doubao',
+        ]);
     }
 
     public function test_admin_can_pause_and_delete_inclusion_check_run(): void

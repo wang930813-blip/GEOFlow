@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Jobs\GenerateBrandDiagnosisQuestionsJob;
 use App\Jobs\ProcessBrandDiagnosisJob;
 use App\Models\Admin;
+use App\Models\AdminResourceUsage;
 use App\Models\BrandDiagnosisBrandMention;
 use App\Models\BrandDiagnosisResult;
 use App\Models\BrandDiagnosisRun;
@@ -12,7 +13,6 @@ use App\Models\BrandDiagnosisSource;
 use App\Models\BrandDiagnosisUsageLimit;
 use App\Models\PlatformPlan;
 use App\Models\Site;
-use App\Models\SiteResourceUsage;
 use App\Services\BrandDiagnosis\BrandDiagnosisMentionBackfillService;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -285,7 +285,8 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         $this->assertSame(now()->toDateString(), $run->usage_date?->toDateString());
         $this->assertSame('企业AI搜索优化服务怎么选？', $questionOne->refresh()->question);
         $this->assertSame(0, BrandDiagnosisUsageLimit::query()->count());
-        $this->assertSame(1, SiteResourceUsage::query()
+        $this->assertSame(1, AdminResourceUsage::query()
+            ->where('admin_id', (int) $admin->id)
             ->where('site_id', (int) $site->id)
             ->where('resource_key', PlatformPlan::RESOURCE_BRAND_DIAGNOSES)
             ->value('used_amount'));
@@ -293,6 +294,108 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         Queue::assertPushedOn('geoflow', ProcessBrandDiagnosisJob::class, function (ProcessBrandDiagnosisJob $job) use ($run): bool {
             return $job->runId === (int) $run->id;
         });
+    }
+
+    public function test_brand_diagnosis_plan_quota_is_independent_per_agent_site_user(): void
+    {
+        Queue::fake();
+
+        $agent = Admin::query()->create([
+            'username' => 'brand_diag_agent_owner',
+            'password' => 'secret-123',
+            'email' => 'brand-diag-agent-owner@example.com',
+            'display_name' => 'Brand Diagnosis Agent',
+            'role' => 'agent_admin',
+            'status' => 'active',
+        ]);
+        $userOne = Admin::query()->create([
+            'username' => 'brand_diag_agent_user_one',
+            'password' => 'secret-123',
+            'email' => 'brand-diag-agent-user-one@example.com',
+            'display_name' => 'Brand Diagnosis User One',
+            'role' => 'site_user',
+            'status' => 'active',
+            'created_by' => (int) $agent->id,
+        ]);
+        $userTwo = Admin::query()->create([
+            'username' => 'brand_diag_agent_user_two',
+            'password' => 'secret-123',
+            'email' => 'brand-diag-agent-user-two@example.com',
+            'display_name' => 'Brand Diagnosis User Two',
+            'role' => 'site_user',
+            'status' => 'active',
+            'created_by' => (int) $agent->id,
+        ]);
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $agent->id,
+            'name' => 'Brand Diagnosis Agent Site',
+            'status' => 'active',
+            'customer_mode' => 'agent',
+            'agent_admin_id' => (int) $agent->id,
+        ]);
+        $site->members()->attach((int) $agent->id, ['role' => 'owner']);
+        $site->members()->attach((int) $userOne->id, ['role' => 'member']);
+        $site->members()->attach((int) $userTwo->id, ['role' => 'member']);
+
+        $plan = PlatformPlan::query()->create([
+            'name' => 'Brand Diagnosis Agent Plan',
+            'code' => 'brand-diagnosis-agent-plan-'.str()->random(6),
+            'audience' => 'agent',
+            'duration_days' => 30,
+            'status' => 'active',
+            'sort_order' => 0,
+        ]);
+        $plan->entitlements()->create([
+            'resource_key' => PlatformPlan::RESOURCE_BRAND_DIAGNOSES,
+            'enabled' => true,
+            'quota_value' => 1,
+            'quota_period' => 'cycle',
+            'unit' => 'times',
+            'meta' => [],
+        ]);
+
+        $subscriptionService = app(\App\Services\Billing\AdminPlanSubscriptionService::class);
+        $subscriptionService->openOwner($agent, $site, $plan, 'agent_owner', $agent, now(), now()->addDays(30), false);
+        $subscriptionService->inheritForAgentUser($agent, $userOne, $site, $agent);
+        $subscriptionService->inheritForAgentUser($agent, $userTwo, $site, $agent);
+
+        $runOne = $this->createQuestionsReadyRun($site, $userOne, 'User One Brand');
+        $runTwo = $this->createQuestionsReadyRun($site, $userTwo, 'User Two Brand');
+
+        $this->actingAs($userOne, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.brand-diagnosis.confirm', ['run' => (int) $runOne->id]), [
+                'questions' => [
+                    (int) $runOne->questions()->value('id') => '用户一品牌怎么做 AI 搜索优化？',
+                ],
+            ])
+            ->assertRedirect(route('admin.brand-diagnosis.index'));
+
+        $this->actingAs($userTwo, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.brand-diagnosis.confirm', ['run' => (int) $runTwo->id]), [
+                'questions' => [
+                    (int) $runTwo->questions()->value('id') => '用户二品牌怎么做 AI 搜索优化？',
+                ],
+            ])
+            ->assertRedirect(route('admin.brand-diagnosis.index'));
+
+        $this->assertDatabaseHas('admin_resource_usages', [
+            'admin_id' => (int) $userOne->id,
+            'site_id' => (int) $site->id,
+            'resource_key' => PlatformPlan::RESOURCE_BRAND_DIAGNOSES,
+            'used_amount' => 1,
+        ]);
+        $this->assertDatabaseHas('admin_resource_usages', [
+            'admin_id' => (int) $userTwo->id,
+            'site_id' => (int) $site->id,
+            'resource_key' => PlatformPlan::RESOURCE_BRAND_DIAGNOSES,
+            'used_amount' => 1,
+        ]);
+        $this->assertSame(0, \App\Models\SiteResourceUsage::query()
+            ->where('site_id', (int) $site->id)
+            ->where('resource_key', PlatformPlan::RESOURCE_BRAND_DIAGNOSES)
+            ->count());
     }
 
     public function test_confirming_completed_record_creates_new_diagnosis_run_and_counts_usage(): void
@@ -2153,6 +2256,33 @@ JSON,
         $site->members()->attach((int) $admin->id, ['role' => 'owner']);
 
         return [$admin, $site];
+    }
+
+    private function createQuestionsReadyRun(Site $site, Admin $admin, string $brandName): BrandDiagnosisRun
+    {
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'owner_admin_id' => (int) $admin->id,
+            'brand_name' => $brandName,
+            'platforms' => ['doubao'],
+            'status' => 'questions_ready',
+            'total_questions' => 1,
+            'completed_questions' => 0,
+            'failed_questions' => 0,
+            'billing_mode' => 'pending_confirmation',
+            'usage_date' => null,
+        ]);
+        $run->questions()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'question' => $brandName.' 怎么做 AI 搜索优化？',
+            'question_type' => '选择',
+            'sort_order' => 1,
+            'status' => 'pending',
+        ]);
+
+        return $run;
     }
 
     /**

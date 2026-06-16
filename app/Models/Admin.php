@@ -11,6 +11,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Laravel\Sanctum\HasApiTokens;
 
@@ -108,5 +109,15 @@ class Admin extends Authenticatable
     public function articleReviews(): HasMany
     {
         return $this->hasMany(ArticleReview::class, 'admin_id');
+    }
+
+    public function accountPlanSubscriptions(): HasMany
+    {
+        return $this->hasMany(AdminPlanSubscription::class, 'admin_id');
+    }
+
+    public function creditAccount(): HasOne
+    {
+        return $this->hasOne(AdminCreditAccount::class, 'admin_id');
     }
 }

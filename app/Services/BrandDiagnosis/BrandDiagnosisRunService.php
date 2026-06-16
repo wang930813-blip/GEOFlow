@@ -37,6 +37,7 @@ class BrandDiagnosisRunService
         $run = DB::transaction(function () use ($admin, $brandName, $platforms, $siteId): BrandDiagnosisRun {
             return BrandDiagnosisRun::query()->create([
                 'site_id' => $siteId,
+                'owner_admin_id' => (int) $admin->id,
                 'admin_id' => (int) $admin->id,
                 'brand_name' => $brandName,
                 'platforms' => $platforms,
@@ -118,6 +119,7 @@ class BrandDiagnosisRunService
 
             $newRun = BrandDiagnosisRun::query()->create([
                 'site_id' => (int) $lockedRun->site_id,
+                'owner_admin_id' => (int) ($lockedRun->owner_admin_id ?: $admin->id),
                 'admin_id' => (int) $admin->id,
                 'brand_name' => (string) $lockedRun->brand_name,
                 'platforms' => (array) $lockedRun->platforms,
@@ -222,6 +224,7 @@ class BrandDiagnosisRunService
         foreach ($questions->values() as $index => $question) {
             $run->questions()->create([
                 'site_id' => (int) $run->site_id,
+                'owner_admin_id' => (int) ($run->owner_admin_id ?? 0) ?: null,
                 'question' => (string) $question['question'],
                 'question_type' => (string) $question['type'],
                 'sort_order' => $index + 1,
