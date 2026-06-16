@@ -16,6 +16,7 @@ use App\Models\Title;
 use App\Models\TitleLibrary;
 use App\Support\AdminWeb;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
 /**
@@ -66,6 +67,107 @@ class AdminTasksPageTest extends TestCase
             ->get(route('admin.tasks.create'))
             ->assertOk()
             ->assertSee(__('admin.task_create.page_heading'));
+    }
+
+    public function test_task_create_page_shows_scheduled_publish_controls(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'tasks_admin_schedule_controls',
+            'password' => 'secret-123',
+            'email' => 'tasks-admin-schedule-controls@example.com',
+            'display_name' => 'Tasks Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'Schedule Controls Site',
+            'status' => 'active',
+        ]);
+        $site->members()->attach((int) $admin->id, ['role' => 'owner']);
+        Category::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Schedule Controls Category',
+            'slug' => 'schedule-controls-category',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.tasks.create'))
+            ->assertOk()
+            ->assertSee(__('admin.task_create.field.scheduled_publish_enabled'))
+            ->assertSee(__('admin.task_create.field.scheduled_publish_at'))
+            ->assertSee('name="scheduled_publish_enabled"', false)
+            ->assertSee('name="scheduled_publish_at"', false);
+    }
+
+    public function test_task_creation_uses_scheduled_first_publish_time_for_local_only_scope(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-06-16 09:00:00'));
+
+        $admin = Admin::query()->create([
+            'username' => 'tasks_admin_store_schedule',
+            'password' => 'secret-123',
+            'email' => 'tasks-admin-store-schedule@example.com',
+            'display_name' => 'Tasks Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        [$site, $fixtures] = $this->createTaskFormFixtures($admin);
+        $scheduledAt = Carbon::parse('2026-06-16 18:30:00');
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.tasks.store'), array_merge($fixtures, [
+                'task_name' => 'Local Scheduled Publish Task',
+                'status' => 'paused',
+                'publish_scope' => 'local_only',
+                'publish_interval' => 30,
+                'scheduled_publish_enabled' => '1',
+                'scheduled_publish_at' => $scheduledAt->format('Y-m-d\TH:i'),
+            ]))
+            ->assertRedirect(route('admin.tasks.index'));
+
+        $task = Task::query()->where('name', 'Local Scheduled Publish Task')->firstOrFail();
+        $this->assertSame('local_only', (string) $task->publish_scope);
+        $this->assertTrue($task->next_publish_at->equalTo($scheduledAt));
+
+        Carbon::setTestNow();
+    }
+
+    public function test_task_creation_ignores_scheduled_first_publish_time_for_non_local_scope(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-06-16 09:00:00'));
+
+        $admin = Admin::query()->create([
+            'username' => 'tasks_admin_ignore_schedule',
+            'password' => 'secret-123',
+            'email' => 'tasks-admin-ignore-schedule@example.com',
+            'display_name' => 'Tasks Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        [$site, $fixtures] = $this->createTaskFormFixtures($admin);
+        $scheduledAt = Carbon::parse('2026-06-20 18:30:00');
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.tasks.store'), array_merge($fixtures, [
+                'task_name' => 'Non Local Scheduled Publish Task',
+                'status' => 'paused',
+                'publish_scope' => 'local_and_distribution',
+                'publish_interval' => 30,
+                'scheduled_publish_enabled' => '1',
+                'scheduled_publish_at' => $scheduledAt->format('Y-m-d\TH:i'),
+            ]))
+            ->assertRedirect(route('admin.tasks.index'));
+
+        $task = Task::query()->where('name', 'Non Local Scheduled Publish Task')->firstOrFail();
+        $this->assertSame('local_and_distribution', (string) $task->publish_scope);
+        $this->assertTrue($task->next_publish_at->equalTo(Carbon::parse('2026-06-16 09:30:00')));
+        $this->assertFalse($task->next_publish_at->equalTo($scheduledAt));
+
+        Carbon::setTestNow();
     }
 
     public function test_task_create_page_prefills_title_library_from_query_string(): void
@@ -495,5 +597,57 @@ class AdminTasksPageTest extends TestCase
             ->assertSessionHas('message', __('admin.tasks.message.delete_success'));
 
         $this->assertDatabaseMissing('tasks', ['id' => $task->id]);
+    }
+
+    /**
+     * @return array{0:Site,1:array<string,mixed>}
+     */
+    private function createTaskFormFixtures(Admin $admin): array
+    {
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'Scheduled Publish Site',
+            'status' => 'active',
+        ]);
+        $site->members()->attach((int) $admin->id, ['role' => 'owner']);
+        $titleLibrary = TitleLibrary::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Scheduled Publish Title Library',
+            'description' => 'desc',
+            'title_count' => 1,
+            'generation_type' => 'manual',
+            'generation_rounds' => 1,
+            'is_ai_generated' => 0,
+        ]);
+        $prompt = Prompt::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Scheduled Publish Prompt',
+            'type' => 'content',
+            'content' => 'Write {{title}}',
+        ]);
+        $aiModel = AiModel::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Scheduled Publish Model',
+            'model_id' => 'scheduled-model',
+            'model_type' => 'chat',
+            'api_url' => 'https://ai.example.test',
+            'api_key' => 'plain-key',
+            'status' => 'active',
+        ]);
+        Category::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Scheduled Publish Category',
+            'slug' => 'scheduled-publish-category',
+        ]);
+
+        return [$site, [
+            'title_library_id' => (int) $titleLibrary->id,
+            'prompt_id' => (int) $prompt->id,
+            'ai_model_id' => (int) $aiModel->id,
+            'article_limit' => 3,
+            'draft_limit' => 2,
+            'category_mode' => 'smart',
+            'model_selection_mode' => 'fixed',
+        ]];
     }
 }

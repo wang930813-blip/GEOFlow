@@ -5,8 +5,10 @@ namespace Tests\Feature;
 use App\Models\AiModel;
 use App\Models\Admin;
 use App\Models\Article;
+use App\Models\ArticleDistribution;
 use App\Models\Author;
 use App\Models\Category;
+use App\Models\DistributionChannel;
 use App\Models\PlatformPlan;
 use App\Models\Prompt;
 use App\Models\Site;
@@ -17,7 +19,9 @@ use App\Services\GeoFlow\WorkerExecutionService;
 use App\Support\CurrentSite;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use ReflectionMethod;
 use Tests\TestCase;
 
@@ -486,6 +490,109 @@ class WorkerExecutionSiteIsolationTest extends TestCase
         $article = Article::withoutGlobalScope('current_site')->findOrFail((int) $result['article_id']);
         $this->assertSame((int) $site->id, (int) $article->site_id);
         $this->assertSame((int) $siteCategory->id, (int) $article->category_id);
+    }
+
+    public function test_worker_does_not_publish_local_only_draft_before_scheduled_first_publish_time(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-06-16 10:00:00'));
+
+        $task = Task::query()->create([
+            'name' => 'Future local publish task',
+            'status' => 'active',
+            'schedule_enabled' => 1,
+            'publish_scope' => 'local_only',
+            'publish_interval' => 1800,
+            'draft_limit' => 1,
+            'article_limit' => 3,
+            'next_publish_at' => Carbon::parse('2026-06-16 10:30:00'),
+        ]);
+        $category = Category::query()->create([
+            'name' => 'Future Local Category',
+            'slug' => 'future-local-category',
+        ]);
+        $author = Author::query()->create([
+            'name' => 'Future Local Author',
+        ]);
+        $article = Article::query()->create([
+            'title' => 'Future Local Draft',
+            'slug' => 'future-local-draft',
+            'excerpt' => 'excerpt',
+            'content' => 'content',
+            'category_id' => (int) $category->id,
+            'author_id' => (int) $author->id,
+            'task_id' => (int) $task->id,
+            'status' => 'draft',
+            'review_status' => 'approved',
+            'published_at' => null,
+        ]);
+
+        app(WorkerExecutionService::class)->executeTask((int) $task->id);
+
+        $article->refresh();
+        $task->refresh();
+        $this->assertSame('draft', (string) $article->status);
+        $this->assertNull($article->published_at);
+        $this->assertSame(0, (int) $task->published_count);
+        $this->assertTrue($task->next_publish_at->equalTo(Carbon::parse('2026-06-16 10:30:00')));
+
+        Carbon::setTestNow();
+    }
+
+    public function test_worker_publishes_due_local_only_draft_and_does_not_create_distribution_record(): void
+    {
+        Queue::fake();
+        Carbon::setTestNow(Carbon::parse('2026-06-16 10:30:00'));
+
+        $channel = DistributionChannel::query()->create([
+            'name' => 'Remote Channel',
+            'domain' => 'remote.example.com',
+            'endpoint_url' => 'https://remote.example.com/geoflow',
+            'status' => 'active',
+        ]);
+        $task = Task::query()->create([
+            'name' => 'Due local publish task',
+            'status' => 'active',
+            'schedule_enabled' => 1,
+            'publish_scope' => 'local_only',
+            'publish_interval' => 1800,
+            'draft_limit' => 5,
+            'article_limit' => 3,
+            'next_publish_at' => Carbon::parse('2026-06-16 10:30:00'),
+        ]);
+        $task->distributionChannels()->sync([(int) $channel->id]);
+        $category = Category::query()->create([
+            'name' => 'Due Local Category',
+            'slug' => 'due-local-category',
+        ]);
+        $author = Author::query()->create([
+            'name' => 'Due Local Author',
+        ]);
+        $article = Article::query()->create([
+            'title' => 'Due Local Draft',
+            'slug' => 'due-local-draft',
+            'excerpt' => 'excerpt',
+            'content' => 'content',
+            'category_id' => (int) $category->id,
+            'author_id' => (int) $author->id,
+            'task_id' => (int) $task->id,
+            'status' => 'draft',
+            'review_status' => 'approved',
+            'published_at' => null,
+        ]);
+
+        $result = app(WorkerExecutionService::class)->executeTask((int) $task->id);
+
+        $article->refresh();
+        $task->refresh();
+        $this->assertSame((int) $article->id, (int) $result['article_id']);
+        $this->assertSame('published', (string) $article->status);
+        $this->assertSame('approved', (string) $article->review_status);
+        $this->assertTrue($article->published_at->equalTo(Carbon::parse('2026-06-16 10:30:00')));
+        $this->assertSame(1, (int) $task->published_count);
+        $this->assertTrue($task->next_publish_at->equalTo(Carbon::parse('2026-06-16 11:00:00')));
+        $this->assertSame(0, ArticleDistribution::query()->where('article_id', (int) $article->id)->count());
+
+        Carbon::setTestNow();
     }
 
     /**

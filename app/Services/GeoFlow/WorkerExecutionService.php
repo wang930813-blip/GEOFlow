@@ -246,6 +246,9 @@ class WorkerExecutionService
             $publishScope = (string) ($freshTask->publish_scope ?? 'local_and_distribution');
             $targetStatus = $publishScope === 'distribution_only' ? 'private' : 'published';
             $workflow = ArticleWorkflow::normalizeState($targetStatus, (string) ($article->review_status ?: 'approved'));
+            if ($workflow['status'] === 'published') {
+                $workflow['published_at'] = now()->toDateTimeString();
+            }
             Article::query()->whereKey((int) $article->id)->update([
                 'status' => $workflow['status'],
                 'review_status' => $workflow['review_status'],

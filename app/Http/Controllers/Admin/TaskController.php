@@ -20,6 +20,8 @@ use App\Support\AdminWeb;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use Throwable;
 
@@ -222,6 +224,9 @@ class TaskController extends Controller
                 'auto_keywords' => (int) ($task['auto_keywords'] ?? 1),
                 'auto_description' => (int) ($task['auto_description'] ?? 1),
                 'publish_scope' => (string) ($task['publish_scope'] ?? 'local_and_distribution'),
+                'next_publish_at' => (string) ($task['next_publish_at'] ?? ''),
+                'scheduled_publish_enabled' => (string) ($task['publish_scope'] ?? 'local_and_distribution') === 'local_only' && ! empty($task['next_publish_at']) ? 1 : 0,
+                'scheduled_publish_at' => $this->formatDateTimeLocal((string) ($task['next_publish_at'] ?? '')),
                 'distribution_channel_ids' => $this->taskDistributionChannelIds($taskId),
             ],
         ]);
@@ -608,7 +613,9 @@ class TaskController extends Controller
      *     draft_limit: int|null,
      *     publish_interval: int|null,
      *     category_mode: string|null,
-     *     model_selection_mode: string|null
+     *     model_selection_mode: string|null,
+     *     scheduled_publish_enabled: bool|null,
+     *     scheduled_publish_at: string|null
      * }
      */
     private function validateTaskForm(Request $request): array
@@ -633,6 +640,12 @@ class TaskController extends Controller
             'category_mode' => ['nullable', 'string', 'in:smart,fixed,random'],
             'model_selection_mode' => ['nullable', 'string', 'in:fixed,smart_failover'],
             'publish_scope' => ['nullable', 'string', 'in:local_and_distribution,distribution_only,local_only'],
+            'scheduled_publish_enabled' => ['nullable', 'boolean'],
+            'scheduled_publish_at' => [
+                'nullable',
+                Rule::requiredIf(fn (): bool => $request->boolean('scheduled_publish_enabled') && (string) $request->input('publish_scope') === 'local_only'),
+                'date',
+            ],
             'distribution_channel_ids' => ['nullable', 'array'],
             'distribution_channel_ids.*' => ['integer', 'min:1'],
         ]);
@@ -647,6 +660,15 @@ class TaskController extends Controller
         $categoryMode = (string) ($payload['category_mode'] ?? 'smart');
         if ($categoryMode === 'random') {
             $categoryMode = 'smart';
+        }
+        $publishScope = (string) ($payload['publish_scope'] ?? 'local_and_distribution');
+        $nextPublishAt = null;
+        if (
+            $publishScope === 'local_only'
+            && $request->boolean('scheduled_publish_enabled')
+            && trim((string) ($payload['scheduled_publish_at'] ?? '')) !== ''
+        ) {
+            $nextPublishAt = Carbon::parse((string) $payload['scheduled_publish_at'])->toDateTimeString();
         }
 
         return [
@@ -663,7 +685,8 @@ class TaskController extends Controller
             'knowledge_base_id' => isset($payload['knowledge_base_id']) ? (int) $payload['knowledge_base_id'] : null,
             'fixed_category_id' => isset($payload['fixed_category_id']) ? (int) $payload['fixed_category_id'] : null,
             'status' => (string) $payload['status'],
-            'publish_scope' => (string) ($payload['publish_scope'] ?? 'local_and_distribution'),
+            'publish_scope' => $publishScope,
+            'next_publish_at' => $nextPublishAt,
             'article_limit' => (int) ($payload['article_limit'] ?? 10),
             'draft_limit' => (int) ($payload['draft_limit'] ?? 10),
             'publish_interval' => max(1, (int) ($payload['publish_interval'] ?? 60)) * 60,
@@ -703,5 +726,18 @@ class TaskController extends Controller
             ->pluck('distribution_channels.id')
             ->map(static fn ($id): int => (int) $id)
             ->all();
+    }
+
+    private function formatDateTimeLocal(string $value): string
+    {
+        if (trim($value) === '') {
+            return '';
+        }
+
+        try {
+            return Carbon::parse($value)->format('Y-m-d\TH:i');
+        } catch (Throwable) {
+            return '';
+        }
     }
 }

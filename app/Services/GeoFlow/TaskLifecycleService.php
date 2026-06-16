@@ -16,6 +16,7 @@ use App\Models\TaskSchedule;
 use App\Models\Title;
 use App\Models\TitleLibrary;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Throwable;
@@ -99,6 +100,7 @@ class TaskLifecycleService
                 'model_selection_mode' => $normalized['model_selection_mode'],
                 'status' => $normalized['status'],
                 'publish_scope' => $normalized['publish_scope'],
+                'next_publish_at' => $normalized['next_publish_at'],
                 'knowledge_base_id' => $normalized['knowledge_base_id'],
                 'category_mode' => $normalized['category_mode'],
                 'fixed_category_id' => $normalized['fixed_category_id'],
@@ -588,6 +590,21 @@ class TaskLifecycleService
             $output['publish_interval'] = max(60, (int) $data['publish_interval']);
         } elseif (! $isUpdate) {
             $output['publish_interval'] = 3600;
+        }
+
+        if (array_key_exists('next_publish_at', $data)) {
+            $nextPublishAt = $data['next_publish_at'];
+            if ($nextPublishAt === null || trim((string) $nextPublishAt) === '') {
+                $output['next_publish_at'] = null;
+            } else {
+                try {
+                    $output['next_publish_at'] = Carbon::parse((string) $nextPublishAt)->toDateTimeString();
+                } catch (Throwable) {
+                    $fieldErrors['next_publish_at'] = '首次发布时间无效';
+                }
+            }
+        } elseif (! $isUpdate) {
+            $output['next_publish_at'] = null;
         }
 
         if (array_key_exists('draft_limit', $data)) {

@@ -10,6 +10,8 @@
         ->map(static fn ($id): string => (string) $id)
         ->all();
     $publishScope = (string) old('publish_scope', (string) ($taskForm['publish_scope'] ?? 'local_and_distribution'));
+    $scheduledPublishEnabled = old('scheduled_publish_enabled', (string) ($taskForm['scheduled_publish_enabled'] ?? '0'));
+    $scheduledPublishAt = (string) old('scheduled_publish_at', (string) ($taskForm['scheduled_publish_at'] ?? ''));
 @endphp
 
 @section('content')
@@ -221,6 +223,24 @@
                                 <input type="number" name="publish_interval" id="publish_interval" min="1" value="{{ old('publish_interval', (string) ($taskForm['publish_interval'] ?? 60)) }}"
                                        class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
                                 <p class="mt-1 text-sm text-gray-500">{{ $t('task_create.help.publish_interval') }}</p>
+                            </div>
+                            <div id="scheduled-publish-section" class="md:col-span-2 rounded-md border border-blue-100 bg-blue-50/60 px-4 py-3">
+                                <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                    <div>
+                                        <div class="flex items-center">
+                                            <input type="checkbox" name="scheduled_publish_enabled" id="scheduled_publish_enabled" value="1" @checked((string) $scheduledPublishEnabled === '1')
+                                                   class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
+                                            <label for="scheduled_publish_enabled" class="ml-2 block text-sm font-medium text-gray-900">{{ $t('task_create.field.scheduled_publish_enabled') }}</label>
+                                        </div>
+                                        <p class="mt-1 text-sm text-gray-500">{{ $t('task_create.help.scheduled_publish_enabled') }}</p>
+                                    </div>
+                                    <div>
+                                        <label for="scheduled_publish_at" class="block text-sm font-medium text-gray-700">{{ $t('task_create.field.scheduled_publish_at') }}</label>
+                                        <input type="datetime-local" name="scheduled_publish_at" id="scheduled_publish_at" value="{{ $scheduledPublishAt }}"
+                                               class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                                        <p class="mt-1 text-sm text-gray-500">{{ $t('task_create.help.scheduled_publish_at') }}</p>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -439,6 +459,10 @@
             const imageCountSelect = document.getElementById('image_count');
             const needReviewCheckbox = document.getElementById('need_review');
             const publishIntervalInput = document.getElementById('publish_interval');
+            const scheduledPublishSection = document.getElementById('scheduled-publish-section');
+            const scheduledPublishCheckbox = document.getElementById('scheduled_publish_enabled');
+            const scheduledPublishAtInput = document.getElementById('scheduled_publish_at');
+            const publishScopeRadios = document.querySelectorAll('input[name="publish_scope"]');
             const articleLimitInput = document.getElementById('article_limit');
             const draftLimitInput = document.getElementById('draft_limit');
             const fixedCategorySection = document.getElementById('fixed-category-section');
@@ -500,6 +524,26 @@
                 }
             }
 
+            function selectedPublishScope() {
+                const selected = document.querySelector('input[name="publish_scope"]:checked');
+
+                return selected ? selected.value : 'local_and_distribution';
+            }
+
+            function toggleScheduledPublishControls() {
+                const enabledForScope = selectedPublishScope() === 'local_only';
+                scheduledPublishSection.classList.toggle('hidden', !enabledForScope);
+                scheduledPublishSection.style.opacity = enabledForScope ? '1' : '0.55';
+                scheduledPublishCheckbox.disabled = !enabledForScope;
+                scheduledPublishAtInput.disabled = !enabledForScope || !scheduledPublishCheckbox.checked;
+                scheduledPublishAtInput.required = enabledForScope && scheduledPublishCheckbox.checked;
+
+                if (!enabledForScope) {
+                    scheduledPublishCheckbox.checked = false;
+                    scheduledPublishAtInput.required = false;
+                }
+            }
+
             function handleCategoryModeChange() {
                 const selected = document.querySelector('input[name="category_mode"]:checked');
                 if (!selected) {
@@ -555,6 +599,8 @@
                 fixedTitleSelect.dataset.selectedTitleId = fixedTitleSelect.value;
             });
             needReviewCheckbox.addEventListener('change', togglePublishInterval);
+            scheduledPublishCheckbox.addEventListener('change', toggleScheduledPublishControls);
+            publishScopeRadios.forEach((radio) => radio.addEventListener('change', toggleScheduledPublishControls));
             articleLimitInput.addEventListener('input', syncDraftLimitMax);
             categoryModeRadios.forEach((radio) => radio.addEventListener('change', handleCategoryModeChange));
 
@@ -603,6 +649,7 @@
             toggleImageControls();
             syncFixedTitleOptions();
             togglePublishInterval();
+            toggleScheduledPublishControls();
             handleCategoryModeChange();
             syncDraftLimitMax();
         });
