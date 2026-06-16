@@ -1811,6 +1811,112 @@ class AdminMediaDistributionTest extends TestCase
             ->assertDontSee('name="media_resource_id"', false);
     }
 
+    public function test_media_resources_page_highlights_media_package_resource(): void
+    {
+        [$admin] = $this->createAdminWithSite('media_package_admin', 'admin');
+
+        $package = MediaResource::query()->create([
+            'platform_id' => MediaPlatform::CEYING_MEDIA_2,
+            'source_type' => MediaResource::SOURCE_WEBSITE,
+            'external_resource_id' => '100-package',
+            'title' => '100家特价媒体套餐',
+            'remarks' => '一次投稿覆盖100家媒体，发布链接为 docs 文档链接。',
+            'status' => 'active',
+            'cost_price' => '100.00',
+            'sale_price' => '150.00',
+            'raw_payload' => [
+                'package_size' => 100,
+                'publish_url_type' => 'docs',
+            ],
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.media-distribution.resources.index'))
+            ->assertOk()
+            ->assertSee('媒体套餐发布')
+            ->assertSee('100家特价媒体套餐')
+            ->assertSee('100家媒体')
+            ->assertSee('docs 文档链接')
+            ->assertSee(route('admin.media-distribution.submissions.index', ['media_resource_id' => (int) $package->id]), false)
+            ->assertSee('name="media_resource_ids[]"', false)
+            ->assertSee('value="'.(int) $package->id.'"', false);
+    }
+
+    public function test_media_package_submission_uses_media_two_flow_and_stores_docs_url(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+        [$admin, $site] = $this->createAdminWithSite('media_package_submit_admin', 'admin');
+        [$article] = $this->createArticleAndResource($site, 'package-submit');
+        $this->grantAdminCredits($admin, $site, '300.00');
+        MediaApiSetting::query()->create([
+            'platform_id' => MediaPlatform::CEYING_MEDIA_2,
+            'api_base_url' => 'https://vip.chaojimeijie.com/api',
+            'app_id' => 'app-id',
+            'api_secret_ciphertext' => app(\App\Support\GeoFlow\ApiKeyCrypto::class)->encrypt('secret'),
+            'status' => 'active',
+            'price_multiplier' => '1.00',
+        ]);
+        $package = MediaResource::query()->create([
+            'platform_id' => MediaPlatform::CEYING_MEDIA_2,
+            'source_type' => MediaResource::SOURCE_WEBSITE,
+            'external_resource_id' => '100888',
+            'title' => '100家特价媒体套餐',
+            'remarks' => '套餐发布结果返回 docs 文档链接。',
+            'status' => 'active',
+            'cost_price' => '100.00',
+            'sale_price' => '150.00',
+            'raw_payload' => [
+                'package_size' => 100,
+                'publish_url_type' => 'docs',
+            ],
+        ]);
+
+        Http::fake([
+            '*/media/order' => function ($request) use ($package) {
+                $payload = $this->httpRequestPayload($request);
+                $this->assertSame((int) $package->external_resource_id, (int) ($payload['resource_id'] ?? 0));
+                $this->assertSame('Media Submit package-submit', (string) ($payload['title'] ?? ''));
+                $this->assertStringContainsString('/media-submission-preview/', (string) ($payload['content'] ?? ''));
+
+                return Http::response([
+                    'code' => 200,
+                    'message' => 'success',
+                    'data' => ['partner_sn' => (string) ($payload['sn'] ?? 'package-sn')],
+                ]);
+            },
+            '*/media/order/query*' => Http::response([
+                'code' => 200,
+                'message' => 'success',
+                'data' => [[
+                    'sn' => 'any-sn',
+                    'status' => 4,
+                    'url' => 'https://docs.qq.com/doc/package-result',
+                ]],
+            ]),
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => $site->id])
+            ->post(route('admin.media-distribution.submissions.bulk-store'), [
+                'article_ids' => [$article->id],
+                'media_resource_ids' => [$package->id],
+            ])
+            ->assertRedirect(route('admin.media-distribution.submissions.index'));
+
+        $submission = MediaSubmission::query()->where('media_resource_id', $package->id)->firstOrFail();
+        $this->assertSame(MediaPlatform::CEYING_MEDIA_2, (int) $submission->platform_id);
+        $this->assertSame('150.00', $submission->points_amount);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => $site->id])
+            ->post(route('admin.media-distribution.submissions.sync', ['submission' => $submission->id]))
+            ->assertRedirect(route('admin.media-distribution.submissions.show', ['submission' => $submission->id]));
+
+        $submission->refresh();
+        $this->assertSame('published', (string) $submission->status);
+        $this->assertSame('https://docs.qq.com/doc/package-result', (string) $submission->published_url);
+    }
+
     public function test_media_resources_support_status_and_price_filters_without_category_options(): void
     {
         [$admin] = $this->createAdminWithSite('media_filter_admin', 'admin');
