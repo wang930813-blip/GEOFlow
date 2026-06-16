@@ -94,4 +94,27 @@ class MediaResource extends Model
 
         return in_array((string) $status, ['1', '2'], true) ? '可接单' : '不接单';
     }
+
+    public function isConfiguredPackage(): bool
+    {
+        $packageTitle = trim((string) config('media_distribution.package.title', '100家特价媒体套餐'));
+
+        return (int) $this->platform_id === (int) config('media_distribution.package.platform_id', MediaPlatform::CEYING_MEDIA_2)
+            && $packageTitle !== ''
+            && trim((string) $this->title) === $packageTitle;
+    }
+
+    public function packageSize(): int
+    {
+        $payloadSize = (int) $this->apiField(['package_size', 'media_count', 'resource_count'], '0');
+
+        return $payloadSize > 0 ? $payloadSize : (int) config('media_distribution.package.size', 100);
+    }
+
+    public function packagePublishedUrlType(): string
+    {
+        $payloadType = trim($this->apiField(['publish_url_type', 'published_url_type', 'result_url_type'], ''));
+
+        return $payloadType !== '' ? $payloadType : (string) config('media_distribution.package.published_url_type', 'docs 文档链接');
+    }
 }

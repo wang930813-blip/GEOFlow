@@ -78,6 +78,7 @@ class ResourceController extends Controller
             'activeMenu' => 'media_distribution',
             'adminSiteName' => AdminWeb::siteName(),
             'resources' => $query->paginate(20)->withQueryString(),
+            'packageResource' => $this->packageResource(),
             'sites' => (bool) auth('admin')->user()?->isSuperAdmin()
                 ? Site::query()->orderBy('id')->get(['id', 'name'])
                 : collect(),
@@ -266,5 +267,20 @@ class ResourceController extends Controller
             : 'LOWER(COALESCE(CAST(raw_payload AS TEXT), \'\')) LIKE ?';
 
         return $sql;
+    }
+
+    private function packageResource(): ?MediaResource
+    {
+        $packageTitle = trim((string) config('media_distribution.package.title', '100家特价媒体套餐'));
+        if ($packageTitle === '') {
+            return null;
+        }
+
+        return MediaResource::query()
+            ->where('platform_id', (int) config('media_distribution.package.platform_id', MediaPlatform::CEYING_MEDIA_2))
+            ->where('title', $packageTitle)
+            ->where('status', 'active')
+            ->orderByDesc('id')
+            ->first();
     }
 }
