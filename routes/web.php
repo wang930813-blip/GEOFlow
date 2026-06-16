@@ -86,6 +86,9 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
         Route::post('sites/switch', [SiteContextController::class, 'switch'])->name('sites.switch');
         Route::post('welcome/dismiss', [AdminWelcomeController::class, 'dismiss'])->name('welcome.dismiss');
         Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
+        Route::post('dashboard/b2b-websites/{websiteKey}/open', [DashboardController::class, 'openB2BWebsite'])
+            ->name('dashboard.b2b-websites.open')
+            ->where('websiteKey', '[A-Za-z0-9_-]+');
         Route::get('geo-reports', [GeoReportController::class, 'index'])->name('geo-reports.index');
         Route::get('brand-diagnosis', [BrandDiagnosisController::class, 'index'])->name('brand-diagnosis.index');
         Route::post('brand-diagnosis', [BrandDiagnosisController::class, 'store'])->name('brand-diagnosis.store');
