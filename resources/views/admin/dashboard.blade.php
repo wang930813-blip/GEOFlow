@@ -262,20 +262,21 @@
 
             <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
                 @foreach ($b2bWebsites ?? [] as $website)
-                    <div class="flex min-h-[190px] flex-col justify-between rounded-lg bg-white p-4 shadow-sm ring-1 ring-gray-200 transition hover:-translate-y-0.5 hover:shadow-md">
+                    <div class="flex min-h-[210px] flex-col justify-between rounded-lg bg-white p-4 shadow-sm ring-1 ring-gray-200 transition hover:-translate-y-0.5 hover:shadow-md">
                         <div>
-                            <div class="flex items-start justify-between gap-3">
-                                <div class="flex h-14 w-14 items-center justify-center rounded-lg bg-gradient-to-br {{ $website['tone'] }} text-sm font-bold ring-1">
-                                    {{ $website['initials'] }}
-                                </div>
+                            <div class="mb-3 flex h-7 items-center justify-end">
                                 @if ($website['opened'])
-                                    <span class="shrink-0 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 ring-1 ring-emerald-100">已开通</span>
+                                    <span class="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 ring-1 ring-emerald-100">已开通</span>
                                 @else
-                                    <span class="shrink-0 rounded-full bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-500 ring-1 ring-gray-200">未开通</span>
+                                    <span class="rounded-full bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-500 ring-1 ring-gray-200">未开通</span>
                                 @endif
                             </div>
 
-                            <h3 class="mt-4 truncate text-base font-semibold text-gray-900" title="{{ $website['name'] }}">{{ $website['name'] }}</h3>
+                            <div class="flex h-16 w-full items-center justify-center px-2 py-1">
+                                <img src="{{ asset($website['logo']) }}" alt="{{ $website['name'] }} logo" class="max-h-14 max-w-[190px] object-contain">
+                            </div>
+
+                            <h3 class="mt-4 truncate text-base font-semibold leading-6 text-gray-900" title="{{ $website['name'] }}">{{ $website['name'] }}</h3>
                         </div>
 
                         <div class="mt-5">

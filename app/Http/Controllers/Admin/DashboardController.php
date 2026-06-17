@@ -62,7 +62,7 @@ class DashboardController extends Controller
     }
 
     /**
-     * @return list<array{key: string, name: string, initials: string, tone: string, opened: bool}>
+     * @return list<array{key: string, name: string, logo: string, opened: bool}>
      */
     private function buildB2BWebsites(B2BIndustryWebsiteCatalog $b2bCatalog): array
     {

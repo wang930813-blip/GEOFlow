@@ -27,6 +27,20 @@ class AdminDashboardB2BWebsitesTest extends TestCase
             ->assertSee('开通');
     }
 
+    public function test_dashboard_uses_b2b_website_logo_images_instead_of_initials(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('b2b_dashboard_logo_admin');
+
+        $response = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.dashboard'));
+
+        $response
+            ->assertOk()
+            ->assertSee('/assets/b2b-sites/01.png', false)
+            ->assertDontSee('>TZ<', false);
+    }
+
     public function test_admin_can_open_b2b_website_for_current_site_and_account(): void
     {
         [$admin, $site] = $this->createAdminWithSite('b2b_open_admin');
