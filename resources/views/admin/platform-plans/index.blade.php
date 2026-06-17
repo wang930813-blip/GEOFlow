@@ -7,10 +7,16 @@
                 <h1 class="text-2xl font-bold text-gray-900">平台规格</h1>
                 <p class="mt-1 text-sm text-gray-600">维护代理和直客可开通的规格、服务时长与资源额度。</p>
             </div>
-            <a href="{{ route('admin.plan-subscriptions.index') }}" class="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50">
-                <i data-lucide="badge-check" class="h-4 w-4"></i>
-                客户开通
-            </a>
+            <div class="flex flex-wrap gap-2">
+                <a href="{{ route('admin.plan-usages.index') }}" class="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50">
+                    <i data-lucide="bar-chart-3" class="h-4 w-4"></i>
+                    规格使用情况
+                </a>
+                <a href="{{ route('admin.plan-subscriptions.index') }}" class="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50">
+                    <i data-lucide="badge-check" class="h-4 w-4"></i>
+                    客户开通
+                </a>
+            </div>
         </div>
 
         <section class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
@@ -62,15 +68,25 @@
 
                 <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                     @foreach ($resourceCatalog as $key => $resource)
+                        @php
+                            $enabled = old("resources.$key.enabled");
+                            $quotaValue = old("resources.$key.quota_value", 0);
+                        @endphp
                         <div class="rounded-md border border-slate-200 bg-slate-50 p-3">
                             <label class="flex items-center gap-2 text-sm font-medium text-gray-800">
-                                <input type="checkbox" name="resources[{{ $key }}][enabled]" value="1" class="h-4 w-4 rounded border-slate-300 text-indigo-600">
+                                <input type="checkbox" name="resources[{{ $key }}][enabled]" value="1" @checked((bool) $enabled) class="h-4 w-4 rounded border-slate-300 text-indigo-600">
                                 <span>{{ $resource['label'] }}</span>
                             </label>
-                            <input name="resources[{{ $key }}][quota_value]" type="number" min="0" value="0" class="mt-3 block h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" placeholder="数量">
+                            <input name="resources[{{ $key }}][quota_value]" type="number" min="0" value="{{ $quotaValue }}" class="mt-3 block h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" placeholder="数量">
+                            @error("resources.$key.quota_value")
+                                <p class="mt-2 text-xs text-red-600">{{ $message }}</p>
+                            @enderror
                         </div>
                     @endforeach
                 </div>
+                @error('resources')
+                    <p class="-mt-2 text-sm text-red-600">{{ $message }}</p>
+                @enderror
 
                 <div>
                     <label class="mb-1 block text-sm font-medium text-gray-700">说明</label>
@@ -98,7 +114,8 @@
                             <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">适用对象</th>
                             <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">服务时长</th>
                             <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">资源</th>
-                            <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">状态</th>
+                            <th class="w-[5.5rem] px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">状态</th>
+                            <th class="px-5 py-3 text-right text-xs font-medium uppercase tracking-wider text-slate-500">操作</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-200 bg-white">
@@ -116,23 +133,32 @@
                                     <div class="flex max-w-xl flex-wrap gap-2">
                                         @foreach ($plan->entitlements->where('enabled', true) as $entitlement)
                                             <span class="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-700">
-                                                {{ $resourceCatalog[$entitlement->resource_key]['label'] ?? $entitlement->resource_key }}：
-                                                {{ $entitlement->quota_value }}
+                                                {{ $resourceCatalog[$entitlement->resource_key]['label'] ?? $entitlement->resource_key }}：{{ $entitlement->quota_value }}
                                             </span>
                                         @endforeach
                                     </div>
                                 </td>
-                                <td class="px-5 py-4 align-top">
+                                <td class="px-5 py-4 align-top whitespace-nowrap">
                                     @if ($plan->status === 'active')
-                                        <span class="inline-flex rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">启用</span>
+                                        <span class="inline-flex min-w-[3.5rem] items-center justify-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-200 whitespace-nowrap">启用</span>
                                     @else
-                                        <span class="inline-flex rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-700">停用</span>
+                                        <span class="inline-flex min-w-[3.5rem] items-center justify-center rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600 ring-1 ring-inset ring-slate-200 whitespace-nowrap">停用</span>
                                     @endif
+                                </td>
+                                <td class="px-5 py-4 align-top text-right">
+                                    <div class="inline-flex items-center justify-end gap-3">
+                                        <a href="{{ route('admin.platform-plans.show', $plan) }}" class="text-sm font-medium text-slate-600 hover:text-slate-900">详情</a>
+                                        <a href="{{ route('admin.platform-plans.edit', $plan) }}" class="text-sm font-medium text-indigo-600 hover:text-indigo-800">编辑</a>
+                                        <form method="POST" action="{{ route('admin.platform-plans.destroy', $plan) }}" class="inline" onsubmit="return confirm(@js('确定删除该规格吗？已被开通记录引用的规格不能删除。'));">
+                                            @csrf
+                                            <button type="submit" class="text-sm font-medium text-red-600 hover:text-red-800">删除</button>
+                                        </form>
+                                    </div>
                                 </td>
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="5" class="px-5 py-10 text-center text-sm text-gray-500">暂无规格</td>
+                                <td colspan="6" class="px-5 py-10 text-center text-sm text-gray-500">暂无规格</td>
                             </tr>
                         @endforelse
                     </tbody>

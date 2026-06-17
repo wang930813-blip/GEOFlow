@@ -1,0 +1,148 @@
+<?php
+
+namespace App\Http\Controllers\Admin;
+
+use App\Http\Controllers\Controller;
+use App\Models\Admin;
+use App\Models\AdminCreditAccount;
+use App\Models\AdminPlanSubscription;
+use App\Models\AdminResourceUsage;
+use App\Models\PlatformPlan;
+use App\Models\Site;
+use App\Support\AdminWeb;
+use App\Support\CurrentSite;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
+use Illuminate\View\View;
+
+class PlanUsageController extends Controller
+{
+    public function index(Request $request): View
+    {
+        $admin = $request->user('admin');
+        abort_unless($admin instanceof Admin, 403);
+
+        $resourceCatalog = PlatformPlan::resourceCatalog();
+        $subscriptions = $this->visibleSubscriptions($admin, $request)
+            ->with(['admin:id,username,display_name,role,created_by', 'site:id,name,customer_mode,agent_admin_id', 'plan:id,name,code'])
+            ->orderByDesc('created_at')
+            ->paginate(20)
+            ->withQueryString();
+
+        $usageRows = $this->buildUsageRows($subscriptions->getCollection(), $resourceCatalog);
+        $subscriptions->setCollection($usageRows);
+
+        return view('admin.plan-usages.index', [
+            'pageTitle' => '规格使用情况',
+            'activeMenu' => 'plan_usages',
+            'adminSiteName' => AdminWeb::siteName(),
+            'subscriptions' => $subscriptions,
+            'resourceCatalog' => $resourceCatalog,
+            'plans' => PlatformPlan::query()->orderBy('sort_order')->orderBy('id')->get(['id', 'name', 'code']),
+            'sites' => $this->filterableSites($admin),
+            'isSuperAdmin' => $admin->isSuperAdmin(),
+        ]);
+    }
+
+    private function visibleSubscriptions(Admin $admin, Request $request): Builder
+    {
+        $query = AdminPlanSubscription::query();
+
+        if ($admin->isSuperAdmin()) {
+            $siteId = (int) $request->query('site_id', 0);
+            $planId = (int) $request->query('plan_id', 0);
+            $keyword = trim((string) $request->query('keyword', ''));
+
+            return $query
+                ->when($siteId > 0, fn (Builder $query) => $query->where('site_id', $siteId))
+                ->when($planId > 0, fn (Builder $query) => $query->where('plan_id', $planId))
+                ->when($keyword !== '', function (Builder $query) use ($keyword): void {
+                    $query->whereHas('admin', function (Builder $adminQuery) use ($keyword): void {
+                        $adminQuery->where('username', 'like', '%'.$keyword.'%')
+                            ->orWhere('display_name', 'like', '%'.$keyword.'%');
+                    });
+                });
+        }
+
+        $site = app(CurrentSite::class)->get();
+        abort_unless($site instanceof Site, 403);
+
+        if ($admin->isAgentAdmin()) {
+            return $query
+                ->where('site_id', (int) $site->id)
+                ->where(function (Builder $query) use ($admin): void {
+                    $query->where('admin_id', (int) $admin->id)
+                        ->orWhere('inherited_from_admin_id', (int) $admin->id)
+                        ->orWhereHas('admin', fn (Builder $adminQuery) => $adminQuery->where('created_by', (int) $admin->id));
+                });
+        }
+
+        return $query
+            ->where('site_id', (int) $site->id)
+            ->where('admin_id', (int) $admin->id);
+    }
+
+    /**
+     * @param  Collection<int,AdminPlanSubscription>  $subscriptions
+     * @param  array<string,array{label:string,unit:string}>  $resourceCatalog
+     * @return Collection<int,array<string,mixed>>
+     */
+    private function buildUsageRows(Collection $subscriptions, array $resourceCatalog): Collection
+    {
+        $subscriptionIds = $subscriptions->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $usageBySubscription = AdminResourceUsage::query()
+            ->whereIn('subscription_id', $subscriptionIds)
+            ->get()
+            ->groupBy('subscription_id');
+
+        $creditAccounts = AdminCreditAccount::query()
+            ->whereIn('admin_id', $subscriptions->pluck('admin_id')->map(fn ($id) => (int) $id)->all())
+            ->whereIn('site_id', $subscriptions->pluck('site_id')->map(fn ($id) => (int) $id)->all())
+            ->get()
+            ->keyBy(fn (AdminCreditAccount $account): string => (int) $account->admin_id.':'.(int) $account->site_id);
+
+        return $subscriptions->map(function (AdminPlanSubscription $subscription) use ($resourceCatalog, $usageBySubscription, $creditAccounts): array {
+            $usages = $usageBySubscription->get((int) $subscription->id, collect())->keyBy('resource_key');
+            $resources = collect((array) $subscription->entitlements_snapshot)
+                ->filter(fn ($entitlement, string $key): bool => is_array($entitlement) && (bool) ($entitlement['enabled'] ?? false) && isset($resourceCatalog[$key]))
+                ->map(function (array $entitlement, string $key) use ($resourceCatalog, $usages): array {
+                    $quota = (int) ($entitlement['quota_value'] ?? 0);
+                    $period = (string) ($entitlement['quota_period'] ?? 'cycle');
+                    $used = (int) ($usages->get($key)?->used_amount ?? 0);
+
+                    return [
+                        'key' => $key,
+                        'label' => $resourceCatalog[$key]['label'],
+                        'quota' => $quota,
+                        'used' => $used,
+                        'remaining' => max(0, $quota - $used),
+                        'period' => $period,
+                        'unit' => (string) ($entitlement['unit'] ?? $resourceCatalog[$key]['unit']),
+                        'percent' => $quota > 0 ? min(100, (int) round($used / $quota * 100)) : 0,
+                    ];
+                })
+                ->values();
+
+            $creditAccount = $creditAccounts->get((int) $subscription->admin_id.':'.(int) $subscription->site_id);
+
+            return [
+                'subscription' => $subscription,
+                'resources' => $resources,
+                'creditAccount' => $creditAccount,
+            ];
+        });
+    }
+
+    /**
+     * @return Collection<int,Site>
+     */
+    private function filterableSites(Admin $admin): Collection
+    {
+        if (! $admin->isSuperAdmin()) {
+            return collect();
+        }
+
+        return Site::query()->orderBy('id')->get(['id', 'name']);
+    }
+}

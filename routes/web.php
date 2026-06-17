@@ -31,6 +31,7 @@ use App\Http\Controllers\Admin\MediaDistribution\ResourceController as MediaDist
 use App\Http\Controllers\Admin\MediaDistribution\SettingController as MediaDistributionSettingController;
 use App\Http\Controllers\Admin\MediaDistribution\SubmissionController as MediaDistributionSubmissionController;
 use App\Http\Controllers\Admin\PlanSubscriptionController;
+use App\Http\Controllers\Admin\PlanUsageController;
 use App\Http\Controllers\Admin\PlatformPlanController;
 use App\Http\Controllers\Admin\SecuritySettingsController;
 use App\Http\Controllers\Admin\SiteContextController;
@@ -342,6 +343,9 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::post('/', [AgentUserController::class, 'store'])->name('store');
             Route::post('{adminId}/toggle-status', [AgentUserController::class, 'toggleStatus'])->name('toggle-status');
         });
+        Route::prefix('plan-usages')->name('plan-usages.')->group(function () {
+            Route::get('/', [PlanUsageController::class, 'index'])->name('index');
+        });
         // Super admin routes
         Route::middleware('admin.super')->group(function () {
             Route::prefix('sites/manage')->name('sites.manage.')->group(function () {
@@ -353,7 +357,10 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::prefix('platform-plans')->name('platform-plans.')->group(function () {
                 Route::get('/', [PlatformPlanController::class, 'index'])->name('index');
                 Route::post('/', [PlatformPlanController::class, 'store'])->name('store');
+                Route::get('{plan}', [PlatformPlanController::class, 'show'])->name('show');
+                Route::get('{plan}/edit', [PlatformPlanController::class, 'edit'])->name('edit');
                 Route::post('{plan}', [PlatformPlanController::class, 'update'])->name('update');
+                Route::post('{plan}/delete', [PlatformPlanController::class, 'destroy'])->name('destroy');
             });
             Route::prefix('plan-subscriptions')->name('plan-subscriptions.')->group(function () {
                 Route::get('/', [PlanSubscriptionController::class, 'index'])->name('index');

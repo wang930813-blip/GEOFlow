@@ -118,6 +118,11 @@
         'admin.api-tokens.store' => 'admin_users',
         'admin.api-tokens.revoke' => 'admin_users',
         'admin.admin-activity-logs' => 'admin_users',
+        'admin.platform-plans.index' => 'platform_plans',
+        'admin.platform-plans.show' => 'platform_plans',
+        'admin.platform-plans.edit' => 'platform_plans',
+        'admin.plan-subscriptions.index' => 'platform_plans',
+        'admin.plan-usages.index' => 'plan_usages',
     ];
     $routeName = request()->route()?->getName();
     $resolvedActive = $activeMenu;
@@ -268,6 +273,10 @@
                                 <i data-lucide="users" class="w-4 h-4 inline mr-2"></i>
                                 {{ __('admin.nav.admin_management') }}
                             </a>
+                            <a href="{{ route('admin.plan-usages.index') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                <i data-lucide="bar-chart-3" class="w-4 h-4 inline mr-2"></i>
+                                规格使用情况
+                            </a>
                             <a href="{{ route('admin.materials.index') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
                                 <i data-lucide="folder-kanban" class="w-4 h-4 inline mr-2"></i>
                                 {{ __('admin.nav.materials') }}
@@ -283,6 +292,10 @@
                                     代理用户管理
                                 </a>
                             @endif
+                            <a href="{{ route('admin.plan-usages.index') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                <i data-lucide="bar-chart-3" class="w-4 h-4 inline mr-2"></i>
+                                规格使用情况
+                            </a>
                             <a href="{{ route('admin.materials.index') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
                                 <i data-lucide="folder-kanban" class="w-4 h-4 inline mr-2"></i>
                                 {{ __('admin.nav.materials') }}

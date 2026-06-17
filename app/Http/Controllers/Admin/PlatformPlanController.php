@@ -3,13 +3,16 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\AdminPlanSubscription;
 use App\Models\PlatformPlan;
+use App\Models\SitePlanSubscription;
 use App\Support\AdminWeb;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class PlatformPlanController extends Controller
@@ -53,6 +56,34 @@ class PlatformPlanController extends Controller
         return redirect()->route('admin.platform-plans.index')->with('message', '规格已创建');
     }
 
+    public function show(PlatformPlan $plan): View
+    {
+        $plan->load('entitlements');
+
+        return view('admin.platform-plans.show', [
+            'pageTitle' => '规格详情',
+            'activeMenu' => 'platform_plans',
+            'adminSiteName' => AdminWeb::siteName(),
+            'plan' => $plan,
+            'resourceCatalog' => PlatformPlan::resourceCatalog(),
+            'siteSubscriptionCount' => SitePlanSubscription::query()->where('plan_id', (int) $plan->id)->count(),
+            'adminSubscriptionCount' => AdminPlanSubscription::query()->where('plan_id', (int) $plan->id)->count(),
+        ]);
+    }
+
+    public function edit(PlatformPlan $plan): View
+    {
+        $plan->load('entitlements');
+
+        return view('admin.platform-plans.edit', [
+            'pageTitle' => '编辑规格',
+            'activeMenu' => 'platform_plans',
+            'adminSiteName' => AdminWeb::siteName(),
+            'plan' => $plan,
+            'resourceCatalog' => PlatformPlan::resourceCatalog(),
+        ]);
+    }
+
     public function update(PlatformPlan $plan, Request $request): RedirectResponse
     {
         $payload = $this->validatedPayload($request, $plan);
@@ -74,6 +105,20 @@ class PlatformPlanController extends Controller
         });
 
         return redirect()->route('admin.platform-plans.index')->with('message', '规格已更新');
+    }
+
+    public function destroy(PlatformPlan $plan): RedirectResponse
+    {
+        $isReferenced = SitePlanSubscription::query()->where('plan_id', (int) $plan->id)->exists()
+            || AdminPlanSubscription::query()->where('plan_id', (int) $plan->id)->exists();
+
+        if ($isReferenced) {
+            return back()->withErrors('该规格已有开通记录，不能删除；如需下架，请将状态改为停用。');
+        }
+
+        $plan->delete();
+
+        return redirect()->route('admin.platform-plans.index')->with('message', '规格已删除');
     }
 
     /**
@@ -118,19 +163,38 @@ class PlatformPlanController extends Controller
 
         $catalog = PlatformPlan::resourceCatalog();
         $resources = [];
+        $enabledResourceKeys = [];
+        $resourceErrors = [];
         foreach ($catalog as $key => $meta) {
             $input = (array) data_get($payload, 'resources.'.$key, []);
             $enabled = (bool) ($input['enabled'] ?? false);
             if ($key === PlatformPlan::RESOURCE_TEAM_MEMBERS && ($payload['audience'] ?? '') === 'direct') {
                 $enabled = false;
             }
+            $quotaValue = (int) ($input['quota_value'] ?? 0);
+
+            if ($enabled) {
+                $enabledResourceKeys[] = $key;
+
+                if ($quotaValue <= 0) {
+                    $resourceErrors['resources.'.$key.'.quota_value'] = '套餐项数量必须大于 0';
+                }
+            }
 
             $resources[$key] = [
                 'enabled' => $enabled,
-                'quota_value' => (int) ($input['quota_value'] ?? 0),
+                'quota_value' => $quotaValue,
                 'quota_period' => 'cycle',
                 'unit' => (string) $meta['unit'],
             ];
+        }
+
+        if ($enabledResourceKeys === []) {
+            $resourceErrors['resources'] = '请选择套餐项';
+        }
+
+        if ($resourceErrors !== []) {
+            throw ValidationException::withMessages($resourceErrors);
         }
 
         return [
