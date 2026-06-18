@@ -123,6 +123,13 @@
         'admin.platform-plans.edit' => 'platform_plans',
         'admin.plan-subscriptions.index' => 'platform_plans',
         'admin.plan-usages.index' => 'plan_usages',
+        'admin.crebee-accounts.index' => 'crebee_accounts',
+        'admin.crebee-accounts.requests.store' => 'crebee_accounts',
+        'admin.crebee-accounts.requests.processing' => 'crebee_accounts',
+        'admin.crebee-accounts.requests.fail' => 'crebee_accounts',
+        'admin.crebee-accounts.bind' => 'crebee_accounts',
+        'admin.crebee-accounts.unbind' => 'crebee_accounts',
+        'admin.crebee-publish-records.index' => 'crebee_accounts',
     ];
     $routeName = request()->route()?->getName();
     $resolvedActive = $activeMenu;
@@ -304,6 +311,14 @@
                         <a href="{{ route('admin.api-tokens.index') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
                             <i data-lucide="key-round" class="w-4 h-4 inline mr-2"></i>
                             {{ __('admin.nav.api_tokens') }}
+                        </a>
+                        <a href="{{ route('admin.crebee-accounts.index') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                            <i data-lucide="share-2" class="w-4 h-4 inline mr-2"></i>
+                            自媒体账号绑定
+                        </a>
+                        <a href="{{ route('admin.crebee-publish-records.index') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                            <i data-lucide="send" class="w-4 h-4 inline mr-2"></i>
+                            自媒体发布记录
                         </a>
                         <div class="border-t border-gray-100"></div>
                         <form method="POST" action="{{ route('admin.logout') }}">

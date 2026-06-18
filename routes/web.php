@@ -14,9 +14,12 @@ use App\Http\Controllers\Admin\AiSpecialPromptController;
 use App\Http\Controllers\Admin\AnalyticsController;
 use App\Http\Controllers\Admin\ApiTokenController;
 use App\Http\Controllers\Admin\ArticleController;
+use App\Http\Controllers\Admin\ArticleSelfMediaPublishController;
 use App\Http\Controllers\Admin\AuthorController;
 use App\Http\Controllers\Admin\BrandDiagnosisController;
 use App\Http\Controllers\Admin\CategoryController;
+use App\Http\Controllers\Admin\CrebeeAccountController;
+use App\Http\Controllers\Admin\CrebeePublishRecordController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\DistributionController;
 use App\Http\Controllers\Admin\GeoReportController;
@@ -180,6 +183,9 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::post('{articleId}/force-delete', [ArticleController::class, 'forceDelete'])->name('force-delete')->whereNumber('articleId');
             Route::get('{articleId}/edit', [ArticleController::class, 'edit'])->name('edit');
             Route::put('{articleId}', [ArticleController::class, 'update'])->name('update');
+            Route::post('{articleId}/self-media/publish', [ArticleSelfMediaPublishController::class, 'store'])
+                ->name('self-media.publish')
+                ->whereNumber('articleId');
             Route::get('{articleId}/download', [ArticleController::class, 'downloadWord'])->name('download')->whereNumber('articleId');
         });
 
@@ -346,6 +352,24 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
         Route::prefix('plan-usages')->name('plan-usages.')->group(function () {
             Route::get('/', [PlanUsageController::class, 'index'])->name('index');
         });
+        Route::prefix('crebee-accounts')->name('crebee-accounts.')->group(function () {
+            Route::get('/', [CrebeeAccountController::class, 'index'])->name('index');
+            Route::post('requests', [CrebeeAccountController::class, 'storeRequest'])->name('requests.store');
+            Route::post('requests/{bindRequest}/processing', [CrebeeAccountController::class, 'markRequestProcessing'])
+                ->name('requests.processing')
+                ->whereNumber('bindRequest');
+            Route::post('requests/{bindRequest}/fail', [CrebeeAccountController::class, 'failRequest'])
+                ->name('requests.fail')
+                ->whereNumber('bindRequest');
+            Route::post('{account}/bind', [CrebeeAccountController::class, 'bind'])
+                ->name('bind')
+                ->whereNumber('account');
+            Route::post('{account}/unbind', [CrebeeAccountController::class, 'unbind'])
+                ->name('unbind')
+                ->whereNumber('account');
+        });
+        Route::get('crebee-publish-records', [CrebeePublishRecordController::class, 'index'])
+            ->name('crebee-publish-records.index');
         // Super admin routes
         Route::middleware('admin.super')->group(function () {
             Route::prefix('sites/manage')->name('sites.manage.')->group(function () {

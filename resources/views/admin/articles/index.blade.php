@@ -23,6 +23,8 @@
     $trashUrl = route('admin.articles.index', ['trashed' => 1]);
     $articlesIndexUrl = route('admin.articles.index');
     $clearTaskFilterUrl = route('admin.articles.index', request()->except(['task_id', 'page']));
+    $selfMediaArticleAccounts = collect($selfMediaArticleAccounts ?? []);
+    $selfMediaPlatformLabels = (array) ($selfMediaPlatformLabels ?? []);
 @endphp
 
 @section('content')
@@ -493,6 +495,21 @@
                                             <a href="{{ route('admin.articles.download', ['articleId' => (int) $article->id]) }}" class="text-blue-600 hover:text-blue-800" title="{{ __('admin.button.download_word') }}">
                                                 <i data-lucide="download" class="w-4 h-4"></i>
                                             </a>
+                                            @if($selfMediaArticleAccounts->isNotEmpty())
+                                                <button
+                                                    type="button"
+                                                    class="js-self-media-publish text-indigo-600 hover:text-indigo-800"
+                                                    data-action="{{ route('admin.articles.self-media.publish', ['articleId' => (int) $article->id]) }}"
+                                                    data-title="{{ (string) $article->title }}"
+                                                    title="发布自媒体"
+                                                >
+                                                    <i data-lucide="radio-tower" class="w-4 h-4"></i>
+                                                </button>
+                                            @else
+                                                <button type="button" class="cursor-not-allowed text-gray-300" title="请先绑定支持文章发布的自媒体账号" disabled>
+                                                    <i data-lucide="radio-tower" class="w-4 h-4"></i>
+                                                </button>
+                                            @endif
                                             @if((string) $article->review_status === 'pending')
                                                 <button type="button" onclick="quickReview({{ (int) $article->id }}, 'approved')" class="text-green-600 hover:text-green-800" title="{{ __('admin.articles.action.approve') }}">
                                                     <i data-lucide="check" class="w-4 h-4"></i>
@@ -539,6 +556,87 @@
                 </div>
             @endif
         </div>
+
+        @if(!$isTrashView)
+            <div id="self-media-publish-modal" class="fixed inset-0 z-50 hidden overflow-y-auto" aria-labelledby="self-media-publish-title" role="dialog" aria-modal="true">
+                <div class="flex min-h-screen items-center justify-center px-4 py-6">
+                    <div class="fixed inset-0 bg-gray-900/50" onclick="closeSelfMediaPublishModal()"></div>
+                    <div class="relative w-full max-w-2xl rounded-lg bg-white shadow-xl">
+                        <form id="self-media-publish-form" method="POST" action="">
+                            @csrf
+                            <div class="border-b border-gray-200 px-6 py-4">
+                                <div class="flex items-start justify-between gap-4">
+                                    <div>
+                                        <h3 id="self-media-publish-title" class="text-lg font-semibold text-gray-900">发布自媒体</h3>
+                                        <p class="mt-1 text-sm text-gray-500">选择已绑定的平台账号，按选择的平台数量扣自媒体发布次数。</p>
+                                        <p id="self-media-publish-article-title" class="mt-2 line-clamp-2 text-sm font-medium text-gray-700"></p>
+                                    </div>
+                                    <button type="button" onclick="closeSelfMediaPublishModal()" class="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+                                        <i data-lucide="x" class="h-5 w-5"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="max-h-[60vh] overflow-y-auto px-6 py-5">
+                                @if($selfMediaArticleAccounts->isEmpty())
+                                    <div class="rounded-lg border border-dashed border-gray-300 px-4 py-8 text-center">
+                                        <i data-lucide="radio-tower" class="mx-auto h-8 w-8 text-gray-300"></i>
+                                        <div class="mt-3 text-sm font-medium text-gray-800">暂无可发布的自媒体账号</div>
+                                        <div class="mt-1 text-xs text-gray-500">请先到自媒体账号绑定页面，绑定支持文章发布的平台。</div>
+                                    </div>
+                                @else
+                                    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                        @foreach($selfMediaArticleAccounts as $account)
+                                            @php
+                                                $platform = (string) $account->platform;
+                                                $platformLabel = (string) ($selfMediaPlatformLabels[$platform] ?? $platform);
+                                                $platformLogo = (string) ($selfMediaPlatformLogos[$platform] ?? '');
+                                                $accountName = trim((string) ($account->account_name ?? '')) ?: (string) $account->crebee_account_id;
+                                                $avatar = trim((string) ($account->avatar ?? ''));
+                                            @endphp
+                                            <label class="flex cursor-pointer items-center gap-3 rounded-lg border border-gray-200 bg-white p-3 hover:border-indigo-300 hover:bg-indigo-50/40">
+                                                <input type="checkbox" name="crebee_account_ids[]" value="{{ (int) $account->id }}" class="rounded border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-500">
+                                                <span class="relative flex h-12 w-12 shrink-0 items-center justify-center">
+                                                    @if($avatar !== '')
+                                                        <img src="{{ $avatar }}" alt="" class="h-11 w-11 rounded-full border border-gray-200 object-cover" referrerpolicy="no-referrer">
+                                                    @else
+                                                        <span class="flex h-11 w-11 items-center justify-center rounded-full bg-gray-100 text-sm font-semibold text-gray-700">
+                                                            {{ mb_substr($accountName, 0, 1, 'UTF-8') }}
+                                                        </span>
+                                                    @endif
+                                                    @if($platformLogo !== '')
+                                                        <span class="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border border-white bg-white shadow-sm">
+                                                            <img src="{{ asset($platformLogo) }}" alt="{{ $platformLabel }}" class="h-4 w-4 object-contain">
+                                                        </span>
+                                                    @endif
+                                                </span>
+                                                <span class="min-w-0 flex-1">
+                                                    <span class="block truncate text-sm font-medium text-gray-900">{{ $accountName }}</span>
+                                                    <span class="mt-0.5 block text-xs text-gray-500">{{ $platformLabel }}</span>
+                                                </span>
+                                            </label>
+                                        @endforeach
+                                    </div>
+                                @endif
+                            </div>
+
+                            <div class="flex items-center justify-between gap-3 border-t border-gray-200 bg-gray-50 px-6 py-4">
+                                <div class="text-xs text-gray-500">一篇内容选择多个平台时，每个平台计 1 次。</div>
+                                <div class="flex items-center gap-2">
+                                    <button type="button" onclick="closeSelfMediaPublishModal()" class="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                                        取消
+                                    </button>
+                                    <button id="self-media-publish-submit" type="submit" @disabled($selfMediaArticleAccounts->isEmpty()) class="inline-flex items-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-gray-300">
+                                        <i data-lucide="send" class="mr-2 h-4 w-4"></i>
+                                        确认发布
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        @endif
     </div>
 @endsection
 
@@ -548,6 +646,29 @@
         const TRASH_I18N = @json($trashI18n);
         const IS_TRASH_VIEW = @json($isTrashView);
         const EMPTY_TRASH_URL = @json(route('admin.articles.trash.empty'));
+
+        function openSelfMediaPublishModal(action, articleTitle) {
+            const modal = document.getElementById('self-media-publish-modal');
+            const form = document.getElementById('self-media-publish-form');
+            if (!modal || !form) {
+                return;
+            }
+
+            form.action = action;
+            form.querySelectorAll('input[name="crebee_account_ids[]"]').forEach((node) => node.checked = false);
+            const titleNode = document.getElementById('self-media-publish-article-title');
+            if (titleNode) {
+                titleNode.textContent = articleTitle ? `文章：${articleTitle}` : '';
+            }
+            modal.classList.remove('hidden');
+        }
+
+        function closeSelfMediaPublishModal() {
+            const modal = document.getElementById('self-media-publish-modal');
+            if (modal) {
+                modal.classList.add('hidden');
+            }
+        }
 
         function toggleBatchActions() {
             const batchActions = document.getElementById('batch-actions');
@@ -649,6 +770,12 @@
                 node.addEventListener('change', updateSelectedCount);
             });
 
+            document.querySelectorAll('.js-self-media-publish').forEach((button) => {
+                button.addEventListener('click', function() {
+                    openSelfMediaPublishModal(this.dataset.action || '', this.dataset.title || '');
+                });
+            });
+
             const batchAction = document.getElementById('batch-action');
             if (batchAction && !IS_TRASH_VIEW) {
                 batchAction.addEventListener('change', function() {
@@ -729,6 +856,24 @@
                         input.value = checkbox.value;
                         selectedIdsContainer.appendChild(input);
                     });
+                });
+            }
+
+            const selfMediaForm = document.getElementById('self-media-publish-form');
+            if (selfMediaForm) {
+                selfMediaForm.addEventListener('submit', function(event) {
+                    const selected = selfMediaForm.querySelectorAll('input[name="crebee_account_ids[]"]:checked');
+                    if (selected.length === 0) {
+                        event.preventDefault();
+                        alert('请选择要发布的自媒体平台');
+                        return;
+                    }
+
+                    const submitButton = document.getElementById('self-media-publish-submit');
+                    if (submitButton) {
+                        submitButton.disabled = true;
+                        submitButton.textContent = '提交中...';
+                    }
                 });
             }
         });

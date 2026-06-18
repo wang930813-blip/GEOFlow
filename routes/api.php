@@ -12,6 +12,7 @@
 use App\Http\Controllers\Api\V1\ArticleController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\CatalogController;
+use App\Http\Controllers\Api\V1\CrebeeAgentController;
 use App\Http\Controllers\Api\V1\JobController;
 use App\Http\Controllers\Api\V1\MaterialController;
 use App\Http\Controllers\Api\V1\MediaResourceController;
@@ -122,4 +123,20 @@ Route::prefix('v1')
                 ->whereNumber('submission')
                 ->middleware('api.scope:media:sync');
         });
+
+        Route::prefix('crebee-agent')
+            ->middleware(['crebee.agent'])
+            ->group(function (): void {
+                Route::post('heartbeat', [CrebeeAgentController::class, 'heartbeat']);
+                Route::post('accounts/sync', [CrebeeAgentController::class, 'syncAccounts']);
+                Route::get('jobs/next', [CrebeeAgentController::class, 'nextJob']);
+                Route::post('jobs/{job}/accepted', [CrebeeAgentController::class, 'accepted'])
+                    ->whereNumber('job');
+                Route::post('jobs/{job}/events', [CrebeeAgentController::class, 'events'])
+                    ->whereNumber('job');
+                Route::post('jobs/{job}/finished', [CrebeeAgentController::class, 'finished'])
+                    ->whereNumber('job');
+                Route::post('jobs/{job}/failed', [CrebeeAgentController::class, 'failed'])
+                    ->whereNumber('job');
+            });
     });

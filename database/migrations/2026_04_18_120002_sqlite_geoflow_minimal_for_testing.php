@@ -219,6 +219,7 @@ return new class extends Migration
             $table->string('title', 500);
             $table->string('slug', 500)->unique();
             $table->text('excerpt')->nullable();
+            $table->string('cover_image', 1000)->default('');
             $table->text('content');
             $table->foreignId('category_id')->constrained('categories');
             $table->foreignId('author_id')->constrained('authors');

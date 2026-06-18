@@ -6,9 +6,14 @@ use App\Http\Controllers\Controller;
 use App\Models\Article;
 use App\Models\Author;
 use App\Models\Category;
+use App\Models\CrebeeAccount;
+use App\Models\Site;
 use App\Models\Task;
+use App\Services\Crebee\SelfMediaArticlePublishService;
 use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Support\AdminWeb;
+use App\Support\Crebee\SelfMediaPlatformCatalog;
+use App\Support\CurrentSite;
 use App\Support\GeoFlow\ArticleWorkflow;
 use App\Support\Site\SiteSettingsBag;
 use Illuminate\Database\QueryException;
@@ -55,6 +60,11 @@ class ArticleController extends Controller
             'isTrashView' => $isTrashView,
             'trashI18n' => $this->trashI18n(),
             'articleBatchRoutes' => $this->articleBatchRoutes($isTrashView),
+            'selfMediaArticleAccounts' => $isTrashView ? collect() : $this->loadSelfMediaArticleAccounts($request),
+            'selfMediaPlatformLabels' => SelfMediaArticlePublishService::articlePlatformLabels(),
+            'selfMediaPlatformLogos' => collect(SelfMediaArticlePublishService::articlePlatforms())
+                ->mapWithKeys(fn (string $platform): array => [$platform => SelfMediaPlatformCatalog::logoPath($platform)])
+                ->all(),
         ]);
     }
 
@@ -541,6 +551,7 @@ HTML;
                 'slug' => ArticleWorkflow::generateUniqueSlug($payload['title']),
                 'content' => $payload['content'],
                 'excerpt' => $payload['excerpt'] !== '' ? $payload['excerpt'] : mb_substr(strip_tags($payload['content']), 0, 200, 'UTF-8'),
+                'cover_image' => trim((string) ($payload['cover_image'] ?? '')),
                 'keywords' => $payload['keywords'],
                 'meta_description' => $payload['meta_description'],
                 'category_id' => (int) $payload['category_id'],
@@ -583,6 +594,7 @@ HTML;
             'articleForm' => [
                 'title' => (string) $article->title,
                 'excerpt' => (string) ($article->excerpt ?? ''),
+                'cover_image' => (string) ($article->cover_image ?? ''),
                 'content' => (string) $article->content,
                 'keywords' => (string) ($article->keywords ?? ''),
                 'meta_description' => (string) ($article->meta_description ?? ''),
@@ -622,6 +634,7 @@ HTML;
                     : ArticleWorkflow::generateUniqueSlug($payload['title'], (int) $article->id),
                 'content' => $payload['content'],
                 'excerpt' => $payload['excerpt'] !== '' ? $payload['excerpt'] : mb_substr(strip_tags($payload['content']), 0, 200, 'UTF-8'),
+                'cover_image' => trim((string) ($payload['cover_image'] ?? '')),
                 'keywords' => $payload['keywords'],
                 'meta_description' => $payload['meta_description'],
                 'category_id' => (int) $payload['category_id'],
@@ -884,6 +897,25 @@ HTML;
         }
     }
 
+    private function loadSelfMediaArticleAccounts(Request $request)
+    {
+        $admin = $request->user('admin');
+        $site = app(CurrentSite::class)->get();
+        if (! $admin instanceof \App\Models\Admin || ! $site instanceof Site) {
+            return collect();
+        }
+
+        return CrebeeAccount::query()
+            ->select(['id', 'agent_id', 'site_id', 'owner_admin_id', 'platform', 'crebee_account_id', 'account_name', 'avatar', 'status'])
+            ->where('site_id', (int) $site->id)
+            ->where('owner_admin_id', (int) $admin->id)
+            ->where('status', 'bound')
+            ->whereIn('platform', SelfMediaArticlePublishService::articlePlatforms())
+            ->orderBy('platform')
+            ->orderBy('id')
+            ->get();
+    }
+
     /**
      * @return array{
      *     categories: array<int, array{id: int, name: string}>,
@@ -919,6 +951,7 @@ HTML;
      * @return array{
      *     title: string,
      *     excerpt: string,
+     *     cover_image: string,
      *     content: string,
      *     keywords: string,
      *     meta_description: string,
@@ -937,6 +970,7 @@ HTML;
         return $request->validate([
             'title' => ['required', 'string', 'max:255'],
             'excerpt' => ['nullable', 'string'],
+            'cover_image' => ['nullable', 'string', 'max:1000'],
             'content' => ['required', 'string'],
             'keywords' => ['nullable', 'string', 'max:500'],
             'meta_description' => ['nullable', 'string', 'max:500'],

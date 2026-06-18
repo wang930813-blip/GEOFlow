@@ -11,6 +11,7 @@ use App\Http\Middleware\AdminWebLocale;
 use App\Http\Middleware\AssignApiRequestId;
 use App\Http\Middleware\AuthenticateAdminWeb;
 use App\Http\Middleware\AuthenticateApiToken;
+use App\Http\Middleware\AuthenticateCrebeeAgent;
 use App\Http\Middleware\AutoFollowRedirectBody;
 use App\Http\Middleware\EnsureApiScope;
 use App\Http\Middleware\EnsureAgentAdmin;
@@ -59,6 +60,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'api.auth' => AuthenticateApiToken::class,
             // 校验 Token scopes，如 api.scope:catalog:read
             'api.scope' => EnsureApiScope::class,
+            'crebee.agent' => AuthenticateCrebeeAgent::class,
             // Blade 后台：管理员会话鉴权（失败跳转 admin.login）
             'admin.auth' => AuthenticateAdminWeb::class,
             // Blade 后台：session locale

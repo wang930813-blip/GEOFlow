@@ -24,6 +24,7 @@ class Article extends Model
         'owner_admin_id',
         'slug',
         'excerpt',
+        'cover_image',
         'content',
         'category_id',
         'author_id',

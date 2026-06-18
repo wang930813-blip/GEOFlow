@@ -9,6 +9,7 @@
     $formData = [
         'title' => old('title', (string) ($articleForm['title'] ?? '')),
         'excerpt' => old('excerpt', (string) ($articleForm['excerpt'] ?? '')),
+        'cover_image' => old('cover_image', (string) ($articleForm['cover_image'] ?? '')),
         'content' => old('content', (string) ($articleForm['content'] ?? '')),
         'keywords' => old('keywords', (string) ($articleForm['keywords'] ?? '')),
         'meta_description' => old('meta_description', (string) ($articleForm['meta_description'] ?? '')),
@@ -62,6 +63,16 @@
                             <div>
                                 <label for="excerpt" class="block text-sm font-medium text-gray-700">{{ __($i18nRoot.'.field.excerpt') }}</label>
                                 <textarea id="excerpt" name="excerpt" rows="3" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="{{ __($i18nRoot.'.placeholder.excerpt') }}">{{ $formData['excerpt'] }}</textarea>
+                            </div>
+                            <div>
+                                <label for="cover_image" class="block text-sm font-medium text-gray-700">文章封面图</label>
+                                <input id="cover_image" type="text" name="cover_image" value="{{ $formData['cover_image'] }}" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="https://example.com/cover.jpg 或 /storage/uploads/images/cover.jpg">
+                                <p class="mt-2 text-xs text-gray-500">用于站内展示和自媒体发布封面。B站文章发布必须填写封面图。</p>
+                                @if($formData['cover_image'] !== '')
+                                    <div class="mt-3 overflow-hidden rounded-md border border-gray-200 bg-gray-50">
+                                        <img src="{{ $formData['cover_image'] }}" alt="文章封面图预览" class="h-36 w-full object-cover" referrerpolicy="no-referrer">
+                                    </div>
+                                @endif
                             </div>
                         </div>
                     </div>
