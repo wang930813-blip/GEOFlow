@@ -200,7 +200,7 @@ class CrebeeAgentController extends BaseApiController
             'events.*.taskId' => ['required', 'string', 'max:120'],
             'events.*.type' => ['required', 'string', 'max:60'],
             'events.*.progress' => ['nullable', 'integer', 'min:0', 'max:100'],
-            'events.*.message' => ['nullable', 'string', 'max:500'],
+            'events.*.message' => ['nullable', 'string', 'max:5000'],
             'events.*.raw' => ['nullable', 'array'],
         ]);
 
@@ -219,7 +219,7 @@ class CrebeeAgentController extends BaseApiController
                 'crebee_task_id' => $taskId,
                 'event_type' => $type,
                 'progress' => isset($eventPayload['progress']) ? (int) $eventPayload['progress'] : null,
-                'message' => trim((string) ($eventPayload['message'] ?? '')),
+                'message' => $this->truncateText($eventPayload['message'] ?? '', 500),
                 'raw_event' => (array) ($eventPayload['raw'] ?? $eventPayload),
                 'created_at' => now(),
             ]);
@@ -228,7 +228,7 @@ class CrebeeAgentController extends BaseApiController
                 $item->forceFill([
                     'status' => $this->eventStatus($type),
                     'progress' => isset($eventPayload['progress']) ? (int) $eventPayload['progress'] : (int) $item->progress,
-                    'message' => trim((string) ($eventPayload['message'] ?? $item->message)),
+                    'message' => $this->truncateText($eventPayload['message'] ?? $item->message, 500),
                     'last_event_at' => now(),
                 ])->save();
             }
@@ -253,7 +253,7 @@ class CrebeeAgentController extends BaseApiController
             'items.*.taskId' => ['required', 'string', 'max:120'],
             'items.*.status' => ['required', 'string', 'max:30'],
             'items.*.published_url' => ['nullable', 'string', 'max:1000'],
-            'items.*.message' => ['nullable', 'string', 'max:500'],
+            'items.*.message' => ['nullable', 'string', 'max:5000'],
             'items.*.raw' => ['nullable', 'array'],
         ]);
 
@@ -270,7 +270,7 @@ class CrebeeAgentController extends BaseApiController
             $item->forceFill([
                 'status' => $status,
                 'progress' => $status === 'success' ? 100 : (int) $item->progress,
-                'message' => trim((string) ($itemPayload['message'] ?? $item->message)),
+                'message' => $this->truncateText($itemPayload['message'] ?? $item->message, 500),
                 'published_url' => trim((string) ($itemPayload['published_url'] ?? $item->published_url)),
                 'published_at' => $status === 'success' ? now() : $item->published_at,
                 'raw_response' => (array) ($itemPayload['raw'] ?? []),
@@ -289,13 +289,13 @@ class CrebeeAgentController extends BaseApiController
     {
         $this->assertOwnsJob($request, $job);
         $payload = $request->validate([
-            'message' => ['nullable', 'string', 'max:1000'],
+            'message' => ['nullable', 'string', 'max:5000'],
             'raw' => ['nullable', 'array'],
         ]);
 
         $job->forceFill([
             'status' => 'failed',
-            'failure_reason' => trim((string) ($payload['message'] ?? '')),
+            'failure_reason' => $this->truncateText($payload['message'] ?? '', 2000),
             'finished_at' => now(),
             'raw_response' => (array) ($payload['raw'] ?? []),
         ])->save();
@@ -305,7 +305,7 @@ class CrebeeAgentController extends BaseApiController
             ->whereNotIn('status', ['success', 'failed'])
             ->update([
                 'status' => 'failed',
-                'message' => trim((string) ($payload['message'] ?? '')),
+                'message' => $this->truncateText($payload['message'] ?? '', 500),
                 'last_event_at' => now(),
                 'updated_at' => now(),
             ]);
@@ -431,6 +431,11 @@ class CrebeeAgentController extends BaseApiController
         return in_array($status, ['success', 'failed', 'error'], true)
             ? ($status === 'success' ? 'success' : 'failed')
             : 'failed';
+    }
+
+    private function truncateText(mixed $value, int $limit): string
+    {
+        return mb_substr(trim((string) $value), 0, $limit);
     }
 
     private function refreshFinalJobStatus(CrebeePublishJob $job): string

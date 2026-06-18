@@ -35,6 +35,37 @@ class SelfMediaPlatformCatalog
             ->all();
     }
 
+    /**
+     * @return array<string,string>
+     */
+    public static function videoPlatformLabels(): array
+    {
+        return collect(self::all())
+            ->only(self::videoPlatforms())
+            ->mapWithKeys(fn (array $platform, string $key): array => [$key => (string) $platform['label']])
+            ->all();
+    }
+
+    /**
+     * @return array<int,string>
+     */
+    public static function videoPlatforms(): array
+    {
+        return [
+            'douyin',
+            'bilibili',
+            'kuaishou',
+            'shipinhao',
+            'xiaohongshu',
+            'zhihu',
+            'weibo',
+            'baijiahao',
+            'toutiaohao',
+            'qiehao',
+            'wangyihao',
+        ];
+    }
+
     public static function label(string $platform): string
     {
         return (string) (self::all()[$platform]['label'] ?? $platform);

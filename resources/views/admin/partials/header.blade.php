@@ -26,6 +26,7 @@
         'tasks' => ['route' => 'admin.tasks.index', 'name' => __('admin.nav.tasks')],
         'media_distribution' => ['route' => 'admin.media-distribution.resources.index', 'name' => '分发媒体'],
         'articles' => ['route' => 'admin.articles.index', 'name' => __('admin.nav.articles')],
+        'video_generations' => ['route' => 'admin.video-generations.index', 'name' => '生成视频'],
     ];
     $subMap = [
         'admin.geo-reports.index' => 'geo_reports',
@@ -68,6 +69,12 @@
         'admin.distribution.rotate-secret' => 'distribution',
         'admin.articles.create' => 'articles',
         'admin.articles.edit' => 'articles',
+        'admin.video-generations.index' => 'video_generations',
+        'admin.video-generations.create' => 'video_generations',
+        'admin.video-generations.store' => 'video_generations',
+        'admin.video-generations.show' => 'video_generations',
+        'admin.video-generations.cover.update' => 'video_generations',
+        'admin.video-generations.self-media.publish' => 'video_generations',
         'admin.categories.index' => 'materials',
         'admin.categories.create' => 'materials',
         'admin.categories.edit' => 'materials',

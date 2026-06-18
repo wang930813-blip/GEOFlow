@@ -68,6 +68,19 @@ pkg src/index.mjs --targets node20-win-x64 --output dist/crebee-bridge-agent.exe
 
 注意：即使打成 exe，仍然需要旁边放 `.env` 配置文件，因为 Agent ID、Secret、云端地址不应该硬编码进程序。
 
+## 视频发布资产缓存
+
+云端下发 `contentType=video` 的发布任务时，payload 会携带视频和封面 URL。Agent 在调用本机 CreBee 发布接口前会先下载到本地缓存目录，再把 `videoPath`、`coverPath`、`verticalCoverPath` 替换成本机路径。
+
+可配置项：
+
+```text
+ASSET_CACHE_DIR=cache/assets
+ASSET_CACHE_MAX_AGE_HOURS=72
+```
+
+生产电脑需要预留足够磁盘空间。缓存文件超过 `ASSET_CACHE_MAX_AGE_HOURS` 后会在后续任务执行时自动清理。
+
 ## 当前能力
 
 - 定时心跳上报。

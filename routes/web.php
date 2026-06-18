@@ -43,6 +43,8 @@ use App\Http\Controllers\Admin\SiteSettingsController;
 use App\Http\Controllers\Admin\TaskController;
 use App\Http\Controllers\Admin\TitleLibraryController;
 use App\Http\Controllers\Admin\UrlImportController;
+use App\Http\Controllers\Admin\VideoGenerationController;
+use App\Http\Controllers\Admin\VideoSelfMediaPublishController;
 use App\Http\Controllers\MediaSubmissionPreviewController;
 use App\Http\Controllers\Site\ArchiveController;
 use App\Http\Controllers\Site\ArticleController as SiteArticleController;
@@ -187,6 +189,18 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
                 ->name('self-media.publish')
                 ->whereNumber('articleId');
             Route::get('{articleId}/download', [ArticleController::class, 'downloadWord'])->name('download')->whereNumber('articleId');
+        });
+
+        Route::prefix('video-generations')->name('video-generations.')->group(function () {
+            Route::get('/', [VideoGenerationController::class, 'index'])->name('index');
+            Route::get('create', [VideoGenerationController::class, 'create'])->name('create');
+            Route::post('/', [VideoGenerationController::class, 'store'])->name('store');
+            Route::get('{videoGeneration}', [VideoGenerationController::class, 'show'])->name('show')->whereNumber('videoGeneration');
+            Route::get('{videoGeneration}/download', [VideoGenerationController::class, 'download'])->name('download')->whereNumber('videoGeneration');
+            Route::post('{videoGeneration}/cover', [VideoGenerationController::class, 'updateCover'])->name('cover.update')->whereNumber('videoGeneration');
+            Route::post('{videoGeneration}/self-media/publish', [VideoSelfMediaPublishController::class, 'store'])
+                ->name('self-media.publish')
+                ->whereNumber('videoGeneration');
         });
 
         // Category management

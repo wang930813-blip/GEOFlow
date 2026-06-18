@@ -56,4 +56,6 @@ export const config = {
   publishRecordPollTimeoutMs: integer('PUBLISH_RECORD_POLL_TIMEOUT_MS', 120000),
   httpTimeoutMs: integer('HTTP_TIMEOUT_MS', 30000),
   tempDir: process.env.TEMP_DIR ?? '.cache',
+  assetCacheDir: resolve(process.cwd(), process.env.ASSET_CACHE_DIR ?? 'cache/assets'),
+  assetCacheMaxAgeHours: integer('ASSET_CACHE_MAX_AGE_HOURS', 72),
 };

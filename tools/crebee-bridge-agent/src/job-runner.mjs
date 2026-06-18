@@ -1,7 +1,10 @@
+import { AssetCache } from './asset-cache.mjs';
+
 export class JobRunner {
   constructor(cloudClient, crebeeClient) {
     this.cloud = cloudClient;
     this.crebee = crebeeClient;
+    this.assetCache = new AssetCache(crebeeClient.config);
     this.running = false;
   }
 
@@ -25,6 +28,7 @@ export class JobRunner {
 
   async runJob(job) {
     try {
+      job = await this.assetCache.prepareJob(job);
       const taskIds = (job.tasks ?? []).map((task) => task.taskId);
       if (taskIds.length === 0) {
         const response = await this.crebee.publishBatch(job);

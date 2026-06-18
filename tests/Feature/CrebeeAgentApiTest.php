@@ -385,6 +385,51 @@ class CrebeeAgentApiTest extends TestCase
         ]);
     }
 
+    public function test_crebee_agent_failed_callback_accepts_long_error_messages(): void
+    {
+        $agent = $this->createAgent();
+        $account = CrebeeAccount::query()->create([
+            'agent_id' => (int) $agent->id,
+            'platform' => 'bilibili',
+            'crebee_account_id' => 'bilibili-account-001',
+            'account_name' => '测试B站号',
+            'status' => 'bound',
+        ]);
+        $job = CrebeePublishJob::query()->create([
+            'agent_id' => (int) $agent->id,
+            'content_type' => 'video',
+            'title' => '测试视频',
+            'status' => 'dispatching',
+            'payload' => ['contentType' => 'video'],
+        ]);
+        $item = CrebeePublishJobItem::query()->create([
+            'job_id' => (int) $job->id,
+            'crebee_account_id' => (int) $account->id,
+            'platform' => 'bilibili',
+            'crebee_task_id' => 'task-bilibili-001',
+            'status' => 'dispatching',
+        ]);
+        $message = str_repeat('发布失败信息', 300);
+
+        $this->agentJson($agent)->postJson('/api/v1/crebee-agent/jobs/'.$job->id.'/failed', [
+            'message' => $message,
+            'raw' => ['message' => $message],
+        ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.status', 'failed');
+
+        $this->assertDatabaseHas('crebee_publish_jobs', [
+            'id' => (int) $job->id,
+            'status' => 'failed',
+        ]);
+        $this->assertSame(mb_substr($message, 0, 2000), (string) $job->fresh()->failure_reason);
+
+        $freshItem = $item->fresh();
+        $this->assertSame('failed', (string) $freshItem->status);
+        $this->assertSame(500, mb_strlen((string) $freshItem->message));
+    }
+
     public function test_artisan_command_can_create_crebee_agent_credentials(): void
     {
         $this->artisan('crebee:agent-create', [
