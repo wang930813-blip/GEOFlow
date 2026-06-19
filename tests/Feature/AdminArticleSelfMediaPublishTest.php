@@ -116,6 +116,29 @@ class AdminArticleSelfMediaPublishTest extends TestCase
         $this->assertSame(2, (int) $usage->used_amount);
     }
 
+    public function test_article_self_media_publish_blocks_when_selected_platforms_exceed_remaining_quota(): void
+    {
+        [$admin, $site] = $this->provisionSubscribedAdmin('article_publish_quota_block_owner', 1);
+        $article = $this->article($site, $admin, 'Quota blocked article', 'Article content');
+        $article->forceFill(['cover_image' => 'https://cdn.example.com/article-cover.jpg'])->save();
+        $agent = $this->agent();
+        $douyin = $this->account($agent, $site, $admin, 'douyin', 'quota-douyin-account', 'Douyin Account');
+        $bilibili = $this->account($agent, $site, $admin, 'bilibili', 'quota-bilibili-account', 'Bilibili Account');
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->from(route('admin.articles.index'))
+            ->post(route('admin.articles.self-media.publish', ['articleId' => (int) $article->id]), [
+                'crebee_account_ids' => [(int) $douyin->id, (int) $bilibili->id],
+            ])
+            ->assertRedirect(route('admin.articles.index'))
+            ->assertSessionHasErrors('crebee_account_ids');
+
+        $this->assertSame(0, CrebeePublishJob::query()->count());
+        $this->assertSame(0, CrebeePublishJobItem::query()->count());
+        $this->assertSame(0, AdminResourceUsage::query()->count());
+    }
+
     public function test_user_cannot_publish_to_unbound_or_unsupported_self_media_account(): void
     {
         [$admin, $site] = $this->provisionSubscribedAdmin('article_publish_forbidden_owner', 5);

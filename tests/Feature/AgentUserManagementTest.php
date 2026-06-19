@@ -78,6 +78,30 @@ class AgentUserManagementTest extends TestCase
             ->assertSessionHasErrors('username');
     }
 
+    public function test_agent_user_create_form_does_not_auto_refill_old_input(): void
+    {
+        $agent = $this->createAdmin('agent_no_refill_owner', 'agent_admin');
+        $site = $this->createSite('Agent No Refill Site', $agent, 'agent');
+        $plan = $this->createPlanWithTeamMembers(2);
+        app(PlanSubscriptionService::class)->open($site, $plan, 'agent', $agent, $agent, now(), now()->addMonth(), false);
+
+        $this->actingAs($agent, 'admin')
+            ->withSession([
+                'current_site_id' => (int) $site->id,
+                '_old_input' => [
+                    'username' => 'stale_agent_member',
+                    'display_name' => 'Stale Agent Member',
+                    'email' => 'stale-agent-member@example.com',
+                ],
+            ])
+            ->get(route('admin.agent-users.index'))
+            ->assertOk()
+            ->assertSee('autocomplete="off"', false)
+            ->assertDontSee('value="stale_agent_member"', false)
+            ->assertDontSee('value="Stale Agent Member"', false)
+            ->assertDontSee('value="stale-agent-member@example.com"', false);
+    }
+
     public function test_agent_team_member_limit_uses_account_subscription_not_site_subscription(): void
     {
         $agent = $this->createAdmin('agent_account_quota_owner', 'agent_admin');

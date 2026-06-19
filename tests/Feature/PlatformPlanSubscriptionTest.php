@@ -155,7 +155,7 @@ class PlatformPlanSubscriptionTest extends TestCase
         $this->assertArrayHasKey('video_generations', $catalog);
         $this->assertSame('生成视频次数', $catalog['video_generations']['label']);
         $this->assertArrayHasKey('crebee_publishes', $catalog);
-        $this->assertSame('CreBee 发布次数', $catalog['crebee_publishes']['label']);
+        $this->assertSame('自媒体发布次数', $catalog['crebee_publishes']['label']);
     }
 
     public function test_super_admin_can_create_agent_user_with_site_and_plan_subscription(): void

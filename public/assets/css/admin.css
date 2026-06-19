@@ -531,6 +531,7 @@ body.admin-ui .admin-locale-select:focus {
 }
 
 .admin-topbar button[onclick="toggleUserMenu()"]:hover,
+.admin-topbar button[onclick="toggleModuleMenu()"]:hover,
 .admin-topbar button[onclick="toggleAdminNotifications()"]:hover {
     background-color: rgba(255, 255, 255, 0.08) !important;
 }
@@ -586,6 +587,16 @@ body.admin-ui .admin-locale-select:focus {
 .admin-topbar .admin-menu-panel button:hover {
     background-color: var(--aliyun-surface-soft) !important;
     color: var(--aliyun-link) !important;
+}
+
+.admin-menu-section-label {
+    color: var(--aliyun-weak) !important;
+}
+
+.admin-topbar .admin-menu-panel .admin-menu-item-active {
+    background-color: var(--aliyun-link-soft) !important;
+    color: var(--aliyun-link) !important;
+    font-weight: 700;
 }
 
 .admin-topbar .admin-menu-panel .text-red-600 {

@@ -132,6 +132,7 @@ class PlatformPlanController extends Controller
     {
         $request->merge([
             'code' => Str::of((string) $request->input('code', ''))->lower()->replaceMatches('/[^a-z0-9_-]+/', '_')->trim('_')->toString(),
+            'resources' => $this->normalizeResourceInputs((array) $request->input('resources', [])),
         ]);
 
         $payload = $request->validate([
@@ -209,6 +210,30 @@ class PlatformPlanController extends Controller
             'sort_order' => (int) ($payload['sort_order'] ?? 0),
             'resources' => $resources,
         ];
+    }
+
+    /**
+     * @param  array<string,mixed>  $resources
+     * @return array<string,mixed>
+     */
+    private function normalizeResourceInputs(array $resources): array
+    {
+        foreach ($resources as $key => $resource) {
+            if (! is_array($resource)) {
+                continue;
+            }
+
+            $quotaValue = $resource['quota_value'] ?? null;
+            if (is_scalar($quotaValue)) {
+                $quotaValue = trim((string) $quotaValue);
+                if (preg_match('/^\d+$/', $quotaValue) === 1) {
+                    $resource['quota_value'] = ltrim($quotaValue, '0') ?: '0';
+                    $resources[$key] = $resource;
+                }
+            }
+        }
+
+        return $resources;
     }
 
     /**

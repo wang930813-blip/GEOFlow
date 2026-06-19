@@ -2,11 +2,15 @@
     $currentAdmin = auth('admin')->user();
     $adminBrandName = $adminBrandName ?? \App\Support\AdminWeb::siteName();
     $isSuperAdmin = $currentAdmin && method_exists($currentAdmin, 'isSuperAdmin') && $currentAdmin->isSuperAdmin();
+    $isAgentAdmin = $currentAdmin && method_exists($currentAdmin, 'isAgentAdmin') && $currentAdmin->isAgentAdmin();
     $adminRoleLabel = $isSuperAdmin ? __('admin.header.super_admin') : __('admin.header.admin');
+    $currentSite = $currentSite ?? null;
+    $availableSites = collect($availableSites ?? []);
+
     $updateNotification = is_array($adminUpdateNotificationPayload ?? null) ? $adminUpdateNotificationPayload : [];
     $updateState = is_array($updateNotification['state'] ?? null) ? $updateNotification['state'] : [];
     $updateLinks = is_array($updateNotification['links'] ?? null) ? $updateNotification['links'] : [];
-    $hasVersionUpdate = !empty($updateState['is_update_available']);
+    $hasVersionUpdate = ! empty($updateState['is_update_available']);
     $localeForChangelog = app()->getLocale() === 'en' ? 'en' : 'zh-CN';
     $updatePayload = is_array($updateState['payload'] ?? null) ? $updateState['payload'] : [];
     $updateSummary = (string) ($localeForChangelog === 'en'
@@ -15,19 +19,71 @@
     $changelogLinks = is_array($updateLinks['changelog'] ?? null) ? $updateLinks['changelog'] : [];
     $notificationChangelogUrl = (string) ($changelogLinks[$localeForChangelog] ?? $changelogLinks['zh-CN'] ?? 'https://github.com/yaojingang/GEOFlow/blob/main/docs/CHANGELOG.md');
     $notificationGithubUrl = (string) ($updateLinks['github'] ?? 'https://github.com/yaojingang/GEOFlow');
-    $currentSite = $currentSite ?? null;
-    $availableSites = collect($availableSites ?? []);
-    $isAgentAdmin = $currentAdmin && method_exists($currentAdmin, 'isAgentAdmin') && $currentAdmin->isAgentAdmin();
-    $menu = [
+
+    $primaryMenu = [
         'dashboard' => ['route' => 'admin.dashboard', 'name' => __('admin.nav.dashboard')],
         'geo_reports' => ['route' => 'admin.geo-reports.index', 'name' => 'GEO 报表'],
         'brand_diagnosis' => ['route' => 'admin.brand-diagnosis.index', 'name' => '品牌诊断/报告'],
         'analytics' => ['route' => 'admin.analytics', 'name' => __('admin.nav.analytics')],
         'tasks' => ['route' => 'admin.tasks.index', 'name' => __('admin.nav.tasks')],
-        'media_distribution' => ['route' => 'admin.media-distribution.resources.index', 'name' => '分发媒体'],
         'articles' => ['route' => 'admin.articles.index', 'name' => __('admin.nav.articles')],
         'video_generations' => ['route' => 'admin.video-generations.index', 'name' => '生成视频'],
     ];
+
+    $moduleMenuGroups = [
+        [
+            'label' => '系统管理',
+            'items' => [
+                ['key' => 'ai_config', 'route' => 'admin.ai.configurator', 'name' => __('admin.nav.ai_config'), 'icon' => 'bot', 'visible' => true],
+                ['key' => 'site_settings', 'route' => 'admin.site-settings.index', 'name' => __('admin.nav.system_settings'), 'icon' => 'settings', 'visible' => true],
+                ['key' => 'sites', 'route' => 'admin.sites.manage.index', 'name' => '站点管理', 'icon' => 'globe-2', 'visible' => $isSuperAdmin],
+            ],
+        ],
+        [
+            'label' => '规格与客户',
+            'items' => [
+                ['key' => 'platform_plans', 'route' => 'admin.platform-plans.index', 'name' => '平台规格', 'icon' => 'package', 'visible' => $isSuperAdmin],
+                ['key' => 'plan_subscriptions', 'route' => 'admin.plan-subscriptions.index', 'name' => '客户开通', 'icon' => 'badge-check', 'visible' => $isSuperAdmin],
+                ['key' => 'plan_usages', 'route' => 'admin.plan-usages.index', 'name' => '规格使用情况', 'icon' => 'bar-chart-3', 'visible' => true],
+            ],
+        ],
+        [
+            'label' => '账号与权限',
+            'items' => [
+                ['key' => 'admin_users', 'route' => 'admin.admin-users.index', 'name' => __('admin.nav.admin_management'), 'icon' => 'users', 'visible' => $isSuperAdmin],
+                ['key' => 'agent_users', 'route' => 'admin.agent-users.index', 'name' => '代理用户管理', 'icon' => 'user-plus', 'visible' => $isAgentAdmin],
+                ['key' => 'api_tokens', 'route' => 'admin.api-tokens.index', 'name' => __('admin.nav.api_tokens'), 'icon' => 'key-round', 'visible' => true],
+                ['key' => 'activity_logs', 'route' => 'admin.admin-activity-logs', 'name' => __('admin.nav.activity_logs'), 'icon' => 'clipboard-list', 'visible' => $isSuperAdmin],
+            ],
+        ],
+        [
+            'label' => '资源与素材',
+            'items' => [
+                ['key' => 'materials', 'route' => 'admin.materials.index', 'name' => __('admin.nav.materials'), 'icon' => 'folder-kanban', 'visible' => true],
+                ['key' => 'media_distribution', 'route' => 'admin.media-distribution.resources.index', 'name' => '分发媒体', 'icon' => 'send', 'visible' => true],
+            ],
+        ],
+        [
+            'label' => '自媒体',
+            'items' => [
+                ['key' => 'crebee_accounts', 'route' => 'admin.crebee-accounts.index', 'name' => '自媒体账号绑定', 'icon' => 'share-2', 'visible' => true],
+                ['key' => 'crebee_publish_records', 'route' => 'admin.crebee-publish-records.index', 'name' => '自媒体发布记录', 'icon' => 'radio', 'visible' => true],
+            ],
+        ],
+    ];
+
+    $visibleModuleMenuGroups = collect($moduleMenuGroups)
+        ->map(function (array $group): array {
+            $group['items'] = collect($group['items'])
+                ->filter(static fn (array $item): bool => (bool) ($item['visible'] ?? true))
+                ->values()
+                ->all();
+
+            return $group;
+        })
+        ->filter(static fn (array $group): bool => $group['items'] !== [])
+        ->values();
+
     $subMap = [
         'admin.geo-reports.index' => 'geo_reports',
         'admin.brand-diagnosis.index' => 'brand_diagnosis',
@@ -115,20 +171,25 @@
         'admin.url-import' => 'materials',
         'admin.ai-models.index' => 'ai_config',
         'admin.ai-prompts' => 'ai_config',
+        'admin.ai-special-prompts' => 'ai_config',
+        'admin.site-settings.index' => 'site_settings',
         'admin.site-settings.sensitive-words' => 'site_settings',
         'admin.site-settings.sensitive-words.store' => 'site_settings',
         'admin.site-settings.sensitive-words.delete' => 'site_settings',
         'admin.security-settings.index' => 'site_settings',
         'admin.security-settings.words.store' => 'site_settings',
         'admin.security-settings.words.delete' => 'site_settings',
-        'admin.api-tokens.index' => 'admin_users',
-        'admin.api-tokens.store' => 'admin_users',
-        'admin.api-tokens.revoke' => 'admin_users',
-        'admin.admin-activity-logs' => 'admin_users',
+        'admin.api-tokens.index' => 'api_tokens',
+        'admin.api-tokens.store' => 'api_tokens',
+        'admin.api-tokens.revoke' => 'api_tokens',
+        'admin.admin-users.index' => 'admin_users',
+        'admin.admin-activity-logs' => 'activity_logs',
+        'admin.agent-users.index' => 'agent_users',
+        'admin.sites.manage.index' => 'sites',
         'admin.platform-plans.index' => 'platform_plans',
         'admin.platform-plans.show' => 'platform_plans',
         'admin.platform-plans.edit' => 'platform_plans',
-        'admin.plan-subscriptions.index' => 'platform_plans',
+        'admin.plan-subscriptions.index' => 'plan_subscriptions',
         'admin.plan-usages.index' => 'plan_usages',
         'admin.crebee-accounts.index' => 'crebee_accounts',
         'admin.crebee-accounts.requests.store' => 'crebee_accounts',
@@ -136,7 +197,7 @@
         'admin.crebee-accounts.requests.fail' => 'crebee_accounts',
         'admin.crebee-accounts.bind' => 'crebee_accounts',
         'admin.crebee-accounts.unbind' => 'crebee_accounts',
-        'admin.crebee-publish-records.index' => 'crebee_accounts',
+        'admin.crebee-publish-records.index' => 'crebee_publish_records',
     ];
     $routeName = request()->route()?->getName();
     $resolvedActive = $activeMenu;
@@ -144,6 +205,7 @@
         $resolvedActive = $subMap[$routeName];
     }
 @endphp
+
 <nav class="admin-topbar">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex h-16 items-center gap-3 lg:gap-4 min-w-0">
@@ -153,16 +215,19 @@
                 </span>
                 <span>{{ $adminBrandName }}</span>
             </a>
-            <nav class="hidden md:flex flex-1 min-w-0 items-center">
-                <div class="flex w-full min-w-0 items-center gap-3 lg:gap-5 overflow-x-auto overscroll-x-contain py-2 -my-2 [scrollbar-width:thin]">
-                    @foreach ($menu as $key => $item)
+
+            <nav class="hidden md:flex flex-1 min-w-0 items-center overflow-hidden" data-admin-primary-nav>
+                <div class="flex w-full min-w-0 items-center gap-1 lg:gap-2 overflow-hidden py-2 -my-2">
+                    @foreach ($primaryMenu as $key => $item)
                         <a href="{{ route($item['route']) }}"
-                           class="admin-nav-link @if($resolvedActive === $key) is-active font-medium @endif inline-flex shrink-0 items-center whitespace-nowrap px-3 py-2 text-sm transition-colors duration-200">
+                           class="admin-nav-link @if($resolvedActive === $key) is-active font-medium @endif inline-flex shrink-0 items-center whitespace-nowrap px-2 lg:px-3 py-2 text-sm transition-colors duration-200">
                             {{ $item['name'] }}
                         </a>
                     @endforeach
                 </div>
             </nav>
+            <span class="hidden" data-admin-section-end></span>
+
             <div class="flex shrink-0 items-center gap-2 sm:gap-3 ml-auto">
                 @if($hasVersionUpdate)
                     <div class="relative">
@@ -188,11 +253,11 @@
                                 @endif
                                 <div class="mt-4 space-y-1 rounded-xl bg-gray-50 px-3 py-3 text-xs text-gray-500">
                                     <div>{{ __('admin.header.notifications.current_version', ['version' => (string) ($updateState['current_version'] ?? config('geoflow.app_version', '2.0'))]) }}</div>
-                                    @if(!empty($updateState['latest_version']))
+                                    @if(! empty($updateState['latest_version']))
                                         <div>{{ __('admin.header.notifications.latest_version', ['version' => (string) $updateState['latest_version']]) }}</div>
                                     @endif
                                     <div>{{ __('admin.header.notifications.daily_check') }}</div>
-                                    @if(!empty($updateState['checked_at']))
+                                    @if(! empty($updateState['checked_at']))
                                         <div>{{ __('admin.header.notifications.checked_at', ['time' => (string) $updateState['checked_at']]) }}</div>
                                     @endif
                                 </div>
@@ -209,20 +274,7 @@
                         </div>
                     </div>
                 @endif
-                <div class="hidden md:flex items-center rounded-md border border-slate-200 bg-white px-2 py-1 shadow-sm">
-                    <i data-lucide="languages" class="w-4 h-4 mr-1.5"></i>
-                    <select
-                        class="admin-locale-select appearance-none bg-transparent pr-5 text-sm font-medium text-gray-700 outline-none cursor-pointer"
-                        aria-label="{{ __('admin.header.language') }}"
-                        onchange="if (this.value) window.location.href = this.value"
-                    >
-                        @foreach (\App\Support\AdminWeb::supportedLocales() as $localeCode => $localeLabel)
-                            <option value="{{ route('admin.locale.switch', ['locale' => $localeCode]) }}" @selected(app()->getLocale() === $localeCode)>
-                                {{ $localeLabel }}
-                            </option>
-                        @endforeach
-                    </select>
-                </div>
+
                 <div class="relative">
                     <button onclick="toggleUserMenu()" class="flex items-center space-x-1 text-sm transition-colors duration-200" type="button">
                         <div class="admin-user-avatar w-8 h-8 rounded-md flex items-center justify-center">
@@ -231,7 +283,7 @@
                         <i data-lucide="chevron-down" class="w-4 h-4"></i>
                     </button>
 
-                    <div id="user-menu" class="admin-menu-panel hidden absolute right-0 mt-2 w-56 bg-white rounded-md py-1 z-50">
+                    <div id="user-menu" class="admin-menu-panel hidden absolute right-0 mt-2 w-64 bg-white rounded-md py-1 z-50">
                         <div class="px-4 py-2 border-b border-gray-100">
                             <div class="text-sm text-gray-700">{{ __('admin.header.welcome', ['name' => $currentAdmin->username ?? '']) }}</div>
                             <div class="text-xs text-gray-400">{{ $adminRoleLabel }}</div>
@@ -262,71 +314,6 @@
                             <i data-lucide="home" class="w-4 h-4 inline mr-2"></i>
                             {{ __('admin.nav.back_home') }}
                         </a>
-                        <a href="{{ route('admin.ai.configurator') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                            <i data-lucide="bot" class="w-4 h-4 inline mr-2"></i>
-                            {{ __('admin.nav.ai_config') }}
-                        </a>
-                        <a href="{{ route('admin.site-settings.index') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                            <i data-lucide="settings" class="w-4 h-4 inline mr-2"></i>
-                            {{ __('admin.nav.system_settings') }}
-                        </a>
-                        @if ($isSuperAdmin)
-                            <a href="{{ route('admin.sites.manage.index') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                                <i data-lucide="globe-2" class="w-4 h-4 inline mr-2"></i>
-                                站点管理
-                            </a>
-                            <a href="{{ route('admin.platform-plans.index') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                                <i data-lucide="package" class="w-4 h-4 inline mr-2"></i>
-                                平台规格
-                            </a>
-                            <a href="{{ route('admin.plan-subscriptions.index') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                                <i data-lucide="badge-check" class="w-4 h-4 inline mr-2"></i>
-                                客户开通
-                            </a>
-                            <a href="{{ route('admin.admin-users.index') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                                <i data-lucide="users" class="w-4 h-4 inline mr-2"></i>
-                                {{ __('admin.nav.admin_management') }}
-                            </a>
-                            <a href="{{ route('admin.plan-usages.index') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                                <i data-lucide="bar-chart-3" class="w-4 h-4 inline mr-2"></i>
-                                规格使用情况
-                            </a>
-                            <a href="{{ route('admin.materials.index') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                                <i data-lucide="folder-kanban" class="w-4 h-4 inline mr-2"></i>
-                                {{ __('admin.nav.materials') }}
-                            </a>
-                            <a href="{{ route('admin.admin-activity-logs') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                                <i data-lucide="clipboard-list" class="w-4 h-4 inline mr-2"></i>
-                                {{ __('admin.nav.activity_logs') }}
-                            </a>
-                        @else
-                            @if($isAgentAdmin)
-                                <a href="{{ route('admin.agent-users.index') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                                    <i data-lucide="user-plus" class="w-4 h-4 inline mr-2"></i>
-                                    代理用户管理
-                                </a>
-                            @endif
-                            <a href="{{ route('admin.plan-usages.index') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                                <i data-lucide="bar-chart-3" class="w-4 h-4 inline mr-2"></i>
-                                规格使用情况
-                            </a>
-                            <a href="{{ route('admin.materials.index') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                                <i data-lucide="folder-kanban" class="w-4 h-4 inline mr-2"></i>
-                                {{ __('admin.nav.materials') }}
-                            </a>
-                        @endif
-                        <a href="{{ route('admin.api-tokens.index') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                            <i data-lucide="key-round" class="w-4 h-4 inline mr-2"></i>
-                            {{ __('admin.nav.api_tokens') }}
-                        </a>
-                        <a href="{{ route('admin.crebee-accounts.index') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                            <i data-lucide="share-2" class="w-4 h-4 inline mr-2"></i>
-                            自媒体账号绑定
-                        </a>
-                        <a href="{{ route('admin.crebee-publish-records.index') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                            <i data-lucide="send" class="w-4 h-4 inline mr-2"></i>
-                            自媒体发布记录
-                        </a>
                         <div class="border-t border-gray-100"></div>
                         <form method="POST" action="{{ route('admin.logout') }}">
                             @csrf
@@ -337,39 +324,80 @@
                         </form>
                     </div>
                 </div>
+
+                <div class="relative">
+                    <button onclick="toggleModuleMenu()" class="inline-flex h-9 items-center gap-2 rounded-md border border-white/10 px-3 text-sm font-medium transition-colors duration-200 hover:bg-white/10" type="button">
+                        <i data-lucide="layout-grid" class="h-4 w-4"></i>
+                        <span class="hidden sm:inline">功能</span>
+                        <i data-lucide="chevron-down" class="w-4 h-4"></i>
+                    </button>
+
+                    <div id="module-menu" class="admin-menu-panel hidden absolute right-0 mt-2 w-72 max-h-[calc(100vh-5rem)] overflow-y-auto bg-white rounded-md py-2 z-50" data-admin-module-menu>
+                        @foreach ($visibleModuleMenuGroups as $group)
+                            <div class="px-2 py-2">
+                                <div class="admin-menu-section-label px-2 pb-1 text-xs font-semibold">{{ $group['label'] }}</div>
+                                <div class="space-y-0.5">
+                                    @foreach ($group['items'] as $item)
+                                        <a href="{{ route($item['route']) }}"
+                                           class="@if($resolvedActive === $item['key']) admin-menu-item-active @endif flex items-center gap-2 rounded-md px-2 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                            <i data-lucide="{{ $item['icon'] }}" class="h-4 w-4 shrink-0"></i>
+                                            <span class="truncate">{{ $item['name'] }}</span>
+                                        </a>
+                                    @endforeach
+                                </div>
+                            </div>
+                        @endforeach
+                        <span class="hidden" data-admin-section-end></span>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
     <div id="mobile-menu" class="hidden md:hidden">
-        <div class="px-2 pt-2 pb-3 space-y-1 sm:px-3 border-t border-slate-200 bg-white">
-            @foreach ($menu as $key => $item)
-                <a href="{{ route($item['route']) }}"
-                   class="admin-nav-link @if($resolvedActive === $key) is-active @endif block px-3 py-2 rounded-md text-base font-medium transition-colors duration-200">
-                    {{ $item['name'] }}
-                </a>
+        <div class="space-y-4 border-t border-slate-200 bg-white px-3 py-4">
+            <div class="space-y-1">
+                @foreach ($primaryMenu as $key => $item)
+                    <a href="{{ route($item['route']) }}"
+                       class="admin-nav-link @if($resolvedActive === $key) is-active @endif block px-3 py-2 rounded-md text-base font-medium transition-colors duration-200">
+                        {{ $item['name'] }}
+                    </a>
+                @endforeach
+            </div>
+            @foreach ($visibleModuleMenuGroups as $group)
+                <div>
+                    <div class="admin-menu-section-label px-3 pb-1 text-xs font-semibold">{{ $group['label'] }}</div>
+                    <div class="space-y-1">
+                        @foreach ($group['items'] as $item)
+                            <a href="{{ route($item['route']) }}"
+                               class="@if($resolvedActive === $item['key']) admin-menu-item-active @endif flex items-center gap-2 rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                <i data-lucide="{{ $item['icon'] }}" class="h-4 w-4 shrink-0"></i>
+                                <span>{{ $item['name'] }}</span>
+                            </a>
+                        @endforeach
+                    </div>
+                </div>
             @endforeach
         </div>
     </div>
 </nav>
+
 <div class="md:hidden fixed top-4 right-4 z-50">
     <button onclick="toggleMobileMenu()" class="admin-mobile-menu-button p-2 rounded-md shadow-md" type="button" aria-label="{{ __('admin.nav.dashboard') }}">
         <i data-lucide="menu" class="w-5 h-5 text-white"></i>
     </button>
 </div>
 
-<style>
-    .admin-locale-select {
-        background-image: linear-gradient(45deg, transparent 50%, rgba(201,209,220,0.86) 50%), linear-gradient(135deg, rgba(201,209,220,0.86) 50%, transparent 50%);
-        background-position: calc(100% - 8px) 52%, calc(100% - 4px) 52%;
-        background-size: 4px 4px, 4px 4px;
-        background-repeat: no-repeat;
-    }
-</style>
-
 <script>
     function toggleUserMenu() {
         const menu = document.getElementById('user-menu');
+        if (menu) {
+            menu.classList.toggle('hidden');
+        }
+    }
+
+    function toggleModuleMenu() {
+        const menu = document.getElementById('module-menu');
         if (menu) {
             menu.classList.toggle('hidden');
         }
@@ -393,19 +421,23 @@
 
     document.addEventListener('click', function (event) {
         const userMenu = document.getElementById('user-menu');
+        const moduleMenu = document.getElementById('module-menu');
         const mobileMenu = document.getElementById('mobile-menu');
         @if($hasVersionUpdate)
             const notificationMenu = document.getElementById('admin-notification-menu');
         @endif
-        if (userMenu && !event.target.closest('[onclick="toggleUserMenu()"]') && !userMenu.contains(event.target)) {
+        if (userMenu && ! event.target.closest('[onclick="toggleUserMenu()"]') && ! userMenu.contains(event.target)) {
             userMenu.classList.add('hidden');
         }
+        if (moduleMenu && ! event.target.closest('[onclick="toggleModuleMenu()"]') && ! moduleMenu.contains(event.target)) {
+            moduleMenu.classList.add('hidden');
+        }
         @if($hasVersionUpdate)
-            if (notificationMenu && !event.target.closest('[onclick="toggleAdminNotifications()"]') && !notificationMenu.contains(event.target)) {
+            if (notificationMenu && ! event.target.closest('[onclick="toggleAdminNotifications()"]') && ! notificationMenu.contains(event.target)) {
                 notificationMenu.classList.add('hidden');
             }
         @endif
-        if (mobileMenu && !event.target.closest('[onclick="toggleMobileMenu()"]') && !mobileMenu.contains(event.target)) {
+        if (mobileMenu && ! event.target.closest('[onclick="toggleMobileMenu()"]') && ! mobileMenu.contains(event.target)) {
             mobileMenu.classList.add('hidden');
         }
     });

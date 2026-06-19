@@ -38,7 +38,7 @@ class PlatformPlan extends Model
             self::RESOURCE_TEAM_MEMBERS => ['label' => '子账号数量', 'unit' => 'accounts'],
             self::RESOURCE_API_TOKENS => ['label' => 'API Token 数量', 'unit' => 'tokens'],
             self::RESOURCE_VIDEO_GENERATIONS => ['label' => '生成视频次数', 'unit' => 'times'],
-            self::RESOURCE_CREBEE_PUBLISHES => ['label' => 'CreBee 发布次数', 'unit' => 'times'],
+            self::RESOURCE_CREBEE_PUBLISHES => ['label' => '自媒体发布次数', 'unit' => 'times'],
         ];
     }
 

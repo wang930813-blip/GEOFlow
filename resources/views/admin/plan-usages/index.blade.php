@@ -97,7 +97,7 @@
 
                         <div class="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                             @forelse ($row['resources'] as $resource)
-                                <div class="rounded-md border border-slate-200 bg-white p-4">
+                                <div class="rounded-md border border-slate-200 bg-white p-4" data-resource-key="{{ $resource['key'] }}">
                                     <div class="flex items-start justify-between gap-3">
                                         <div class="text-sm font-medium text-gray-900">{{ $resource['label'] }}</div>
                                         <div class="shrink-0 text-xs text-slate-500">剩余 {{ $resource['remaining'] }}</div>

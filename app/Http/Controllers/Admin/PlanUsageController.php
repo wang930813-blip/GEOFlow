@@ -105,7 +105,10 @@ class PlanUsageController extends Controller
         return $subscriptions->map(function (AdminPlanSubscription $subscription) use ($resourceCatalog, $usageBySubscription, $creditAccounts): array {
             $usages = $usageBySubscription->get((int) $subscription->id, collect())->keyBy('resource_key');
             $resources = collect((array) $subscription->entitlements_snapshot)
-                ->filter(fn ($entitlement, string $key): bool => is_array($entitlement) && (bool) ($entitlement['enabled'] ?? false) && isset($resourceCatalog[$key]))
+                ->filter(fn ($entitlement, string $key): bool => is_array($entitlement)
+                    && (bool) ($entitlement['enabled'] ?? false)
+                    && isset($resourceCatalog[$key])
+                    && ! $this->shouldHideResourceForSubscription($subscription, $key))
                 ->map(function (array $entitlement, string $key) use ($resourceCatalog, $usages): array {
                     $quota = (int) ($entitlement['quota_value'] ?? 0);
                     $period = (string) ($entitlement['quota_period'] ?? 'cycle');
@@ -132,6 +135,20 @@ class PlanUsageController extends Controller
                 'creditAccount' => $creditAccount,
             ];
         });
+    }
+
+    private function shouldHideResourceForSubscription(AdminPlanSubscription $subscription, string $resourceKey): bool
+    {
+        if ($resourceKey !== PlatformPlan::RESOURCE_TEAM_MEMBERS) {
+            return false;
+        }
+
+        $admin = $subscription->admin;
+        if ($admin instanceof Admin && ($admin->isDirectAdmin() || $admin->isSiteUser())) {
+            return true;
+        }
+
+        return in_array((string) $subscription->mode, ['direct_owner', 'agent_user'], true);
     }
 
     /**

@@ -34,7 +34,8 @@ class PlatformPlanManagementTest extends TestCase
             ->assertSee('品牌诊断次数')
             ->assertSee('8')
             ->assertSee('生成视频次数')
-            ->assertSee('CreBee 发布次数');
+            ->assertSee('自媒体发布次数')
+            ->assertDontSee('CreBee 发布次数');
 
         $this->actingAs($superAdmin, 'admin')
             ->get(route('admin.platform-plans.edit', $plan))
@@ -42,7 +43,8 @@ class PlatformPlanManagementTest extends TestCase
             ->assertSee('编辑规格')
             ->assertSee('详情测试规格')
             ->assertSee('生成视频次数')
-            ->assertSee('CreBee 发布次数');
+            ->assertSee('自媒体发布次数')
+            ->assertDontSee('CreBee 发布次数');
     }
 
     public function test_platform_plan_create_page_shows_video_and_crebee_resources(): void
@@ -53,7 +55,8 @@ class PlatformPlanManagementTest extends TestCase
             ->get(route('admin.platform-plans.index'))
             ->assertOk()
             ->assertSee('生成视频次数')
-            ->assertSee('CreBee 发布次数');
+            ->assertSee('自媒体发布次数')
+            ->assertDontSee('CreBee 发布次数');
     }
 
     public function test_platform_plan_requires_at_least_one_resource_item(): void
@@ -104,6 +107,47 @@ class PlatformPlanManagementTest extends TestCase
 
         $this->assertDatabaseMissing('platform_plans', [
             'code' => 'resource_quota_plan',
+        ]);
+    }
+
+    public function test_platform_plan_normalizes_resource_quota_with_leading_zeroes(): void
+    {
+        $superAdmin = $this->admin('plan_resource_leading_zero_root', 'super_admin');
+
+        $this->actingAs($superAdmin, 'admin')
+            ->from(route('admin.platform-plans.index'))
+            ->post(route('admin.platform-plans.store'), [
+                'name' => 'leading zero quota plan',
+                'code' => 'leading_zero_quota_plan',
+                'audience' => 'both',
+                'duration_days' => 30,
+                'sort_order' => 0,
+                'status' => 'active',
+                'resources' => [
+                    PlatformPlan::RESOURCE_BRAND_DIAGNOSES => [
+                        'enabled' => '1',
+                        'quota_value' => '050',
+                    ],
+                    PlatformPlan::RESOURCE_CREBEE_PUBLISHES => [
+                        'enabled' => '1',
+                        'quota_value' => '05',
+                    ],
+                ],
+            ])
+            ->assertRedirect(route('admin.platform-plans.index'))
+            ->assertSessionHasNoErrors();
+
+        $plan = PlatformPlan::query()->where('code', 'leading_zero_quota_plan')->firstOrFail();
+
+        $this->assertDatabaseHas('platform_plan_entitlements', [
+            'plan_id' => (int) $plan->id,
+            'resource_key' => PlatformPlan::RESOURCE_BRAND_DIAGNOSES,
+            'quota_value' => 50,
+        ]);
+        $this->assertDatabaseHas('platform_plan_entitlements', [
+            'plan_id' => (int) $plan->id,
+            'resource_key' => PlatformPlan::RESOURCE_CREBEE_PUBLISHES,
+            'quota_value' => 5,
         ]);
     }
 
@@ -163,6 +207,56 @@ class PlatformPlanManagementTest extends TestCase
             ->entitlements_snapshot;
 
         $this->assertSame(3, (int) $snapshot[PlatformPlan::RESOURCE_BRAND_DIAGNOSES]['quota_value']);
+    }
+
+    public function test_opening_new_account_plan_resets_usage_to_new_subscription_snapshot(): void
+    {
+        $superAdmin = $this->admin('plan_switch_root', 'super_admin');
+        $owner = $this->admin('plan_switch_direct', 'direct_admin');
+        $site = $this->site('Plan Switch Site', $owner, 'direct');
+        $firstPlan = $this->plan('Plan Switch First', [
+            PlatformPlan::RESOURCE_BRAND_DIAGNOSES => 2,
+        ]);
+        $secondPlan = $this->plan('Plan Switch Second', [
+            PlatformPlan::RESOURCE_BRAND_DIAGNOSES => 5,
+        ]);
+        $subscriptionService = app(AdminPlanSubscriptionService::class);
+        $quota = app(AdminResourceQuotaService::class);
+
+        $firstSubscription = $subscriptionService->openOwner(
+            admin: $owner,
+            site: $site,
+            plan: $firstPlan,
+            mode: 'direct_owner',
+            operator: $superAdmin,
+            startsAt: now()->subMinute(),
+            endsAt: now()->addDays(30),
+            grantCredits: false
+        );
+        $quota->consume((int) $owner->id, (int) $site->id, PlatformPlan::RESOURCE_BRAND_DIAGNOSES, 2, [
+            'idempotency_key' => 'plan-switch-old-usage',
+        ]);
+
+        $this->assertSame(0, $quota->remaining((int) $owner->id, (int) $site->id, PlatformPlan::RESOURCE_BRAND_DIAGNOSES)['remaining']);
+
+        $secondSubscription = $subscriptionService->openOwner(
+            admin: $owner,
+            site: $site,
+            plan: $secondPlan,
+            mode: 'direct_owner',
+            operator: $superAdmin,
+            startsAt: now()->subMinute(),
+            endsAt: now()->addDays(60),
+            grantCredits: false
+        );
+
+        $remaining = $quota->remaining((int) $owner->id, (int) $site->id, PlatformPlan::RESOURCE_BRAND_DIAGNOSES);
+
+        $this->assertSame('cancelled', (string) $firstSubscription->refresh()->status);
+        $this->assertSame('active', (string) $secondSubscription->refresh()->status);
+        $this->assertSame(5, $remaining['quota']);
+        $this->assertSame(0, $remaining['used']);
+        $this->assertSame(5, $remaining['remaining']);
     }
 
     public function test_super_admin_can_delete_unused_plan_but_not_referenced_plan(): void
@@ -260,6 +354,48 @@ class PlatformPlanManagementTest extends TestCase
             ->assertSee('已用 2 / 5');
     }
 
+    public function test_plan_usage_hides_team_member_resource_for_direct_owner_and_agent_user_rows(): void
+    {
+        $superAdmin = $this->admin('usage_team_root', 'super_admin');
+        $agent = $this->admin('usage_team_owner', 'agent_admin');
+        $agentUser = $this->admin('usage_team_member', 'site_user', $agent);
+        $direct = $this->admin('usage_team_direct', 'direct_admin');
+        $agentSite = $this->site('Agent Team Usage Site', $agent, 'agent');
+        $directSite = $this->site('Direct Team Usage Site', $direct, 'direct');
+        $plan = $this->plan('Team Usage Plan', [
+            PlatformPlan::RESOURCE_TEAM_MEMBERS => 3,
+            PlatformPlan::RESOURCE_BRAND_DIAGNOSES => 5,
+        ]);
+
+        $subscriptionService = app(AdminPlanSubscriptionService::class);
+        $subscriptionService->openOwner($agent, $agentSite, $plan, 'agent_owner', $superAdmin, now()->subMinute(), now()->addDays(30), false);
+        $agentSite->members()->attach((int) $agentUser->id, ['role' => 'member']);
+        $subscriptionService->inheritForAgentUser($agent, $agentUser, $agentSite, $superAdmin);
+        $directSubscription = $subscriptionService->openOwner($direct, $directSite, $plan, 'direct_owner', $superAdmin, now()->subMinute(), now()->addDays(30), false);
+
+        $snapshot = (array) $directSubscription->entitlements_snapshot;
+        $snapshot[PlatformPlan::RESOURCE_TEAM_MEMBERS] = [
+            'enabled' => true,
+            'quota_value' => 3,
+            'quota_period' => 'cycle',
+            'unit' => 'accounts',
+            'meta' => [],
+        ];
+        $directSubscription->forceFill(['entitlements_snapshot' => $snapshot])->save();
+
+        $response = $this->actingAs($superAdmin, 'admin')->get(route('admin.plan-usages.index'));
+
+        $response->assertOk();
+        $html = $response->getContent();
+        $agentRow = $this->rowSection($html, 'usage_team_owner', 'usage_team_member');
+        $agentUserRow = $this->rowSection($html, 'usage_team_member', 'usage_team_direct');
+        $directRow = $this->rowSection($html, 'usage_team_direct');
+
+        $this->assertStringContainsString(PlatformPlan::RESOURCE_TEAM_MEMBERS, $agentRow);
+        $this->assertStringNotContainsString(PlatformPlan::RESOURCE_TEAM_MEMBERS, $agentUserRow);
+        $this->assertStringNotContainsString(PlatformPlan::RESOURCE_TEAM_MEMBERS, $directRow);
+    }
+
     private function admin(string $username, string $role, ?Admin $creator = null): Admin
     {
         return Admin::query()->create([
@@ -316,5 +452,20 @@ class PlatformPlanManagementTest extends TestCase
         }
 
         return $plan;
+    }
+
+    private function rowSection(string $html, string $startNeedle, ?string $endNeedle = null): string
+    {
+        $start = strpos($html, $startNeedle);
+        $this->assertNotFalse($start, 'Expected row marker missing: '.$startNeedle);
+
+        if ($endNeedle === null) {
+            return substr($html, (int) $start);
+        }
+
+        $end = strpos($html, $endNeedle, (int) $start + strlen($startNeedle));
+        $this->assertNotFalse($end, 'Expected next row marker missing: '.$endNeedle);
+
+        return substr($html, (int) $start, (int) $end - (int) $start);
     }
 }

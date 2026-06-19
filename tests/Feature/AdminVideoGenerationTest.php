@@ -121,6 +121,31 @@ class AdminVideoGenerationTest extends TestCase
         Queue::assertPushed(StartVideoGenerationJob::class, fn (StartVideoGenerationJob $queued): bool => $queued->videoGenerationJobId === (int) $job->id);
     }
 
+    public function test_video_generation_blocks_before_creating_job_when_requested_count_exceeds_quota(): void
+    {
+        Queue::fake();
+        Http::preventStrayRequests();
+        [$admin, $site] = $this->provisionSubscribedAdmin('video_generation_quota_block_owner', videoQuota: 1, crebeeQuota: 1);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->from(route('admin.video-generations.create'))
+            ->post(route('admin.video-generations.store'), [
+                'subject' => 'Quota blocked generation',
+                'video_count' => 2,
+            ])
+            ->assertRedirect(route('admin.video-generations.create'))
+            ->assertSessionHasErrors('subject');
+
+        $this->assertSame(0, VideoGenerationJob::query()->count());
+        $this->assertSame(0, AdminResourceUsage::query()
+            ->where('admin_id', (int) $admin->id)
+            ->where('site_id', (int) $site->id)
+            ->where('resource_key', PlatformPlan::RESOURCE_VIDEO_GENERATIONS)
+            ->count());
+        Queue::assertNotPushed(StartVideoGenerationJob::class);
+    }
+
     public function test_create_video_generation_form_hides_generation_option_fields(): void
     {
         [$admin, $site] = $this->provisionSubscribedAdmin('video_generation_form_owner', videoQuota: 1, crebeeQuota: 1);
@@ -318,6 +343,34 @@ class AdminVideoGenerationTest extends TestCase
             ->assertJsonPath('data.job.contentType', 'video')
             ->assertJsonPath('data.job.assets.0.key', 'video')
             ->assertJsonPath('data.job.tasks.0.contentType', 'video');
+    }
+
+    public function test_video_self_media_publish_blocks_when_selected_platforms_exceed_remaining_quota(): void
+    {
+        [$admin, $site] = $this->provisionSubscribedAdmin('video_publish_quota_block_owner', videoQuota: 3, crebeeQuota: 1);
+        $video = $this->completedVideo($site, $admin, 'Quota blocked video');
+        $agent = $this->agent();
+        $douyin = $this->account($agent, $site, $admin, 'douyin', 'quota-video-douyin-account', 'Douyin Video Account');
+        $bilibili = $this->account($agent, $site, $admin, 'bilibili', 'quota-video-bilibili-account', 'Bilibili Video Account');
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->from(route('admin.video-generations.show', ['videoGeneration' => (int) $video->id]))
+            ->post(route('admin.video-generations.self-media.publish', ['videoGeneration' => (int) $video->id]), [
+                'crebee_account_ids' => [(int) $douyin->id, (int) $bilibili->id],
+            ])
+            ->assertRedirect(route('admin.video-generations.show', ['videoGeneration' => (int) $video->id]))
+            ->assertSessionHasErrors('crebee_account_ids');
+
+        $this->assertSame(0, CrebeePublishJob::query()->count());
+        $this->assertSame(0, CrebeePublishJobItem::query()->count());
+
+        $usage = AdminResourceUsage::query()
+            ->where('admin_id', (int) $admin->id)
+            ->where('site_id', (int) $site->id)
+            ->where('resource_key', PlatformPlan::RESOURCE_CREBEE_PUBLISHES)
+            ->first();
+        $this->assertNull($usage);
     }
 
     public function test_video_publish_requires_cover_image(): void

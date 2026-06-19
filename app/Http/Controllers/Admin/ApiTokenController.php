@@ -43,7 +43,7 @@ class ApiTokenController extends Controller
 
         return view('admin.api-tokens.index', [
             'pageTitle' => __('admin.api_tokens.page_title'),
-            'activeMenu' => 'admin_users',
+            'activeMenu' => 'api_tokens',
             'adminSiteName' => AdminWeb::siteName(),
             'tokens' => $this->apiTokenService->listTokens($siteScopeId),
             'availableScopes' => $this->apiTokenService->getAvailableScopes(),

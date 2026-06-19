@@ -41,7 +41,7 @@ class CrebeePublishRecordController extends Controller
 
         return view('admin.crebee-publish-records.index', [
             'pageTitle' => '自媒体发布记录',
-            'activeMenu' => 'crebee_accounts',
+            'activeMenu' => 'crebee_publish_records',
             'adminSiteName' => AdminWeb::siteName(),
             'site' => $site,
             'records' => $records,

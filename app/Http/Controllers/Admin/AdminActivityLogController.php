@@ -32,7 +32,7 @@ class AdminActivityLogController extends Controller
 
         return view('admin.admin-activity-logs.index', [
             'pageTitle' => __('admin.activity_logs.page_title'),
-            'activeMenu' => 'admin_users',
+            'activeMenu' => 'activity_logs',
             'adminSiteName' => AdminWeb::siteName(),
             'filters' => $filters,
             'logs' => $logs,

@@ -23,30 +23,30 @@
                 </div>
             </div>
 
-            <form method="POST" action="{{ route('admin.agent-users.store') }}" class="grid grid-cols-1 gap-4 lg:grid-cols-12">
+            <form method="POST" action="{{ route('admin.agent-users.store') }}" autocomplete="off" class="grid grid-cols-1 gap-4 xl:grid-cols-12">
                 @csrf
-                <div class="lg:col-span-2">
+                <div class="xl:col-span-2">
                     <label class="mb-1 block text-sm font-medium text-gray-700">用户名</label>
-                    <input name="username" required value="{{ old('username') }}" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
+                    <input name="username" required autocomplete="new-password" value="" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
                 </div>
-                <div class="lg:col-span-2">
+                <div class="xl:col-span-2">
                     <label class="mb-1 block text-sm font-medium text-gray-700">显示名称</label>
-                    <input name="display_name" value="{{ old('display_name') }}" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
+                    <input name="display_name" autocomplete="off" value="" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
                 </div>
-                <div class="lg:col-span-3">
+                <div class="xl:col-span-2">
                     <label class="mb-1 block text-sm font-medium text-gray-700">邮箱</label>
-                    <input name="email" type="email" value="{{ old('email') }}" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
+                    <input name="email" type="email" autocomplete="new-password" value="" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
                 </div>
-                <div class="lg:col-span-2">
+                <div class="xl:col-span-2">
                     <label class="mb-1 block text-sm font-medium text-gray-700">密码</label>
-                    <input name="password" type="password" required class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
+                    <input name="password" type="password" required autocomplete="new-password" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
                 </div>
-                <div class="lg:col-span-2">
+                <div class="xl:col-span-2">
                     <label class="mb-1 block text-sm font-medium text-gray-700">确认密码</label>
-                    <input name="confirm_password" type="password" required class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
+                    <input name="confirm_password" type="password" required autocomplete="new-password" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
                 </div>
-                <div class="flex items-end lg:col-span-1">
-                    <button type="submit" class="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 text-sm font-medium text-white transition hover:bg-indigo-700">
+                <div class="flex items-end sm:justify-end xl:col-span-2">
+                    <button type="submit" class="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 text-sm font-medium text-white transition hover:bg-indigo-700 sm:w-auto sm:min-w-28">
                         <i data-lucide="save" class="h-4 w-4"></i>
                         创建
                     </button>
