@@ -282,6 +282,62 @@ class CrebeeAgentApiTest extends TestCase
         $this->assertNotNull($request->fresh()->confirmed_at);
     }
 
+    public function test_crebee_agent_sync_auto_binds_existing_available_account_to_single_active_request(): void
+    {
+        $agent = $this->createAgent();
+        $owner = $this->admin('crebee_existing_bind_owner', 'direct_admin');
+        $site = $this->site('CreBee Existing Bind Site', $owner, 'direct');
+        $account = CrebeeAccount::query()->create([
+            'agent_id' => (int) $agent->id,
+            'platform' => 'bilibili',
+            'crebee_account_id' => 'bilibili-existing-account',
+            'account_name' => '待绑定B站号',
+            'status' => 'available',
+            'last_synced_at' => now()->subMinutes(10),
+        ]);
+        $request = CrebeeBindRequest::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $owner->id,
+            'platform' => 'bilibili',
+            'status' => 'pending',
+            'requested_at' => now(),
+            'expired_at' => now()->addHours(2),
+            'meta' => [],
+        ]);
+
+        $this->agentJson($agent)->postJson('/api/v1/crebee-agent/accounts/sync', [
+            'accounts' => [
+                [
+                    'account_id' => 'bilibili-existing-account',
+                    'account_platform' => 'bilibili',
+                    'nickname' => '扫码后的B站号',
+                    'raw' => ['source' => 'local'],
+                ],
+            ],
+        ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.synced', 1)
+            ->assertJsonPath('data.auto_bound', 1);
+
+        $this->assertDatabaseHas('crebee_accounts', [
+            'id' => (int) $account->id,
+            'agent_id' => (int) $agent->id,
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $owner->id,
+            'platform' => 'bilibili',
+            'crebee_account_id' => 'bilibili-existing-account',
+            'account_name' => '扫码后的B站号',
+            'status' => 'bound',
+        ]);
+        $this->assertDatabaseHas('crebee_bind_requests', [
+            'id' => (int) $request->id,
+            'agent_id' => (int) $agent->id,
+            'status' => 'confirmed',
+        ]);
+        $this->assertNotNull($request->fresh()->confirmed_at);
+    }
+
     public function test_crebee_agent_sync_does_not_auto_bind_when_multiple_active_requests_share_platform(): void
     {
         $agent = $this->createAgent();

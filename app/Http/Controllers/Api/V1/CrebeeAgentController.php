@@ -98,7 +98,7 @@ class CrebeeAgentController extends BaseApiController
                     ]),
                 ]);
 
-                if ($wasCreated && $this->autoBindNewAccount($account, $agent)) {
+                if ($this->shouldAutoBindSyncedAccount($account) && $this->autoBindNewAccount($account, $agent)) {
                     $wasAutoBound = true;
                 }
 
@@ -370,6 +370,13 @@ class CrebeeAgentController extends BaseApiController
         ])->save();
 
         return true;
+    }
+
+    private function shouldAutoBindSyncedAccount(CrebeeAccount $account): bool
+    {
+        return $account->site_id === null
+            && $account->owner_admin_id === null
+            && in_array((string) $account->status, ['available', 'unavailable'], true);
     }
 
     /**
