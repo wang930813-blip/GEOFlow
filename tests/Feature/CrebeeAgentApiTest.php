@@ -158,6 +158,83 @@ class CrebeeAgentApiTest extends TestCase
             ->assertJsonPath('data.synced', 0);
     }
 
+    public function test_crebee_agent_marks_unbound_accounts_missing_from_latest_sync_as_unavailable(): void
+    {
+        $agent = $this->createAgent();
+        CrebeeAccount::query()->create([
+            'agent_id' => (int) $agent->id,
+            'platform' => 'weibo',
+            'crebee_account_id' => 'weibo-old-account',
+            'account_name' => '旧微博号',
+            'status' => 'available',
+            'last_synced_at' => now()->subMinutes(10),
+        ]);
+
+        $this->agentJson($agent)->postJson('/api/v1/crebee-agent/accounts/sync', [
+            'accounts' => [
+                [
+                    'account_id' => 'douyin-current-account',
+                    'account_platform' => 'douyin',
+                    'nickname' => '当前抖音号',
+                ],
+            ],
+        ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.synced', 1);
+
+        $this->assertDatabaseHas('crebee_accounts', [
+            'agent_id' => (int) $agent->id,
+            'platform' => 'weibo',
+            'crebee_account_id' => 'weibo-old-account',
+            'status' => 'unavailable',
+        ]);
+        $this->assertDatabaseHas('crebee_accounts', [
+            'agent_id' => (int) $agent->id,
+            'platform' => 'douyin',
+            'crebee_account_id' => 'douyin-current-account',
+            'status' => 'available',
+        ]);
+    }
+
+    public function test_crebee_agent_does_not_mark_bound_accounts_unavailable_when_missing_from_latest_sync(): void
+    {
+        $agent = $this->createAgent();
+        $owner = $this->admin('crebee_bound_owner', 'direct_admin');
+        $site = $this->site('CreBee Bound Site', $owner, 'direct');
+        CrebeeAccount::query()->create([
+            'agent_id' => (int) $agent->id,
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $owner->id,
+            'platform' => 'bilibili',
+            'crebee_account_id' => 'bilibili-bound-account',
+            'account_name' => '已绑定B站号',
+            'status' => 'bound',
+            'bound_at' => now()->subMinutes(5),
+            'last_synced_at' => now()->subMinutes(10),
+        ]);
+
+        $this->agentJson($agent)->postJson('/api/v1/crebee-agent/accounts/sync', [
+            'accounts' => [
+                [
+                    'account_id' => 'douyin-current-account',
+                    'account_platform' => 'douyin',
+                    'nickname' => '当前抖音号',
+                ],
+            ],
+        ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.synced', 1);
+
+        $this->assertDatabaseHas('crebee_accounts', [
+            'agent_id' => (int) $agent->id,
+            'platform' => 'bilibili',
+            'crebee_account_id' => 'bilibili-bound-account',
+            'status' => 'bound',
+        ]);
+    }
+
     public function test_crebee_agent_sync_auto_binds_new_account_to_single_active_request(): void
     {
         $agent = $this->createAgent();

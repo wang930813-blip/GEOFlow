@@ -56,12 +56,14 @@ class CrebeeAgentController extends BaseApiController
 
         $synced = 0;
         $autoBound = 0;
+        $syncedAccountKeys = [];
         foreach ($payload['accounts'] as $accountPayload) {
             $accountId = trim((string) $accountPayload['account_id']);
             $platform = trim((string) $accountPayload['account_platform']);
             if ($accountId === '' || $platform === '') {
                 continue;
             }
+            $syncedAccountKeys[] = $this->accountSyncKey($platform, $accountId);
 
             $wasCreated = false;
             $wasAutoBound = false;
@@ -108,6 +110,8 @@ class CrebeeAgentController extends BaseApiController
             }
             $synced++;
         }
+
+        $this->markMissingUnboundAccountsUnavailable($agent, $syncedAccountKeys);
 
         return $this->success($request, [
             'synced' => $synced,
@@ -366,6 +370,42 @@ class CrebeeAgentController extends BaseApiController
         ])->save();
 
         return true;
+    }
+
+    /**
+     * @param  array<int,string>  $syncedAccountKeys
+     */
+    private function markMissingUnboundAccountsUnavailable(CrebeeAgent $agent, array $syncedAccountKeys): void
+    {
+        $currentKeys = array_fill_keys($syncedAccountKeys, true);
+
+        CrebeeAccount::query()
+            ->where('agent_id', (int) $agent->id)
+            ->whereNull('site_id')
+            ->whereNull('owner_admin_id')
+            ->whereIn('status', ['available', 'unavailable'])
+            ->chunkById(200, function ($accounts) use ($currentKeys): void {
+                foreach ($accounts as $account) {
+                    if (! $account instanceof CrebeeAccount) {
+                        continue;
+                    }
+
+                    $isCurrent = isset($currentKeys[$this->accountSyncKey(
+                        (string) $account->platform,
+                        (string) $account->crebee_account_id
+                    )]);
+                    $nextStatus = $isCurrent ? 'available' : 'unavailable';
+
+                    if ((string) $account->status !== $nextStatus) {
+                        $account->forceFill(['status' => $nextStatus])->save();
+                    }
+                }
+            });
+    }
+
+    private function accountSyncKey(string $platform, string $accountId): string
+    {
+        return $platform."\n".$accountId;
     }
 
     private function assertOwnsJob(Request $request, CrebeePublishJob $job): void
