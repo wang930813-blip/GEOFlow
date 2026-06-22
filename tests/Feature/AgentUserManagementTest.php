@@ -26,7 +26,7 @@ class AgentUserManagementTest extends TestCase
         $agent = $this->createAdmin('agent_owner', 'agent_admin');
         $site = $this->createSite('代理站点', $agent, 'agent');
         $plan = $this->createPlanWithTeamMembers(2);
-        app(PlanSubscriptionService::class)->open($site, $plan, 'agent', $agent, $agent, now(), now()->addMonth(), false);
+        $this->openAgentPlan($agent, $site, $plan);
 
         $this->actingAs($agent, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
@@ -51,8 +51,11 @@ class AgentUserManagementTest extends TestCase
             'role' => 'site_user',
         ]);
         $this->assertDatabaseHas('site_members', [
+            'role' => 'owner',
+        ]);
+        $this->assertDatabaseMissing('site_members', [
             'site_id' => (int) $site->id,
-            'role' => 'member',
+            'admin_id' => (int) Admin::query()->where('username', 'agent_member_one')->value('id'),
         ]);
 
         $this->actingAs($agent, 'admin')
@@ -83,7 +86,7 @@ class AgentUserManagementTest extends TestCase
         $agent = $this->createAdmin('agent_no_refill_owner', 'agent_admin');
         $site = $this->createSite('Agent No Refill Site', $agent, 'agent');
         $plan = $this->createPlanWithTeamMembers(2);
-        app(PlanSubscriptionService::class)->open($site, $plan, 'agent', $agent, $agent, now(), now()->addMonth(), false);
+        $this->openAgentPlan($agent, $site, $plan);
 
         $this->actingAs($agent, 'admin')
             ->withSession([
@@ -181,12 +184,14 @@ class AgentUserManagementTest extends TestCase
         $agent = $this->createAdmin('agent_reenable_owner', 'agent_admin');
         $site = $this->createSite('Agent Reenable Site', $agent, 'agent');
         $plan = $this->createPlanWithTeamMembers(1);
-        app(PlanSubscriptionService::class)->open($site, $plan, 'agent', $agent, $agent, now(), now()->addMonth(), false);
+        $this->openAgentPlan($agent, $site, $plan);
 
-        $first = $this->createAdmin('agent_reenable_first', 'site_user');
-        $second = $this->createAdmin('agent_reenable_second', 'site_user');
-        $site->members()->attach((int) $first->id, ['role' => 'member']);
-        $site->members()->attach((int) $second->id, ['role' => 'member']);
+        $first = $this->createAdmin('agent_reenable_first', 'site_user', $agent);
+        $second = $this->createAdmin('agent_reenable_second', 'site_user', $agent);
+        $firstSite = $this->createSite('Agent Reenable First Site', $first, 'agent', $agent);
+        $secondSite = $this->createSite('Agent Reenable Second Site', $second, 'agent', $agent);
+        app(\App\Services\Billing\AdminPlanSubscriptionService::class)->inheritForAgentUserSite($agent, $first, $site, $firstSite, $agent);
+        app(\App\Services\Billing\AdminPlanSubscriptionService::class)->inheritForAgentUserSite($agent, $second, $site, $secondSite, $agent);
         $second->update(['status' => 'inactive']);
 
         $this->actingAs($agent, 'admin')
@@ -267,10 +272,11 @@ class AgentUserManagementTest extends TestCase
             ->assertRedirect(route('admin.agent-users.index'));
 
         $member = Admin::query()->where('username', 'agent_inherit_member')->firstOrFail();
+        $memberSite = Site::query()->where('owner_admin_id', (int) $member->id)->firstOrFail();
 
         $this->assertDatabaseHas('admin_plan_subscriptions', [
             'admin_id' => (int) $member->id,
-            'site_id' => (int) $site->id,
+            'site_id' => (int) $memberSite->id,
             'plan_id' => (int) $plan->id,
             'inherited_from_admin_id' => (int) $agent->id,
             'mode' => 'agent_user',
@@ -278,9 +284,50 @@ class AgentUserManagementTest extends TestCase
         ]);
         $this->assertDatabaseHas('admin_credit_accounts', [
             'admin_id' => (int) $member->id,
-            'site_id' => (int) $site->id,
+            'site_id' => (int) $memberSite->id,
             'balance' => '1000.00',
         ]);
+        $this->assertDatabaseHas('sites', [
+            'id' => (int) $memberSite->id,
+            'owner_admin_id' => (int) $member->id,
+            'customer_mode' => 'agent',
+            'agent_admin_id' => (int) $agent->id,
+        ]);
+        $this->assertDatabaseHas('site_members', [
+            'site_id' => (int) $memberSite->id,
+            'admin_id' => (int) $member->id,
+            'role' => 'owner',
+        ]);
+        $this->assertDatabaseMissing('site_members', [
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $member->id,
+        ]);
+    }
+
+    public function test_agent_user_list_shows_users_across_agent_owned_customer_sites(): void
+    {
+        $agent = $this->createAdmin('agent_list_owner', 'agent_admin');
+        $agentContextSite = $this->createSite('Agent List Context', $agent, 'agent');
+        $plan = $this->createPlanWithTeamMembers(3);
+        $this->openAgentPlan($agent, $agentContextSite, $plan);
+
+        $firstUser = $this->createAdmin('agent_list_first', 'site_user', $agent);
+        $firstSite = $this->createSite('First Customer Site', $firstUser, 'agent', $agent);
+        app(\App\Services\Billing\AdminPlanSubscriptionService::class)->inheritForAgentUserSite($agent, $firstUser, $agentContextSite, $firstSite, $agent);
+
+        $secondUser = $this->createAdmin('agent_list_second', 'site_user', $agent);
+        $secondSite = $this->createSite('Second Customer Site', $secondUser, 'agent', $agent);
+        app(\App\Services\Billing\AdminPlanSubscriptionService::class)->inheritForAgentUserSite($agent, $secondUser, $agentContextSite, $secondSite, $agent);
+
+        $this->actingAs($agent, 'admin')
+            ->withSession(['current_site_id' => (int) $agentContextSite->id])
+            ->get(route('admin.agent-users.index'))
+            ->assertOk()
+            ->assertSee('agent_list_first')
+            ->assertSee('First Customer Site')
+            ->assertSee('agent_list_second')
+            ->assertSee('Second Customer Site')
+            ->assertSee('2 / 3');
     }
 
     private function createPlanWithTeamMembers(int $limit): PlatformPlan
@@ -305,7 +352,7 @@ class AgentUserManagementTest extends TestCase
         return $plan;
     }
 
-    private function createAdmin(string $username, string $role): Admin
+    private function createAdmin(string $username, string $role, ?Admin $creator = null): Admin
     {
         return Admin::query()->create([
             'username' => $username,
@@ -314,20 +361,37 @@ class AgentUserManagementTest extends TestCase
             'display_name' => $username,
             'role' => $role,
             'status' => 'active',
+            'created_by' => $creator?->id,
         ]);
     }
 
-    private function createSite(string $name, Admin $owner, string $mode): Site
+    private function createSite(string $name, Admin $owner, string $mode, ?Admin $agent = null): Site
     {
         $site = Site::query()->create([
             'owner_admin_id' => (int) $owner->id,
             'name' => $name,
             'status' => 'active',
             'customer_mode' => $mode,
-            'agent_admin_id' => $mode === 'agent' ? (int) $owner->id : null,
+            'agent_admin_id' => $mode === 'agent' ? (int) ($agent?->id ?? $owner->id) : null,
         ]);
         $site->members()->attach((int) $owner->id, ['role' => 'owner']);
 
         return $site;
+    }
+
+    private function openAgentPlan(Admin $agent, Site $site, PlatformPlan $plan): void
+    {
+        app(PlanSubscriptionService::class)->open($site, $plan, 'agent', $agent, $agent, now(), now()->addMonth(), false);
+        app(\App\Services\Billing\AdminPlanSubscriptionService::class)->openOwner(
+            admin: $agent,
+            site: $site,
+            plan: $plan,
+            mode: 'agent_owner',
+            operator: $agent,
+            startsAt: now(),
+            endsAt: now()->addMonth(),
+            grantCredits: false,
+            remark: 'Agent owner plan'
+        );
     }
 }

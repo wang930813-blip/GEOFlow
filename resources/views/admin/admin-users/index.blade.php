@@ -87,6 +87,7 @@
                         <tr>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.admin_users.column_account') }}</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.admin_users.column_role') }}</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">归属</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.admin_users.column_status') }}</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.admin_users.column_last_login') }}</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.admin_users.column_created') }}</th>
@@ -116,6 +117,9 @@
                                     @else
                                         <span class="inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">{{ __('admin.admin_users.role_admin') }}</span>
                                     @endif
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                                    {{ $admin['owner_label'] ?? '平台管理' }}
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap">
                                     @if ($admin['status'] === 'active')
@@ -235,8 +239,8 @@
                         <label class="flex items-start gap-3">
                             <input type="checkbox" name="open_customer_subscription" value="1" id="open_customer_subscription" class="mt-1 h-4 w-4 rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500">
                             <span>
-                                <span class="block text-sm font-semibold text-emerald-950">同步创建分站点并开通规格</span>
-                                <span class="mt-1 block text-xs leading-5 text-emerald-800">适用于代理/直客开户。独立“客户开通”页面仍用于后续续费、换规格和手动调整有效期。</span>
+                                <span class="block text-sm font-semibold text-emerald-950">同步创建直客前台站点并开通规格</span>
+                                <span class="mt-1 block text-xs leading-5 text-emerald-800">仅适用于直客开户。代理账号只负责管理下级用户，下级用户由代理创建时自动生成自己的前台站点。</span>
                             </span>
                         </label>
 
@@ -383,8 +387,8 @@
             const checkbox = document.getElementById('open_customer_subscription');
             const fields = document.getElementById('customer-onboarding-fields');
             const planSelect = document.getElementById('plan_id');
-            const canOpen = role === 'agent_admin' || role === 'direct_admin';
-            const mode = role === 'agent_admin' ? 'agent' : 'direct';
+            const canOpen = role === 'direct_admin';
+            const mode = 'direct';
 
             if (!panel || !checkbox || !fields || !planSelect) {
                 return;

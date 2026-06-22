@@ -37,7 +37,7 @@ class AdminResourceQuotaService
 
         $subscription = $this->activeSubscriptionForAdmin($adminId, $siteId);
         $entitlement = $this->entitlement($subscription, $resourceKey);
-        if ((string) $entitlement['quota_period'] === 'unlimited') {
+        if ($this->isUnlimited($entitlement)) {
             return;
         }
 
@@ -66,10 +66,6 @@ class AdminResourceQuotaService
 
             $subscription = $this->activeSubscriptionForAdmin($adminId, $siteId);
             $entitlement = $this->entitlement($subscription, $resourceKey);
-            if ((string) $entitlement['quota_period'] === 'unlimited') {
-                return $this->ledger($subscription, $resourceKey, 'consume', $amount, null, $context);
-            }
-
             $periodKey = $this->periodKey($subscription, (string) $entitlement['quota_period']);
             $usage = AdminResourceUsage::query()->firstOrCreate(
                 [
@@ -88,7 +84,8 @@ class AdminResourceQuotaService
             $usage = AdminResourceUsage::query()->whereKey((int) $usage->id)->lockForUpdate()->firstOrFail();
             $quota = (int) $entitlement['quota_value'];
             $used = (int) $usage->used_amount;
-            if ($used + $amount > $quota) {
+            $isUnlimited = $this->isUnlimited($entitlement);
+            if (! $isUnlimited && $used + $amount > $quota) {
                 throw new RuntimeException('当前账号规格额度不足，请联系平台升级或续费');
             }
 
@@ -97,7 +94,7 @@ class AdminResourceQuotaService
                 'last_used_at' => now(),
             ])->save();
 
-            return $this->ledger($subscription, $resourceKey, 'consume', $amount, $quota - $used - $amount, $context);
+            return $this->ledger($subscription, $resourceKey, 'consume', $amount, $isUnlimited ? null : $quota - $used - $amount, $context);
         });
     }
 
@@ -108,11 +105,11 @@ class AdminResourceQuotaService
     {
         $subscription = $this->activeSubscriptionForAdmin($adminId, $siteId);
         $entitlement = $this->entitlement($subscription, $resourceKey);
-        if ((string) $entitlement['quota_period'] === 'unlimited') {
-            return ['quota' => null, 'used' => 0, 'remaining' => null, 'period' => 'unlimited'];
+        $used = $this->usedAmount($subscription, $resourceKey);
+        if ($this->isUnlimited($entitlement)) {
+            return ['quota' => null, 'used' => $used, 'remaining' => null, 'period' => 'unlimited'];
         }
 
-        $used = $this->usedAmount($subscription, $resourceKey);
         $quota = (int) $entitlement['quota_value'];
 
         return [
@@ -164,6 +161,15 @@ class AdminResourceQuotaService
             'year' => now()->format('Y'),
             default => 'subscription:'.(int) $subscription->id,
         };
+    }
+
+    /**
+     * @param  array{enabled:bool,quota_value:int,quota_period:string,unit:string,meta:array<string,mixed>}  $entitlement
+     */
+    private function isUnlimited(array $entitlement): bool
+    {
+        return (string) $entitlement['quota_period'] === 'unlimited'
+            || (int) $entitlement['quota_value'] <= 0;
     }
 
     private function ledger(AdminPlanSubscription $subscription, string $resourceKey, string $type, int $amount, ?int $balanceAfter, array $context): AdminResourceLedger

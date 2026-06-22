@@ -25,11 +25,21 @@ class CurrentSite
         return $this->site?->id;
     }
 
-    public function ensureForAdmin(Admin $admin, Request $request): Site
+    public function ensureForAdmin(Admin $admin, Request $request): ?Site
     {
         $site = $this->resolveSessionSite($admin, $request)
-            ?? $this->firstMemberSite($admin)
-            ?? $this->createDefaultSite($admin);
+            ?? $this->firstMemberSite($admin);
+
+        if (! $site instanceof Site && ! $admin->isAgentAdmin()) {
+            $site = $this->createDefaultSite($admin);
+        }
+
+        if (! $site instanceof Site) {
+            $request->session()->forget('current_site_id');
+            $this->set(null);
+
+            return null;
+        }
 
         $request->session()->put('current_site_id', $site->id);
         $this->set($site);

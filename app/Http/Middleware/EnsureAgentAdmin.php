@@ -18,7 +18,11 @@ class EnsureAgentAdmin
         $admin = $request->user('admin');
         $site = app(CurrentSite::class)->get();
 
-        if (! $admin instanceof Admin || ! $admin->isAgentAdmin() || (string) ($site?->customer_mode ?? '') !== 'agent') {
+        if (! $admin instanceof Admin || ! $admin->isAgentAdmin()) {
+            abort(403, 'Forbidden');
+        }
+
+        if ($site instanceof \App\Models\Site && (string) ($site->customer_mode ?? '') !== 'agent') {
             abort(403, 'Forbidden');
         }
 

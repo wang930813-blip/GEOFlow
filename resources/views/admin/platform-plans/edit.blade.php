@@ -79,6 +79,7 @@
                         </div>
                     @endforeach
                 </div>
+                <p class="-mt-1 text-xs text-slate-500">不勾选表示无该功能；勾选且数量为 0 表示不限次数/不限积分；数量大于 0 表示按填写数量限制。</p>
                 @error('resources')
                     <p class="-mt-2 text-sm text-red-600">{{ $message }}</p>
                 @enderror

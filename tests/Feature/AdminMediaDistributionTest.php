@@ -893,17 +893,19 @@ class AdminMediaDistributionTest extends TestCase
         $this->openTestingPlanForSite($site, $agent, [], 'agent');
         app(\App\Services\Billing\AdminPlanSubscriptionService::class)->inheritForAgentUser($agent, $userOne, $site, $agent);
         app(\App\Services\Billing\AdminPlanSubscriptionService::class)->inheritForAgentUser($agent, $userTwo, $site, $agent);
-        AdminCreditAccount::query()->create([
+        AdminCreditAccount::query()->updateOrCreate([
             'admin_id' => (int) $userOne->id,
             'site_id' => (int) $site->id,
+        ], [
             'balance' => '100.00',
             'frozen_balance' => '0.00',
             'total_granted' => '100.00',
             'total_consumed' => '0.00',
         ]);
-        AdminCreditAccount::query()->create([
+        AdminCreditAccount::query()->updateOrCreate([
             'admin_id' => (int) $userTwo->id,
             'site_id' => (int) $site->id,
+        ], [
             'balance' => '100.00',
             'frozen_balance' => '0.00',
             'total_granted' => '100.00',
@@ -1206,6 +1208,56 @@ class AdminMediaDistributionTest extends TestCase
             ->where('site_id', (int) $site->id)
             ->value('balance'));
         Http::assertNothingSent();
+    }
+
+    public function test_media_submission_allows_zero_credit_plan_as_unlimited_without_deducting_balance(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+        [$admin, $site] = $this->createAdminWithSite('media_unlimited_credit_admin', 'admin');
+        $subscription = \App\Models\AdminPlanSubscription::query()
+            ->where('admin_id', (int) $admin->id)
+            ->where('site_id', (int) $site->id)
+            ->firstOrFail();
+        $snapshot = (array) $subscription->entitlements_snapshot;
+        $snapshot[\App\Models\PlatformPlan::RESOURCE_CREDITS] = [
+            'enabled' => true,
+            'quota_value' => 0,
+            'quota_period' => 'cycle',
+            'unit' => 'points',
+            'meta' => [],
+        ];
+        $subscription->forceFill(['entitlements_snapshot' => $snapshot])->save();
+        [$article, $resource] = $this->createArticleAndResource($site, 'unlimited-credit-article');
+        Http::fake([
+            '*/api/media/send' => Http::response([
+                'code' => 1,
+                'msg' => 'success',
+                'data' => ['order_nid' => 'unlimited-credit-order'],
+            ]),
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => $site->id])
+            ->post(route('admin.media-distribution.submissions.store'), [
+                'article_id' => $article->id,
+                'media_resource_id' => $resource->id,
+            ])
+            ->assertRedirect(route('admin.media-distribution.submissions.index'))
+            ->assertSessionHasNoErrors();
+
+        $submission = MediaSubmission::query()->where('article_id', $article->id)->firstOrFail();
+
+        $this->assertSame('submitted', (string) $submission->status);
+        $this->assertSame('unlimited-credit-order', (string) $submission->external_order_nid);
+        $this->assertNull(AdminCreditAccount::query()
+            ->where('admin_id', (int) $admin->id)
+            ->where('site_id', (int) $site->id)
+            ->value('balance'));
+        $this->assertSame(0, AdminCreditLedger::query()
+            ->where('admin_id', (int) $admin->id)
+            ->where('site_id', (int) $site->id)
+            ->where('type', 'deduct')
+            ->count());
     }
 
     public function test_submit_failure_records_failed_order_and_refunds_credits(): void

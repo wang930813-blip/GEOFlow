@@ -98,7 +98,27 @@ class AdminUsersManagementTest extends TestCase
         ]);
     }
 
-    private function createAdmin(string $username, string $role): Admin
+    public function test_admin_user_list_shows_account_ownership_for_agent_direct_and_member_users(): void
+    {
+        $superAdmin = $this->createAdmin('owner_root_admin', 'super_admin');
+        $agent = $this->createAdmin('owner_agent_admin', 'agent_admin', $superAdmin);
+        $direct = $this->createAdmin('owner_direct_admin', 'direct_admin', $superAdmin);
+        $member = $this->createAdmin('owner_agent_member', 'site_user', $agent);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.admin-users.index'))
+            ->assertOk()
+            ->assertSee('归属')
+            ->assertSee('平台代理')
+            ->assertSee('平台直客')
+            ->assertSee('代理：owner_agent_admin')
+            ->assertSee('平台管理');
+
+        $this->assertSame((int) $agent->id, (int) $member->created_by);
+        $this->assertSame((int) $superAdmin->id, (int) $direct->created_by);
+    }
+
+    private function createAdmin(string $username, string $role, ?Admin $creator = null): Admin
     {
         return Admin::query()->create([
             'username' => $username,
@@ -107,6 +127,7 @@ class AdminUsersManagementTest extends TestCase
             'display_name' => $username,
             'role' => $role,
             'status' => 'active',
+            'created_by' => $creator?->id,
         ]);
     }
 }

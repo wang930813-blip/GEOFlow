@@ -63,6 +63,7 @@
                         $admin = $subscription->admin;
                         $site = $subscription->site;
                         $creditAccount = $row['creditAccount'];
+                        $hasUnlimitedCredits = (bool) ($row['hasUnlimitedCredits'] ?? false);
                     @endphp
                     <div class="p-5">
                         <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
@@ -87,7 +88,9 @@
 
                             <div class="rounded-md bg-slate-50 px-4 py-3 text-sm text-slate-700">
                                 <div class="font-medium text-slate-900">积分</div>
-                                @if ($creditAccount)
+                                @if ($hasUnlimitedCredits)
+                                    <div class="mt-1">额度不限</div>
+                                @elseif ($creditAccount)
                                     <div class="mt-1">余额 {{ $creditAccount->balance }}，已用 {{ $creditAccount->total_consumed }}</div>
                                 @else
                                     <div class="mt-1 text-slate-400">暂无积分账户</div>
@@ -100,9 +103,9 @@
                                 <div class="rounded-md border border-slate-200 bg-white p-4" data-resource-key="{{ $resource['key'] }}">
                                     <div class="flex items-start justify-between gap-3">
                                         <div class="text-sm font-medium text-gray-900">{{ $resource['label'] }}</div>
-                                        <div class="shrink-0 text-xs text-slate-500">剩余 {{ $resource['remaining'] }}</div>
+                                        <div class="shrink-0 text-xs text-slate-500">剩余 {{ $resource['is_unlimited'] ? '不限' : $resource['remaining'] }}</div>
                                     </div>
-                                    <div class="mt-2 text-sm text-slate-600">已用 {{ $resource['used'] }} / {{ $resource['quota'] }}</div>
+                                    <div class="mt-2 text-sm text-slate-600">已用 {{ $resource['used'] }} / {{ $resource['is_unlimited'] ? '不限' : $resource['quota'] }}</div>
                                     <div class="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
                                         <div class="h-full rounded-full bg-indigo-500" style="width: {{ $resource['percent'] }}%"></div>
                                     </div>

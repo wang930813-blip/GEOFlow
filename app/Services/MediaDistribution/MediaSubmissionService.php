@@ -3,10 +3,12 @@
 namespace App\Services\MediaDistribution;
 
 use App\Models\Admin;
+use App\Models\AdminPlanSubscription;
 use App\Models\Article;
 use App\Models\MediaResource;
 use App\Models\MediaResourceSitePrice;
 use App\Models\MediaSubmission;
+use App\Models\PlatformPlan;
 use App\Services\Billing\AdminResourceQuotaService;
 use App\Support\MediaDistribution\MediaPlatform;
 use App\Support\Site\ArticleHtmlPresenter;
@@ -37,7 +39,10 @@ class MediaSubmissionService
         $this->quotaService->assertSubscriptionActive((int) $admin->id, (int) $article->site_id, $admin);
 
         $salePrice = $this->salePriceForSite($resource, (int) $article->site_id);
-        $this->credits->ensureSufficient((int) $admin->id, (int) $article->site_id, $salePrice);
+        $usesUnlimitedCredits = $this->usesUnlimitedCredits($admin, (int) $article->site_id);
+        if (! $usesUnlimitedCredits) {
+            $this->credits->ensureSufficient((int) $admin->id, (int) $article->site_id, $salePrice);
+        }
 
         $submission = DB::transaction(function () use ($article, $resource, $admin, $remark, $salePrice): MediaSubmission {
             $platformId = (int) ($resource->platform_id ?: MediaPlatform::CEYING_MEDIA_1);
@@ -64,8 +69,10 @@ class MediaSubmissionService
 
         $deducted = false;
         try {
-            $this->credits->deductForSubmission($submission, (int) $admin->id, (int) $admin->id);
-            $deducted = true;
+            if (! $usesUnlimitedCredits) {
+                $this->credits->deductForSubmission($submission, (int) $admin->id, (int) $admin->id);
+                $deducted = true;
+            }
             $response = $this->clients
                 ->forPlatform((int) ($submission->platform_id ?: MediaPlatform::CEYING_MEDIA_1))
                 ->submit($submission, $resource, $remark);
@@ -91,6 +98,24 @@ class MediaSubmissionService
         }
 
         return $submission;
+    }
+
+    private function usesUnlimitedCredits(Admin $admin, int $siteId): bool
+    {
+        if ($admin->isSuperAdmin()) {
+            return true;
+        }
+
+        $subscription = $this->quotaService->activeSubscriptionForAdmin((int) $admin->id, $siteId);
+        if (! $subscription instanceof AdminPlanSubscription) {
+            return false;
+        }
+
+        $credits = data_get((array) $subscription->entitlements_snapshot, PlatformPlan::RESOURCE_CREDITS);
+
+        return is_array($credits)
+            && (bool) ($credits['enabled'] ?? false)
+            && (int) ($credits['quota_value'] ?? 0) <= 0;
     }
 
     public function syncStatus(MediaSubmission $submission): MediaSubmission

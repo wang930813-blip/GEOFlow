@@ -85,7 +85,7 @@ class PlatformPlanManagementTest extends TestCase
         ]);
     }
 
-    public function test_platform_plan_requires_selected_resource_quota_greater_than_zero(): void
+    public function test_platform_plan_allows_selected_resource_quota_zero_as_unlimited(): void
     {
         $superAdmin = $this->admin('plan_resource_quota_root', 'super_admin');
 
@@ -106,11 +106,30 @@ class PlatformPlanManagementTest extends TestCase
                 ],
             ])
             ->assertRedirect(route('admin.platform-plans.index'))
-            ->assertSessionHasErrors(['resources.'.PlatformPlan::RESOURCE_BRAND_DIAGNOSES.'.quota_value']);
+            ->assertSessionHasNoErrors();
 
-        $this->assertDatabaseMissing('platform_plans', [
+        $plan = PlatformPlan::query()->where('code', 'resource_quota_plan')->firstOrFail();
+
+        $this->assertDatabaseHas('platform_plans', [
             'code' => 'resource_quota_plan',
         ]);
+        $this->assertDatabaseHas('platform_plan_entitlements', [
+            'plan_id' => (int) $plan->id,
+            'resource_key' => PlatformPlan::RESOURCE_BRAND_DIAGNOSES,
+            'enabled' => true,
+            'quota_value' => 0,
+            'quota_period' => 'cycle',
+        ]);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.platform-plans.index'))
+            ->assertOk()
+            ->assertSee('品牌诊断次数：不限');
+
+        $this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.platform-plans.show', $plan))
+            ->assertOk()
+            ->assertSee('不限');
     }
 
     public function test_platform_plan_normalizes_resource_quota_with_leading_zeroes(): void
@@ -260,6 +279,54 @@ class PlatformPlanManagementTest extends TestCase
         $this->assertSame(5, $remaining['quota']);
         $this->assertSame(0, $remaining['used']);
         $this->assertSame(5, $remaining['remaining']);
+    }
+
+    public function test_account_quota_service_treats_enabled_zero_quota_as_unlimited_and_records_usage(): void
+    {
+        $superAdmin = $this->admin('quota_unlimited_root', 'super_admin');
+        $owner = $this->admin('quota_unlimited_direct', 'direct_admin');
+        $site = $this->site('Unlimited Quota Site', $owner, 'direct');
+        $plan = $this->plan('Unlimited Quota Plan', [
+            PlatformPlan::RESOURCE_BRAND_DIAGNOSES => 0,
+        ]);
+
+        app(AdminPlanSubscriptionService::class)->openOwner(
+            admin: $owner,
+            site: $site,
+            plan: $plan,
+            mode: 'direct_owner',
+            operator: $superAdmin,
+            startsAt: now()->subMinute(),
+            endsAt: now()->addDays(30),
+            grantCredits: false
+        );
+
+        $quota = app(AdminResourceQuotaService::class);
+        $quota->assertCanUse((int) $owner->id, (int) $site->id, PlatformPlan::RESOURCE_BRAND_DIAGNOSES, 100);
+        $quota->consume((int) $owner->id, (int) $site->id, PlatformPlan::RESOURCE_BRAND_DIAGNOSES, 2, [
+            'idempotency_key' => 'unlimited-brand-1',
+        ]);
+        $quota->consume((int) $owner->id, (int) $site->id, PlatformPlan::RESOURCE_BRAND_DIAGNOSES, 3, [
+            'idempotency_key' => 'unlimited-brand-2',
+        ]);
+
+        $remaining = $quota->remaining((int) $owner->id, (int) $site->id, PlatformPlan::RESOURCE_BRAND_DIAGNOSES);
+
+        $this->assertNull($remaining['quota']);
+        $this->assertSame(5, $remaining['used']);
+        $this->assertNull($remaining['remaining']);
+        $this->assertSame('unlimited', $remaining['period']);
+        $this->assertSame(5, (int) AdminResourceUsage::query()
+            ->where('admin_id', (int) $owner->id)
+            ->where('site_id', (int) $site->id)
+            ->where('resource_key', PlatformPlan::RESOURCE_BRAND_DIAGNOSES)
+            ->value('used_amount'));
+
+        $this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.plan-usages.index'))
+            ->assertOk()
+            ->assertSee('剩余 不限')
+            ->assertSee('已用 5 / 不限');
     }
 
     public function test_super_admin_can_delete_unused_plan_but_not_referenced_plan(): void

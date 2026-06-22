@@ -67,11 +67,14 @@ abstract class TestCase extends BaseTestCase
 
         foreach (\App\Models\PlatformPlan::resourceCatalog() as $resourceKey => $definition) {
             $override = $resourceOverrides[$resourceKey] ?? [];
+            $defaultQuotaValue = $resourceKey === \App\Models\PlatformPlan::RESOURCE_CREDITS ? 999999999 : 0;
+            $defaultQuotaPeriod = $resourceKey === \App\Models\PlatformPlan::RESOURCE_CREDITS ? 'cycle' : 'unlimited';
+
             $plan->entitlements()->create([
                 'resource_key' => $resourceKey,
                 'enabled' => true,
-                'quota_value' => (int) ($override['quota_value'] ?? 0),
-                'quota_period' => (string) ($override['quota_period'] ?? 'unlimited'),
+                'quota_value' => (int) ($override['quota_value'] ?? $defaultQuotaValue),
+                'quota_period' => (string) ($override['quota_period'] ?? $defaultQuotaPeriod),
                 'unit' => (string) ($override['unit'] ?? $definition['unit']),
                 'meta' => [],
             ]);

@@ -93,8 +93,8 @@
                                 <span class="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">未启用</span>
                             @endif
                         </div>
-                        <div class="mt-2 text-2xl font-semibold text-slate-900">{{ $entitlement?->quota_value ?? 0 }}</div>
-                        <div class="mt-1 text-xs text-slate-500">按开通周期总量计算</div>
+                        <div class="mt-2 text-2xl font-semibold text-slate-900">{{ $isEnabled && (int) ($entitlement?->quota_value ?? 0) <= 0 ? '不限' : ($entitlement?->quota_value ?? 0) }}</div>
+                        <div class="mt-1 text-xs text-slate-500">{{ $isEnabled && (int) ($entitlement?->quota_value ?? 0) <= 0 ? '不限制使用数量' : '按开通周期总量计算' }}</div>
                     </div>
                 @endforeach
             </div>

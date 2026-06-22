@@ -165,6 +165,11 @@ class AdminUserController extends Controller
 
         $role = (string) ($payload['role'] ?? 'admin');
         $shouldOpenSubscription = (bool) ($payload['open_customer_subscription'] ?? false);
+        if ($shouldOpenSubscription && $role === 'agent_admin') {
+            throw ValidationException::withMessages([
+                'open_customer_subscription' => '代理账号只用于管理下级用户，不在创建账号时同步创建前台站点',
+            ]);
+        }
         if ($shouldOpenSubscription && ! in_array($role, ['agent_admin', 'direct_admin'], true)) {
             throw ValidationException::withMessages([
                 'open_customer_subscription' => '只有代理管理员或直客管理员可以同步开户',
@@ -178,7 +183,7 @@ class AdminUserController extends Controller
                 throw ValidationException::withMessages(['plan_id' => '同步开户时请选择规格']);
             }
 
-            $mode = $role === 'agent_admin' ? 'agent' : 'direct';
+            $mode = 'direct';
             $plan = PlatformPlan::query()
                 ->whereKey((int) $payload['plan_id'])
                 ->where('status', 'active')
@@ -211,7 +216,7 @@ class AdminUserController extends Controller
                     return;
                 }
 
-                $mode = $role === 'agent_admin' ? 'agent' : 'direct';
+                $mode = 'direct';
                 $operator = auth('admin')->user();
                 if (! $operator instanceof Admin) {
                     throw ValidationException::withMessages(['username' => '当前登录状态已失效']);
@@ -223,7 +228,7 @@ class AdminUserController extends Controller
                     'domain' => trim((string) ($payload['site_domain'] ?? '')),
                     'status' => 'active',
                     'customer_mode' => $mode,
-                    'agent_admin_id' => $mode === 'agent' ? (int) $admin->id : null,
+                    'agent_admin_id' => null,
                 ]);
                 $site->members()->attach((int) $admin->id, ['role' => 'owner']);
 
@@ -251,7 +256,7 @@ class AdminUserController extends Controller
                     admin: $admin,
                     site: $site,
                     plan: $plan,
-                    mode: $mode === 'agent' ? 'agent_owner' : 'direct_owner',
+                    mode: 'direct_owner',
                     operator: $operator,
                     startsAt: $startsAt,
                     endsAt: $endsAt,
@@ -371,7 +376,7 @@ class AdminUserController extends Controller
                 'created_at',
                 'created_by',
             ])
-            ->with(['creator:id,username'])
+            ->with(['creator:id,username,display_name,role'])
             // 与 bak 一致：超级管理员置顶，其余按创建时间和 ID 升序。
             ->orderByRaw("CASE WHEN LOWER(COALESCE(role, '')) IN ('super_admin', 'superadmin') THEN 0 ELSE 1 END")
             ->orderBy('created_at')
@@ -396,6 +401,7 @@ class AdminUserController extends Controller
                 'last_login' => $admin->last_login?->format('Y-m-d H:i:s') ?? '',
                 'created_at' => $admin->created_at?->format('Y-m-d H:i:s') ?? '',
                 'creator_username' => (string) ($admin->creator?->username ?? ''),
+                'owner_label' => $this->ownerLabel($admin),
                 'activity_count' => (int) ($admin->activity_count ?? 0),
             ];
         })->all();
@@ -410,6 +416,31 @@ class AdminUserController extends Controller
             'site_user' => '站点普通用户',
             default => __('admin.admin_users.role_admin'),
         };
+    }
+
+    private function ownerLabel(Admin $admin): string
+    {
+        if ($admin->isSuperAdmin()) {
+            return '平台管理';
+        }
+
+        if ($admin->isAgentAdmin()) {
+            return '平台代理';
+        }
+
+        if ($admin->isDirectAdmin()) {
+            return '平台直客';
+        }
+
+        if ($admin->isSiteUser() && $admin->creator instanceof Admin && $admin->creator->isAgentAdmin()) {
+            return '代理：'.$admin->creator->name;
+        }
+
+        if ($admin->creator instanceof Admin) {
+            return '归属：'.$admin->creator->name;
+        }
+
+        return '平台管理';
     }
 
     private function normalizeDomain(string $value): string

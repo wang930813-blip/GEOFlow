@@ -177,9 +177,6 @@ class PlatformPlanController extends Controller
             if ($enabled) {
                 $enabledResourceKeys[] = $key;
 
-                if ($quotaValue <= 0) {
-                    $resourceErrors['resources.'.$key.'.quota_value'] = '套餐项数量必须大于 0';
-                }
             }
 
             $resources[$key] = [

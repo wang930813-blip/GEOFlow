@@ -65,18 +65,17 @@ class PlanUsageController extends Controller
                 });
         }
 
-        $site = app(CurrentSite::class)->get();
-        abort_unless($site instanceof Site, 403);
-
         if ($admin->isAgentAdmin()) {
             return $query
-                ->where('site_id', (int) $site->id)
                 ->where(function (Builder $query) use ($admin): void {
                     $query->where('admin_id', (int) $admin->id)
                         ->orWhere('inherited_from_admin_id', (int) $admin->id)
                         ->orWhereHas('admin', fn (Builder $adminQuery) => $adminQuery->where('created_by', (int) $admin->id));
                 });
         }
+
+        $site = app(CurrentSite::class)->get();
+        abort_unless($site instanceof Site, 403);
 
         return $query
             ->where('site_id', (int) $site->id)
@@ -113,26 +112,32 @@ class PlanUsageController extends Controller
                     $quota = (int) ($entitlement['quota_value'] ?? 0);
                     $period = (string) ($entitlement['quota_period'] ?? 'cycle');
                     $used = (int) ($usages->get($key)?->used_amount ?? 0);
+                    $isUnlimited = $period === 'unlimited' || $quota <= 0;
 
                     return [
                         'key' => $key,
                         'label' => $resourceCatalog[$key]['label'],
-                        'quota' => $quota,
+                        'quota' => $isUnlimited ? null : $quota,
                         'used' => $used,
-                        'remaining' => max(0, $quota - $used),
-                        'period' => $period,
+                        'remaining' => $isUnlimited ? null : max(0, $quota - $used),
+                        'period' => $isUnlimited ? 'unlimited' : $period,
                         'unit' => (string) ($entitlement['unit'] ?? $resourceCatalog[$key]['unit']),
-                        'percent' => $quota > 0 ? min(100, (int) round($used / $quota * 100)) : 0,
+                        'percent' => $isUnlimited ? 0 : min(100, (int) round($used / $quota * 100)),
+                        'is_unlimited' => $isUnlimited,
                     ];
                 })
                 ->values();
 
             $creditAccount = $creditAccounts->get((int) $subscription->admin_id.':'.(int) $subscription->site_id);
+            $creditEntitlement = (array) data_get((array) $subscription->entitlements_snapshot, PlatformPlan::RESOURCE_CREDITS, []);
+            $hasUnlimitedCredits = (bool) ($creditEntitlement['enabled'] ?? false)
+                && (int) ($creditEntitlement['quota_value'] ?? 0) <= 0;
 
             return [
                 'subscription' => $subscription,
                 'resources' => $resources,
                 'creditAccount' => $creditAccount,
+                'hasUnlimitedCredits' => $hasUnlimitedCredits,
             ];
         });
     }

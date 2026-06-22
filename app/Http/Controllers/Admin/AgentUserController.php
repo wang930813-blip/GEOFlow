@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Admin;
 use App\Models\PlatformPlan;
-use App\Models\SiteMember;
+use App\Models\Site;
 use App\Services\Billing\AdminPlanSubscriptionService;
 use App\Services\Billing\AdminResourceQuotaService;
 use App\Support\AdminWeb;
@@ -24,12 +24,18 @@ class AgentUserController extends Controller
 
     public function index(): View
     {
-        $site = app(CurrentSite::class)->get();
-        abort_unless($site !== null, 403);
+        $agent = auth('admin')->user();
+        abort_unless($agent instanceof Admin && $agent->isAgentAdmin(), 403);
+        $site = $this->agentPlanContextSite($agent);
 
         $members = Admin::query()
-            ->whereHas('sites', fn ($query) => $query->where('sites.id', (int) $site->id))
+            ->select(['id', 'username', 'display_name', 'email', 'role', 'status', 'created_by'])
             ->where('role', 'site_user')
+            ->where('created_by', (int) $agent->id)
+            ->with(['sites' => fn ($query) => $query
+                ->where('customer_mode', 'agent')
+                ->where('agent_admin_id', (int) $agent->id)
+                ->select(['sites.id', 'sites.name', 'sites.owner_admin_id', 'sites.customer_mode', 'sites.agent_admin_id'])])
             ->orderBy('id')
             ->get();
 
@@ -38,14 +44,15 @@ class AgentUserController extends Controller
             'activeMenu' => 'agent_users',
             'adminSiteName' => AdminWeb::siteName(),
             'members' => $members,
-            'quota' => $this->teamMemberQuota((int) $site->id),
+            'quota' => $this->teamMemberQuota($agent, $site),
         ]);
     }
 
     public function store(Request $request): RedirectResponse
     {
-        $site = app(CurrentSite::class)->get();
-        abort_unless($site !== null, 403);
+        $agent = auth('admin')->user();
+        abort_unless($agent instanceof Admin && $agent->isAgentAdmin(), 403);
+        $sourceSite = $this->agentPlanContextSite($agent);
 
         $payload = $request->validate([
             'username' => ['required', 'string', 'regex:/^[A-Za-z0-9_.-]{3,50}$/', 'unique:admins,username'],
@@ -60,11 +67,11 @@ class AgentUserController extends Controller
             'password.same' => '两次输入的密码不一致',
         ]);
 
-        if (! $this->canCreateMember((int) $site->id)) {
+        if (! $this->canCreateMember($agent, $sourceSite)) {
             return back()->withErrors(['username' => '子账号数量已达到当前规格上限'])->withInput();
         }
 
-        DB::transaction(function () use ($payload, $site): void {
+        DB::transaction(function () use ($payload, $agent, $sourceSite): void {
             $admin = Admin::query()->create([
                 'username' => trim((string) $payload['username']),
                 'display_name' => trim((string) ($payload['display_name'] ?? '')),
@@ -72,20 +79,26 @@ class AgentUserController extends Controller
                 'password' => (string) $payload['password'],
                 'role' => 'site_user',
                 'status' => 'active',
-                'created_by' => (int) (auth('admin')->id() ?? 0),
+                'created_by' => (int) $agent->id,
             ]);
 
-            $site->members()->attach((int) $admin->id, ['role' => 'member']);
+            $userSite = Site::query()->create([
+                'owner_admin_id' => (int) $admin->id,
+                'name' => $this->defaultUserSiteName($admin),
+                'domain' => '',
+                'status' => 'active',
+                'customer_mode' => 'agent',
+                'agent_admin_id' => (int) $agent->id,
+            ]);
+            $userSite->members()->attach((int) $admin->id, ['role' => 'owner']);
 
-            $agent = auth('admin')->user();
-            if ($agent instanceof Admin) {
-                $this->adminSubscriptionService->inheritForAgentUser(
-                    agent: $agent,
-                    user: $admin,
-                    site: $site,
-                    operator: $agent
-                );
-            }
+            $this->adminSubscriptionService->inheritForAgentUserSite(
+                agent: $agent,
+                user: $admin,
+                sourceSite: $sourceSite,
+                userSite: $userSite,
+                operator: $agent
+            );
         });
 
         return redirect()->route('admin.agent-users.index')->with('message', '普通用户已创建');
@@ -93,16 +106,17 @@ class AgentUserController extends Controller
 
     public function toggleStatus(int $adminId, Request $request): RedirectResponse
     {
-        $site = app(CurrentSite::class)->get();
-        abort_unless($site !== null, 403);
+        $agent = auth('admin')->user();
+        abort_unless($agent instanceof Admin && $agent->isAgentAdmin(), 403);
+        $site = $this->agentPlanContextSite($agent);
 
         $target = Admin::query()
             ->whereKey($adminId)
             ->where('role', 'site_user')
-            ->whereHas('sites', fn ($query) => $query->where('sites.id', (int) $site->id))
+            ->where('created_by', (int) $agent->id)
             ->firstOrFail();
         $nextStatus = (string) $request->input('next_status', '') === 'active' ? 'active' : 'inactive';
-        if ($nextStatus === 'active' && (string) $target->status !== 'active' && ! $this->canCreateMember((int) $site->id)) {
+        if ($nextStatus === 'active' && (string) $target->status !== 'active' && ! $this->canCreateMember($agent, $site)) {
             return back()->withErrors(['user' => '子账号数量已达到当前规格上限']);
         }
 
@@ -114,16 +128,12 @@ class AgentUserController extends Controller
     /**
      * @return array{quota:int|null,used:int,remaining:int|null,period:string}
      */
-    private function teamMemberQuota(int $siteId): array
+    private function teamMemberQuota(Admin $agent, Site $site): array
     {
-        $activeMemberCount = $this->activeMemberCount($siteId);
-        $admin = auth('admin')->user();
-        if (! $admin instanceof Admin) {
-            return ['quota' => 0, 'used' => $activeMemberCount, 'remaining' => 0, 'period' => 'cycle'];
-        }
+        $activeMemberCount = $this->activeMemberCount($agent);
 
         try {
-            $quota = $this->quotaService->remaining((int) $admin->id, $siteId, PlatformPlan::RESOURCE_TEAM_MEMBERS);
+            $quota = $this->quotaService->remaining((int) $agent->id, (int) $site->id, PlatformPlan::RESOURCE_TEAM_MEMBERS);
 
             return [
                 'quota' => $quota['quota'],
@@ -136,21 +146,47 @@ class AgentUserController extends Controller
         }
     }
 
-    private function canCreateMember(int $siteId): bool
+    private function canCreateMember(Admin $agent, Site $site): bool
     {
-        $quota = $this->teamMemberQuota($siteId);
+        $quota = $this->teamMemberQuota($agent, $site);
         if ($quota['quota'] === null) {
             return true;
         }
 
-        return $this->activeMemberCount($siteId) < (int) $quota['quota'];
+        return $this->activeMemberCount($agent) < (int) $quota['quota'];
     }
 
-    private function activeMemberCount(int $siteId): int
+    private function activeMemberCount(Admin $agent): int
     {
-        return SiteMember::query()
-            ->where('site_id', $siteId)
-            ->whereHas('admin', fn ($query) => $query->where('role', 'site_user')->where('status', 'active'))
+        return Admin::query()
+            ->where('role', 'site_user')
+            ->where('created_by', (int) $agent->id)
+            ->where('status', 'active')
             ->count();
+    }
+
+    private function agentPlanContextSite(Admin $agent): Site
+    {
+        $site = app(CurrentSite::class)->get();
+        if ($site instanceof Site && (int) $site->agent_admin_id === (int) $agent->id) {
+            return $site;
+        }
+
+        $subscriptionSite = Site::query()
+            ->whereHas('members', fn ($query) => $query->where('admins.id', (int) $agent->id))
+            ->where('customer_mode', 'agent')
+            ->orderBy('id')
+            ->first();
+
+        if ($subscriptionSite instanceof Site) {
+            return $subscriptionSite;
+        }
+
+        abort(403, '请先在客户开通中给代理分配规格');
+    }
+
+    private function defaultUserSiteName(Admin $admin): string
+    {
+        return $admin->name.' 的前台站点';
     }
 }

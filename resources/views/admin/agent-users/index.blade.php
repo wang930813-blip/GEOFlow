@@ -5,7 +5,7 @@
         <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
                 <h1 class="text-2xl font-bold text-gray-900">代理用户管理</h1>
-                <p class="mt-1 text-sm text-gray-600">代理可以为自己的分站点创建普通用户，直客模式不开放该能力。</p>
+                <p class="mt-1 text-sm text-gray-600">代理可以创建客户用户；每个客户用户都有自己的前台站点和独立规格计数。</p>
             </div>
             <div class="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800">
                 子账号：{{ $quota['used'] }} / {{ $quota['quota'] === null ? '不限' : $quota['quota'] }}
@@ -19,7 +19,7 @@
                 </div>
                 <div>
                     <h2 class="text-lg font-semibold text-gray-900">新增普通用户</h2>
-                    <p class="text-sm text-gray-500">创建后用户只能使用当前站点业务功能，不能管理规格和用户。</p>
+                    <p class="text-sm text-gray-500">创建后系统会自动给该用户生成独立前台站点，并继承代理当前规格。</p>
                 </div>
             </div>
 
@@ -63,6 +63,7 @@
                     <thead class="bg-slate-50">
                         <tr>
                             <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">账号</th>
+                            <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">前台站点</th>
                             <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">邮箱</th>
                             <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">状态</th>
                             <th class="px-5 py-3 text-right text-xs font-medium uppercase tracking-wider text-slate-500">操作</th>
@@ -74,6 +75,10 @@
                                 <td class="px-5 py-4 align-top">
                                     <div class="text-sm font-semibold text-gray-900">{{ $member->display_name ?: $member->username }}</div>
                                     <div class="mt-1 text-xs text-gray-400">{{ $member->username }}</div>
+                                </td>
+                                <td class="px-5 py-4 align-top text-sm text-gray-600">
+                                    @php($memberSite = $member->sites->first())
+                                    {{ $memberSite?->name ?? '-' }}
                                 </td>
                                 <td class="px-5 py-4 align-top text-sm text-gray-600">{{ $member->email ?: '-' }}</td>
                                 <td class="px-5 py-4 align-top">
@@ -95,7 +100,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="4" class="px-5 py-10 text-center text-sm text-gray-500">暂无普通用户</td>
+                                <td colspan="5" class="px-5 py-10 text-center text-sm text-gray-500">暂无普通用户</td>
                             </tr>
                         @endforelse
                     </tbody>

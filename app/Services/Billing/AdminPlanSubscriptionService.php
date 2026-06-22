@@ -79,6 +79,30 @@ class AdminPlanSubscriptionService
     ): AdminPlanSubscription {
         $source = $this->activeOrBackfilledSubscriptionForAdmin($agent, $site);
 
+        return $this->createInheritedSubscription($agent, $user, $site, $operator, $remark, $source);
+    }
+
+    public function inheritForAgentUserSite(
+        Admin $agent,
+        Admin $user,
+        Site $sourceSite,
+        Site $userSite,
+        ?Admin $operator,
+        string $remark = '代理创建用户继承规格'
+    ): AdminPlanSubscription {
+        $source = $this->activeOrBackfilledSubscriptionForAdmin($agent, $sourceSite);
+
+        return $this->createInheritedSubscription($agent, $user, $userSite, $operator, $remark, $source);
+    }
+
+    private function createInheritedSubscription(
+        Admin $agent,
+        Admin $user,
+        Site $site,
+        ?Admin $operator,
+        string $remark,
+        AdminPlanSubscription $source
+    ): AdminPlanSubscription {
         return DB::transaction(function () use ($agent, $user, $site, $operator, $remark, $source): AdminPlanSubscription {
             AdminPlanSubscription::query()
                 ->where('admin_id', (int) $user->id)

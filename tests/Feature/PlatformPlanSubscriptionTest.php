@@ -74,6 +74,38 @@ class PlatformPlanSubscriptionTest extends TestCase
         $this->assertSame(1, SiteResourceLedger::query()->where('site_id', (int) $site->id)->where('type', 'consume')->count());
     }
 
+    public function test_site_quota_service_treats_enabled_zero_quota_as_unlimited_and_records_usage(): void
+    {
+        $admin = $this->createAdmin('site_unlimited_quota_admin', 'admin');
+        $site = $this->createSite('Site Unlimited Quota', $admin);
+        $plan = $this->createPlan('Site Unlimited Plan', [
+            'brand_diagnoses' => ['quota_value' => 0, 'quota_period' => 'cycle', 'unit' => 'times'],
+        ]);
+        app(PlanSubscriptionService::class)->open($site, $plan, 'direct', $admin, $admin, now(), now()->addMonth(), false);
+
+        $quota = app(ResourceQuotaService::class);
+        $quota->assertCanUse((int) $site->id, 'brand_diagnoses', 100);
+        $quota->consume((int) $site->id, 'brand_diagnoses', 2, [
+            'actor_admin_id' => (int) $admin->id,
+            'idempotency_key' => 'site-unlimited-brand-1',
+        ]);
+        $quota->consume((int) $site->id, 'brand_diagnoses', 3, [
+            'actor_admin_id' => (int) $admin->id,
+            'idempotency_key' => 'site-unlimited-brand-2',
+        ]);
+
+        $remaining = $quota->remaining((int) $site->id, 'brand_diagnoses');
+
+        $this->assertNull($remaining['quota']);
+        $this->assertSame(5, $remaining['used']);
+        $this->assertNull($remaining['remaining']);
+        $this->assertSame('unlimited', $remaining['period']);
+        $this->assertSame(5, (int) SiteResourceUsage::query()
+            ->where('site_id', (int) $site->id)
+            ->where('resource_key', 'brand_diagnoses')
+            ->value('used_amount'));
+    }
+
     public function test_expired_subscription_blocks_resource_consumption(): void
     {
         $admin = $this->createAdmin('expired_admin', 'admin');
@@ -158,9 +190,73 @@ class PlatformPlanSubscriptionTest extends TestCase
         $this->assertSame('自媒体发布次数', $catalog['crebee_publishes']['label']);
     }
 
-    public function test_super_admin_can_create_agent_user_with_site_and_plan_subscription(): void
+    public function test_super_admin_can_create_direct_user_with_site_and_plan_subscription(): void
     {
-        $superAdmin = $this->createAdmin('onboard_root_admin', 'super_admin');
+        $superAdmin = $this->createAdmin('direct_onboard_root_admin', 'super_admin');
+        $plan = $this->createPlan('直客开户规格', [
+            'credits' => ['quota_value' => 1200, 'quota_period' => 'cycle', 'unit' => 'points'],
+            'brand_diagnoses' => ['quota_value' => 3, 'quota_period' => 'cycle', 'unit' => 'times'],
+        ]);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.admin-users.store'), [
+                'username' => 'direct_onboard_user',
+                'display_name' => '直客开户用户',
+                'email' => 'direct-onboard@example.com',
+                'role' => 'direct_admin',
+                'password' => 'password-123',
+                'confirm_password' => 'password-123',
+                'open_customer_subscription' => '1',
+                'site_name' => '直客开户站点',
+                'site_domain' => 'direct-onboard.example.com',
+                'plan_id' => (int) $plan->id,
+                'starts_at' => '2026-06-12T10:00',
+                'ends_at' => '2026-09-10T10:00',
+                'grant_credits' => '1',
+                'subscription_remark' => '创建用户时同步开户',
+            ])
+            ->assertRedirect(route('admin.admin-users.index'));
+
+        $admin = Admin::query()->where('username', 'direct_onboard_user')->firstOrFail();
+        $site = Site::query()->where('name', '直客开户站点')->firstOrFail();
+
+        $this->assertSame('direct_admin', (string) $admin->role);
+        $this->assertSame((int) $admin->id, (int) $site->owner_admin_id);
+        $this->assertSame('direct', (string) $site->customer_mode);
+        $this->assertNull($site->agent_admin_id);
+        $this->assertDatabaseHas('site_members', [
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'role' => 'owner',
+        ]);
+        $this->assertDatabaseHas('site_plan_subscriptions', [
+            'site_id' => (int) $site->id,
+            'plan_id' => (int) $plan->id,
+            'mode' => 'direct',
+            'owner_admin_id' => (int) $admin->id,
+            'status' => 'active',
+        ]);
+        $this->assertDatabaseHas('site_credit_accounts', [
+            'site_id' => (int) $site->id,
+            'balance' => '1200.00',
+        ]);
+        $this->assertDatabaseHas('admin_plan_subscriptions', [
+            'admin_id' => (int) $admin->id,
+            'site_id' => (int) $site->id,
+            'plan_id' => (int) $plan->id,
+            'mode' => 'direct_owner',
+            'status' => 'active',
+        ]);
+        $this->assertDatabaseHas('admin_credit_accounts', [
+            'admin_id' => (int) $admin->id,
+            'site_id' => (int) $site->id,
+            'balance' => '1200.00',
+        ]);
+    }
+
+    public function test_super_admin_cannot_create_agent_with_frontend_site_in_one_step(): void
+    {
+        $superAdmin = $this->createAdmin('agent_onboard_root_admin', 'super_admin');
         $plan = $this->createPlan('代理开户规格', [
             'credits' => ['quota_value' => 1200, 'quota_period' => 'cycle', 'unit' => 'points'],
             'team_members' => ['quota_value' => 3, 'quota_period' => 'cycle', 'unit' => 'accounts'],
@@ -175,50 +271,43 @@ class PlatformPlanSubscriptionTest extends TestCase
                 'password' => 'password-123',
                 'confirm_password' => 'password-123',
                 'open_customer_subscription' => '1',
-                'site_name' => '代理开户站点',
+                'site_name' => '代理不应创建前台站点',
                 'site_domain' => 'agent-onboard.example.com',
                 'plan_id' => (int) $plan->id,
                 'starts_at' => '2026-06-12T10:00',
                 'ends_at' => '2026-09-10T10:00',
                 'grant_credits' => '1',
-                'subscription_remark' => '创建用户时同步开户',
+            ])
+            ->assertSessionHasErrors('open_customer_subscription');
+
+        $this->assertDatabaseMissing('admins', [
+            'username' => 'agent_onboard_user',
+        ]);
+        $this->assertDatabaseMissing('sites', [
+            'name' => '代理不应创建前台站点',
+        ]);
+    }
+
+    public function test_super_admin_can_create_agent_admin_without_frontend_site(): void
+    {
+        $superAdmin = $this->createAdmin('agent_plain_root_admin', 'super_admin');
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.admin-users.store'), [
+                'username' => 'agent_plain_user',
+                'display_name' => '纯代理账号',
+                'email' => 'agent-plain@example.com',
+                'role' => 'agent_admin',
+                'password' => 'password-123',
+                'confirm_password' => 'password-123',
             ])
             ->assertRedirect(route('admin.admin-users.index'));
 
-        $admin = Admin::query()->where('username', 'agent_onboard_user')->firstOrFail();
-        $site = Site::query()->where('name', '代理开户站点')->firstOrFail();
+        $agent = Admin::query()->where('username', 'agent_plain_user')->firstOrFail();
 
-        $this->assertSame('agent_admin', (string) $admin->role);
-        $this->assertSame((int) $admin->id, (int) $site->owner_admin_id);
-        $this->assertSame('agent', (string) $site->customer_mode);
-        $this->assertSame((int) $admin->id, (int) $site->agent_admin_id);
-        $this->assertDatabaseHas('site_members', [
-            'site_id' => (int) $site->id,
-            'admin_id' => (int) $admin->id,
-            'role' => 'owner',
-        ]);
-        $this->assertDatabaseHas('site_plan_subscriptions', [
-            'site_id' => (int) $site->id,
-            'plan_id' => (int) $plan->id,
-            'mode' => 'agent',
-            'owner_admin_id' => (int) $admin->id,
-            'status' => 'active',
-        ]);
-        $this->assertDatabaseHas('site_credit_accounts', [
-            'site_id' => (int) $site->id,
-            'balance' => '1200.00',
-        ]);
-        $this->assertDatabaseHas('admin_plan_subscriptions', [
-            'admin_id' => (int) $admin->id,
-            'site_id' => (int) $site->id,
-            'plan_id' => (int) $plan->id,
-            'mode' => 'agent_owner',
-            'status' => 'active',
-        ]);
-        $this->assertDatabaseHas('admin_credit_accounts', [
-            'admin_id' => (int) $admin->id,
-            'site_id' => (int) $site->id,
-            'balance' => '1200.00',
+        $this->assertSame('agent_admin', (string) $agent->role);
+        $this->assertDatabaseMissing('sites', [
+            'owner_admin_id' => (int) $agent->id,
         ]);
     }
 
