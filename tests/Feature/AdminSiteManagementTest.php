@@ -39,6 +39,163 @@ class AdminSiteManagementTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_agent_admin_can_view_site_management_for_own_site_users_only(): void
+    {
+        $agent = $this->createAdmin('site_agent_owner', 'agent_admin');
+        $otherAgent = $this->createAdmin('site_other_agent_owner', 'agent_admin');
+        $member = $this->createAdmin('site_agent_member', 'site_user', $agent);
+        $otherMember = $this->createAdmin('site_other_agent_member', 'site_user', $otherAgent);
+        $directOwner = $this->createAdmin('site_direct_owner', 'direct_admin');
+
+        $ownSite = Site::query()->create([
+            'owner_admin_id' => (int) $member->id,
+            'name' => 'Agent Owned Site',
+            'domain' => 'agent-owned.geo.xinzhidi.cn',
+            'status' => 'active',
+            'customer_mode' => 'agent',
+            'agent_admin_id' => (int) $agent->id,
+        ]);
+        $ownSite->members()->attach((int) $member->id, ['role' => 'owner']);
+
+        $otherSite = Site::query()->create([
+            'owner_admin_id' => (int) $otherMember->id,
+            'name' => 'Other Agent Site',
+            'domain' => 'other-agent.geo.xinzhidi.cn',
+            'status' => 'active',
+            'customer_mode' => 'agent',
+            'agent_admin_id' => (int) $otherAgent->id,
+        ]);
+        $otherSite->members()->attach((int) $otherMember->id, ['role' => 'owner']);
+
+        Site::query()->create([
+            'owner_admin_id' => (int) $directOwner->id,
+            'name' => 'Direct Customer Site',
+            'domain' => 'direct-customer.geo.xinzhidi.cn',
+            'status' => 'active',
+            'customer_mode' => 'direct',
+        ]);
+
+        $this->actingAs($agent, 'admin')
+            ->get(route('admin.dashboard'))
+            ->assertOk()
+            ->assertSee(route('admin.sites.manage.index'), false)
+            ->assertSee('站点管理');
+
+        $this->actingAs($agent, 'admin')
+            ->get(route('admin.sites.manage.index'))
+            ->assertOk()
+            ->assertSee('Agent Owned Site')
+            ->assertSee('site_agent_member')
+            ->assertDontSee('Other Agent Site')
+            ->assertDontSee('site_other_agent_member')
+            ->assertDontSee('Direct Customer Site')
+            ->assertDontSee('site_direct_owner');
+    }
+
+    public function test_agent_admin_can_create_site_for_own_site_user_only(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+
+        $agent = $this->createAdmin('site_create_agent_owner', 'agent_admin');
+        $otherAgent = $this->createAdmin('site_create_other_agent', 'agent_admin');
+        $member = $this->createAdmin('site_create_member', 'site_user', $agent);
+        $otherMember = $this->createAdmin('site_create_other_member', 'site_user', $otherAgent);
+
+        $this->actingAs($agent, 'admin')
+            ->post(route('admin.sites.manage.store'), [
+                'name' => 'Agent Created Site',
+                'domain' => 'https://agent-created.geo.xinzhidi.cn/path',
+                'status' => 'active',
+                'customer_mode' => 'direct',
+                'owner_admin_id' => $member->id,
+                'member_ids' => [$member->id],
+            ])
+            ->assertRedirect(route('admin.sites.manage.index'));
+
+        $site = Site::query()->where('name', 'Agent Created Site')->firstOrFail();
+
+        $this->assertSame('agent-created.geo.xinzhidi.cn', $site->domain);
+        $this->assertSame((int) $member->id, (int) $site->owner_admin_id);
+        $this->assertSame('agent', (string) $site->customer_mode);
+        $this->assertSame((int) $agent->id, (int) $site->agent_admin_id);
+        $this->assertDatabaseHas('site_members', [
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $member->id,
+            'role' => 'owner',
+        ]);
+
+        $this->actingAs($agent, 'admin')
+            ->post(route('admin.sites.manage.store'), [
+                'name' => 'Invalid Agent Site',
+                'domain' => 'invalid-agent-site.geo.xinzhidi.cn',
+                'status' => 'active',
+                'owner_admin_id' => $otherMember->id,
+                'member_ids' => [$otherMember->id],
+            ])
+            ->assertSessionHasErrors('owner_admin_id');
+
+        $this->assertDatabaseMissing('sites', [
+            'name' => 'Invalid Agent Site',
+        ]);
+
+        $this->actingAs($agent, 'admin')
+            ->post(route('admin.sites.manage.store'), [
+                'name' => 'Ownerless Agent Site',
+                'domain' => 'ownerless-agent-site.geo.xinzhidi.cn',
+                'status' => 'active',
+                'owner_admin_id' => '',
+                'member_ids' => [],
+            ])
+            ->assertSessionHasErrors('owner_admin_id');
+
+        $this->assertDatabaseMissing('sites', [
+            'name' => 'Ownerless Agent Site',
+        ]);
+    }
+
+    public function test_agent_admin_cannot_update_toggle_or_delete_other_sites(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+
+        $agent = $this->createAdmin('site_guard_agent_owner', 'agent_admin');
+        $otherAgent = $this->createAdmin('site_guard_other_agent', 'agent_admin');
+        $member = $this->createAdmin('site_guard_member', 'site_user', $agent);
+        $otherMember = $this->createAdmin('site_guard_other_member', 'site_user', $otherAgent);
+
+        $otherSite = Site::query()->create([
+            'owner_admin_id' => (int) $otherMember->id,
+            'name' => 'Guard Other Site',
+            'domain' => 'guard-other.geo.xinzhidi.cn',
+            'status' => 'active',
+            'customer_mode' => 'agent',
+            'agent_admin_id' => (int) $otherAgent->id,
+        ]);
+        $otherSite->members()->attach((int) $otherMember->id, ['role' => 'owner']);
+
+        $this->actingAs($agent, 'admin')
+            ->post(route('admin.sites.manage.update', ['site' => $otherSite->id]), [
+                'name' => 'Changed Other Site',
+                'domain' => 'changed-other.geo.xinzhidi.cn',
+                'status' => 'inactive',
+                'owner_admin_id' => $member->id,
+                'member_ids' => [$member->id],
+            ])
+            ->assertForbidden();
+
+        $this->actingAs($agent, 'admin')
+            ->post(route('admin.sites.manage.toggle-status', ['site' => $otherSite->id]))
+            ->assertForbidden();
+
+        $this->actingAs($agent, 'admin')
+            ->post(route('admin.sites.manage.destroy', ['site' => $otherSite->id]))
+            ->assertForbidden();
+
+        $otherSite->refresh();
+        $this->assertSame('Guard Other Site', $otherSite->name);
+        $this->assertSame('active', $otherSite->status);
+        $this->assertNull($otherSite->deleted_at);
+    }
+
     public function test_super_admin_can_create_site_with_domain_members_and_default_content_prompts(): void
     {
         $this->withoutMiddleware(ValidateCsrfToken::class);
@@ -177,7 +334,7 @@ class AdminSiteManagementTest extends TestCase
             ->assertDontSee('Soft Delete Site');
     }
 
-    private function createAdmin(string $username, string $role): Admin
+    private function createAdmin(string $username, string $role, ?Admin $creator = null): Admin
     {
         return Admin::query()->create([
             'username' => $username,
@@ -186,6 +343,7 @@ class AdminSiteManagementTest extends TestCase
             'display_name' => str_replace('_', ' ', $username),
             'role' => $role,
             'status' => 'active',
+            'created_by' => $creator?->id,
         ]);
     }
 }

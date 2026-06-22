@@ -390,15 +390,15 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
         });
         Route::get('crebee-publish-records', [CrebeePublishRecordController::class, 'index'])
             ->name('crebee-publish-records.index');
+        Route::prefix('sites/manage')->name('sites.manage.')->group(function () {
+            Route::get('/', [SiteManagementController::class, 'index'])->name('index');
+            Route::post('/', [SiteManagementController::class, 'store'])->name('store');
+            Route::post('{site}', [SiteManagementController::class, 'update'])->name('update');
+            Route::post('{site}/toggle-status', [SiteManagementController::class, 'toggleStatus'])->name('toggle-status');
+            Route::post('{site}/delete', [SiteManagementController::class, 'destroy'])->name('destroy');
+        });
         // Super admin routes
         Route::middleware('admin.super')->group(function () {
-            Route::prefix('sites/manage')->name('sites.manage.')->group(function () {
-                Route::get('/', [SiteManagementController::class, 'index'])->name('index');
-                Route::post('/', [SiteManagementController::class, 'store'])->name('store');
-                Route::post('{site}', [SiteManagementController::class, 'update'])->name('update');
-                Route::post('{site}/toggle-status', [SiteManagementController::class, 'toggleStatus'])->name('toggle-status');
-                Route::post('{site}/delete', [SiteManagementController::class, 'destroy'])->name('destroy');
-            });
             Route::prefix('platform-plans')->name('platform-plans.')->group(function () {
                 Route::get('/', [PlatformPlanController::class, 'index'])->name('index');
                 Route::post('/', [PlatformPlanController::class, 'store'])->name('store');

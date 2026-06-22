@@ -1,6 +1,8 @@
 @extends('admin.layouts.app')
 
 @php
+    $isAgentSiteManager = (bool) ($isAgentSiteManager ?? false);
+    $isSuperSiteManager = (bool) ($isSuperSiteManager ?? false);
     $adminOptions = $admins->map(fn ($admin) => [
         'id' => (int) $admin->id,
         'label' => trim((string) $admin->display_name) !== '' ? $admin->display_name.' ('.$admin->username.')' : $admin->username,
@@ -14,12 +16,20 @@
         <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
                 <h1 class="text-2xl font-bold text-gray-900">站点管理</h1>
-                <p class="mt-1 text-sm text-gray-600">总管理员可以创建客户站点、绑定二级域名，并分配可维护该站点的管理员。</p>
+                <p class="mt-1 text-sm text-gray-600">
+                    @if($isAgentSiteManager)
+                        为下级用户创建和维护前台站点，站点数据仅归属当前代理。
+                    @else
+                        总管理员可以创建客户站点、绑定二级域名，并分配可维护该站点的管理员。
+                    @endif
+                </p>
             </div>
-            <a href="{{ route('admin.site-settings.index') }}" class="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50">
-                <i data-lucide="settings" class="h-4 w-4"></i>
-                当前站点设置
-            </a>
+            @if($isSuperSiteManager)
+                <a href="{{ route('admin.site-settings.index') }}" class="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50">
+                    <i data-lucide="settings" class="h-4 w-4"></i>
+                    当前站点设置
+                </a>
+            @endif
         </div>
 
         <section class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
@@ -61,14 +71,18 @@
                         <option value="inactive" @selected(old('status') === 'inactive')>停用</option>
                     </select>
                 </div>
-                <div class="lg:col-span-2">
-                    <label class="mb-1 block text-sm font-medium text-gray-700" for="create-customer-mode">客户模式</label>
-                    <select id="create-customer-mode" name="customer_mode" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
-                        <option value="internal" @selected(old('customer_mode', 'internal') === 'internal')>内部站点</option>
-                        <option value="agent" @selected(old('customer_mode') === 'agent')>代理</option>
-                        <option value="direct" @selected(old('customer_mode') === 'direct')>直客</option>
-                    </select>
-                </div>
+                @if($isAgentSiteManager)
+                    <input type="hidden" name="customer_mode" value="agent">
+                @else
+                    <div class="lg:col-span-2">
+                        <label class="mb-1 block text-sm font-medium text-gray-700" for="create-customer-mode">客户模式</label>
+                        <select id="create-customer-mode" name="customer_mode" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
+                            <option value="internal" @selected(old('customer_mode', 'internal') === 'internal')>内部站点</option>
+                            <option value="agent" @selected(old('customer_mode') === 'agent')>代理</option>
+                            <option value="direct" @selected(old('customer_mode') === 'direct')>直客</option>
+                        </select>
+                    </div>
+                @endif
                 <div class="flex items-end lg:col-span-2">
                     <button type="submit" class="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 text-sm font-medium text-white transition hover:bg-indigo-700">
                         <i data-lucide="save" class="h-4 w-4"></i>
@@ -91,7 +105,7 @@
 
         <section class="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
             <div class="border-b border-slate-200 px-5 py-4">
-                <h2 class="text-lg font-semibold text-gray-900">全部站点</h2>
+                <h2 class="text-lg font-semibold text-gray-900">{{ $isAgentSiteManager ? '下级用户站点' : '全部站点' }}</h2>
             </div>
 
             <div class="overflow-x-auto">
@@ -196,14 +210,18 @@
                                                 <option value="inactive" @selected($site->status === 'inactive')>停用</option>
                                             </select>
                                         </div>
-                                        <div class="lg:col-span-2">
-                                            <label class="mb-1 block text-sm font-medium text-gray-700" for="site-customer-mode-{{ $site->id }}">客户模式</label>
-                                            <select id="site-customer-mode-{{ $site->id }}" name="customer_mode" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
-                                                <option value="internal" @selected(($site->customer_mode ?? 'internal') === 'internal')>内部站点</option>
-                                                <option value="agent" @selected(($site->customer_mode ?? 'internal') === 'agent')>代理</option>
-                                                <option value="direct" @selected(($site->customer_mode ?? 'internal') === 'direct')>直客</option>
-                                            </select>
-                                        </div>
+                                        @if($isAgentSiteManager)
+                                            <input type="hidden" name="customer_mode" value="agent">
+                                        @else
+                                            <div class="lg:col-span-2">
+                                                <label class="mb-1 block text-sm font-medium text-gray-700" for="site-customer-mode-{{ $site->id }}">客户模式</label>
+                                                <select id="site-customer-mode-{{ $site->id }}" name="customer_mode" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
+                                                    <option value="internal" @selected(($site->customer_mode ?? 'internal') === 'internal')>内部站点</option>
+                                                    <option value="agent" @selected(($site->customer_mode ?? 'internal') === 'agent')>代理</option>
+                                                    <option value="direct" @selected(($site->customer_mode ?? 'internal') === 'direct')>直客</option>
+                                                </select>
+                                            </div>
+                                        @endif
                                         <div class="flex items-end lg:col-span-2">
                                             <button type="submit" class="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 text-sm font-medium text-white transition hover:bg-indigo-700">
                                                 <i data-lucide="save" class="h-4 w-4"></i>

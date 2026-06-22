@@ -64,6 +64,7 @@ class AdminHeaderNavigationTest extends TestCase
         $this->assertStringContainsString(route('admin.profile.index'), $userMenu);
         $this->assertStringNotContainsString('data-account-menu-group="operations"', $userMenu);
         $this->assertStringContainsString('data-account-menu-group="accounts"', $userMenu);
+        $this->assertStringContainsString(route('admin.sites.manage.index'), $userMenu);
         $this->assertStringContainsString(route('admin.agent-users.index'), $userMenu);
         $this->assertStringContainsString(route('admin.plan-usages.index'), $userMenu);
         $this->assertStringNotContainsString(route('admin.platform-plans.index'), $userMenu);
