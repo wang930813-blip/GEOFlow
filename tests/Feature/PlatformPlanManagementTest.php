@@ -329,7 +329,7 @@ class PlatformPlanManagementTest extends TestCase
             ->assertSee('已用 5 / 不限');
     }
 
-    public function test_super_admin_can_delete_unused_plan_but_not_referenced_plan(): void
+    public function test_super_admin_can_soft_delete_plan_even_when_referenced_by_subscriptions(): void
     {
         $superAdmin = $this->admin('plan_delete_root', 'super_admin');
         $unusedPlan = $this->plan('未使用规格', [
@@ -356,16 +356,21 @@ class PlatformPlanManagementTest extends TestCase
             ->post(route('admin.platform-plans.destroy', $unusedPlan))
             ->assertRedirect(route('admin.platform-plans.index'));
 
-        $this->assertDatabaseMissing('platform_plans', [
+        $this->assertSoftDeleted('platform_plans', [
             'id' => (int) $unusedPlan->id,
         ]);
 
         $this->actingAs($superAdmin, 'admin')
             ->post(route('admin.platform-plans.destroy', $usedPlan))
-            ->assertSessionHasErrors();
+            ->assertRedirect(route('admin.platform-plans.index'));
 
-        $this->assertDatabaseHas('platform_plans', [
+        $this->assertSoftDeleted('platform_plans', [
             'id' => (int) $usedPlan->id,
+        ]);
+        $this->assertDatabaseHas('site_plan_subscriptions', [
+            'site_id' => (int) $site->id,
+            'plan_id' => (int) $usedPlan->id,
+            'status' => 'active',
         ]);
     }
 
@@ -468,6 +473,31 @@ class PlatformPlanManagementTest extends TestCase
         $this->assertStringContainsString(PlatformPlan::RESOURCE_TEAM_MEMBERS, $agentRow);
         $this->assertStringNotContainsString(PlatformPlan::RESOURCE_TEAM_MEMBERS, $agentUserRow);
         $this->assertStringNotContainsString(PlatformPlan::RESOURCE_TEAM_MEMBERS, $directRow);
+    }
+
+    public function test_plan_usage_page_is_paginated_for_large_user_lists(): void
+    {
+        $superAdmin = $this->admin('usage_pagination_root', 'super_admin');
+        $plan = $this->plan('Usage Pagination Plan', [
+            PlatformPlan::RESOURCE_BRAND_DIAGNOSES => 5,
+        ]);
+        $subscriptionService = app(AdminPlanSubscriptionService::class);
+
+        for ($index = 1; $index <= 21; $index++) {
+            $owner = $this->admin(sprintf('usage_page_user_%02d', $index), 'direct_admin', $superAdmin);
+            $site = $this->site(sprintf('Usage Page Site %02d', $index), $owner, 'direct');
+            $subscriptionService->openOwner($owner, $site, $plan, 'direct_owner', $superAdmin, now()->subMinute(), now()->addDays(30), false);
+        }
+
+        $response = $this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.plan-usages.index'));
+
+        $response->assertOk();
+        $html = $response->getContent();
+
+        $this->assertStringContainsString('usage_page_user_21', $html);
+        $this->assertSame(20, substr_count($html, 'data-plan-usage-row'));
+        $this->assertStringContainsString('page=2', $html);
     }
 
     private function admin(string $username, string $role, ?Admin $creator = null): Admin

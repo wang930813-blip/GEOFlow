@@ -60,7 +60,7 @@ class AdminPlanSubscription extends Model
 
     public function plan(): BelongsTo
     {
-        return $this->belongsTo(PlatformPlan::class, 'plan_id');
+        return $this->belongsTo(PlatformPlan::class, 'plan_id')->withTrashed();
     }
 
     public function sourceSubscription(): BelongsTo

@@ -254,7 +254,7 @@ class PlatformPlanSubscriptionTest extends TestCase
         ]);
     }
 
-    public function test_super_admin_cannot_create_agent_with_frontend_site_in_one_step(): void
+    public function test_super_admin_can_create_agent_with_account_plan_without_frontend_site(): void
     {
         $superAdmin = $this->createAdmin('agent_onboard_root_admin', 'super_admin');
         $plan = $this->createPlan('代理开户规格', [
@@ -278,10 +278,23 @@ class PlatformPlanSubscriptionTest extends TestCase
                 'ends_at' => '2026-09-10T10:00',
                 'grant_credits' => '1',
             ])
-            ->assertSessionHasErrors('open_customer_subscription');
+            ->assertRedirect(route('admin.admin-users.index'));
 
-        $this->assertDatabaseMissing('admins', [
+        $agent = Admin::query()->where('username', 'agent_onboard_user')->firstOrFail();
+
+        $this->assertSame('agent_admin', (string) $agent->role);
+        $this->assertDatabaseHas('admins', [
             'username' => 'agent_onboard_user',
+        ]);
+        $this->assertDatabaseMissing('sites', [
+            'owner_admin_id' => (int) $agent->id,
+        ]);
+        $this->assertDatabaseHas('admin_plan_subscriptions', [
+            'admin_id' => (int) $agent->id,
+            'site_id' => null,
+            'plan_id' => (int) $plan->id,
+            'mode' => 'agent_owner',
+            'status' => 'active',
         ]);
         $this->assertDatabaseMissing('sites', [
             'name' => '代理不应创建前台站点',

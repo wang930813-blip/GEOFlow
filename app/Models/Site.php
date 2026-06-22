@@ -7,9 +7,12 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Site extends Model
 {
+    use SoftDeletes;
+
     protected $fillable = [
         'owner_admin_id',
         'name',
@@ -27,6 +30,7 @@ class Site extends Model
             'owner_admin_id' => 'integer',
             'agent_admin_id' => 'integer',
             'settings' => 'array',
+            'deleted_at' => 'datetime',
         ];
     }
 

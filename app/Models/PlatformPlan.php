@@ -5,9 +5,12 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class PlatformPlan extends Model
 {
+    use SoftDeletes;
+
     public const RESOURCE_CREDITS = 'credits';
     public const RESOURCE_ARTICLE_GENERATIONS = 'article_generations';
     public const RESOURCE_BRAND_DIAGNOSES = 'brand_diagnoses';
@@ -73,6 +76,7 @@ class PlatformPlan extends Model
             'market_price' => 'decimal:2',
             'sort_order' => 'integer',
             'created_by' => 'integer',
+            'deleted_at' => 'datetime',
         ];
     }
 

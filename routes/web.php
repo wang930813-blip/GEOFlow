@@ -397,6 +397,7 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
                 Route::post('/', [SiteManagementController::class, 'store'])->name('store');
                 Route::post('{site}', [SiteManagementController::class, 'update'])->name('update');
                 Route::post('{site}/toggle-status', [SiteManagementController::class, 'toggleStatus'])->name('toggle-status');
+                Route::post('{site}/delete', [SiteManagementController::class, 'destroy'])->name('destroy');
             });
             Route::prefix('platform-plans')->name('platform-plans.')->group(function () {
                 Route::get('/', [PlatformPlanController::class, 'index'])->name('index');

@@ -137,6 +137,46 @@ class AdminSiteManagementTest extends TestCase
         $this->assertSame('active', $site->fresh()->status);
     }
 
+    public function test_super_admin_can_soft_delete_site_from_management_page(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+
+        $superAdmin = $this->createAdmin('platform_site_deleter', 'super_admin');
+        $owner = $this->createAdmin('soft_delete_site_owner', 'direct_admin');
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $owner->id,
+            'name' => 'Soft Delete Site',
+            'domain' => 'soft-delete.geo.xinzhidi.cn',
+            'status' => 'active',
+            'customer_mode' => 'direct',
+        ]);
+        $site->members()->attach((int) $owner->id, ['role' => 'owner']);
+        $this->openTestingPlanForSite($site, $owner);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.sites.manage.destroy', ['site' => $site->id]))
+            ->assertRedirect(route('admin.sites.manage.index'));
+
+        $this->assertSoftDeleted('sites', ['id' => (int) $site->id]);
+        $this->assertDatabaseMissing('site_members', [
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $owner->id,
+        ]);
+        $this->assertDatabaseHas('site_plan_subscriptions', [
+            'site_id' => (int) $site->id,
+            'status' => 'cancelled',
+        ]);
+        $this->assertDatabaseHas('admin_plan_subscriptions', [
+            'site_id' => (int) $site->id,
+            'status' => 'cancelled',
+        ]);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.sites.manage.index'))
+            ->assertOk()
+            ->assertDontSee('Soft Delete Site');
+    }
+
     private function createAdmin(string $username, string $role): Admin
     {
         return Admin::query()->create([

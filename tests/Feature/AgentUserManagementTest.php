@@ -179,6 +179,59 @@ class AgentUserManagementTest extends TestCase
         ]);
     }
 
+    public function test_agent_admin_can_create_site_user_from_account_level_plan_without_agent_site(): void
+    {
+        $agent = $this->createAdmin('agent_account_only_owner', 'agent_admin');
+        $plan = $this->createPlanWithTeamMembers(2);
+
+        app(\App\Services\Billing\AdminPlanSubscriptionService::class)->openAgentOwner(
+            agent: $agent,
+            plan: $plan,
+            operator: $agent,
+            startsAt: now(),
+            endsAt: now()->addMonth(),
+            remark: 'Account level agent plan'
+        );
+
+        $this->assertDatabaseMissing('sites', [
+            'owner_admin_id' => (int) $agent->id,
+        ]);
+
+        $this->actingAs($agent, 'admin')
+            ->get(route('admin.agent-users.index'))
+            ->assertOk()
+            ->assertSee('0 / 2');
+
+        $this->actingAs($agent, 'admin')
+            ->post(route('admin.agent-users.store'), [
+                'username' => 'agent_account_only_member',
+                'display_name' => 'Agent Account Only Member',
+                'email' => 'agent-account-only-member@example.com',
+                'password' => 'secret-123',
+                'confirm_password' => 'secret-123',
+            ])
+            ->assertRedirect(route('admin.agent-users.index'));
+
+        $member = Admin::query()->where('username', 'agent_account_only_member')->firstOrFail();
+        $memberSite = Site::query()->where('owner_admin_id', (int) $member->id)->firstOrFail();
+
+        $this->assertSame('site_user', (string) $member->role);
+        $this->assertDatabaseHas('sites', [
+            'id' => (int) $memberSite->id,
+            'owner_admin_id' => (int) $member->id,
+            'customer_mode' => 'agent',
+            'agent_admin_id' => (int) $agent->id,
+        ]);
+        $this->assertDatabaseHas('admin_plan_subscriptions', [
+            'admin_id' => (int) $member->id,
+            'site_id' => (int) $memberSite->id,
+            'plan_id' => (int) $plan->id,
+            'inherited_from_admin_id' => (int) $agent->id,
+            'mode' => 'agent_user',
+            'status' => 'active',
+        ]);
+    }
+
     public function test_agent_member_quota_counts_active_members_and_blocks_reenable_over_limit(): void
     {
         $agent = $this->createAdmin('agent_reenable_owner', 'agent_admin');

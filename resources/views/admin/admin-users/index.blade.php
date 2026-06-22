@@ -142,15 +142,23 @@
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                     @if ($admin['id'] === $currentAdminId)
-                                        <button
-                                            type="button"
-                                            onclick="showEditAdminModal({{ \Illuminate\Support\Js::from($admin) }})"
-                                            class="text-blue-600 hover:text-blue-800"
-                                        >
-                                            {{ __('admin.button.edit') }}
-                                        </button>
+                                        <div class="inline-flex items-center justify-end gap-3">
+                                            <a href="{{ route('admin.plan-usages.index', ['keyword' => $admin['username']]) }}" class="text-slate-600 hover:text-slate-900">
+                                                用量
+                                            </a>
+                                            <button
+                                                type="button"
+                                                onclick="showEditAdminModal({{ \Illuminate\Support\Js::from($admin) }})"
+                                                class="text-blue-600 hover:text-blue-800"
+                                            >
+                                                {{ __('admin.button.edit') }}
+                                            </button>
+                                        </div>
                                     @elseif (! $admin['is_super_admin'])
                                         <div class="inline-flex items-center justify-end gap-3">
+                                            <a href="{{ route('admin.plan-usages.index', ['keyword' => $admin['username']]) }}" class="text-slate-600 hover:text-slate-900">
+                                                用量
+                                            </a>
                                             <button
                                                 type="button"
                                                 onclick="showEditAdminModal({{ \Illuminate\Support\Js::from($admin) }})"
@@ -239,13 +247,13 @@
                         <label class="flex items-start gap-3">
                             <input type="checkbox" name="open_customer_subscription" value="1" id="open_customer_subscription" class="mt-1 h-4 w-4 rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500">
                             <span>
-                                <span class="block text-sm font-semibold text-emerald-950">同步创建直客前台站点并开通规格</span>
-                                <span class="mt-1 block text-xs leading-5 text-emerald-800">仅适用于直客开户。代理账号只负责管理下级用户，下级用户由代理创建时自动生成自己的前台站点。</span>
+                                <span id="customer-onboarding-title" class="block text-sm font-semibold text-emerald-950">同步开通权益</span>
+                                <span id="customer-onboarding-help" class="mt-1 block text-xs leading-5 text-emerald-800">直客会同步创建前台站点；代理只绑定代理规格，不创建前台站点。</span>
                             </span>
                         </label>
 
                         <div id="customer-onboarding-fields" class="mt-4 hidden space-y-4">
-                            <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                            <div id="customer-site-fields" class="grid grid-cols-1 gap-4 md:grid-cols-2">
                                 <div>
                                     <label for="site_name" class="mb-1 block text-sm font-medium text-gray-700">站点名称</label>
                                     <input type="text" name="site_name" id="site_name" class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" value="{{ old('site_name') }}" placeholder="客户品牌或公司名称">
@@ -268,7 +276,7 @@
                                         @endforeach
                                     </select>
                                 </div>
-                                <div>
+                                <div id="customer-credit-field">
                                     <label class="mb-1 block text-sm font-medium text-gray-700">发放积分</label>
                                     <label class="flex h-10 items-center gap-2 rounded-md border border-emerald-200 bg-white px-3 text-sm text-gray-700">
                                         <input type="checkbox" name="grant_credits" value="1" checked class="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500">
@@ -387,8 +395,12 @@
             const checkbox = document.getElementById('open_customer_subscription');
             const fields = document.getElementById('customer-onboarding-fields');
             const planSelect = document.getElementById('plan_id');
-            const canOpen = role === 'direct_admin';
-            const mode = 'direct';
+            const siteFields = document.getElementById('customer-site-fields');
+            const creditField = document.getElementById('customer-credit-field');
+            const title = document.getElementById('customer-onboarding-title');
+            const help = document.getElementById('customer-onboarding-help');
+            const canOpen = role === 'direct_admin' || role === 'agent_admin';
+            const mode = role === 'agent_admin' ? 'agent' : 'direct';
 
             if (!panel || !checkbox || !fields || !planSelect) {
                 return;
@@ -399,6 +411,14 @@
                 checkbox.checked = false;
             }
             fields.classList.toggle('hidden', !canOpen || !checkbox.checked);
+            siteFields?.classList.toggle('hidden', mode === 'agent');
+            creditField?.classList.toggle('hidden', mode === 'agent');
+            if (title && help) {
+                title.textContent = mode === 'agent' ? '绑定代理规格' : '同步创建直客前台站点并开通规格';
+                help.textContent = mode === 'agent'
+                    ? '代理账号不创建前台站点；下级用户由代理创建时自动生成自己的前台站点并继承规格。'
+                    : '直客会同步创建前台站点并开通规格，可填写站点名称、域名和服务时间。';
+            }
 
             Array.from(planSelect.options).forEach((option) => {
                 const audience = option.dataset.audience || '';

@@ -70,6 +70,43 @@ class AdminPlanSubscriptionService
         });
     }
 
+    public function openAgentOwner(
+        Admin $agent,
+        PlatformPlan $plan,
+        ?Admin $operator,
+        ?CarbonInterface $startsAt = null,
+        ?CarbonInterface $endsAt = null,
+        string $remark = ''
+    ): AdminPlanSubscription {
+        $startsAt ??= now();
+        $endsAt ??= $startsAt->copy()->addDays(max(1, (int) $plan->duration_days));
+        if ($endsAt->lessThanOrEqualTo($startsAt)) {
+            throw new RuntimeException('到期时间必须晚于开始时间');
+        }
+
+        return DB::transaction(function () use ($agent, $plan, $startsAt, $endsAt, $remark): AdminPlanSubscription {
+            AdminPlanSubscription::query()
+                ->where('admin_id', (int) $agent->id)
+                ->where('mode', 'agent_owner')
+                ->where('status', 'active')
+                ->update(['status' => 'cancelled']);
+
+            return AdminPlanSubscription::query()->create([
+                'admin_id' => (int) $agent->id,
+                'site_id' => null,
+                'plan_id' => (int) $plan->id,
+                'source_subscription_id' => null,
+                'inherited_from_admin_id' => null,
+                'mode' => 'agent_owner',
+                'status' => 'active',
+                'starts_at' => $startsAt,
+                'ends_at' => $endsAt,
+                'entitlements_snapshot' => $this->siteSubscriptionService->entitlementSnapshot($plan, 'agent'),
+                'remark' => $remark,
+            ]);
+        });
+    }
+
     public function inheritForAgentUser(
         Admin $agent,
         Admin $user,
@@ -77,7 +114,7 @@ class AdminPlanSubscriptionService
         ?Admin $operator,
         string $remark = '代理创建用户继承规格'
     ): AdminPlanSubscription {
-        $source = $this->activeOrBackfilledSubscriptionForAdmin($agent, $site);
+        $source = $this->activeAgentOwnerSubscription($agent) ?? $this->activeOrBackfilledSubscriptionForAdmin($agent, $site);
 
         return $this->createInheritedSubscription($agent, $user, $site, $operator, $remark, $source);
     }
@@ -90,7 +127,23 @@ class AdminPlanSubscriptionService
         ?Admin $operator,
         string $remark = '代理创建用户继承规格'
     ): AdminPlanSubscription {
-        $source = $this->activeOrBackfilledSubscriptionForAdmin($agent, $sourceSite);
+        $source = $this->activeAgentOwnerSubscription($agent) ?? $this->activeOrBackfilledSubscriptionForAdmin($agent, $sourceSite);
+
+        return $this->createInheritedSubscription($agent, $user, $userSite, $operator, $remark, $source);
+    }
+
+    public function inheritForAgentUserFromAccount(
+        Admin $agent,
+        Admin $user,
+        Site $userSite,
+        ?Admin $operator,
+        string $remark = '代理创建用户继承规格'
+    ): AdminPlanSubscription {
+        $source = $this->activeAgentOwnerSubscription($agent);
+
+        if (! $source instanceof AdminPlanSubscription) {
+            throw new RuntimeException('当前代理账号规格已到期，请联系平台续费');
+        }
 
         return $this->createInheritedSubscription($agent, $user, $userSite, $operator, $remark, $source);
     }
@@ -155,6 +208,18 @@ class AdminPlanSubscriptionService
         }
 
         return $subscription;
+    }
+
+    public function activeAgentOwnerSubscription(Admin $agent): ?AdminPlanSubscription
+    {
+        return AdminPlanSubscription::query()
+            ->where('admin_id', (int) $agent->id)
+            ->where('mode', 'agent_owner')
+            ->activeNow()
+            ->orderByRaw('CASE WHEN site_id IS NULL THEN 0 ELSE 1 END')
+            ->orderByDesc('ends_at')
+            ->orderByDesc('id')
+            ->first();
     }
 
     public function activeOrBackfilledSubscriptionForAdmin(Admin $admin, Site $site): AdminPlanSubscription

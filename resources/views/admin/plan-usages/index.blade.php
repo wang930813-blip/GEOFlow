@@ -56,6 +56,10 @@
                 <h2 class="text-lg font-semibold text-gray-900">套餐用量</h2>
             </div>
 
+            <div class="border-b border-slate-100 px-5 py-3 text-sm text-slate-500">
+                共 {{ $subscriptions->total() }} 条，当前第 {{ $subscriptions->currentPage() }} / {{ $subscriptions->lastPage() }} 页
+            </div>
+
             <div class="divide-y divide-slate-200">
                 @forelse ($subscriptions as $row)
                     @php
@@ -65,7 +69,7 @@
                         $creditAccount = $row['creditAccount'];
                         $hasUnlimitedCredits = (bool) ($row['hasUnlimitedCredits'] ?? false);
                     @endphp
-                    <div class="p-5">
+                    <div class="p-5" data-plan-usage-row>
                         <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                             <div class="min-w-0">
                                 <div class="flex flex-wrap items-center gap-2">

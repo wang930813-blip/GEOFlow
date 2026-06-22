@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Admin;
+use App\Models\AdminPlanSubscription;
 use App\Models\PlatformPlan;
 use App\Models\Site;
+use App\Models\SitePlanSubscription;
 use App\Services\Billing\AdminPlanSubscriptionService;
 use App\Services\Billing\PlanSubscriptionService;
 use App\Support\AdminWeb;
@@ -165,25 +167,21 @@ class AdminUserController extends Controller
 
         $role = (string) ($payload['role'] ?? 'admin');
         $shouldOpenSubscription = (bool) ($payload['open_customer_subscription'] ?? false);
-        if ($shouldOpenSubscription && $role === 'agent_admin') {
-            throw ValidationException::withMessages([
-                'open_customer_subscription' => '代理账号只用于管理下级用户，不在创建账号时同步创建前台站点',
-            ]);
-        }
+        $mode = $role === 'agent_admin' ? 'agent' : 'direct';
         if ($shouldOpenSubscription && ! in_array($role, ['agent_admin', 'direct_admin'], true)) {
             throw ValidationException::withMessages([
                 'open_customer_subscription' => '只有代理管理员或直客管理员可以同步开户',
             ]);
         }
         if ($shouldOpenSubscription) {
-            if (trim((string) ($payload['site_name'] ?? '')) === '') {
+            if ($mode === 'direct' && trim((string) ($payload['site_name'] ?? '')) === '') {
                 throw ValidationException::withMessages(['site_name' => '同步开户时请填写站点名称']);
             }
             if ((int) ($payload['plan_id'] ?? 0) <= 0) {
                 throw ValidationException::withMessages(['plan_id' => '同步开户时请选择规格']);
             }
 
-            $mode = 'direct';
+            $mode = $role === 'agent_admin' ? 'agent' : 'direct';
             $plan = PlatformPlan::query()
                 ->whereKey((int) $payload['plan_id'])
                 ->where('status', 'active')
@@ -195,7 +193,7 @@ class AdminUserController extends Controller
                 throw ValidationException::withMessages(['plan_id' => '所选规格不适用于当前客户角色']);
             }
             $domain = trim((string) ($payload['site_domain'] ?? ''));
-            if ($domain !== '' && Site::query()->where('domain', $domain)->exists()) {
+            if ($mode === 'direct' && $domain !== '' && Site::query()->where('domain', $domain)->exists()) {
                 throw ValidationException::withMessages(['site_domain' => '该站点域名已经绑定到其他站点']);
             }
         }
@@ -216,10 +214,31 @@ class AdminUserController extends Controller
                     return;
                 }
 
-                $mode = 'direct';
+                $mode = $role === 'agent_admin' ? 'agent' : 'direct';
                 $operator = auth('admin')->user();
                 if (! $operator instanceof Admin) {
                     throw ValidationException::withMessages(['username' => '当前登录状态已失效']);
+                }
+
+                $startsAt = isset($payload['starts_at']) && (string) $payload['starts_at'] !== ''
+                    ? Carbon::parse((string) $payload['starts_at'])
+                    : now();
+                $endsAt = isset($payload['ends_at']) && (string) $payload['ends_at'] !== ''
+                    ? Carbon::parse((string) $payload['ends_at'])
+                    : null;
+
+                $plan = PlatformPlan::query()->with('entitlements')->findOrFail((int) $payload['plan_id']);
+                if ($mode === 'agent') {
+                    $this->adminSubscriptionService->openAgentOwner(
+                        agent: $admin,
+                        plan: $plan,
+                        operator: $operator,
+                        startsAt: $startsAt,
+                        endsAt: $endsAt,
+                        remark: (string) ($payload['subscription_remark'] ?? '')
+                    );
+
+                    return;
                 }
 
                 $site = Site::query()->create([
@@ -232,14 +251,6 @@ class AdminUserController extends Controller
                 ]);
                 $site->members()->attach((int) $admin->id, ['role' => 'owner']);
 
-                $startsAt = isset($payload['starts_at']) && (string) $payload['starts_at'] !== ''
-                    ? Carbon::parse((string) $payload['starts_at'])
-                    : now();
-                $endsAt = isset($payload['ends_at']) && (string) $payload['ends_at'] !== ''
-                    ? Carbon::parse((string) $payload['ends_at'])
-                    : null;
-
-                $plan = PlatformPlan::query()->with('entitlements')->findOrFail((int) $payload['plan_id']);
                 $this->subscriptionService->open(
                     site: $site,
                     plan: $plan,
@@ -324,9 +335,25 @@ class AdminUserController extends Controller
         if ($targetAdmin->isSuperAdmin()) {
             return back()->withErrors(__('admin.admin_users.error.cannot_delete_super_admin'));
         }
+        if ($targetAdmin->isAgentAdmin() && Admin::query()->where('created_by', (int) $targetAdmin->id)->exists()) {
+            return back()->withErrors('该代理下仍有用户，不能直接删除；请先处理下级用户。');
+        }
 
         try {
-            DB::transaction(static function () use ($targetAdmin, $currentAdminId): void {
+            DB::transaction(function () use ($targetAdmin, $currentAdminId): void {
+                Site::query()
+                    ->where('owner_admin_id', (int) $targetAdmin->id)
+                    ->each(function (Site $site): void {
+                        $this->softDeleteSite($site);
+                    });
+
+                AdminPlanSubscription::query()
+                    ->where('admin_id', (int) $targetAdmin->id)
+                    ->where('status', 'active')
+                    ->update(['status' => 'cancelled']);
+
+                $targetAdmin->sites()->detach();
+
                 DB::table('admins')
                     ->where('created_by', $targetAdmin->id)
                     ->update(['created_by' => null]);
@@ -441,6 +468,22 @@ class AdminUserController extends Controller
         }
 
         return '平台管理';
+    }
+
+    private function softDeleteSite(Site $site): void
+    {
+        SitePlanSubscription::query()
+            ->where('site_id', (int) $site->id)
+            ->where('status', 'active')
+            ->update(['status' => 'cancelled']);
+
+        AdminPlanSubscription::query()
+            ->where('site_id', (int) $site->id)
+            ->where('status', 'active')
+            ->update(['status' => 'cancelled']);
+
+        $site->members()->detach();
+        $site->delete();
     }
 
     private function normalizeDomain(string $value): string

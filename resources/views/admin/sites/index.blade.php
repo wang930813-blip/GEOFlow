@@ -151,6 +151,10 @@
                                     @endif
                                 </td>
                                 <td class="px-5 py-4 align-top text-right">
+                                    <form method="POST" action="{{ route('admin.sites.manage.destroy', ['site' => $site->id]) }}" class="mb-2 inline-block" onsubmit="return confirm('确定删除该站点吗？删除后会取消关联开通记录并移除站点成员。');">
+                                        @csrf
+                                        <button type="submit" class="text-sm font-medium text-red-600 hover:text-red-800">删除</button>
+                                    </form>
                                     <div class="inline-flex items-center justify-end gap-3">
                                         <button type="button" onclick="toggleSiteEdit({{ $site->id }})" class="text-sm font-medium text-indigo-600 hover:text-indigo-800">编辑</button>
                                         <form method="POST" action="{{ route('admin.sites.manage.toggle-status', ['site' => $site->id]) }}" class="inline">

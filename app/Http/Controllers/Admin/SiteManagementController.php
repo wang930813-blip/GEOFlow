@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Admin;
+use App\Models\AdminPlanSubscription;
 use App\Models\Site;
+use App\Models\SitePlanSubscription;
 use App\Support\AdminWeb;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -90,6 +92,26 @@ class SiteManagementController extends Controller
         ]);
 
         return redirect()->route('admin.sites.manage.index')->with('message', '站点状态已更新');
+    }
+
+    public function destroy(Site $site): RedirectResponse
+    {
+        DB::transaction(function () use ($site): void {
+            SitePlanSubscription::query()
+                ->where('site_id', (int) $site->id)
+                ->where('status', 'active')
+                ->update(['status' => 'cancelled']);
+
+            AdminPlanSubscription::query()
+                ->where('site_id', (int) $site->id)
+                ->where('status', 'active')
+                ->update(['status' => 'cancelled']);
+
+            $site->members()->detach();
+            $site->delete();
+        });
+
+        return redirect()->route('admin.sites.manage.index')->with('message', '站点已删除');
     }
 
     /**

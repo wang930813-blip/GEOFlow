@@ -13,11 +13,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Laravel\Sanctum\HasApiTokens;
 
 class Admin extends Authenticatable
 {
     use HasApiTokens;
+    use SoftDeletes;
 
     protected $table = 'admins';
 
@@ -46,6 +48,7 @@ class Admin extends Authenticatable
             'welcome_dismissed_at' => 'datetime',
             'created_by' => 'integer',
             'password' => 'hashed',
+            'deleted_at' => 'datetime',
         ];
     }
 

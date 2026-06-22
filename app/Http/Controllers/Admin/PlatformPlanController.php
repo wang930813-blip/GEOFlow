@@ -109,13 +109,6 @@ class PlatformPlanController extends Controller
 
     public function destroy(PlatformPlan $plan): RedirectResponse
     {
-        $isReferenced = SitePlanSubscription::query()->where('plan_id', (int) $plan->id)->exists()
-            || AdminPlanSubscription::query()->where('plan_id', (int) $plan->id)->exists();
-
-        if ($isReferenced) {
-            return back()->withErrors('该规格已有开通记录，不能删除；如需下架，请将状态改为停用。');
-        }
-
         $plan->delete();
 
         return redirect()->route('admin.platform-plans.index')->with('message', '规格已删除');

@@ -4,21 +4,20 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Admin;
+use App\Models\AdminPlanSubscription;
 use App\Models\PlatformPlan;
 use App\Models\Site;
 use App\Services\Billing\AdminPlanSubscriptionService;
-use App\Services\Billing\AdminResourceQuotaService;
 use App\Support\AdminWeb;
-use App\Support\CurrentSite;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
+use RuntimeException;
 
 class AgentUserController extends Controller
 {
     public function __construct(
-        private readonly AdminResourceQuotaService $quotaService,
         private readonly AdminPlanSubscriptionService $adminSubscriptionService
     ) {}
 
@@ -26,7 +25,6 @@ class AgentUserController extends Controller
     {
         $agent = auth('admin')->user();
         abort_unless($agent instanceof Admin && $agent->isAgentAdmin(), 403);
-        $site = $this->agentPlanContextSite($agent);
 
         $members = Admin::query()
             ->select(['id', 'username', 'display_name', 'email', 'role', 'status', 'created_by'])
@@ -44,7 +42,7 @@ class AgentUserController extends Controller
             'activeMenu' => 'agent_users',
             'adminSiteName' => AdminWeb::siteName(),
             'members' => $members,
-            'quota' => $this->teamMemberQuota($agent, $site),
+            'quota' => $this->teamMemberQuota($agent),
         ]);
     }
 
@@ -52,7 +50,6 @@ class AgentUserController extends Controller
     {
         $agent = auth('admin')->user();
         abort_unless($agent instanceof Admin && $agent->isAgentAdmin(), 403);
-        $sourceSite = $this->agentPlanContextSite($agent);
 
         $payload = $request->validate([
             'username' => ['required', 'string', 'regex:/^[A-Za-z0-9_.-]{3,50}$/', 'unique:admins,username'],
@@ -67,11 +64,11 @@ class AgentUserController extends Controller
             'password.same' => '两次输入的密码不一致',
         ]);
 
-        if (! $this->canCreateMember($agent, $sourceSite)) {
+        if (! $this->canCreateMember($agent)) {
             return back()->withErrors(['username' => '子账号数量已达到当前规格上限'])->withInput();
         }
 
-        DB::transaction(function () use ($payload, $agent, $sourceSite): void {
+        DB::transaction(function () use ($payload, $agent): void {
             $admin = Admin::query()->create([
                 'username' => trim((string) $payload['username']),
                 'display_name' => trim((string) ($payload['display_name'] ?? '')),
@@ -92,10 +89,9 @@ class AgentUserController extends Controller
             ]);
             $userSite->members()->attach((int) $admin->id, ['role' => 'owner']);
 
-            $this->adminSubscriptionService->inheritForAgentUserSite(
+            $this->adminSubscriptionService->inheritForAgentUserFromAccount(
                 agent: $agent,
                 user: $admin,
-                sourceSite: $sourceSite,
                 userSite: $userSite,
                 operator: $agent
             );
@@ -108,15 +104,15 @@ class AgentUserController extends Controller
     {
         $agent = auth('admin')->user();
         abort_unless($agent instanceof Admin && $agent->isAgentAdmin(), 403);
-        $site = $this->agentPlanContextSite($agent);
 
         $target = Admin::query()
             ->whereKey($adminId)
             ->where('role', 'site_user')
             ->where('created_by', (int) $agent->id)
             ->firstOrFail();
+
         $nextStatus = (string) $request->input('next_status', '') === 'active' ? 'active' : 'inactive';
-        if ($nextStatus === 'active' && (string) $target->status !== 'active' && ! $this->canCreateMember($agent, $site)) {
+        if ($nextStatus === 'active' && (string) $target->status !== 'active' && ! $this->canCreateMember($agent)) {
             return back()->withErrors(['user' => '子账号数量已达到当前规格上限']);
         }
 
@@ -128,27 +124,39 @@ class AgentUserController extends Controller
     /**
      * @return array{quota:int|null,used:int,remaining:int|null,period:string}
      */
-    private function teamMemberQuota(Admin $agent, Site $site): array
+    private function teamMemberQuota(Admin $agent): array
     {
         $activeMemberCount = $this->activeMemberCount($agent);
 
         try {
-            $quota = $this->quotaService->remaining((int) $agent->id, (int) $site->id, PlatformPlan::RESOURCE_TEAM_MEMBERS);
+            $subscription = $this->adminSubscriptionService->activeAgentOwnerSubscription($agent);
+            if (! $subscription instanceof AdminPlanSubscription) {
+                throw new RuntimeException('No active agent subscription.');
+            }
+
+            $entitlement = (array) data_get((array) $subscription->entitlements_snapshot, PlatformPlan::RESOURCE_TEAM_MEMBERS, []);
+            if (! (bool) ($entitlement['enabled'] ?? false)) {
+                throw new RuntimeException('Team member quota is not enabled.');
+            }
+
+            $quotaValue = (int) ($entitlement['quota_value'] ?? 0);
+            $period = (string) ($entitlement['quota_period'] ?? 'cycle');
+            $isUnlimited = $period === 'unlimited' || $quotaValue <= 0;
 
             return [
-                'quota' => $quota['quota'],
+                'quota' => $isUnlimited ? null : $quotaValue,
                 'used' => $activeMemberCount,
-                'remaining' => $quota['quota'] === null ? null : max(0, (int) $quota['quota'] - $activeMemberCount),
-                'period' => $quota['period'],
+                'remaining' => $isUnlimited ? null : max(0, $quotaValue - $activeMemberCount),
+                'period' => $isUnlimited ? 'unlimited' : $period,
             ];
         } catch (\Throwable) {
             return ['quota' => 0, 'used' => $activeMemberCount, 'remaining' => 0, 'period' => 'cycle'];
         }
     }
 
-    private function canCreateMember(Admin $agent, Site $site): bool
+    private function canCreateMember(Admin $agent): bool
     {
-        $quota = $this->teamMemberQuota($agent, $site);
+        $quota = $this->teamMemberQuota($agent);
         if ($quota['quota'] === null) {
             return true;
         }
@@ -163,26 +171,6 @@ class AgentUserController extends Controller
             ->where('created_by', (int) $agent->id)
             ->where('status', 'active')
             ->count();
-    }
-
-    private function agentPlanContextSite(Admin $agent): Site
-    {
-        $site = app(CurrentSite::class)->get();
-        if ($site instanceof Site && (int) $site->agent_admin_id === (int) $agent->id) {
-            return $site;
-        }
-
-        $subscriptionSite = Site::query()
-            ->whereHas('members', fn ($query) => $query->where('admins.id', (int) $agent->id))
-            ->where('customer_mode', 'agent')
-            ->orderBy('id')
-            ->first();
-
-        if ($subscriptionSite instanceof Site) {
-            return $subscriptionSite;
-        }
-
-        abort(403, '请先在客户开通中给代理分配规格');
     }
 
     private function defaultUserSiteName(Admin $admin): string

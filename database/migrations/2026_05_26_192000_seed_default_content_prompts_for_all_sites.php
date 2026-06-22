@@ -1,8 +1,8 @@
 <?php
 
-use App\Models\Site;
 use App\Services\SiteDefaultContentPromptService;
 use Illuminate\Database\Migrations\Migration;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -15,7 +15,7 @@ return new class extends Migration
 
         $service = app(SiteDefaultContentPromptService::class);
 
-        Site::query()
+        DB::table('sites')
             ->select(['id'])
             ->orderBy('id')
             ->chunkById(100, function ($sites) use ($service): void {

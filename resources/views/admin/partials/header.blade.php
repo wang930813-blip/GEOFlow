@@ -6,6 +6,8 @@
     $isDirectAdmin = $currentAdmin && method_exists($currentAdmin, 'isDirectAdmin') && $currentAdmin->isDirectAdmin();
     $isSiteUser = $currentAdmin && method_exists($currentAdmin, 'isSiteUser') && $currentAdmin->isSiteUser();
     $adminRoleLabel = $isSuperAdmin ? '管理' : ($isAgentAdmin ? '代理' : '会员');
+    $adminRoleLabel = $isSuperAdmin ? '管理' : ($isAgentAdmin ? '代理' : '会员');
+    $adminRoleKey = $isSuperAdmin ? 'super_admin' : ($isAgentAdmin ? 'agent_admin' : 'member');
     $adminRoleBadgeClass = $isSuperAdmin
         ? 'bg-indigo-50 text-indigo-700 ring-indigo-100'
         : ($isAgentAdmin ? 'bg-amber-50 text-amber-700 ring-amber-100' : 'bg-emerald-50 text-emerald-700 ring-emerald-100');
@@ -102,6 +104,40 @@
         ['key' => 'agent_users', 'route' => 'admin.agent-users.index', 'name' => '代理用户管理', 'icon' => 'user-plus', 'visible' => $isAgentAdmin],
         ['key' => 'activity_logs', 'route' => 'admin.admin-activity-logs', 'name' => __('admin.nav.activity_logs'), 'icon' => 'clipboard-list', 'visible' => $isSuperAdmin],
     ])->filter(static fn (array $item): bool => (bool) ($item['visible'] ?? true))->values();
+
+    $profileMenuItem = ['key' => 'profile', 'route' => 'admin.profile.index', 'name' => '个人中心', 'icon' => 'user-circle', 'visible' => true];
+    $accountMenuSections = collect([
+        [
+            'key' => 'operations',
+            'name' => '运营配置',
+            'visible' => $isSuperAdmin,
+            'items' => [
+                ['key' => 'ai_config', 'route' => 'admin.ai.configurator', 'name' => __('admin.nav.ai_config'), 'icon' => 'bot', 'visible' => true],
+                ['key' => 'site_settings', 'route' => 'admin.site-settings.index', 'name' => __('admin.nav.system_settings'), 'icon' => 'settings', 'visible' => true],
+                ['key' => 'activity_logs', 'route' => 'admin.admin-activity-logs', 'name' => __('admin.nav.activity_logs'), 'icon' => 'clipboard-list', 'visible' => true],
+            ],
+        ],
+        [
+            'key' => 'accounts',
+            'name' => '账号与权益',
+            'visible' => true,
+            'items' => [
+                ['key' => 'sites', 'route' => 'admin.sites.manage.index', 'name' => '站点管理', 'icon' => 'globe-2', 'visible' => $isSuperAdmin],
+                ['key' => 'admin_users', 'route' => 'admin.admin-users.index', 'name' => __('admin.nav.admin_management'), 'icon' => 'users', 'visible' => $isSuperAdmin],
+                ['key' => 'agent_users', 'route' => 'admin.agent-users.index', 'name' => '代理用户管理', 'icon' => 'user-plus', 'visible' => $isAgentAdmin],
+                ['key' => 'plan_subscriptions', 'route' => 'admin.plan-subscriptions.index', 'name' => '客户开通', 'icon' => 'badge-check', 'visible' => $isSuperAdmin],
+                ['key' => 'platform_plans', 'route' => 'admin.platform-plans.index', 'name' => '平台规格', 'icon' => 'package', 'visible' => $isSuperAdmin],
+                ['key' => 'plan_usages', 'route' => 'admin.plan-usages.index', 'name' => '规格使用情况', 'icon' => 'bar-chart-3', 'visible' => true],
+            ],
+        ],
+    ])->map(function (array $section): array {
+        $section['items'] = collect($section['items'] ?? [])
+            ->filter(static fn (array $item): bool => (bool) ($item['visible'] ?? true))
+            ->values()
+            ->all();
+
+        return $section;
+    })->filter(static fn (array $section): bool => (bool) ($section['visible'] ?? true) && ($section['items'] ?? []) !== [])->values();
 
     $subMap = [
         'admin.dashboard' => 'dashboard',
@@ -344,7 +380,7 @@
                         <div class="admin-user-avatar w-8 h-8 rounded-md flex items-center justify-center">
                             <i data-lucide="user" class="w-4 h-4"></i>
                         </div>
-                        <span class="hidden items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 sm:inline-flex {{ $adminRoleBadgeClass }}">{{ $adminRoleLabel }}</span>
+                        <span data-admin-role-badge="{{ $adminRoleKey }}" class="hidden items-center rounded-md border border-white/20 px-2 py-0.5 text-xs font-medium text-white/90 sm:inline-flex">{{ $adminRoleLabel }}</span>
                         <i data-lucide="chevron-down" class="w-4 h-4"></i>
                     </button>
 
@@ -352,7 +388,7 @@
                         <div class="border-b border-gray-100 px-4 py-3">
                             <div class="text-sm font-medium text-gray-900">{{ __('admin.header.welcome', ['name' => $currentAdmin->username ?? '']) }}</div>
                             <div class="mt-1">
-                                <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 {{ $adminRoleBadgeClass }}">{{ $adminRoleLabel }}</span>
+                                <span data-admin-role-badge="{{ $adminRoleKey }}" class="inline-flex items-center rounded-md border border-slate-200 bg-white px-2 py-0.5 text-xs font-medium text-slate-600">{{ $adminRoleLabel }}</span>
                             </div>
                         </div>
                         @if($currentSite)
@@ -377,13 +413,28 @@
                                 </form>
                             </div>
                         @endif
-                        <div class="space-y-0.5 px-2 py-2">
-                            @foreach ($accountMenu as $item)
-                                <a href="{{ route($item['route']) }}"
-                                   class="@if($resolvedActive === $item['key']) admin-menu-item-active @endif flex items-center gap-2 rounded-md px-2 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                                    <i data-lucide="{{ $item['icon'] }}" class="h-4 w-4 shrink-0"></i>
-                                    <span class="truncate">{{ $item['name'] }}</span>
-                                </a>
+                        <div class="px-2 py-2">
+                            <a href="{{ route($profileMenuItem['route']) }}"
+                               class="@if($resolvedActive === $profileMenuItem['key']) admin-menu-item-active @endif flex items-center gap-2 rounded-md px-2 py-2 text-sm font-medium text-gray-800 hover:bg-gray-100">
+                                <i data-lucide="{{ $profileMenuItem['icon'] }}" class="h-4 w-4 shrink-0"></i>
+                                <span class="truncate">{{ $profileMenuItem['name'] }}</span>
+                            </a>
+                        </div>
+                        <div class="border-t border-gray-100"></div>
+                        <div class="space-y-3 px-2 py-3">
+                            @foreach ($accountMenuSections as $section)
+                                <div data-account-menu-group="{{ $section['key'] }}">
+                                    <div class="mb-1 px-2 text-xs font-semibold text-slate-400">{{ $section['name'] }}</div>
+                                    <div class="space-y-0.5">
+                                        @foreach ($section['items'] as $item)
+                                            <a href="{{ route($item['route']) }}"
+                                               class="@if($resolvedActive === $item['key']) admin-menu-item-active @endif flex items-center gap-2 rounded-md px-2 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                                <i data-lucide="{{ $item['icon'] }}" class="h-4 w-4 shrink-0"></i>
+                                                <span class="truncate">{{ $item['name'] }}</span>
+                                            </a>
+                                        @endforeach
+                                    </div>
+                                </div>
                             @endforeach
                         </div>
                         <div class="border-t border-gray-100"></div>

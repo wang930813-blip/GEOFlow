@@ -150,7 +150,7 @@
                                     <div class="inline-flex items-center justify-end gap-3">
                                         <a href="{{ route('admin.platform-plans.show', $plan) }}" class="text-sm font-medium text-slate-600 hover:text-slate-900">详情</a>
                                         <a href="{{ route('admin.platform-plans.edit', $plan) }}" class="text-sm font-medium text-indigo-600 hover:text-indigo-800">编辑</a>
-                                        <form method="POST" action="{{ route('admin.platform-plans.destroy', $plan) }}" class="inline" onsubmit="return confirm(@js('确定删除该规格吗？已被开通记录引用的规格不能删除。'));">
+                                        <form method="POST" action="{{ route('admin.platform-plans.destroy', $plan) }}" class="inline" onsubmit="return confirm('确定删除该规格吗？删除后不影响已开通客户的规格快照。');">
                                             @csrf
                                             <button type="submit" class="text-sm font-medium text-red-600 hover:text-red-800">删除</button>
                                         </form>
