@@ -37,7 +37,7 @@ class AdminMediaDistributionTest extends TestCase
             ->get(route('admin.dashboard'))
             ->assertOk()
             ->assertSee(route('admin.media-distribution.resources.index'), false)
-            ->assertSee('分发媒体')
+            ->assertSee('官媒发布')
             ->assertDontSee(route('admin.distribution.index'), false);
     }
 

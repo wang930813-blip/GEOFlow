@@ -35,6 +35,7 @@ class PlatformPlanManagementTest extends TestCase
             ->assertSee('8')
             ->assertSee('生成视频次数')
             ->assertSee('自媒体发布次数')
+            ->assertDontSee('API Token 数量')
             ->assertDontSee('CreBee 发布次数');
 
         $this->actingAs($superAdmin, 'admin')
@@ -44,6 +45,7 @@ class PlatformPlanManagementTest extends TestCase
             ->assertSee('详情测试规格')
             ->assertSee('生成视频次数')
             ->assertSee('自媒体发布次数')
+            ->assertDontSee('API Token 数量')
             ->assertDontSee('CreBee 发布次数');
     }
 
@@ -56,6 +58,7 @@ class PlatformPlanManagementTest extends TestCase
             ->assertOk()
             ->assertSee('生成视频次数')
             ->assertSee('自媒体发布次数')
+            ->assertDontSee('API Token 数量')
             ->assertDontSee('CreBee 发布次数');
     }
 
@@ -310,6 +313,7 @@ class PlatformPlanManagementTest extends TestCase
         $plan = $this->plan('使用情况规格', [
             PlatformPlan::RESOURCE_BRAND_DIAGNOSES => 5,
             PlatformPlan::RESOURCE_ARTICLE_GENERATIONS => 12,
+            PlatformPlan::RESOURCE_API_TOKENS => 3,
         ]);
 
         $subscriptionService = app(AdminPlanSubscriptionService::class);
@@ -336,6 +340,7 @@ class PlatformPlanManagementTest extends TestCase
             ->assertSee('usage_agent_user')
             ->assertSee('代理使用情况站点')
             ->assertSee('已用 2 / 5')
+            ->assertDontSee('API Token 数量')
             ->assertDontSee('usage_direct');
 
         $this->actingAs($agent, 'admin')
@@ -344,6 +349,7 @@ class PlatformPlanManagementTest extends TestCase
             ->assertSee('usage_agent_user')
             ->assertSee('usage_agent')
             ->assertSee('代理使用情况站点')
+            ->assertDontSee('API Token 数量')
             ->assertDontSee('usage_direct');
 
         $this->actingAs($superAdmin, 'admin')
@@ -351,7 +357,8 @@ class PlatformPlanManagementTest extends TestCase
             ->assertOk()
             ->assertSee('usage_agent_user')
             ->assertSee('usage_direct')
-            ->assertSee('已用 2 / 5');
+            ->assertSee('已用 2 / 5')
+            ->assertDontSee('API Token 数量');
     }
 
     public function test_plan_usage_hides_team_member_resource_for_direct_owner_and_agent_user_rows(): void

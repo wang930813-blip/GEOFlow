@@ -23,7 +23,7 @@ class PlanUsageController extends Controller
         $admin = $request->user('admin');
         abort_unless($admin instanceof Admin, 403);
 
-        $resourceCatalog = PlatformPlan::resourceCatalog();
+        $resourceCatalog = PlatformPlan::visibleResourceCatalog();
         $subscriptions = $this->visibleSubscriptions($admin, $request)
             ->with(['admin:id,username,display_name,role,created_by', 'site:id,name,customer_mode,agent_admin_id', 'plan:id,name,code'])
             ->orderByDesc('created_at')

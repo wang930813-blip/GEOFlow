@@ -16,6 +16,7 @@ use App\Http\Controllers\Admin\ApiTokenController;
 use App\Http\Controllers\Admin\ArticleController;
 use App\Http\Controllers\Admin\ArticleSelfMediaPublishController;
 use App\Http\Controllers\Admin\AuthorController;
+use App\Http\Controllers\Admin\B2BWebsiteController;
 use App\Http\Controllers\Admin\BrandDiagnosisController;
 use App\Http\Controllers\Admin\CategoryController;
 use App\Http\Controllers\Admin\CrebeeAccountController;
@@ -33,9 +34,11 @@ use App\Http\Controllers\Admin\MediaDistribution\ReportController as MediaDistri
 use App\Http\Controllers\Admin\MediaDistribution\ResourceController as MediaDistributionResourceController;
 use App\Http\Controllers\Admin\MediaDistribution\SettingController as MediaDistributionSettingController;
 use App\Http\Controllers\Admin\MediaDistribution\SubmissionController as MediaDistributionSubmissionController;
+use App\Http\Controllers\Admin\MonitoringCenterController;
 use App\Http\Controllers\Admin\PlanSubscriptionController;
 use App\Http\Controllers\Admin\PlanUsageController;
 use App\Http\Controllers\Admin\PlatformPlanController;
+use App\Http\Controllers\Admin\ProfileController;
 use App\Http\Controllers\Admin\SecuritySettingsController;
 use App\Http\Controllers\Admin\SiteContextController;
 use App\Http\Controllers\Admin\SiteManagementController;
@@ -92,10 +95,13 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
         Route::post('sites/switch', [SiteContextController::class, 'switch'])->name('sites.switch');
         Route::post('welcome/dismiss', [AdminWelcomeController::class, 'dismiss'])->name('welcome.dismiss');
         Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
-        Route::post('dashboard/b2b-websites/{websiteKey}/open', [DashboardController::class, 'openB2BWebsite'])
-            ->name('dashboard.b2b-websites.open')
+        Route::get('profile', [ProfileController::class, 'index'])->name('profile.index');
+        Route::get('b2b-websites', [B2BWebsiteController::class, 'index'])->name('b2b-websites.index');
+        Route::post('b2b-websites/{websiteKey}/open', [B2BWebsiteController::class, 'open'])
+            ->name('b2b-websites.open')
             ->where('websiteKey', '[A-Za-z0-9_-]+');
         Route::get('geo-reports', [GeoReportController::class, 'index'])->name('geo-reports.index');
+        Route::get('monitoring-center', [MonitoringCenterController::class, 'index'])->name('monitoring-center.index');
         Route::get('brand-diagnosis', [BrandDiagnosisController::class, 'index'])->name('brand-diagnosis.index');
         Route::post('brand-diagnosis', [BrandDiagnosisController::class, 'store'])->name('brand-diagnosis.store');
         Route::post('brand-diagnosis/{run}/confirm', [BrandDiagnosisController::class, 'confirm'])

@@ -10,7 +10,7 @@ class AdminHeaderNavigationTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_header_splits_common_top_navigation_from_grouped_module_menu_for_super_admin(): void
+    public function test_header_shows_grouped_top_navigation_and_single_user_menu_for_super_admin(): void
     {
         $admin = $this->createAdmin('header_super_admin', 'super_admin');
 
@@ -20,29 +20,32 @@ class AdminHeaderNavigationTest extends TestCase
             ->getContent();
 
         $primaryNav = $this->section($html, 'data-admin-primary-nav');
-        $moduleMenu = $this->section($html, 'data-admin-module-menu');
+        $userMenu = $this->section($html, 'data-admin-user-menu');
 
         $this->assertStringContainsString(route('admin.dashboard'), $primaryNav);
+        $this->assertStringContainsString('全域数析', $primaryNav);
         $this->assertStringContainsString(route('admin.brand-diagnosis.index'), $primaryNav);
+        $this->assertStringContainsString(route('admin.monitoring-center.index'), $primaryNav);
+        $this->assertStringContainsString('官媒发布', $primaryNav);
+        $this->assertStringContainsString(route('admin.media-distribution.resources.index'), $primaryNav);
+        $this->assertStringContainsString(route('admin.crebee-accounts.index'), $primaryNav);
         $this->assertStringContainsString(route('admin.video-generations.index'), $primaryNav);
-        $this->assertStringNotContainsString(route('admin.media-distribution.resources.index'), $primaryNav);
         $this->assertStringNotContainsString(route('admin.platform-plans.index'), $primaryNav);
 
-        $this->assertStringContainsString('规格与客户', $moduleMenu);
-        $this->assertStringContainsString(route('admin.platform-plans.index'), $moduleMenu);
-        $this->assertStringContainsString(route('admin.plan-subscriptions.index'), $moduleMenu);
-        $this->assertStringContainsString(route('admin.admin-users.index'), $moduleMenu);
-        $this->assertStringContainsString(route('admin.admin-activity-logs'), $moduleMenu);
-        $this->assertStringContainsString(route('admin.media-distribution.resources.index'), $moduleMenu);
+        $this->assertStringContainsString(route('admin.profile.index'), $userMenu);
+        $this->assertStringContainsString(route('admin.platform-plans.index'), $userMenu);
+        $this->assertStringContainsString(route('admin.plan-subscriptions.index'), $userMenu);
+        $this->assertStringContainsString(route('admin.admin-users.index'), $userMenu);
+        $this->assertStringContainsString(route('admin.admin-activity-logs'), $userMenu);
+        $this->assertStringNotContainsString(route('admin.api-tokens.index'), $userMenu);
+        $this->assertStringNotContainsString('data-admin-module-menu', $html);
+        $this->assertStringContainsString('管理', $html);
 
         $this->assertStringNotContainsString('admin-locale-select', $html);
-        $this->assertGreaterThan(
-            strpos($html, 'onclick="toggleUserMenu()"'),
-            strpos($html, 'onclick="toggleModuleMenu()"')
-        );
+        $this->assertStringNotContainsString('onclick="toggleModuleMenu()"', $html);
     }
 
-    public function test_header_module_menu_is_filtered_for_agent_admin(): void
+    public function test_header_user_menu_is_filtered_for_agent_admin(): void
     {
         $admin = $this->createAdmin('header_agent_admin', 'agent_admin');
 
@@ -51,18 +54,20 @@ class AdminHeaderNavigationTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        $moduleMenu = $this->section($html, 'data-admin-module-menu');
+        $userMenu = $this->section($html, 'data-admin-user-menu');
 
-        $this->assertStringContainsString(route('admin.agent-users.index'), $moduleMenu);
-        $this->assertStringContainsString(route('admin.plan-usages.index'), $moduleMenu);
-        $this->assertStringContainsString(route('admin.media-distribution.resources.index'), $moduleMenu);
-        $this->assertStringNotContainsString(route('admin.platform-plans.index'), $moduleMenu);
-        $this->assertStringNotContainsString(route('admin.plan-subscriptions.index'), $moduleMenu);
-        $this->assertStringNotContainsString(route('admin.admin-users.index'), $moduleMenu);
-        $this->assertStringNotContainsString(route('admin.admin-activity-logs'), $moduleMenu);
+        $this->assertStringContainsString(route('admin.profile.index'), $userMenu);
+        $this->assertStringContainsString(route('admin.agent-users.index'), $userMenu);
+        $this->assertStringContainsString(route('admin.plan-usages.index'), $userMenu);
+        $this->assertStringNotContainsString(route('admin.platform-plans.index'), $userMenu);
+        $this->assertStringNotContainsString(route('admin.plan-subscriptions.index'), $userMenu);
+        $this->assertStringNotContainsString(route('admin.admin-users.index'), $userMenu);
+        $this->assertStringNotContainsString(route('admin.admin-activity-logs'), $userMenu);
+        $this->assertStringNotContainsString(route('admin.api-tokens.index'), $userMenu);
+        $this->assertStringContainsString('代理', $html);
     }
 
-    public function test_header_module_menu_hides_user_management_for_direct_admin(): void
+    public function test_header_user_menu_hides_management_items_for_direct_admin(): void
     {
         $admin = $this->createAdmin('header_direct_admin', 'direct_admin');
 
@@ -71,17 +76,19 @@ class AdminHeaderNavigationTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        $moduleMenu = $this->section($html, 'data-admin-module-menu');
+        $userMenu = $this->section($html, 'data-admin-user-menu');
 
-        $this->assertStringContainsString(route('admin.plan-usages.index'), $moduleMenu);
-        $this->assertStringContainsString(route('admin.materials.index'), $moduleMenu);
-        $this->assertStringNotContainsString(route('admin.agent-users.index'), $moduleMenu);
-        $this->assertStringNotContainsString(route('admin.admin-users.index'), $moduleMenu);
-        $this->assertStringNotContainsString(route('admin.platform-plans.index'), $moduleMenu);
-        $this->assertStringNotContainsString(route('admin.plan-subscriptions.index'), $moduleMenu);
+        $this->assertStringContainsString(route('admin.profile.index'), $userMenu);
+        $this->assertStringContainsString(route('admin.plan-usages.index'), $userMenu);
+        $this->assertStringNotContainsString(route('admin.agent-users.index'), $userMenu);
+        $this->assertStringNotContainsString(route('admin.admin-users.index'), $userMenu);
+        $this->assertStringNotContainsString(route('admin.platform-plans.index'), $userMenu);
+        $this->assertStringNotContainsString(route('admin.plan-subscriptions.index'), $userMenu);
+        $this->assertStringNotContainsString(route('admin.api-tokens.index'), $userMenu);
+        $this->assertStringContainsString('会员', $html);
     }
 
-    public function test_header_module_menu_is_filtered_for_site_user(): void
+    public function test_header_user_menu_is_filtered_for_site_user(): void
     {
         $admin = $this->createAdmin('header_site_user', 'site_user');
 
@@ -90,45 +97,52 @@ class AdminHeaderNavigationTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        $moduleMenu = $this->section($html, 'data-admin-module-menu');
+        $userMenu = $this->section($html, 'data-admin-user-menu');
 
-        $this->assertStringContainsString(route('admin.plan-usages.index'), $moduleMenu);
-        $this->assertStringContainsString(route('admin.api-tokens.index'), $moduleMenu);
-        $this->assertStringContainsString(route('admin.crebee-accounts.index'), $moduleMenu);
-        $this->assertStringContainsString(route('admin.crebee-publish-records.index'), $moduleMenu);
-        $this->assertStringNotContainsString(route('admin.platform-plans.index'), $moduleMenu);
-        $this->assertStringNotContainsString(route('admin.plan-subscriptions.index'), $moduleMenu);
-        $this->assertStringNotContainsString(route('admin.agent-users.index'), $moduleMenu);
-        $this->assertStringNotContainsString(route('admin.admin-users.index'), $moduleMenu);
-        $this->assertStringNotContainsString(route('admin.admin-activity-logs'), $moduleMenu);
+        $this->assertStringContainsString(route('admin.profile.index'), $userMenu);
+        $this->assertStringContainsString(route('admin.plan-usages.index'), $userMenu);
+        $this->assertStringNotContainsString(route('admin.api-tokens.index'), $userMenu);
+        $this->assertStringNotContainsString(route('admin.platform-plans.index'), $userMenu);
+        $this->assertStringNotContainsString(route('admin.plan-subscriptions.index'), $userMenu);
+        $this->assertStringNotContainsString(route('admin.agent-users.index'), $userMenu);
+        $this->assertStringNotContainsString(route('admin.admin-users.index'), $userMenu);
+        $this->assertStringNotContainsString(route('admin.admin-activity-logs'), $userMenu);
+        $this->assertStringContainsString('会员', $html);
     }
 
-    public function test_self_media_module_menu_highlights_only_current_item(): void
+    public function test_self_media_top_menu_links_account_binding_and_records_entry(): void
     {
         $admin = $this->createAdmin('header_crebee_active_admin', 'super_admin');
-
-        $recordsHtml = $this->actingAs($admin, 'admin')
-            ->get(route('admin.crebee-publish-records.index'))
-            ->assertOk()
-            ->getContent();
-
-        $recordsModuleMenu = $this->section($recordsHtml, 'data-admin-module-menu');
-        $this->assertSame(1, substr_count($recordsModuleMenu, 'admin-menu-item-active'));
-        $this->assertMenuRouteActive($recordsModuleMenu, route('admin.crebee-publish-records.index'));
-        $this->assertMenuRouteInactive($recordsModuleMenu, route('admin.crebee-accounts.index'));
 
         $accountsHtml = $this->actingAs($admin, 'admin')
             ->get(route('admin.crebee-accounts.index'))
             ->assertOk()
             ->getContent();
 
-        $accountsModuleMenu = $this->section($accountsHtml, 'data-admin-module-menu');
-        $this->assertSame(1, substr_count($accountsModuleMenu, 'admin-menu-item-active'));
-        $this->assertMenuRouteActive($accountsModuleMenu, route('admin.crebee-accounts.index'));
-        $this->assertMenuRouteInactive($accountsModuleMenu, route('admin.crebee-publish-records.index'));
+        $primaryNav = $this->section($accountsHtml, 'data-admin-primary-nav');
+        $this->assertStringContainsString(route('admin.crebee-accounts.index'), $primaryNav);
+        $this->assertStringNotContainsString(route('admin.crebee-publish-records.index'), $primaryNav);
+        $this->assertStringContainsString(route('admin.crebee-publish-records.index'), $accountsHtml);
+        $this->assertMenuRouteActive($primaryNav, route('admin.crebee-accounts.index'));
     }
 
-    public function test_account_module_menu_highlights_only_current_item(): void
+    public function test_profile_and_monitoring_center_pages_are_accessible(): void
+    {
+        $admin = $this->createAdmin('header_profile_admin', 'super_admin');
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.profile.index'))
+            ->assertOk()
+            ->assertSee('个人中心')
+            ->assertSee('平台数据融合');
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.monitoring-center.index'))
+            ->assertOk()
+            ->assertSee('监测中心');
+    }
+
+    public function test_api_token_page_is_not_in_navigation_even_if_route_still_exists(): void
     {
         $admin = $this->createAdmin('header_api_tokens_active_admin', 'super_admin');
 
@@ -137,12 +151,8 @@ class AdminHeaderNavigationTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        $moduleMenu = $this->section($html, 'data-admin-module-menu');
-
-        $this->assertSame(1, substr_count($moduleMenu, 'admin-menu-item-active'));
-        $this->assertMenuRouteActive($moduleMenu, route('admin.api-tokens.index'));
-        $this->assertMenuRouteInactive($moduleMenu, route('admin.admin-users.index'));
-        $this->assertMenuRouteInactive($moduleMenu, route('admin.admin-activity-logs'));
+        $userMenu = $this->section($html, 'data-admin-user-menu');
+        $this->assertStringNotContainsString(route('admin.api-tokens.index'), $userMenu);
     }
 
     private function createAdmin(string $username, string $role): Admin

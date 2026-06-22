@@ -42,6 +42,16 @@ class PlatformPlan extends Model
         ];
     }
 
+    /**
+     * @return array<string,array{label:string,unit:string}>
+     */
+    public static function visibleResourceCatalog(): array
+    {
+        return array_diff_key(self::resourceCatalog(), [
+            self::RESOURCE_API_TOKENS => true,
+        ]);
+    }
+
     protected $fillable = [
         'name',
         'code',

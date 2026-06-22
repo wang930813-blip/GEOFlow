@@ -75,7 +75,7 @@
 
         $multiSiteCards = [
             [
-                'title' => '分发媒体',
+                'title' => '官媒发布',
                 'desc' => '同步媒体资源、设置销售价并把文章投稿到网站媒体或第三方自媒体。',
                 'href' => route('admin.media-distribution.resources.index'),
                 'icon' => 'newspaper',
@@ -243,59 +243,6 @@
                             </div>
                         </div>
                     </a>
-                @endforeach
-            </div>
-        </section>
-
-        <section class="mb-8">
-            <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                <div>
-                    <div class="flex items-center gap-2">
-                        <span class="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-slate-900 text-white">
-                            <i data-lucide="building-2" class="h-5 w-5"></i>
-                        </span>
-                        <h2 class="text-xl font-semibold text-gray-900">B2B行业网站</h2>
-                    </div>
-                    <p class="mt-2 text-sm text-gray-600">展示当前账号可开通的行业网站，开通状态按账号和站点独立保存。</p>
-                </div>
-            </div>
-
-            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
-                @foreach ($b2bWebsites ?? [] as $website)
-                    <div class="flex min-h-[210px] flex-col justify-between rounded-lg bg-white p-4 shadow-sm ring-1 ring-gray-200 transition hover:-translate-y-0.5 hover:shadow-md">
-                        <div>
-                            <div class="mb-3 flex h-7 items-center justify-end">
-                                @if ($website['opened'])
-                                    <span class="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 ring-1 ring-emerald-100">已开通</span>
-                                @else
-                                    <span class="rounded-full bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-500 ring-1 ring-gray-200">未开通</span>
-                                @endif
-                            </div>
-
-                            <div class="flex h-16 w-full items-center justify-center px-2 py-1">
-                                <img src="{{ asset($website['logo']) }}" alt="{{ $website['name'] }} logo" class="max-h-14 max-w-[190px] object-contain">
-                            </div>
-
-                            <h3 class="mt-4 truncate text-base font-semibold leading-6 text-gray-900" title="{{ $website['name'] }}">{{ $website['name'] }}</h3>
-                        </div>
-
-                        <div class="mt-5">
-                            @if ($website['opened'])
-                                <button type="button" class="inline-flex w-full items-center justify-center rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700" disabled>
-                                    <i data-lucide="check-circle-2" class="mr-1.5 h-4 w-4"></i>
-                                    已开通
-                                </button>
-                            @else
-                                <form method="POST" action="{{ route('admin.dashboard.b2b-websites.open', ['websiteKey' => $website['key']]) }}">
-                                    @csrf
-                                    <button type="submit" class="inline-flex w-full items-center justify-center rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800">
-                                        <i data-lucide="plus" class="mr-1.5 h-4 w-4"></i>
-                                        开通
-                                    </button>
-                                </form>
-                            @endif
-                        </div>
-                    </div>
                 @endforeach
             </div>
         </section>

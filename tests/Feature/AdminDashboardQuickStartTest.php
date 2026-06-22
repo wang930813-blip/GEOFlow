@@ -38,7 +38,7 @@ class AdminDashboardQuickStartTest extends TestCase
             ->assertSee(__('admin.dashboard.navigation.body_prompt_label'))
             ->assertSee(__('admin.dashboard.navigation.special_prompt_label'))
             ->assertSee(__('admin.dashboard.navigation.admin_users_title'))
-            ->assertSee('分发媒体')
+            ->assertSee('官媒发布')
             ->assertSee('投稿订单')
             ->assertSee('站点积分')
             ->assertDontSee(__('admin.dashboard.skill_resources.title'))

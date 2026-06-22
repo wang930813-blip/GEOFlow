@@ -57,11 +57,17 @@
                 <h1 class="text-2xl font-bold text-gray-900">自媒体账号绑定</h1>
                 <p class="mt-1 text-sm text-gray-600">当前站点：{{ $site->name }}。本页管理本地自媒体客户端同步回来的平台账号归属。</p>
             </div>
-            @if ($canManage)
-                <div class="rounded-md border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 shadow-sm">
+            <div class="flex flex-wrap items-center gap-2">
+                <a href="{{ route('admin.crebee-publish-records.index') }}" class="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50">
+                    <i data-lucide="radio" class="h-4 w-4"></i>
+                    发布记录
+                </a>
+                @if ($canManage)
+                    <div class="inline-flex h-10 items-center rounded-md border border-slate-200 bg-white px-4 text-sm text-slate-700 shadow-sm">
                     待绑定 {{ method_exists($availableAccounts, 'total') ? $availableAccounts->total() : $availableAccounts->count() }} 个
-                </div>
-            @endif
+                    </div>
+                @endif
+            </div>
         </div>
 
         <section class="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">

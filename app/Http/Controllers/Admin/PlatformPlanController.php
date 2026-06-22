@@ -28,7 +28,7 @@ class PlatformPlanController extends Controller
                 ->orderBy('sort_order')
                 ->orderBy('id')
                 ->get(),
-            'resourceCatalog' => PlatformPlan::resourceCatalog(),
+            'resourceCatalog' => PlatformPlan::visibleResourceCatalog(),
         ]);
     }
 
@@ -65,7 +65,7 @@ class PlatformPlanController extends Controller
             'activeMenu' => 'platform_plans',
             'adminSiteName' => AdminWeb::siteName(),
             'plan' => $plan,
-            'resourceCatalog' => PlatformPlan::resourceCatalog(),
+            'resourceCatalog' => PlatformPlan::visibleResourceCatalog(),
             'siteSubscriptionCount' => SitePlanSubscription::query()->where('plan_id', (int) $plan->id)->count(),
             'adminSubscriptionCount' => AdminPlanSubscription::query()->where('plan_id', (int) $plan->id)->count(),
         ]);
@@ -80,7 +80,7 @@ class PlatformPlanController extends Controller
             'activeMenu' => 'platform_plans',
             'adminSiteName' => AdminWeb::siteName(),
             'plan' => $plan,
-            'resourceCatalog' => PlatformPlan::resourceCatalog(),
+            'resourceCatalog' => PlatformPlan::visibleResourceCatalog(),
         ]);
     }
 
@@ -162,7 +162,7 @@ class PlatformPlanController extends Controller
             'duration_days.required' => '请填写服务时长',
         ]);
 
-        $catalog = PlatformPlan::resourceCatalog();
+        $catalog = PlatformPlan::visibleResourceCatalog();
         $resources = [];
         $enabledResourceKeys = [];
         $resourceErrors = [];

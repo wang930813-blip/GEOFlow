@@ -11,7 +11,7 @@ class AdminDashboardB2BWebsitesTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_dashboard_shows_b2b_industry_website_cards(): void
+    public function test_dashboard_does_not_render_b2b_industry_website_cards(): void
     {
         [$admin, $site] = $this->createAdminWithSite('b2b_dashboard_admin');
 
@@ -21,19 +21,33 @@ class AdminDashboardB2BWebsitesTest extends TestCase
 
         $response
             ->assertOk()
+            ->assertDontSee('天助网')
+            ->assertDontSee('/assets/b2b-sites/01.png', false);
+    }
+
+    public function test_b2b_industry_website_page_shows_cards(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('b2b_page_admin');
+
+        $response = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.b2b-websites.index'));
+
+        $response
+            ->assertOk()
             ->assertSee('B2B行业网站')
             ->assertSee('天助网')
             ->assertSee('未开通')
             ->assertSee('开通');
     }
 
-    public function test_dashboard_uses_b2b_website_logo_images_instead_of_initials(): void
+    public function test_b2b_website_page_uses_logo_images_instead_of_initials(): void
     {
         [$admin, $site] = $this->createAdminWithSite('b2b_dashboard_logo_admin');
 
         $response = $this->actingAs($admin, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
-            ->get(route('admin.dashboard'));
+            ->get(route('admin.b2b-websites.index'));
 
         $response
             ->assertOk()
@@ -47,8 +61,8 @@ class AdminDashboardB2BWebsitesTest extends TestCase
 
         $this->actingAs($admin, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
-            ->post(route('admin.dashboard.b2b-websites.open', ['websiteKey' => 'tianzhu']))
-            ->assertRedirect(route('admin.dashboard'));
+            ->post(route('admin.b2b-websites.open', ['websiteKey' => 'tianzhu']))
+            ->assertRedirect(route('admin.b2b-websites.index'));
 
         $this->assertDatabaseHas('admin_b2b_website_openings', [
             'site_id' => (int) $site->id,
@@ -58,7 +72,7 @@ class AdminDashboardB2BWebsitesTest extends TestCase
 
         $this->actingAs($admin, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
-            ->get(route('admin.dashboard'))
+            ->get(route('admin.b2b-websites.index'))
             ->assertOk()
             ->assertSee('已开通');
     }
@@ -70,8 +84,8 @@ class AdminDashboardB2BWebsitesTest extends TestCase
 
         $this->actingAs($adminOne, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
-            ->post(route('admin.dashboard.b2b-websites.open', ['websiteKey' => 'tianzhu']))
-            ->assertRedirect(route('admin.dashboard'));
+            ->post(route('admin.b2b-websites.open', ['websiteKey' => 'tianzhu']))
+            ->assertRedirect(route('admin.b2b-websites.index'));
 
         $this->assertDatabaseMissing('admin_b2b_website_openings', [
             'site_id' => (int) $site->id,
@@ -81,7 +95,7 @@ class AdminDashboardB2BWebsitesTest extends TestCase
 
         $this->actingAs($adminTwo, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
-            ->get(route('admin.dashboard'))
+            ->get(route('admin.b2b-websites.index'))
             ->assertOk()
             ->assertSee('天助网')
             ->assertSee('未开通');
@@ -93,7 +107,7 @@ class AdminDashboardB2BWebsitesTest extends TestCase
 
         $this->actingAs($admin, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
-            ->post(route('admin.dashboard.b2b-websites.open', ['websiteKey' => 'missing']))
+            ->post(route('admin.b2b-websites.open', ['websiteKey' => 'missing']))
             ->assertNotFound();
     }
 
