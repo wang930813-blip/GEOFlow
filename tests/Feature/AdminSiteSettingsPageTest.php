@@ -77,6 +77,85 @@ class AdminSiteSettingsPageTest extends TestCase
         $this->assertSame('client-a.example.test', (string) $site->fresh()->domain);
     }
 
+    public function test_direct_admin_and_site_user_can_access_ai_and_site_settings_but_cannot_change_domain_settings(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+
+        foreach (['direct_admin', 'site_user'] as $role) {
+            [$admin, $site] = $this->createAdminWithSite('site_domain_locked_'.$role, $role);
+            $site->forceFill(['domain' => 'locked-'.$role.'.example.test'])->save();
+
+            SiteSetting::query()->updateOrCreate(
+                ['site_id' => $site->id, 'setting_key' => 'admin_base_path'],
+                ['setting_value' => AdminWeb::basePath()]
+            );
+
+            $this->actingAs($admin, 'admin')
+                ->withSession(['current_site_id' => $site->id])
+                ->get(route('admin.ai.configurator'))
+                ->assertOk();
+
+            $settingsResponse = $this->actingAs($admin, 'admin')
+                ->withSession(['current_site_id' => $site->id])
+                ->get(route('admin.site-settings.index'));
+
+            $settingsResponse
+                ->assertOk()
+                ->assertSee('name="public_domain"', false)
+                ->assertSee('name="admin_base_path"', false)
+                ->assertSee('disabled', false);
+
+            $this->actingAs($admin, 'admin')
+                ->withSession(['current_site_id' => $site->id])
+                ->post(route('admin.site-settings.update'), [
+                    'site_name' => 'Locked Site '.$role,
+                    'public_domain' => 'changed-'.$role.'.example.test',
+                    'site_subtitle' => '',
+                    'site_description' => '',
+                    'site_keywords' => '',
+                    'copyright_info' => '',
+                    'site_logo' => '',
+                    'site_favicon' => '',
+                    'analytics_code' => '',
+                    'seo_title_template' => '{title} - {site_name}',
+                    'seo_description_template' => '{description}',
+                    'featured_limit' => 6,
+                    'per_page' => 12,
+                    'admin_base_path' => 'changed-admin-path',
+                ])
+                ->assertRedirect(route('admin.site-settings.index'));
+
+            $this->assertSame('locked-'.$role.'.example.test', (string) $site->fresh()->domain);
+            $this->assertSame(
+                AdminWeb::basePath(),
+                (string) SiteSetting::withoutGlobalScope('current_site')
+                    ->where('site_id', $site->id)
+                    ->where('setting_key', 'admin_base_path')
+                    ->value('setting_value')
+            );
+
+            $this->actingAs($admin, 'admin')
+                ->withSession(['current_site_id' => $site->id])
+                ->post(route('admin.site-settings.update'), [
+                    'site_name' => 'Locked Site Without Disabled Fields '.$role,
+                    'site_subtitle' => '',
+                    'site_description' => '',
+                    'site_keywords' => '',
+                    'copyright_info' => '',
+                    'site_logo' => '',
+                    'site_favicon' => '',
+                    'analytics_code' => '',
+                    'seo_title_template' => '{title} - {site_name}',
+                    'seo_description_template' => '{description}',
+                    'featured_limit' => 6,
+                    'per_page' => 12,
+                ])
+                ->assertRedirect(route('admin.site-settings.index'));
+
+            $this->assertSame('locked-'.$role.'.example.test', (string) $site->fresh()->domain);
+        }
+    }
+
     public function test_standard_admin_cannot_update_analytics_code(): void
     {
         $this->withoutMiddleware(ValidateCsrfToken::class);
@@ -247,14 +326,14 @@ class AdminSiteSettingsPageTest extends TestCase
         $this->assertTrue($slides[0]['enabled']);
     }
 
-    private function createAdminWithSite(string $username): array
+    private function createAdminWithSite(string $username, string $role = 'admin'): array
     {
         $admin = Admin::query()->create([
             'username' => $username,
             'password' => 'secret-123',
             'email' => $username.'@example.com',
             'display_name' => $username,
-            'role' => 'admin',
+            'role' => $role,
             'status' => 'active',
         ]);
         $site = Site::query()->create([

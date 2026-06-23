@@ -55,19 +55,25 @@
                         <label class="block text-sm font-medium text-gray-900 mb-2">前台访问域名</label>
                         <input type="text" name="public_domain"
                                value="{{ old('public_domain', $publicDomain ?? '') }}"
-                               class="mb-3 w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                               class="mb-3 w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
+                               @disabled(!($canEditDomainSettings ?? false))
                                placeholder="client.example.com">
-                        <p class="mb-4 text-xs leading-5 text-amber-800">用于二级域名前台访问，只填写域名即可，例如 client.example.com。</p>
+                        <p class="mb-4 text-xs leading-5 text-amber-800">
+                            {{ ($canEditDomainSettings ?? false) ? '用于二级域名前台访问，只填写域名即可，例如 client.example.com。' : '域名由平台管理员配置，当前账号不可修改。' }}
+                        </p>
 
                         <label class="block text-sm font-medium text-gray-900 mb-2">{{ __('admin.site_settings.field_admin_base_path') }}</label>
                         <div class="flex rounded-md shadow-sm">
                             <span class="inline-flex items-center rounded-l-md border border-r-0 border-gray-300 bg-white px-3 text-sm text-gray-500">{{ rtrim(url('/'), '/') }}/</span>
                             <input type="text" name="admin_base_path" required
                                    value="{{ $settings['admin_base_path'] }}"
-                                   class="w-full min-w-0 flex-1 rounded-none rounded-r-md border border-gray-300 px-3 py-2 focus:ring-blue-500 focus:border-blue-500"
+                                   class="w-full min-w-0 flex-1 rounded-none rounded-r-md border border-gray-300 px-3 py-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
+                                   @disabled(!($canEditDomainSettings ?? false))
                                    placeholder="{{ __('admin.site_settings.placeholder_admin_base_path') }}">
                         </div>
-                        <p class="mt-2 text-xs leading-5 text-amber-800">{{ __('admin.site_settings.admin_base_path_help') }}</p>
+                        <p class="mt-2 text-xs leading-5 text-amber-800">
+                            {{ ($canEditDomainSettings ?? false) ? __('admin.site_settings.admin_base_path_help') : '后台入口路径由平台管理员配置，当前账号不可修改。' }}
+                        </p>
                     </div>
 
                     <div>

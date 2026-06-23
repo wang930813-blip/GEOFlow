@@ -1,0 +1,30 @@
+{
+  "pages": [
+    {
+      "name": "enterprise-public-opinion",
+      "title": "企业輿情分析报表",
+      "path": "geo-dashboard-replica.html"
+    },
+    {
+      "name": "industry-competition",
+      "title": "行业竞争力分析报表",
+      "path": "ai-search-competition-report.html"
+    }
+  ],
+  "devices": [
+    { "name": "desktop-2k", "label": "Desktop 2K", "width": 2560, "height": 1440, "deviceScaleFactor": 1, "isMobile": false },
+    { "name": "desktop-1080p", "label": "Desktop 1080p", "width": 1920, "height": 1080, "deviceScaleFactor": 1, "isMobile": false },
+    { "name": "laptop-1440", "label": "Laptop 1440", "width": 1440, "height": 900, "deviceScaleFactor": 1, "isMobile": false },
+    { "name": "laptop-1366", "label": "Laptop 1366", "width": 1366, "height": 768, "deviceScaleFactor": 1, "isMobile": false },
+    { "name": "ipad-pro-12-portrait", "label": "iPad Pro 12.9 Portrait", "width": 1024, "height": 1366, "deviceScaleFactor": 2, "isMobile": true },
+    { "name": "ipad-pro-12-landscape", "label": "iPad Pro 12.9 Landscape", "width": 1366, "height": 1024, "deviceScaleFactor": 2, "isMobile": true },
+    { "name": "ipad-air-portrait", "label": "iPad Air Portrait", "width": 820, "height": 1180, "deviceScaleFactor": 2, "isMobile": true },
+    { "name": "ipad-mini-portrait", "label": "iPad mini Portrait", "width": 768, "height": 1024, "deviceScaleFactor": 2, "isMobile": true },
+    { "name": "iphone-se", "label": "iPhone SE", "width": 375, "height": 667, "deviceScaleFactor": 2, "isMobile": true },
+    { "name": "iphone-13-14", "label": "iPhone 13/14", "width": 390, "height": 844, "deviceScaleFactor": 3, "isMobile": true },
+    { "name": "iphone-14-pro-max", "label": "iPhone 14/15 Pro Max", "width": 430, "height": 932, "deviceScaleFactor": 3, "isMobile": true },
+    { "name": "pixel-7", "label": "Pixel 7", "width": 412, "height": 915, "deviceScaleFactor": 2.625, "isMobile": true },
+    { "name": "galaxy-s20-ultra", "label": "Galaxy S20 Ultra", "width": 412, "height": 915, "deviceScaleFactor": 3.5, "isMobile": true },
+    { "name": "android-360", "label": "Android Small 360", "width": 360, "height": 800, "deviceScaleFactor": 3, "isMobile": true }
+  ]
+}

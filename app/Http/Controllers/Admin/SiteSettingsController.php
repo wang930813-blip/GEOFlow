@@ -43,6 +43,7 @@ class SiteSettingsController extends Controller
             'settings' => $settings,
             'publicDomain' => (string) ($currentSite?->domain ?? ''),
             'canEditAnalytics' => auth('admin')->user()?->isSuperAdmin() === true,
+            'canEditDomainSettings' => $this->canEditDomainSettings(),
             'availableThemes' => $this->siteThemeCatalog->all(),
             'homeCarouselSlides' => $this->parseHomeCarouselSlides((string) ($settings['home_carousel_slides'] ?? '[]')),
             'articleDetailAds' => $this->parseArticleDetailAds((string) ($settings['article_detail_ads'] ?? '[]')),
@@ -55,6 +56,8 @@ class SiteSettingsController extends Controller
      */
     public function update(Request $request): RedirectResponse
     {
+        $currentAdminBasePath = AdminWeb::basePath();
+        $canEditDomainSettings = $this->canEditDomainSettings();
         $payload = $request->validate([
             'site_name' => ['required', 'string', 'max:120'],
             'site_subtitle' => ['nullable', 'string', 'max:255'],
@@ -84,7 +87,8 @@ class SiteSettingsController extends Controller
             'contact_payments.*.account' => ['nullable', 'string', 'max:200'],
             'contact_payments.*.enabled' => ['nullable'],
             'admin_base_path' => [
-                'required',
+                Rule::requiredIf($canEditDomainSettings),
+                'nullable',
                 'string',
                 'min:3',
                 'max:48',
@@ -101,22 +105,25 @@ class SiteSettingsController extends Controller
         ]);
 
         try {
-            $newAdminBasePath = AdminBasePathManager::normalize((string) $payload['admin_base_path']);
+            $newAdminBasePath = $canEditDomainSettings
+                ? AdminBasePathManager::normalize((string) $payload['admin_base_path'])
+                : $currentAdminBasePath;
         } catch (\Throwable) {
             return back()->withErrors(['admin_base_path' => __('admin.site_settings.error.admin_base_path_invalid')])->withInput();
         }
 
-        $currentAdminBasePath = AdminWeb::basePath();
         $currentSettings = $this->loadSettings();
         $canEditAnalytics = auth('admin')->user()?->isSuperAdmin() === true;
-        $publicDomain = SiteDomain::normalize((string) ($payload['public_domain'] ?? ''));
         $currentSite = app(CurrentSite::class)->get();
+        $publicDomain = $canEditDomainSettings
+            ? SiteDomain::normalize((string) ($payload['public_domain'] ?? ''))
+            : (string) ($currentSite?->domain ?? '');
 
-        if ($publicDomain === '' && trim((string) ($payload['public_domain'] ?? '')) !== '') {
+        if ($canEditDomainSettings && $publicDomain === '' && trim((string) ($payload['public_domain'] ?? '')) !== '') {
             return back()->withErrors(['public_domain' => __('admin.site_settings.error.public_domain_invalid')])->withInput();
         }
 
-        if ($currentSite instanceof Site && $publicDomain !== '') {
+        if ($canEditDomainSettings && $currentSite instanceof Site && $publicDomain !== '') {
             $domainExists = Site::query()
                 ->where('domain', $publicDomain)
                 ->whereKeyNot($currentSite->id)
@@ -147,7 +154,7 @@ class SiteSettingsController extends Controller
             'company_address' => trim((string) ($payload['company_address'] ?? '')),
             'site_remark' => trim((string) ($payload['site_remark'] ?? '')),
             'contact_payments' => (string) json_encode($this->normalizeContactPayments($payload['contact_payments'] ?? []), JSON_UNESCAPED_UNICODE),
-            'admin_base_path' => $newAdminBasePath,
+            'admin_base_path' => $canEditDomainSettings ? $newAdminBasePath : $currentAdminBasePath,
         ];
 
         foreach ($settings as $settingKey => $settingValue) {
@@ -157,14 +164,14 @@ class SiteSettingsController extends Controller
             );
         }
 
-        if ($currentSite instanceof Site) {
+        if ($canEditDomainSettings && $currentSite instanceof Site) {
             Site::query()->whereKey($currentSite->id)->update(['domain' => $publicDomain]);
             $currentSite->forceFill(['domain' => $publicDomain]);
         }
 
         SiteSettingsBag::forget();
 
-        if ($newAdminBasePath !== $currentAdminBasePath) {
+        if ($canEditDomainSettings && $newAdminBasePath !== $currentAdminBasePath) {
             try {
                 AdminBasePathManager::persist($newAdminBasePath);
             } catch (\Throwable $e) {
@@ -349,6 +356,13 @@ class SiteSettingsController extends Controller
             'site_remark' => (string) $stored['site_remark'],
             'contact_payments' => (string) $stored['contact_payments'],
         ];
+    }
+
+    private function canEditDomainSettings(): bool
+    {
+        $admin = auth('admin')->user();
+
+        return ! ($admin?->isDirectAdmin() === true || $admin?->isSiteUser() === true);
     }
 
     /**

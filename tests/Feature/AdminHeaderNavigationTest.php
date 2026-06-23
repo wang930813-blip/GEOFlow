@@ -87,13 +87,16 @@ class AdminHeaderNavigationTest extends TestCase
         $userMenu = $this->section($html, 'data-admin-user-menu');
 
         $this->assertStringContainsString(route('admin.profile.index'), $userMenu);
-        $this->assertStringNotContainsString('data-account-menu-group="operations"', $userMenu);
+        $this->assertStringContainsString('data-account-menu-group="operations"', $userMenu);
+        $this->assertStringContainsString(route('admin.ai.configurator'), $userMenu);
+        $this->assertStringContainsString(route('admin.site-settings.index'), $userMenu);
         $this->assertStringContainsString('data-account-menu-group="accounts"', $userMenu);
         $this->assertStringContainsString(route('admin.plan-usages.index'), $userMenu);
         $this->assertStringNotContainsString(route('admin.agent-users.index'), $userMenu);
         $this->assertStringNotContainsString(route('admin.admin-users.index'), $userMenu);
         $this->assertStringNotContainsString(route('admin.platform-plans.index'), $userMenu);
         $this->assertStringNotContainsString(route('admin.plan-subscriptions.index'), $userMenu);
+        $this->assertStringNotContainsString(route('admin.admin-activity-logs'), $userMenu);
         $this->assertStringNotContainsString(route('admin.api-tokens.index'), $userMenu);
         $this->assertStringContainsString('会员', $html);
     }
@@ -110,7 +113,9 @@ class AdminHeaderNavigationTest extends TestCase
         $userMenu = $this->section($html, 'data-admin-user-menu');
 
         $this->assertStringContainsString(route('admin.profile.index'), $userMenu);
-        $this->assertStringNotContainsString('data-account-menu-group="operations"', $userMenu);
+        $this->assertStringContainsString('data-account-menu-group="operations"', $userMenu);
+        $this->assertStringContainsString(route('admin.ai.configurator'), $userMenu);
+        $this->assertStringContainsString(route('admin.site-settings.index'), $userMenu);
         $this->assertStringContainsString('data-account-menu-group="accounts"', $userMenu);
         $this->assertStringContainsString(route('admin.plan-usages.index'), $userMenu);
         $this->assertStringNotContainsString(route('admin.api-tokens.index'), $userMenu);
@@ -170,7 +175,8 @@ class AdminHeaderNavigationTest extends TestCase
         $this->actingAs($admin, 'admin')
             ->get(route('admin.monitoring-center.index'))
             ->assertOk()
-            ->assertSee('监测中心');
+            ->assertSee('企业舆情分析报表')
+            ->assertSee('行业竞争力分析报表');
     }
 
     public function test_api_token_page_is_not_in_navigation_even_if_route_still_exists(): void
