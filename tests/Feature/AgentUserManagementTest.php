@@ -400,6 +400,10 @@ class AgentUserManagementTest extends TestCase
             ->assertOk()
             ->assertSee('编辑')
             ->assertSee('data-agent-user-edit', false)
+            ->assertDontSee('data-member=', false)
+            ->assertSee('data-member-id="'.(int) $member->id.'"', false)
+            ->assertSee('data-member-username="agent_edit_member"', false)
+            ->assertSee('data-member-email="agent_edit_member@example.com"', false)
             ->assertSee(route('admin.agent-users.update', ['adminId' => (int) $member->id]), false);
 
         $this->actingAs($agent, 'admin')

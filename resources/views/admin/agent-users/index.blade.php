@@ -71,12 +71,6 @@
                     </thead>
                     <tbody class="divide-y divide-slate-200 bg-white">
                         @forelse ($members as $member)
-                            @php($memberEditPayload = [
-                                'id' => (int) $member->id,
-                                'username' => (string) $member->username,
-                                'display_name' => (string) ($member->display_name ?? ''),
-                                'email' => (string) ($member->email ?? ''),
-                            ])
                             <tr>
                                 <td class="px-5 py-4 align-top">
                                     <div class="text-sm font-semibold text-gray-900">{{ $member->display_name ?: $member->username }}</div>
@@ -99,7 +93,10 @@
                                         <button
                                             type="button"
                                             data-agent-user-edit
-                                            data-member="{{ \Illuminate\Support\Js::from($memberEditPayload) }}"
+                                            data-member-id="{{ (int) $member->id }}"
+                                            data-member-username="{{ $member->username }}"
+                                            data-member-display-name="{{ $member->display_name ?? '' }}"
+                                            data-member-email="{{ $member->email ?? '' }}"
                                             class="text-sm font-medium text-blue-600 hover:text-blue-800"
                                         >
                                             编辑
@@ -191,7 +188,12 @@
 
             document.querySelectorAll('[data-agent-user-edit]').forEach((button) => {
                 button.addEventListener('click', () => {
-                    const member = JSON.parse(button.dataset.member || '{}');
+                    const member = {
+                        id: button.dataset.memberId || '',
+                        username: button.dataset.memberUsername || '',
+                        display_name: button.dataset.memberDisplayName || '',
+                        email: button.dataset.memberEmail || '',
+                    };
                     form.action = updateRouteTemplate.replace('__ADMIN_ID__', member.id);
                     usernameInput.value = member.username || '';
                     displayNameInput.value = member.display_name || '';
