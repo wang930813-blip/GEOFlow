@@ -62,7 +62,9 @@ class AdminHeaderNavigationTest extends TestCase
         $userMenu = $this->section($html, 'data-admin-user-menu');
 
         $this->assertStringContainsString(route('admin.profile.index'), $userMenu);
-        $this->assertStringNotContainsString('data-account-menu-group="operations"', $userMenu);
+        $this->assertStringContainsString('data-account-menu-group="operations"', $userMenu);
+        $this->assertStringContainsString(route('admin.ai.configurator'), $userMenu);
+        $this->assertStringNotContainsString(route('admin.site-settings.index'), $userMenu);
         $this->assertStringContainsString('data-account-menu-group="accounts"', $userMenu);
         $this->assertStringContainsString(route('admin.sites.manage.index'), $userMenu);
         $this->assertStringContainsString(route('admin.agent-users.index'), $userMenu);
@@ -88,7 +90,7 @@ class AdminHeaderNavigationTest extends TestCase
 
         $this->assertStringContainsString(route('admin.profile.index'), $userMenu);
         $this->assertStringContainsString('data-account-menu-group="operations"', $userMenu);
-        $this->assertStringContainsString(route('admin.ai.configurator'), $userMenu);
+        $this->assertStringNotContainsString(route('admin.ai.configurator'), $userMenu);
         $this->assertStringContainsString(route('admin.site-settings.index'), $userMenu);
         $this->assertStringContainsString('data-account-menu-group="accounts"', $userMenu);
         $this->assertStringContainsString(route('admin.plan-usages.index'), $userMenu);
@@ -114,7 +116,7 @@ class AdminHeaderNavigationTest extends TestCase
 
         $this->assertStringContainsString(route('admin.profile.index'), $userMenu);
         $this->assertStringContainsString('data-account-menu-group="operations"', $userMenu);
-        $this->assertStringContainsString(route('admin.ai.configurator'), $userMenu);
+        $this->assertStringNotContainsString(route('admin.ai.configurator'), $userMenu);
         $this->assertStringContainsString(route('admin.site-settings.index'), $userMenu);
         $this->assertStringContainsString('data-account-menu-group="accounts"', $userMenu);
         $this->assertStringContainsString(route('admin.plan-usages.index'), $userMenu);

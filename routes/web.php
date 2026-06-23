@@ -322,7 +322,7 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             ->whereNumber('jobId');
 
         // AI 配置模块（配置器 / 模型 / 提示词）
-        Route::group([], function () {
+        Route::middleware('admin.ai_config_manager')->group(function () {
             Route::get('ai-configurator', [LegacyController::class, 'aiConfigurator'])->name('ai.configurator');
             Route::prefix('ai-models')->name('ai-models.')->group(function () {
                 Route::get('/', [AiModelController::class, 'index'])->name('index');

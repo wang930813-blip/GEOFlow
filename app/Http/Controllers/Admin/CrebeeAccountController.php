@@ -29,12 +29,16 @@ class CrebeeAccountController extends Controller
 
         $site = app(CurrentSite::class)->get();
 
-        abort_unless($site instanceof Site || $admin->isAgentAdmin(), 403);
+        abort_unless($site instanceof Site || $admin->isAgentAdmin() || $admin->isSuperAdmin(), 403);
 
-        $canManage = $this->canManageBindings($admin) && $site instanceof Site;
+        $canManage = $this->canManageBindings($admin);
+        $platforms = $this->platformCatalog();
+        $platformKeys = array_keys($platforms);
 
         $boundAccounts = $this->visibleBoundAccounts($admin, $site)
             ->with(['agent:id,name,agent_uid,last_seen_at,crebee_status,version', 'owner:id,username,display_name,role', 'site:id,name'])
+            ->whereIn('platform', $platformKeys)
+            ->where('status', 'bound')
             ->orderByDesc('bound_at')
             ->orderByDesc('id')
             ->paginate(10, ['*'], 'bound_page')
@@ -45,6 +49,7 @@ class CrebeeAccountController extends Controller
                 ->with(['agent:id,name,agent_uid,last_seen_at,crebee_status,version'])
                 ->whereNull('site_id')
                 ->whereNull('owner_admin_id')
+                ->whereIn('platform', $platformKeys)
                 ->where('status', 'available')
                 ->orderByDesc('last_synced_at')
                 ->orderByDesc('id')
@@ -52,10 +57,10 @@ class CrebeeAccountController extends Controller
                 ->withQueryString()
             : collect();
 
-        $platforms = $this->platformCatalog();
-        $platformStates = $this->platformStates($admin, $site, array_keys($platforms));
+        $platformStates = $this->platformStates($admin, $site, $platformKeys);
         $bindRequests = $this->visibleBindRequests($admin, $site)
             ->with(['owner:id,username,display_name,role', 'operator:id,username,display_name,role', 'agent:id,name,agent_uid'])
+            ->whereIn('platform', $platformKeys)
             ->orderByRaw("case status when 'pending' then 0 when 'processing' then 1 when 'failed' then 2 when 'confirmed' then 3 else 4 end")
             ->orderByDesc('requested_at')
             ->orderByDesc('id')
@@ -68,11 +73,12 @@ class CrebeeAccountController extends Controller
             'adminSiteName' => AdminWeb::siteName(),
             'site' => $site,
             'canManage' => $canManage,
-            'canRequestBinding' => $site instanceof Site && ! $admin->isAgentAdmin(),
+            'showPlatformCatalog' => $site instanceof Site || $admin->isSuperAdmin(),
+            'canRequestBinding' => $site instanceof Site && ! $admin->isAgentAdmin() && ! $admin->isSuperAdmin(),
             'platforms' => $platforms,
             'platformStates' => $platformStates,
             'bindRequests' => $bindRequests,
-            'members' => $canManage ? $this->bindableMembers($site) : collect(),
+            'members' => $canManage && $site instanceof Site ? $this->bindableMembers($site) : collect(),
             'agents' => $canManage
                 ? CrebeeAgent::query()->withCount('accounts')->orderByDesc('last_seen_at')->orderByDesc('id')->get()
                 : collect(),
@@ -146,8 +152,10 @@ class CrebeeAccountController extends Controller
         abort_unless($admin instanceof Admin && $this->canManageBindings($admin), 403);
 
         $site = app(CurrentSite::class)->get();
-        abort_unless($site instanceof Site, 403);
-        $this->assertCurrentSiteRequest($bindRequest, $site);
+        if (! $admin->isSuperAdmin()) {
+            abort_unless($site instanceof Site, 403);
+            $this->assertCurrentSiteRequest($bindRequest, $site);
+        }
 
         abort_unless(in_array((string) $bindRequest->status, $this->activeRequestStatuses(), true), 404);
 
@@ -165,8 +173,10 @@ class CrebeeAccountController extends Controller
         abort_unless($admin instanceof Admin && $this->canManageBindings($admin), 403);
 
         $site = app(CurrentSite::class)->get();
-        abort_unless($site instanceof Site, 403);
-        $this->assertCurrentSiteRequest($bindRequest, $site);
+        if (! $admin->isSuperAdmin()) {
+            abort_unless($site instanceof Site, 403);
+            $this->assertCurrentSiteRequest($bindRequest, $site);
+        }
 
         $payload = $request->validate([
             'failure_reason' => ['nullable', 'string', 'max:500'],
@@ -234,8 +244,10 @@ class CrebeeAccountController extends Controller
         abort_unless($admin instanceof Admin && $this->canManageBindings($admin), 403);
 
         $site = app(CurrentSite::class)->get();
-        abort_unless($site instanceof Site, 403);
-        abort_if((int) $account->site_id !== (int) $site->id, 404);
+        if (! $admin->isSuperAdmin()) {
+            abort_unless($site instanceof Site, 403);
+            abort_if((int) $account->site_id !== (int) $site->id, 404);
+        }
 
         $account->forceFill([
             'site_id' => null,
@@ -256,6 +268,10 @@ class CrebeeAccountController extends Controller
     {
         $query = CrebeeAccount::query();
 
+        if ($admin->isSuperAdmin()) {
+            return $query;
+        }
+
         if ($site instanceof Site) {
             $query->where('site_id', (int) $site->id);
         } else {
@@ -272,6 +288,10 @@ class CrebeeAccountController extends Controller
     private function visibleBindRequests(Admin $admin, ?Site $site): Builder
     {
         $query = CrebeeBindRequest::query();
+
+        if ($admin->isSuperAdmin()) {
+            return $query;
+        }
 
         if ($site instanceof Site) {
             $query->where('site_id', (int) $site->id);

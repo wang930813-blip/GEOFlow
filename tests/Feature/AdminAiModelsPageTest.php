@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Admin;
 use App\Models\AiModel;
+use App\Models\Prompt;
 use App\Models\Site;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -13,6 +14,116 @@ use Tests\TestCase;
 class AdminAiModelsPageTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_site_user_cannot_open_ai_configuration_pages(): void
+    {
+        $agent = $this->createAdmin('ai_config_agent', 'agent_admin');
+        $user = $this->createAdmin('ai_config_member', 'site_user', $agent);
+        $site = $this->createSiteForAdmin($user, $agent);
+
+        $this->actingAs($user, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.ai.configurator'))
+            ->assertForbidden();
+
+        $this->actingAs($user, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.ai-models.index'))
+            ->assertForbidden();
+
+        $this->actingAs($user, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.ai-prompts'))
+            ->assertForbidden();
+    }
+
+    public function test_agent_ai_configuration_is_available_to_child_user_task_form(): void
+    {
+        $agent = $this->createAdmin('ai_config_agent_owner', 'agent_admin');
+        $user = $this->createAdmin('ai_config_child_user', 'site_user', $agent);
+        $site = $this->createSiteForAdmin($user, $agent);
+
+        $model = AiModel::withoutEvents(fn (): AiModel => AiModel::query()->withoutGlobalScope('current_site')->create([
+            'site_id' => null,
+            'owner_admin_id' => (int) $agent->id,
+            'name' => 'Agent Shared Chat Model',
+            'version' => 'shared',
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('agent-api-key'),
+            'model_id' => 'agent-shared-chat',
+            'model_type' => 'chat',
+            'api_url' => 'https://agent-ai.test',
+            'failover_priority' => 100,
+            'daily_limit' => 0,
+            'used_today' => 0,
+            'total_used' => 0,
+            'status' => 'active',
+        ]));
+        Prompt::withoutEvents(fn (): Prompt => Prompt::query()->withoutGlobalScope('current_site')->create([
+            'site_id' => null,
+            'owner_admin_id' => (int) $agent->id,
+            'name' => 'Agent Shared Content Prompt',
+            'type' => 'content',
+            'content' => 'Write article for {title}',
+            'variables' => '',
+        ]));
+
+        $response = $this->actingAs($user, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.tasks.create'));
+
+        $response->assertOk()
+            ->assertViewHas('formOptions', function (array $options): bool {
+                return collect($options['aiModels'] ?? [])->pluck('name')->contains('Agent Shared Chat Model')
+                    && collect($options['prompts'] ?? [])->pluck('name')->contains('Agent Shared Content Prompt');
+            });
+    }
+
+    public function test_agent_ai_configuration_is_used_by_child_user_url_import(): void
+    {
+        $agent = $this->createAdmin('ai_config_url_agent_owner', 'agent_admin');
+        $user = $this->createAdmin('ai_config_url_child_user', 'site_user', $agent);
+        $site = $this->createSiteForAdmin($user, $agent);
+
+        AiModel::withoutEvents(fn (): AiModel => AiModel::query()->withoutGlobalScope('current_site')->create([
+            'site_id' => null,
+            'owner_admin_id' => null,
+            'name' => 'Platform Url Import Model',
+            'version' => 'platform',
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('platform-api-key'),
+            'model_id' => 'platform-url-import',
+            'model_type' => 'chat',
+            'api_url' => 'https://platform-ai.test',
+            'failover_priority' => 1,
+            'daily_limit' => 0,
+            'used_today' => 0,
+            'total_used' => 0,
+            'status' => 'active',
+        ]));
+        AiModel::withoutEvents(fn (): AiModel => AiModel::query()->withoutGlobalScope('current_site')->create([
+            'site_id' => null,
+            'owner_admin_id' => (int) $agent->id,
+            'name' => 'Agent Url Import Model',
+            'version' => 'agent',
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('agent-api-key'),
+            'model_id' => 'agent-url-import',
+            'model_type' => 'chat',
+            'api_url' => 'https://agent-ai.test',
+            'failover_priority' => 1,
+            'daily_limit' => 0,
+            'used_today' => 0,
+            'total_used' => 0,
+            'status' => 'active',
+        ]));
+
+        $response = $this->actingAs($user, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.url-import'));
+
+        $response->assertOk()
+            ->assertViewHas('aiModelReady', true)
+            ->assertViewHas('canManageAiConfig', false)
+            ->assertDontSee(route('admin.ai-models.index'), false);
+    }
 
     public function test_admin_can_test_chat_model_connection(): void
     {
@@ -106,24 +217,31 @@ class AdminAiModelsPageTest extends TestCase
             ->assertJsonPath('meta.http_status', 401);
     }
 
-    private function createAdmin(): Admin
+    private function createAdmin(
+        string $username = 'ai_model_admin',
+        string $role = 'super_admin',
+        ?Admin $creator = null
+    ): Admin
     {
         return Admin::query()->create([
-            'username' => 'ai_model_admin',
+            'username' => $username,
             'password' => 'secret-123',
-            'email' => 'ai-model-admin@example.com',
-            'display_name' => 'AI Model Admin',
-            'role' => 'admin',
+            'email' => $username.'@example.com',
+            'display_name' => $username,
+            'role' => $role,
             'status' => 'active',
+            'created_by' => $creator?->id,
         ]);
     }
 
-    private function createSiteForAdmin(Admin $admin): Site
+    private function createSiteForAdmin(Admin $admin, ?Admin $agent = null): Site
     {
         $site = Site::query()->create([
             'owner_admin_id' => (int) $admin->id,
+            'agent_admin_id' => $agent?->id,
             'name' => 'AI Model Test Site',
             'status' => 'active',
+            'customer_mode' => $agent instanceof Admin ? 'agent' : 'direct',
         ]);
         $site->members()->attach((int) $admin->id, ['role' => 'owner']);
 

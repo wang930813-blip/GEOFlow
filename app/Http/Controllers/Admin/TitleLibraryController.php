@@ -14,12 +14,12 @@ use App\Models\TitleLibrary;
 use App\Services\Billing\AdminResourceQuotaService;
 use App\Services\GeoFlow\TitleAiGenerationService;
 use App\Support\AdminWeb;
+use App\Support\AiConfigurationScope;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 /**
@@ -32,6 +32,7 @@ class TitleLibraryController extends Controller
     public function __construct(
         private TitleAiGenerationService $titleAiGenerationService,
         private AdminResourceQuotaService $quotaService,
+        private AiConfigurationScope $aiConfigurationScope,
     ) {}
 
     /**
@@ -82,7 +83,7 @@ class TitleLibraryController extends Controller
             ->withCount(['keywords as keyword_count'])
             ->orderByDesc('created_at')
             ->get();
-        $aiModels = AiModel::query()
+        $aiModels = $this->currentConsumerAiModelsQuery()
             ->select(['id', 'name', 'model_id'])
             ->where('status', 'active')
             ->whereRaw("COALESCE(NULLIF(model_type, ''), 'chat') = 'chat'")
@@ -111,10 +112,6 @@ class TitleLibraryController extends Controller
             'ai_model_id' => [
                 'required',
                 'integer',
-                Rule::exists('ai_models', 'id')->where(static function ($query): void {
-                    $query->where('status', 'active')
-                        ->whereRaw("COALESCE(NULLIF(model_type, ''), 'chat') = 'chat'");
-                }),
             ],
             'title_count' => ['required', 'integer', 'min:1', 'max:50'],
             'title_style' => ['required', 'in:professional,attractive,seo,creative,question'],
@@ -122,18 +119,20 @@ class TitleLibraryController extends Controller
         ], [
             'keyword_library_id.required' => __('admin.title_ai_generate.error.keyword_library_required'),
             'ai_model_id.required' => __('admin.title_ai_generate.error.ai_model_required'),
-            'ai_model_id.exists' => __('admin.title_ai_generate.error.ai_model_required'),
             'title_count.min' => __('admin.title_ai_generate.error.invalid_count'),
             'title_count.max' => __('admin.title_ai_generate.error.invalid_count'),
         ]);
 
         $keywordLibrary = KeywordLibrary::query()->whereKey((int) $payload['keyword_library_id'])->firstOrFail();
 
-        $aiModel = AiModel::query()
+        $aiModel = $this->currentConsumerAiModelsQuery()
             ->whereKey((int) $payload['ai_model_id'])
             ->where('status', 'active')
             ->whereRaw("COALESCE(NULLIF(model_type, ''), 'chat') = 'chat'")
-            ->firstOrFail();
+            ->first();
+        if (! $aiModel) {
+            return back()->withInput()->withErrors(['ai_model_id' => __('admin.title_ai_generate.error.ai_model_required')]);
+        }
 
         /** @var Collection<int, string> $keywords */
         $keywords = Keyword::query()
@@ -695,6 +694,14 @@ class TitleLibraryController extends Controller
         }
 
         return (int) $admin->id;
+    }
+
+    private function currentConsumerAiModelsQuery(): \Illuminate\Database\Eloquent\Builder
+    {
+        return $this->aiConfigurationScope->applyCurrentConsumerScope(
+            AiModel::query()->withoutGlobalScope('current_site'),
+            'ai_models.owner_admin_id'
+        );
     }
 
     private function ownerAdminIdForLibrary(TitleLibrary $library, mixed $fallbackAdmin): ?int

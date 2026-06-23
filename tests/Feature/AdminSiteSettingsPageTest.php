@@ -77,7 +77,7 @@ class AdminSiteSettingsPageTest extends TestCase
         $this->assertSame('client-a.example.test', (string) $site->fresh()->domain);
     }
 
-    public function test_direct_admin_and_site_user_can_access_ai_and_site_settings_but_cannot_change_domain_settings(): void
+    public function test_direct_admin_and_site_user_can_access_site_settings_but_cannot_change_domain_settings(): void
     {
         $this->withoutMiddleware(ValidateCsrfToken::class);
 
@@ -93,7 +93,7 @@ class AdminSiteSettingsPageTest extends TestCase
             $this->actingAs($admin, 'admin')
                 ->withSession(['current_site_id' => $site->id])
                 ->get(route('admin.ai.configurator'))
-                ->assertOk();
+                ->assertForbidden();
 
             $settingsResponse = $this->actingAs($admin, 'admin')
                 ->withSession(['current_site_id' => $site->id])

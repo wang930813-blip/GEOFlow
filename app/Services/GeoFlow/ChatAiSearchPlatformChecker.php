@@ -6,6 +6,7 @@ use App\Ai\Agents\MarkdownContentWriterAgent;
 use App\Models\AiModel;
 use App\Models\Keyword;
 use App\Models\KeywordLibrary;
+use App\Support\AiConfigurationScope;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
 use RuntimeException;
@@ -13,7 +14,10 @@ use Throwable;
 
 class ChatAiSearchPlatformChecker implements AiSearchPlatformChecker
 {
-    public function __construct(private readonly ApiKeyCrypto $apiKeyCrypto) {}
+    public function __construct(
+        private readonly ApiKeyCrypto $apiKeyCrypto,
+        private readonly AiConfigurationScope $aiConfigurationScope
+    ) {}
 
     public function check(string $platform, string $question, KeywordLibrary $library, Keyword $keyword): AiSearchCheckResponse
     {
@@ -80,7 +84,10 @@ class ChatAiSearchPlatformChecker implements AiSearchPlatformChecker
 
     private function resolveAiModel(): AiModel
     {
-        $model = AiModel::query()
+        $model = $this->aiConfigurationScope->applyCurrentConsumerScope(
+            AiModel::query()->withoutGlobalScope('current_site'),
+            'ai_models.owner_admin_id'
+        )
             ->where('status', 'active')
             ->where(function ($query): void {
                 $query->whereNull('model_type')

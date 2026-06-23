@@ -61,6 +61,73 @@ class AdminCrebeeAccountBindingTest extends TestCase
             ->assertDontSee('待绑定账号');
     }
 
+    public function test_super_admin_sees_all_binding_requests_available_accounts_and_bound_accounts(): void
+    {
+        $superAdmin = $this->admin('crebee_global_root', 'super_admin');
+        $firstOwner = $this->admin('crebee_global_owner_one', 'direct_admin');
+        $secondOwner = $this->admin('crebee_global_owner_two', 'direct_admin');
+        $currentSite = $this->site('CreBee Global Current Site', $firstOwner, 'direct');
+        $otherSite = $this->site('CreBee Global Other Site', $secondOwner, 'direct');
+        $agent = $this->agent();
+
+        $this->bindRequest($otherSite, $secondOwner, 'bilibili');
+        $this->account($agent, 'weibo', 'global-available-weibo', 'Global Available Weibo');
+        $this->account($agent, 'douyin', 'global-bound-douyin', 'Global Bound Douyin', $otherSite, $secondOwner);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->withSession(['current_site_id' => (int) $currentSite->id])
+            ->get(route('admin.crebee-accounts.index'))
+            ->assertOk()
+            ->assertSee('crebee_global_owner_two')
+            ->assertSee('Global Available Weibo')
+            ->assertSee('Global Bound Douyin')
+            ->assertSee('data-platform-logo="assets/self-media-platforms/01.png"', false)
+            ->assertSee('data-platform-logo="assets/self-media-platforms/12.png"', false)
+            ->assertSee('默认平台展示')
+            ->assertDontSee('申请绑定')
+            ->assertDontSee('assets/self-media-platforms/13.png', false);
+    }
+
+    public function test_super_admin_can_view_binding_accounts_without_current_site(): void
+    {
+        $superAdmin = $this->admin('crebee_global_no_site_root', 'super_admin');
+        $owner = $this->admin('crebee_global_no_site_owner', 'direct_admin');
+        $site = $this->site('CreBee Global No Site', $owner, 'direct');
+        $agent = $this->agent();
+
+        $this->bindRequest($site, $owner, 'bilibili');
+        $this->account($agent, 'weibo', 'global-no-site-available', 'No Site Available Weibo');
+        $this->account($agent, 'douyin', 'global-no-site-bound', 'No Site Bound Douyin', $site, $owner);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.crebee-accounts.index'))
+            ->assertOk()
+            ->assertSee('crebee_global_no_site_owner')
+            ->assertSee('No Site Available Weibo')
+            ->assertSee('No Site Bound Douyin')
+            ->assertSee('data-platform-logo="assets/self-media-platforms/01.png"', false)
+            ->assertSee('data-platform-logo="assets/self-media-platforms/12.png"', false)
+            ->assertDontSee('assets/self-media-platforms/13.png', false);
+    }
+
+    public function test_super_admin_can_mark_binding_request_processing_without_current_site(): void
+    {
+        $superAdmin = $this->admin('crebee_global_request_operator', 'super_admin');
+        $owner = $this->admin('crebee_global_request_owner', 'direct_admin');
+        $site = $this->site('CreBee Global Request Site', $owner, 'direct');
+        $request = $this->bindRequest($site, $owner, 'bilibili');
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.crebee-accounts.requests.processing', $request))
+            ->assertRedirect(route('admin.crebee-accounts.index'));
+
+        $this->assertDatabaseHas('crebee_bind_requests', [
+            'id' => (int) $request->id,
+            'status' => 'processing',
+            'operator_admin_id' => (int) $superAdmin->id,
+        ]);
+    }
+
     public function test_site_user_only_sees_own_bound_crebee_accounts(): void
     {
         $agentAdmin = $this->admin('crebee_agent_owner', 'agent_admin');

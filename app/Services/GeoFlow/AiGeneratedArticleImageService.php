@@ -7,6 +7,7 @@ use App\Models\AiModel;
 use App\Models\PlatformPlan;
 use App\Models\Task;
 use App\Services\Billing\AdminResourceQuotaService;
+use App\Support\AiConfigurationScope;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
 use Illuminate\Support\Facades\DB;
@@ -21,6 +22,7 @@ class AiGeneratedArticleImageService
         private readonly AiArticleImagePlanner $planner,
         private readonly ExternalImageHostClient $imageHostClient,
         private readonly AdminResourceQuotaService $quotaService,
+        private readonly AiConfigurationScope $aiConfigurationScope,
     ) {}
 
     /**
@@ -181,7 +183,7 @@ class AiGeneratedArticleImageService
         $mime = $image->mime ?: 'image/png';
         $uploaded = $this->imageHostClient->upload($image->content(), $mime, $this->filenameFor($mime, $index));
 
-        AiModel::query()->whereKey((int) $imageModel->id)->update([
+        AiModel::query()->withoutGlobalScope('current_site')->whereKey((int) $imageModel->id)->update([
             'used_today' => DB::raw('COALESCE(used_today,0)+1'),
             'total_used' => DB::raw('COALESCE(total_used,0)+1'),
             'updated_at' => now(),
@@ -216,8 +218,11 @@ class AiGeneratedArticleImageService
             throw new RuntimeException('任务未配置AI图片模型');
         }
 
-        $model = AiModel::query()
-            ->whereKey($modelId)
+        $model = $this->aiConfigurationScope->applyOwnerIdScope(
+            AiModel::query()->withoutGlobalScope('current_site'),
+            $this->aiConfigOwnerIdForTask($task),
+            'ai_models.owner_admin_id'
+        )->whereKey($modelId)
             ->where('status', 'active')
             ->where('model_type', 'image')
             ->first();
@@ -227,5 +232,17 @@ class AiGeneratedArticleImageService
         }
 
         return $model;
+    }
+
+    private function aiConfigOwnerIdForTask(Task $task): ?int
+    {
+        $adminId = (int) ($task->owner_admin_id ?? 0);
+        if ($adminId <= 0) {
+            return null;
+        }
+
+        $admin = \App\Models\Admin::query()->whereKey($adminId)->first(['id', 'role', 'created_by']);
+
+        return $admin instanceof \App\Models\Admin ? $this->aiConfigurationScope->ownerAdminIdForConsumer($admin) : null;
     }
 }

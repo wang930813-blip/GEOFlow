@@ -5,7 +5,7 @@
     $isAgentAdmin = $currentAdmin && method_exists($currentAdmin, 'isAgentAdmin') && $currentAdmin->isAgentAdmin();
     $isDirectAdmin = $currentAdmin && method_exists($currentAdmin, 'isDirectAdmin') && $currentAdmin->isDirectAdmin();
     $isSiteUser = $currentAdmin && method_exists($currentAdmin, 'isSiteUser') && $currentAdmin->isSiteUser();
-    $adminRoleLabel = $isSuperAdmin ? '管理' : ($isAgentAdmin ? '代理' : '会员');
+    $canManageAiConfig = $isSuperAdmin || $isAgentAdmin;
     $adminRoleLabel = $isSuperAdmin ? '管理' : ($isAgentAdmin ? '代理' : '会员');
     $adminRoleKey = $isSuperAdmin ? 'super_admin' : ($isAgentAdmin ? 'agent_admin' : 'member');
     $adminRoleBadgeClass = $isSuperAdmin
@@ -94,7 +94,7 @@
 
     $accountMenu = collect([
         ['key' => 'profile', 'route' => 'admin.profile.index', 'name' => '个人中心', 'icon' => 'user-circle', 'visible' => true],
-        ['key' => 'ai_config', 'route' => 'admin.ai.configurator', 'name' => __('admin.nav.ai_config'), 'icon' => 'bot', 'visible' => ! $isAgentAdmin],
+        ['key' => 'ai_config', 'route' => 'admin.ai.configurator', 'name' => __('admin.nav.ai_config'), 'icon' => 'bot', 'visible' => $canManageAiConfig],
         ['key' => 'site_settings', 'route' => 'admin.site-settings.index', 'name' => __('admin.nav.system_settings'), 'icon' => 'settings', 'visible' => ! $isAgentAdmin],
         ['key' => 'sites', 'route' => 'admin.sites.manage.index', 'name' => '站点管理', 'icon' => 'globe-2', 'visible' => $isSuperAdmin || $isAgentAdmin],
         ['key' => 'platform_plans', 'route' => 'admin.platform-plans.index', 'name' => '平台规格', 'icon' => 'package', 'visible' => $isSuperAdmin],
@@ -110,10 +110,10 @@
         [
             'key' => 'operations',
             'name' => '运营配置',
-            'visible' => ! $isAgentAdmin,
+            'visible' => true,
             'items' => [
-                ['key' => 'ai_config', 'route' => 'admin.ai.configurator', 'name' => __('admin.nav.ai_config'), 'icon' => 'bot', 'visible' => true],
-                ['key' => 'site_settings', 'route' => 'admin.site-settings.index', 'name' => __('admin.nav.system_settings'), 'icon' => 'settings', 'visible' => true],
+                ['key' => 'ai_config', 'route' => 'admin.ai.configurator', 'name' => __('admin.nav.ai_config'), 'icon' => 'bot', 'visible' => $canManageAiConfig],
+                ['key' => 'site_settings', 'route' => 'admin.site-settings.index', 'name' => __('admin.nav.system_settings'), 'icon' => 'settings', 'visible' => ! $isAgentAdmin],
                 ['key' => 'activity_logs', 'route' => 'admin.admin-activity-logs', 'name' => __('admin.nav.activity_logs'), 'icon' => 'clipboard-list', 'visible' => $isSuperAdmin],
             ],
         ],

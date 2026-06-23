@@ -5,6 +5,7 @@ namespace App\Services\GeoFlow;
 use App\Models\AiModel;
 use App\Models\KnowledgeChunk;
 use App\Models\SiteSetting;
+use App\Support\AiConfigurationScope;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
 use Illuminate\Support\Facades\DB;
@@ -24,7 +25,10 @@ class KnowledgeChunkSyncService
     /**
      * 复用统一 API Key 解密组件，保证 embedding 调用与模型配置页完全一致。
      */
-    public function __construct(private readonly ApiKeyCrypto $apiKeyCrypto) {}
+    public function __construct(
+        private readonly ApiKeyCrypto $apiKeyCrypto,
+        private readonly AiConfigurationScope $aiConfigurationScope
+    ) {}
 
     /**
      * 将知识库正文重建为 chunks，并同步向量相关字段。
@@ -176,11 +180,17 @@ class KnowledgeChunkSyncService
      */
     private function resolveEmbeddingMetadata(): ?array
     {
-        $defaultEmbeddingModelId = (int) (SiteSetting::query()
+        $defaultEmbeddingModelId = (int) ($this->aiConfigurationScope->applyCurrentConsumerScope(
+            SiteSetting::query()->withoutGlobalScope('current_site'),
+            'site_settings.owner_admin_id'
+        )
             ->where('setting_key', 'default_embedding_model_id')
             ->value('setting_value') ?? 0);
 
-        $query = AiModel::query()
+        $query = $this->aiConfigurationScope->applyCurrentConsumerScope(
+            AiModel::query()->withoutGlobalScope('current_site'),
+            'ai_models.owner_admin_id'
+        )
             ->activeStatus()
             ->embeddingType();
 
@@ -405,7 +415,7 @@ class KnowledgeChunkSyncService
             return;
         }
 
-        AiModel::query()->whereKey($modelId)->update([
+        AiModel::query()->withoutGlobalScope('current_site')->whereKey($modelId)->update([
             'used_today' => DB::raw('COALESCE(used_today,0)+1'),
             'total_used' => DB::raw('COALESCE(total_used,0)+1'),
             'updated_at' => now(),

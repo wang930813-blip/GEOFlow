@@ -2,15 +2,19 @@
 
 @section('content')
     @php
-        $isSuperAdminDashboard = auth('admin')->user()?->isSuperAdmin() ?? false;
+        $currentDashboardAdmin = auth('admin')->user();
+        $isSuperAdminDashboard = $currentDashboardAdmin?->isSuperAdmin() ?? false;
+        $isAgentDashboard = $currentDashboardAdmin?->isAgentAdmin() ?? false;
+        $canManageAiConfig = $isSuperAdminDashboard || $isAgentDashboard;
+        $canCreateContent = ! $isAgentDashboard;
         $singleSiteCards = [
-            [
+            $canManageAiConfig ? [
                 'title' => __('admin.dashboard.navigation.ai_config_title'),
                 'desc' => __('admin.dashboard.navigation.ai_config_desc'),
                 'href' => route('admin.ai-models.index'),
                 'icon' => 'cpu',
                 'tone' => 'text-indigo-600 bg-indigo-50',
-            ],
+            ] : null,
             [
                 'title' => __('admin.dashboard.navigation.materials_title'),
                 'desc' => __('admin.dashboard.navigation.materials_desc'),
@@ -18,27 +22,27 @@
                 'icon' => 'database',
                 'tone' => 'text-emerald-600 bg-emerald-50',
             ],
-            [
+            $canCreateContent ? [
                 'title' => __('admin.dashboard.navigation.url_import_title'),
                 'desc' => __('admin.dashboard.navigation.url_import_desc'),
                 'href' => route('admin.url-import'),
                 'icon' => 'link',
                 'tone' => 'text-cyan-600 bg-cyan-50',
-            ],
-            [
+            ] : null,
+            $canCreateContent ? [
                 'title' => __('admin.dashboard.navigation.create_task_title'),
                 'desc' => __('admin.dashboard.navigation.create_task_desc'),
                 'href' => route('admin.tasks.create'),
                 'icon' => 'plus-circle',
                 'tone' => 'text-blue-600 bg-blue-50',
-            ],
-            [
+            ] : null,
+            $canCreateContent ? [
                 'title' => __('admin.dashboard.navigation.articles_title'),
                 'desc' => __('admin.dashboard.navigation.articles_desc'),
                 'href' => route('admin.articles.index'),
                 'icon' => 'file-text',
                 'tone' => 'text-slate-700 bg-slate-100',
-            ],
+            ] : null,
             [
                 'title' => __('admin.dashboard.navigation.site_settings_title'),
                 'desc' => __('admin.dashboard.navigation.site_settings_desc'),
@@ -53,7 +57,7 @@
                 'icon' => 'bar-chart-3',
                 'tone' => 'text-violet-600 bg-violet-50',
             ],
-            [
+            $canManageAiConfig ? [
                 'title' => __('admin.dashboard.navigation.prompt_config_title'),
                 'desc' => __('admin.dashboard.navigation.prompt_config_desc'),
                 'href' => route('admin.ai-prompts'),
@@ -63,15 +67,16 @@
                     ['label' => __('admin.dashboard.navigation.body_prompt_label'), 'href' => route('admin.ai-prompts')],
                     ['label' => __('admin.dashboard.navigation.special_prompt_label'), 'href' => route('admin.ai-special-prompts')],
                 ],
-            ],
-            [
+            ] : null,
+            $isSuperAdminDashboard ? [
                 'title' => __('admin.dashboard.navigation.admin_users_title'),
                 'desc' => __('admin.dashboard.navigation.admin_users_desc'),
                 'href' => route('admin.admin-users.index'),
                 'icon' => 'users',
                 'tone' => 'text-slate-700 bg-slate-100',
-            ],
+            ] : null,
         ];
+        $singleSiteCards = array_values(array_filter($singleSiteCards));
 
         $multiSiteCards = [
             [
@@ -102,13 +107,13 @@
                 'icon' => 'settings',
                 'tone' => 'text-rose-600 bg-rose-50',
             ] : null,
-            [
+            $canCreateContent ? [
                 'title' => __('admin.dashboard.navigation.create_task_title'),
                 'desc' => __('admin.dashboard.navigation.create_task_desc'),
                 'href' => route('admin.tasks.create'),
                 'icon' => 'workflow',
                 'tone' => 'text-slate-700 bg-slate-100',
-            ],
+            ] : null,
             [
                 'title' => __('admin.dashboard.navigation.analytics_title'),
                 'desc' => __('admin.dashboard.navigation.analytics_desc'),
@@ -134,23 +139,25 @@
             </div>
 
             <div class="grid grid-cols-1 divide-y divide-gray-100 lg:grid-cols-3 lg:divide-x lg:divide-y-0">
-                <div class="p-6">
-                    <div class="flex items-start gap-4">
-                        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white">1</div>
-                        <div>
-                            <h3 class="text-base font-semibold text-gray-900">{{ __('admin.dashboard.quick_start.api_title') }}</h3>
-                            <p class="mt-2 text-sm leading-6 text-gray-500">{{ __('admin.dashboard.quick_start.api_desc') }}</p>
-                            <a href="{{ route('admin.ai-models.index') }}" class="mt-4 inline-flex items-center rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">
-                                <i data-lucide="plug-zap" class="mr-1.5 h-4 w-4"></i>
-                                {{ __('admin.dashboard.quick_start.api_button') }}
-                            </a>
+                @if ($canManageAiConfig)
+                    <div class="p-6">
+                        <div class="flex items-start gap-4">
+                            <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white">1</div>
+                            <div>
+                                <h3 class="text-base font-semibold text-gray-900">{{ __('admin.dashboard.quick_start.api_title') }}</h3>
+                                <p class="mt-2 text-sm leading-6 text-gray-500">{{ __('admin.dashboard.quick_start.api_desc') }}</p>
+                                <a href="{{ route('admin.ai-models.index') }}" class="mt-4 inline-flex items-center rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">
+                                    <i data-lucide="plug-zap" class="mr-1.5 h-4 w-4"></i>
+                                    {{ __('admin.dashboard.quick_start.api_button') }}
+                                </a>
+                            </div>
                         </div>
                     </div>
-                </div>
+                @endif
 
                 <div class="p-6">
                     <div class="flex items-start gap-4">
-                        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-sm font-semibold text-white">2</div>
+                        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-sm font-semibold text-white">{{ $canManageAiConfig ? 2 : 1 }}</div>
                         <div class="min-w-0 flex-1">
                             <h3 class="text-base font-semibold text-gray-900">{{ __('admin.dashboard.quick_start.material_title') }}</h3>
                             <p class="mt-2 text-sm leading-6 text-gray-500">{{ __('admin.dashboard.quick_start.material_desc') }}</p>
@@ -177,7 +184,7 @@
 
                 <div class="p-6">
                     <div class="flex items-start gap-4">
-                        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-900 text-sm font-semibold text-white">3</div>
+                        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-900 text-sm font-semibold text-white">{{ $canManageAiConfig ? 3 : 2 }}</div>
                         <div>
                             <h3 class="text-base font-semibold text-gray-900">{{ __('admin.dashboard.quick_start.task_title') }}</h3>
                             <p class="mt-2 text-sm leading-6 text-gray-500">{{ __('admin.dashboard.quick_start.task_desc') }}</p>
@@ -188,6 +195,28 @@
                         </div>
                     </div>
                 </div>
+
+                @if (! $canManageAiConfig)
+                    <div class="p-6">
+                        <div class="flex items-start gap-4">
+                            <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-sm font-semibold text-white">3</div>
+                            <div class="min-w-0 flex-1">
+                                <h3 class="text-base font-semibold text-gray-900">发布文章/视频</h3>
+                                <p class="mt-2 text-sm leading-6 text-gray-500">内容生成后，从文章或视频列表进入发布入口，选择已绑定的平台完成发布。</p>
+                                <div class="mt-4 flex flex-wrap gap-2">
+                                    <a href="{{ route('admin.articles.index') }}" class="inline-flex items-center rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700">
+                                        <i data-lucide="file-text" class="mr-1.5 h-4 w-4"></i>
+                                        文章列表
+                                    </a>
+                                    <a href="{{ route('admin.video-generations.index') }}" class="inline-flex items-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                                        <i data-lucide="video" class="mr-1.5 h-4 w-4"></i>
+                                        视频列表
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                @endif
             </div>
         </section>
 

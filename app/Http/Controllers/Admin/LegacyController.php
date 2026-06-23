@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\AiModel;
+use App\Models\Admin;
 use App\Models\Prompt;
 use App\Models\Task;
 use App\Support\AdminWeb;
+use App\Support\AiConfigurationScope;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -17,6 +19,8 @@ use Illuminate\View\View;
  */
 class LegacyController extends Controller
 {
+    public function __construct(private readonly AiConfigurationScope $aiConfigurationScope) {}
+
     private function stub(string $pageTitleKey, string $activeMenu, ?string $stubHint = null): View
     {
         return view('admin.stub', [
@@ -197,11 +201,25 @@ class LegacyController extends Controller
      */
     private function loadAiConfiguratorStats(): array
     {
+        $admin = request()->user('admin');
+        abort_unless($admin instanceof Admin, 403);
+
+        $modelsQuery = $this->aiConfigurationScope->applyManagerScope(
+            AiModel::query()->withoutGlobalScope('current_site'),
+            $admin,
+            'ai_models.owner_admin_id'
+        );
+        $promptsQuery = $this->aiConfigurationScope->applyManagerScope(
+            Prompt::query()->withoutGlobalScope('current_site'),
+            $admin,
+            'prompts.owner_admin_id'
+        );
+
         return [
-            'model_count' => AiModel::query()->where('status', 'active')->count(),
-            'prompt_count' => Prompt::query()->count(),
-            'total_usage' => (int) (AiModel::query()->sum('total_used') ?? 0),
-            'today_usage' => (int) (AiModel::query()->sum('used_today') ?? 0),
+            'model_count' => (clone $modelsQuery)->where('status', 'active')->count(),
+            'prompt_count' => (clone $promptsQuery)->count(),
+            'total_usage' => (int) ((clone $modelsQuery)->sum('total_used') ?? 0),
+            'today_usage' => (int) ((clone $modelsQuery)->sum('used_today') ?? 0),
         ];
     }
 }

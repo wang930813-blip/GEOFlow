@@ -17,7 +17,7 @@ class AdminAiPromptsPageTest extends TestCase
             'password' => 'secret-123',
             'email' => 'ai-prompt-admin@example.com',
             'display_name' => 'AI Prompt Admin',
-            'role' => 'admin',
+            'role' => 'super_admin',
             'status' => 'active',
         ]);
 

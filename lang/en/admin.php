@@ -2892,6 +2892,7 @@ return [
             'ai_all_models_failed' => 'All available AI models failed. Details: :messages',
             'ai_config_help' => 'Check the model API Base URL, model ID, API key, account quota, and model permissions. After fixing them, return to import history and rerun the failed job.',
             'ai_config_button' => 'Configure AI API',
+            'ai_config_contact_admin' => 'This account cannot configure AI. Contact the agent or platform administrator to finish AI setup before continuing.',
             'fetch_status_failed' => 'Failed to fetch job status',
             'job_failed' => 'The import job failed',
             'start_failed' => 'Failed to start the import job',

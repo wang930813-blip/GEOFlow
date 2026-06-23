@@ -49,6 +49,7 @@
             }
             return $url;
         };
+        $showPlatformCatalog = (bool) ($showPlatformCatalog ?? ($canRequestBinding ?? true));
         $canRequestBinding = (bool) ($canRequestBinding ?? true);
         $siteDisplayName = $site instanceof \App\Models\Site ? $site->name : '代理下属用户';
     @endphp
@@ -72,11 +73,11 @@
             </div>
         </div>
 
-        @if ($canRequestBinding)
+        @if ($showPlatformCatalog)
             <section class="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
             <div class="border-b border-slate-200 px-5 py-4">
-                <h2 class="text-lg font-semibold text-gray-900">选择要绑定的平台</h2>
-                <p class="mt-1 text-sm text-slate-500">点击平台提交绑定申请。运营发送对应平台二维码后，扫码登录成功会自动绑定到你的账号。</p>
+                <h2 class="text-lg font-semibold text-gray-900">{{ $canRequestBinding ? '选择要绑定的平台' : '默认平台展示' }}</h2>
+                <p class="mt-1 text-sm text-slate-500">{{ $canRequestBinding ? '点击平台提交绑定申请。运营发送对应平台二维码后，扫码登录成功会自动绑定到你的账号。' : '当前默认展示 12 个自媒体平台；绑定申请、待绑定账号和已绑定账号在下方列表统一查看。' }}</p>
                 @error('platform')
                     <p class="mt-2 text-sm text-red-600">{{ $message }}</p>
                 @enderror
@@ -143,11 +144,14 @@
                                         <div>等待运营处理</div>
                                     @endif
                                     </div>
-                                @else
+                                @elseif ($canRequestBinding)
                                     <div class="rounded-md bg-slate-50 px-3 py-2 text-slate-600">可提交绑定申请</div>
+                                @else
+                                    <div class="rounded-md bg-slate-50 px-3 py-2 text-slate-600">默认平台</div>
                                 @endif
                             </div>
                         </div>
+                        @if ($canRequestBinding)
                         <form method="POST" action="{{ route('admin.crebee-accounts.requests.store') }}" class="mt-4">
                             @csrf
                             <input type="hidden" name="platform" value="{{ $platformKey }}">
@@ -156,6 +160,12 @@
                                 {{ $canRequestPlatform ? '申请绑定' : $platformStatusName($stateStatus) }}
                             </button>
                         </form>
+                        @else
+                            <div class="mt-4 inline-flex h-9 w-full items-center justify-center gap-2 rounded-md bg-slate-100 px-3 text-sm font-medium text-slate-600">
+                                <i data-lucide="layers" class="h-4 w-4"></i>
+                                默认平台展示
+                            </div>
+                        @endif
                     </div>
                 @endforeach
             </div>

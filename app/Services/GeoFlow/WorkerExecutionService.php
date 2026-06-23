@@ -3,6 +3,7 @@
 namespace App\Services\GeoFlow;
 
 use App\Ai\Agents\MarkdownContentWriterAgent;
+use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\Article;
 use App\Models\ArticleImage;
@@ -16,6 +17,7 @@ use App\Models\Prompt;
 use App\Models\Task;
 use App\Models\Title;
 use App\Services\Billing\AdminResourceQuotaService;
+use App\Support\AiConfigurationScope;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\ArticleWorkflow;
 use App\Support\GeoFlow\ImageUrlNormalizer;
@@ -36,7 +38,8 @@ class WorkerExecutionService
         private readonly AiGeneratedArticleImageService $aiGeneratedArticleImageService,
         private readonly GeoArticleContextService $geoArticleContextService,
         private readonly DistributionOrchestrator $distributionOrchestrator,
-        private readonly AdminResourceQuotaService $quotaService
+        private readonly AdminResourceQuotaService $quotaService,
+        private readonly AiConfigurationScope $aiConfigurationScope
     ) {}
 
     /**
@@ -82,7 +85,11 @@ class WorkerExecutionService
         $titleRow = $this->pickTitle($task);
         $author = $this->pickAuthor($task);
         $category = $this->pickCategory($task);
-        $prompt = $task->prompt_id ? Prompt::query()->find((int) $task->prompt_id) : null;
+        $prompt = $task->prompt_id ? $this->aiConfigQueryForTask(
+            Prompt::query()->withoutGlobalScope('current_site'),
+            $task,
+            'prompts.owner_admin_id'
+        )->whereKey((int) $task->prompt_id)->first() : null;
 
         $keyword = (string) ($titleRow->keyword ?? '');
         $knowledgeContext = $this->resolveKnowledgeContext($task, (string) $titleRow->title, $keyword);
@@ -312,8 +319,11 @@ class WorkerExecutionService
             throw new RuntimeException('Task AI model is not configured');
         }
 
-        $aiModel = AiModel::query()
-            ->whereKey($aiModelId)
+        $aiModel = $this->aiConfigQueryForTask(
+            AiModel::query()->withoutGlobalScope('current_site'),
+            $task,
+            'ai_models.owner_admin_id'
+        )->whereKey($aiModelId)
             ->where('status', 'active')
             ->where(function ($query): void {
                 $query->whereNull('model_type')
@@ -388,8 +398,12 @@ class WorkerExecutionService
             return [$primaryModel];
         }
 
-        $fallbackModels = AiModel::query()
-            ->whereKeyNot((int) $primaryModel->id)
+        $fallbackModels = $this->aiConfigQueryForTask(
+            AiModel::query()->withoutGlobalScope('current_site'),
+            $task,
+            'ai_models.owner_admin_id'
+        )->whereKeyNot((int) $primaryModel->id)
+            ->where('status', 'active')
             ->where(function ($query): void {
                 $query->whereNull('model_type')
                     ->orWhere('model_type', '')
@@ -961,33 +975,18 @@ class WorkerExecutionService
 
     private function latestSpecialPromptContent(Task $task, string $type): string
     {
-        $siteId = (int) ($task->site_id ?? 0);
-
-        if ($siteId > 0) {
-            $sitePrompt = Prompt::withoutGlobalScope('current_site')
-                ->select(['id', 'content'])
-                ->where('type', $type)
-                ->where('site_id', $siteId)
-                ->orderByDesc('updated_at')
-                ->orderByDesc('id')
-                ->first();
-
-            if ($sitePrompt && trim((string) $sitePrompt->content) !== '') {
-                return trim((string) $sitePrompt->content);
-            }
-        }
-
-        $globalPrompt = Prompt::withoutGlobalScope('current_site')
+        $ownerPrompt = $this->aiConfigQueryForTask(
+            Prompt::withoutGlobalScope('current_site'),
+            $task,
+            'prompts.owner_admin_id'
+        )
             ->select(['id', 'content'])
             ->where('type', $type)
-            ->where(function ($query): void {
-                $query->whereNull('site_id')->orWhere('site_id', 0);
-            })
             ->orderByDesc('updated_at')
             ->orderByDesc('id')
             ->first();
 
-        return $globalPrompt ? trim((string) $globalPrompt->content) : '';
+        return $ownerPrompt ? trim((string) $ownerPrompt->content) : '';
     }
 
     private function renderSpecialPromptTemplate(string $prompt, string $content, string $title, string $keyword): string
@@ -1182,7 +1181,7 @@ class WorkerExecutionService
             throw new RuntimeException('AI returned empty content');
         }
 
-        AiModel::query()->whereKey((int) $aiModel->id)->update([
+        AiModel::query()->withoutGlobalScope('current_site')->whereKey((int) $aiModel->id)->update([
             'used_today' => DB::raw('COALESCE(used_today,0)+1'),
             'total_used' => DB::raw('COALESCE(total_used,0)+1'),
             'updated_at' => now(),
@@ -1196,6 +1195,23 @@ class WorkerExecutionService
         $adminId = (int) ($task->owner_admin_id ?? 0);
 
         return $adminId > 0 ? $adminId : null;
+    }
+
+    private function aiConfigOwnerIdForTask(Task $task): ?int
+    {
+        $adminId = (int) ($task->owner_admin_id ?? 0);
+        if ($adminId <= 0) {
+            return null;
+        }
+
+        $admin = Admin::query()->whereKey($adminId)->first(['id', 'role', 'created_by']);
+
+        return $admin instanceof Admin ? $this->aiConfigurationScope->ownerAdminIdForConsumer($admin) : null;
+    }
+
+    private function aiConfigQueryForTask($query, Task $task, string $column)
+    {
+        return $this->aiConfigurationScope->applyOwnerIdScope($query, $this->aiConfigOwnerIdForTask($task), $column);
     }
 
     /**

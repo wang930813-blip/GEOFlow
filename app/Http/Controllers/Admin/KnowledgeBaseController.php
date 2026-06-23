@@ -3,12 +3,14 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\KnowledgeBase;
 use App\Models\KnowledgeChunk;
 use App\Models\Task;
 use App\Services\GeoFlow\KnowledgeChunkSyncService;
 use App\Support\AdminWeb;
+use App\Support\AiConfigurationScope;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -24,7 +26,10 @@ use Illuminate\View\View;
  */
 class KnowledgeBaseController extends Controller
 {
-    public function __construct(private readonly KnowledgeChunkSyncService $chunkSyncService) {}
+    public function __construct(
+        private readonly KnowledgeChunkSyncService $chunkSyncService,
+        private readonly AiConfigurationScope $aiConfigurationScope
+    ) {}
 
     /**
      * 列表页。
@@ -38,6 +43,7 @@ class KnowledgeBaseController extends Controller
             'knowledgeBases' => $this->loadKnowledgeBases(),
             'stats' => $this->loadStats(),
             'hasDefaultEmbeddingModel' => $this->hasDefaultEmbeddingModel(),
+            'canManageAiConfig' => $this->canManageAiConfig(),
         ]);
     }
 
@@ -72,6 +78,7 @@ class KnowledgeBaseController extends Controller
             'chunkStats' => $this->loadChunkStats($knowledgeBaseId),
             'chunkPreviewRows' => $this->loadChunkPreviewRows($knowledgeBaseId),
             'hasDefaultEmbeddingModel' => $this->hasDefaultEmbeddingModel(),
+            'canManageAiConfig' => $this->canManageAiConfig(),
         ]);
     }
 
@@ -343,10 +350,20 @@ class KnowledgeBaseController extends Controller
      */
     private function hasDefaultEmbeddingModel(): bool
     {
-        return AiModel::query()
+        return $this->aiConfigurationScope->applyCurrentConsumerScope(
+            AiModel::query()->withoutGlobalScope('current_site'),
+            'ai_models.owner_admin_id'
+        )
             ->activeStatus()
             ->embeddingType()
             ->exists();
+    }
+
+    private function canManageAiConfig(): bool
+    {
+        $admin = request()->user('admin');
+
+        return $admin instanceof Admin && $this->aiConfigurationScope->canManage($admin);
     }
 
     private function refreshChunksRedirectRoute(Request $request, int $knowledgeBaseId): string

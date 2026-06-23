@@ -15,6 +15,7 @@ use App\Models\TaskRun;
 use App\Models\TaskSchedule;
 use App\Models\Title;
 use App\Models\TitleLibrary;
+use App\Support\AiConfigurationScope;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -42,7 +43,8 @@ class TaskLifecycleService
     public function __construct(
         private JobQueueService $queueService,
         private TaskMonitoringQueryService $taskMonitoringQueryService,
-        private TaskRealtimeBroadcastService $taskRealtimeBroadcastService
+        private TaskRealtimeBroadcastService $taskRealtimeBroadcastService,
+        private AiConfigurationScope $aiConfigurationScope
     ) {}
 
     /**
@@ -491,10 +493,15 @@ class TaskLifecycleService
             $exists = false;
             // prompt 与 ai_model 的校验规则与普通外键不同，这里单独处理业务约束。
             if (! empty($config['prompt_content'])) {
-                $exists = Prompt::query()->whereKey($id)->where('type', 'content')->exists();
+                $exists = $this->aiConfigurationScope->applyCurrentConsumerScope(
+                    Prompt::query()->withoutGlobalScope('current_site'),
+                    'prompts.owner_admin_id'
+                )->whereKey($id)->where('type', 'content')->exists();
             } elseif (! empty($config['ai_active_chat'])) {
-                $exists = AiModel::query()
-                    ->whereKey($id)
+                $exists = $this->aiConfigurationScope->applyCurrentConsumerScope(
+                    AiModel::query()->withoutGlobalScope('current_site'),
+                    'ai_models.owner_admin_id'
+                )->whereKey($id)
                     ->where('status', 'active')
                     ->where(function ($q) {
                         $q->whereNull('model_type')
@@ -552,8 +559,10 @@ class TaskLifecycleService
         if (array_key_exists('ai_image_model_id', $data)) {
             $imageModelId = (int) $data['ai_image_model_id'];
             if ($imageModelId > 0) {
-                $imageModelExists = AiModel::query()
-                    ->whereKey($imageModelId)
+                $imageModelExists = $this->aiConfigurationScope->applyCurrentConsumerScope(
+                    AiModel::query()->withoutGlobalScope('current_site'),
+                    'ai_models.owner_admin_id'
+                )->whereKey($imageModelId)
                     ->where('status', 'active')
                     ->where('model_type', 'image')
                     ->exists();

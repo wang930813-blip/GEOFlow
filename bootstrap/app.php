@@ -13,6 +13,7 @@ use App\Http\Middleware\AuthenticateAdminWeb;
 use App\Http\Middleware\AuthenticateApiToken;
 use App\Http\Middleware\AuthenticateCrebeeAgent;
 use App\Http\Middleware\AutoFollowRedirectBody;
+use App\Http\Middleware\EnsureAiConfigurationManager;
 use App\Http\Middleware\EnsureApiScope;
 use App\Http\Middleware\EnsureAgentAdmin;
 use App\Http\Middleware\EnsureCurrentSite;
@@ -76,6 +77,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin.super' => EnsureSuperAdmin::class,
             // Blade 后台：仅代理管理员
             'admin.agent' => EnsureAgentAdmin::class,
+            // Blade 后台：可管理 AI 配置的账号（超管、代理）
+            'admin.ai_config_manager' => EnsureAiConfigurationManager::class,
             // Blade 后台：写操作日志
             'admin.activity' => LogAdminActivity::class,
         ]);

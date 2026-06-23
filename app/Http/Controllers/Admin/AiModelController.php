@@ -4,10 +4,12 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\AiModel;
+use App\Models\Admin;
 use App\Models\Article;
 use App\Models\SiteSetting;
 use App\Models\Task;
 use App\Support\AdminWeb;
+use App\Support\AiConfigurationScope;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
 use Illuminate\Http\JsonResponse;
@@ -32,7 +34,10 @@ class AiModelController extends Controller
     /**
      * 注入统一 API Key 加解密工具，避免控制器内重复维护密钥兼容逻辑。
      */
-    public function __construct(private readonly ApiKeyCrypto $apiKeyCrypto) {}
+    public function __construct(
+        private readonly ApiKeyCrypto $apiKeyCrypto,
+        private readonly AiConfigurationScope $aiConfigurationScope
+    ) {}
 
     /**
      * AI 模型列表页。
@@ -70,7 +75,9 @@ class AiModelController extends Controller
         }
 
         try {
-            $createdModel = AiModel::query()->create([
+            $createdModel = AiModel::withoutEvents(fn (): AiModel => AiModel::query()->withoutGlobalScope('current_site')->create([
+                'site_id' => null,
+                'owner_admin_id' => $this->managerOwnerAdminId(),
                 'name' => trim((string) $payload['name']),
                 'version' => trim((string) ($payload['version'] ?? '')),
                 'api_key' => $this->encryptApiKey($apiKey),
@@ -80,7 +87,7 @@ class AiModelController extends Controller
                 'failover_priority' => max(1, (int) ($payload['failover_priority'] ?? 100)),
                 'daily_limit' => max(0, (int) ($payload['daily_limit'] ?? 0)),
                 'status' => 'active',
-            ]);
+            ]));
         } catch (\RuntimeException) {
             return back()->withInput()->withErrors(__('admin.ai_models.error.crypto_key_missing'));
         }
@@ -103,7 +110,7 @@ class AiModelController extends Controller
      */
     public function update(Request $request, int $modelId): RedirectResponse
     {
-        $model = AiModel::query()->whereKey($modelId)->firstOrFail();
+        $model = $this->managerModelsQuery()->whereKey($modelId)->firstOrFail();
         $payload = $this->validateModelPayload($request, true);
 
         $modelType = $this->normalizeModelType((string) ($payload['model_type'] ?? 'chat'));
@@ -151,8 +158,8 @@ class AiModelController extends Controller
      */
     public function destroy(int $modelId): RedirectResponse
     {
-        $model = AiModel::query()->whereKey($modelId)->firstOrFail();
-        $taskCount = Task::query()
+        $model = $this->managerModelsQuery()->whereKey($modelId)->firstOrFail();
+        $taskCount = Task::query()->withoutGlobalScope('current_site')
             ->where('ai_model_id', (int) $model->id)
             ->orWhere('ai_image_model_id', (int) $model->id)
             ->count();
@@ -175,7 +182,7 @@ class AiModelController extends Controller
      */
     public function testConnection(int $modelId): JsonResponse
     {
-        $model = AiModel::query()->whereKey($modelId)->firstOrFail();
+        $model = $this->managerModelsQuery()->whereKey($modelId)->firstOrFail();
         $startedAt = microtime(true);
 
         try {
@@ -258,7 +265,7 @@ class AiModelController extends Controller
         $modelId = max(0, (int) $request->input('default_embedding_model_id', 0));
 
         if ($modelId > 0) {
-            $available = AiModel::query()
+            $available = $this->managerModelsQuery()
                 ->whereKey($modelId)
                 ->activeStatus()
                 ->embeddingType()
@@ -279,9 +286,10 @@ class AiModelController extends Controller
      */
     private function loadModels(): array
     {
-        $models = AiModel::query()
+        $models = $this->managerModelsQuery()
             ->select([
                 'id',
+                'owner_admin_id',
                 'name',
                 'version',
                 'api_key',
@@ -310,7 +318,10 @@ class AiModelController extends Controller
 
         return $models->map(function (AiModel $model) use ($defaultEmbeddingModelId): array {
             $modelType = $this->normalizeModelType((string) ($model->model_type ?? 'chat'));
-            $imageTaskCount = (int) Task::query()->where('ai_image_model_id', (int) $model->id)->count();
+            $imageTaskCount = (int) Task::query()
+                ->withoutGlobalScope('current_site')
+                ->where('ai_image_model_id', (int) $model->id)
+                ->count();
 
             return [
                 'id' => (int) $model->id,
@@ -339,7 +350,7 @@ class AiModelController extends Controller
      */
     private function loadActiveEmbeddingModels(): array
     {
-        return AiModel::query()
+        return $this->managerModelsQuery()
             ->select(['id', 'name', 'model_id'])
             ->activeStatus()
             ->embeddingType()
@@ -394,7 +405,7 @@ class AiModelController extends Controller
      */
     private function getDefaultEmbeddingModelId(): int
     {
-        return (int) (SiteSetting::query()
+        return (int) ($this->managerSiteSettingsQuery()
             ->where('setting_key', 'default_embedding_model_id')
             ->value('setting_value') ?? 0);
     }
@@ -404,10 +415,40 @@ class AiModelController extends Controller
      */
     private function setDefaultEmbeddingModelId(int $modelId): void
     {
-        SiteSetting::query()->updateOrCreate(
-            ['setting_key' => 'default_embedding_model_id'],
+        SiteSetting::withoutEvents(fn (): SiteSetting => SiteSetting::query()->withoutGlobalScope('current_site')->updateOrCreate(
+            [
+                'site_id' => null,
+                'owner_admin_id' => $this->managerOwnerAdminId(),
+                'setting_key' => 'default_embedding_model_id',
+            ],
             ['setting_value' => (string) max(0, $modelId)]
-        );
+        ));
+    }
+
+    private function managerModelsQuery(): \Illuminate\Database\Eloquent\Builder
+    {
+        $query = AiModel::query()->withoutGlobalScope('current_site');
+        $admin = request()->user('admin');
+        abort_unless($admin instanceof Admin, 403);
+
+        return $this->aiConfigurationScope->applyManagerScope($query, $admin, 'ai_models.owner_admin_id');
+    }
+
+    private function managerSiteSettingsQuery(): \Illuminate\Database\Eloquent\Builder
+    {
+        $query = SiteSetting::query()->withoutGlobalScope('current_site');
+        $admin = request()->user('admin');
+        abort_unless($admin instanceof Admin, 403);
+
+        return $this->aiConfigurationScope->applyManagerScope($query, $admin, 'site_settings.owner_admin_id');
+    }
+
+    private function managerOwnerAdminId(): ?int
+    {
+        $admin = request()->user('admin');
+        abort_unless($admin instanceof Admin, 403);
+
+        return $this->aiConfigurationScope->ownerAdminIdForManager($admin);
     }
 
     /**

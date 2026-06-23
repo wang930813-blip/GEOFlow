@@ -13,6 +13,7 @@ class SiteSetting extends Model
 
     protected $fillable = [
         'site_id',
+        'owner_admin_id',
         'setting_key',
         'setting_value',
     ];
@@ -21,6 +22,7 @@ class SiteSetting extends Model
     {
         return [
             'site_id' => 'integer',
+            'owner_admin_id' => 'integer',
         ];
     }
 }

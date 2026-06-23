@@ -98,4 +98,29 @@ class AdminDashboardQuickStartTest extends TestCase
         $this->assertSame(1, substr_count($html, route('admin.image-libraries.index')));
         $this->assertSame(1, substr_count($html, route('admin.authors.index')));
     }
+
+    public function test_site_user_dashboard_hides_ai_configuration_and_shows_publish_step(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'dashboard_site_user',
+            'password' => 'secret-123',
+            'email' => 'dashboard-site-user@example.com',
+            'display_name' => 'Dashboard Site User',
+            'role' => 'site_user',
+            'status' => 'active',
+        ]);
+
+        $response = $this->actingAs($admin, 'admin')
+            ->get(route('admin.dashboard'));
+
+        $response
+            ->assertOk()
+            ->assertDontSee(route('admin.ai-models.index'), false)
+            ->assertDontSee(route('admin.ai-prompts'), false)
+            ->assertDontSee(route('admin.ai-special-prompts'), false)
+            ->assertSee(route('admin.knowledge-bases.index'), false)
+            ->assertSee(route('admin.tasks.create'), false)
+            ->assertSee(route('admin.articles.index'), false)
+            ->assertSee(route('admin.video-generations.index'), false);
+    }
 }

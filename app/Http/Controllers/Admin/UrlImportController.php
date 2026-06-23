@@ -13,6 +13,7 @@ use App\Models\UrlImportJob;
 use App\Models\UrlImportJobLog;
 use App\Services\Billing\AdminResourceQuotaService;
 use App\Services\GeoFlow\UrlImportProcessingService;
+use App\Support\AiConfigurationScope;
 use App\Support\CurrentSite;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -26,6 +27,7 @@ class UrlImportController extends Controller
     public function __construct(
         private readonly UrlImportProcessingService $urlImportProcessingService,
         private readonly AdminResourceQuotaService $quotaService,
+        private readonly AiConfigurationScope $aiConfigurationScope,
     ) {}
 
     public function index(): View
@@ -36,6 +38,7 @@ class UrlImportController extends Controller
             'stats' => $this->loadStats(),
             'aiModelReady' => $this->urlImportProcessingService->hasReadyAnalysisModel(),
             'aiModelConfigUrl' => route('admin.ai-models.index'),
+            'canManageAiConfig' => $this->canManageAiConfig(),
         ]);
     }
 
@@ -60,10 +63,13 @@ class UrlImportController extends Controller
         try {
             $this->urlImportProcessingService->assertAnalysisModelReady();
         } catch (\Throwable $exception) {
-            return redirect()
-                ->route('admin.ai-models.index')
+            $redirect = $this->canManageAiConfig()
+                ? redirect()->route('admin.ai-models.index')
+                : back();
+
+            return $redirect
                 ->withInput()
-                ->withErrors(['ai_model' => $exception->getMessage()]);
+                ->withErrors(['ai_model' => $this->aiModelMissingMessage($exception)]);
         }
         $siteId = (int) (app(CurrentSite::class)->id() ?? 0);
         $admin = Auth::guard('admin')->user();
@@ -199,6 +205,7 @@ class UrlImportController extends Controller
             'job' => $job,
             'result' => $this->decodeJson((string) $job->result_json),
             'logs' => $job->logs,
+            'canManageAiConfig' => $this->canManageAiConfig(),
         ]);
     }
 
@@ -279,6 +286,22 @@ class UrlImportController extends Controller
         }
 
         return (int) $admin->id;
+    }
+
+    private function canManageAiConfig(): bool
+    {
+        $admin = Auth::guard('admin')->user();
+
+        return $admin instanceof Admin && $this->aiConfigurationScope->canManage($admin);
+    }
+
+    private function aiModelMissingMessage(\Throwable $exception): string
+    {
+        if ($this->canManageAiConfig()) {
+            return $exception->getMessage();
+        }
+
+        return __('admin.url_import.error.ai_config_contact_admin');
     }
 
     /**

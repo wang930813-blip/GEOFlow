@@ -18,6 +18,7 @@ use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Services\GeoFlow\TaskLifecycleService;
 use App\Services\GeoFlow\TaskMonitoringQueryService;
 use App\Support\AdminWeb;
+use App\Support\AiConfigurationScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -41,6 +42,7 @@ class TaskController extends Controller
         private readonly TaskLifecycleService $taskLifecycleService,
         private readonly TaskMonitoringQueryService $taskMonitoringQueryService,
         private readonly DistributionOrchestrator $distributionOrchestrator,
+        private readonly AiConfigurationScope $aiConfigurationScope,
     ) {}
 
     /**
@@ -487,7 +489,14 @@ class TaskController extends Controller
             ])
             ->all();
 
-        $prompts = Prompt::query()
+        $admin = request()->user('admin');
+        abort_unless($admin instanceof Admin, 403);
+
+        $prompts = $this->aiConfigurationScope->applyConsumerScope(
+            Prompt::query()->withoutGlobalScope('current_site'),
+            $admin,
+            'prompts.owner_admin_id'
+        )
             ->select(['id', 'name'])
             ->where('type', 'content')
             ->orderByDesc('id')
@@ -495,7 +504,11 @@ class TaskController extends Controller
             ->map(static fn (Prompt $row): array => ['id' => (int) $row->id, 'name' => (string) $row->name])
             ->all();
 
-        $aiModels = AiModel::query()
+        $aiModels = $this->aiConfigurationScope->applyConsumerScope(
+            AiModel::query()->withoutGlobalScope('current_site'),
+            $admin,
+            'ai_models.owner_admin_id'
+        )
             ->select(['id', 'name'])
             ->where('status', 'active')
             ->where(function ($query): void {
@@ -509,7 +522,11 @@ class TaskController extends Controller
             ->map(static fn (AiModel $row): array => ['id' => (int) $row->id, 'name' => (string) $row->name])
             ->all();
 
-        $aiImageModels = AiModel::query()
+        $aiImageModels = $this->aiConfigurationScope->applyConsumerScope(
+            AiModel::query()->withoutGlobalScope('current_site'),
+            $admin,
+            'ai_models.owner_admin_id'
+        )
             ->select(['id', 'name'])
             ->where('status', 'active')
             ->where('model_type', 'image')

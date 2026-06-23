@@ -12,6 +12,7 @@ use App\Models\Title;
 use App\Models\TitleLibrary;
 use App\Models\UrlImportJob;
 use App\Models\UrlImportJobLog;
+use App\Support\AiConfigurationScope;
 use App\Support\CurrentSite;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
@@ -27,7 +28,10 @@ final class UrlImportProcessingService
 {
     private const AI_ANALYSIS_MAX_ATTEMPTS = 3;
 
-    public function __construct(private readonly ApiKeyCrypto $apiKeyCrypto) {}
+    public function __construct(
+        private readonly ApiKeyCrypto $apiKeyCrypto,
+        private readonly AiConfigurationScope $aiConfigurationScope
+    ) {}
 
     /**
      * @return array{url:string,host:string}
@@ -62,7 +66,7 @@ final class UrlImportProcessingService
     public function assertAnalysisModelReady(): AiModel
     {
         $lastException = null;
-        foreach ($this->resolveAnalysisModels() as $model) {
+        foreach ($this->resolveAnalysisModels(null, $this->aiConfigurationScope->currentOwnerAdminIdForConsumer()) as $model) {
             try {
                 $this->prepareAiRuntime($model);
 
@@ -82,9 +86,9 @@ final class UrlImportProcessingService
     /**
      * @return Collection<int, AiModel>
      */
-    private function assertAnalysisModelsReady(?int $siteId = null): Collection
+    private function assertAnalysisModelsReady(?int $siteId = null, ?int $ownerAdminId = null): Collection
     {
-        $models = $this->resolveAnalysisModels($siteId);
+        $models = $this->resolveAnalysisModels($siteId, $ownerAdminId);
         if ($models->isEmpty()) {
             throw new \RuntimeException(__('admin.url_import.error.ai_model_required'));
         }
@@ -438,7 +442,10 @@ final class UrlImportProcessingService
         $libraryName = $this->safeName($title !== '' ? $title : (string) $job->source_domain);
         $pageJson = $this->buildPageJson($parsed, $job);
 
-        $models = $this->assertAnalysisModelsReady((int) ($job->site_id ?? 0) ?: null);
+        $models = $this->assertAnalysisModelsReady(
+            (int) ($job->site_id ?? 0) ?: null,
+            $this->aiConfigOwnerIdForAdminId((int) ($job->owner_admin_id ?? 0))
+        );
         $errors = [];
 
         foreach ($models as $model) {
@@ -556,12 +563,17 @@ final class UrlImportProcessingService
     /**
      * @return Collection<int, AiModel>
      */
-    private function resolveAnalysisModels(?int $siteId = null): Collection
+    private function resolveAnalysisModels(?int $siteId = null, ?int $ownerAdminId = null): Collection
     {
         $siteId ??= app(CurrentSite::class)->id();
 
-        return AiModel::query()
-            ->withoutGlobalScope('current_site')
+        $query = $this->aiConfigurationScope->applyOwnerIdScope(
+            AiModel::query()->withoutGlobalScope('current_site'),
+            $ownerAdminId,
+            'ai_models.owner_admin_id'
+        );
+
+        return $query
             ->when($siteId !== null && $siteId > 0, function ($query) use ($siteId): void {
                 $query->where(function ($siteQuery) use ($siteId): void {
                     $siteQuery->where('site_id', $siteId)
@@ -585,6 +597,17 @@ final class UrlImportProcessingService
             ->orderBy('failover_priority')
             ->orderBy('id')
             ->get();
+    }
+
+    private function aiConfigOwnerIdForAdminId(int $adminId): ?int
+    {
+        if ($adminId <= 0) {
+            return null;
+        }
+
+        $admin = \App\Models\Admin::query()->whereKey($adminId)->first(['id', 'role', 'created_by']);
+
+        return $admin instanceof \App\Models\Admin ? $this->aiConfigurationScope->ownerAdminIdForConsumer($admin) : null;
     }
 
     /**
@@ -904,7 +927,10 @@ PROMPT;
 
     private function latestPromptContent(string $type): string
     {
-        return (string) (Prompt::query()
+        return (string) ($this->aiConfigurationScope->applyCurrentConsumerScope(
+            Prompt::query()->withoutGlobalScope('current_site'),
+            'prompts.owner_admin_id'
+        )
             ->where('type', $type)
             ->orderByDesc('updated_at')
             ->orderByDesc('id')

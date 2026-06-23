@@ -47,8 +47,9 @@ class AdminMaterialsPagesTest extends TestCase
 
     private function createReadyUrlImportAiModel(string $apiUrl = 'https://ai.test/v1', ?Site $site = null): AiModel
     {
-        return AiModel::query()->create([
-            'site_id' => $site?->id,
+        return AiModel::withoutEvents(fn (): AiModel => AiModel::query()->withoutGlobalScope('current_site')->create([
+            'site_id' => null,
+            'owner_admin_id' => null,
             'name' => 'URL Import AI Model',
             'version' => '',
             'api_key' => app(ApiKeyCrypto::class)->encrypt('test-key'),
@@ -60,7 +61,7 @@ class AdminMaterialsPagesTest extends TestCase
             'used_today' => 0,
             'total_used' => 0,
             'status' => 'active',
-        ]);
+        ]));
     }
 
     private function createSiteForAdmin(Admin $admin, bool $openPlan = false): Site
@@ -503,7 +504,7 @@ class AdminMaterialsPagesTest extends TestCase
                 'url' => 'example.test/report',
                 'outputs' => ['knowledge', 'keywords', 'titles'],
             ])
-            ->assertRedirect(route('admin.ai-models.index'))
+            ->assertRedirect()
             ->assertSessionHasErrors('ai_model');
 
         $this->assertDatabaseCount('url_import_jobs', 0);
@@ -791,8 +792,9 @@ class AdminMaterialsPagesTest extends TestCase
             'status' => 'active',
         ]);
         $site = $this->createSiteForAdmin($admin, true);
-        AiModel::query()->create([
-            'site_id' => (int) $site->id,
+        AiModel::withoutEvents(fn (): AiModel => AiModel::query()->withoutGlobalScope('current_site')->create([
+            'site_id' => null,
+            'owner_admin_id' => null,
             'name' => 'AI Test Model',
             'version' => '',
             'api_key' => app(ApiKeyCrypto::class)->encrypt('test-key'),
@@ -804,7 +806,7 @@ class AdminMaterialsPagesTest extends TestCase
             'used_today' => 0,
             'total_used' => 0,
             'status' => 'active',
-        ]);
+        ]));
 
         $this->actingAs($admin, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
@@ -991,8 +993,9 @@ class AdminMaterialsPagesTest extends TestCase
         ]);
         $site = $this->createSiteForAdmin($admin, true);
 
-        AiModel::query()->create([
-            'site_id' => (int) $site->id,
+        AiModel::withoutEvents(fn (): AiModel => AiModel::query()->withoutGlobalScope('current_site')->create([
+            'site_id' => null,
+            'owner_admin_id' => null,
             'name' => 'Bad Model',
             'version' => '',
             'api_key' => app(ApiKeyCrypto::class)->encrypt('bad-key'),
@@ -1004,7 +1007,7 @@ class AdminMaterialsPagesTest extends TestCase
             'used_today' => 0,
             'total_used' => 0,
             'status' => 'active',
-        ]);
+        ]));
         $this->createReadyUrlImportAiModel('https://ai.test/v1', $site);
 
         $this->actingAs($admin, 'admin')
