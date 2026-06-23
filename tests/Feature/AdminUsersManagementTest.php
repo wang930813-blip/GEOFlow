@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Admin;
+use App\Models\Prompt;
 use App\Models\Site;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
@@ -170,6 +171,45 @@ class AdminUsersManagementTest extends TestCase
         $this->assertSame((int) $superAdmin->id, (int) $direct->created_by);
     }
 
+    public function test_creating_agent_admin_copies_four_default_content_prompts_to_agent_scope(): void
+    {
+        $superAdmin = $this->createAdmin('prompt_agent_root', 'super_admin');
+        Prompt::withoutEvents(fn (): Prompt => Prompt::query()->withoutGlobalScope('current_site')->create([
+            'site_id' => null,
+            'owner_admin_id' => null,
+            'name' => '平台新增正文提示词',
+            'type' => 'content',
+            'content' => 'This custom platform prompt must not be copied to agents by default.',
+            'variables' => '',
+        ]));
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.admin-users.store'), [
+                'username' => 'prompt_agent_owner',
+                'display_name' => 'Prompt Agent Owner',
+                'email' => 'prompt-agent-owner@example.com',
+                'role' => 'agent_admin',
+                'password' => 'secret-123',
+                'confirm_password' => 'secret-123',
+            ])
+            ->assertRedirect(route('admin.admin-users.index'));
+
+        $agent = Admin::query()->where('username', 'prompt_agent_owner')->firstOrFail();
+        $promptNames = Prompt::query()
+            ->withoutGlobalScope('current_site')
+            ->where('owner_admin_id', (int) $agent->id)
+            ->whereNull('site_id')
+            ->where('type', 'content')
+            ->orderBy('name')
+            ->pluck('name')
+            ->all();
+
+        $this->assertSame(
+            collect($this->defaultContentPromptNames())->sort()->values()->all(),
+            $promptNames
+        );
+    }
+
     private function createAdmin(string $username, string $role, ?Admin $creator = null): Admin
     {
         return Admin::query()->create([
@@ -181,5 +221,18 @@ class AdminUsersManagementTest extends TestCase
             'status' => 'active',
             'created_by' => $creator?->id,
         ]);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function defaultContentPromptNames(): array
+    {
+        return [
+            'GEO Marketing · Trust-Based Article Generation (English)',
+            'GEO Ranking-Style Article Generation (English)',
+            'GEO营销学·信任型正文生成',
+            'GEO榜单型正文生成',
+        ];
     }
 }

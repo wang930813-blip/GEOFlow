@@ -496,7 +496,7 @@ class TaskLifecycleService
                 $exists = $this->aiConfigurationScope->applyCurrentConsumerScope(
                     Prompt::query()->withoutGlobalScope('current_site'),
                     'prompts.owner_admin_id'
-                )->whereKey($id)->where('type', 'content')->exists();
+                )->whereKey($id)->where('type', 'content')->whereNull('site_id')->exists();
             } elseif (! empty($config['ai_active_chat'])) {
                 $exists = $this->aiConfigurationScope->applyCurrentConsumerScope(
                     AiModel::query()->withoutGlobalScope('current_site'),

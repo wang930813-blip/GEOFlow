@@ -122,6 +122,7 @@ class AiPromptController extends Controller
         return $this->managerPromptsQuery()
             ->select(['id', 'name', 'type', 'content', 'created_at'])
             ->where('type', 'content')
+            ->whereNull('site_id')
             ->withCount('tasks')
             ->orderByDesc('created_at')
             ->get()
@@ -139,7 +140,7 @@ class AiPromptController extends Controller
 
     private function managerPromptsQuery(): \Illuminate\Database\Eloquent\Builder
     {
-        $query = Prompt::query()->withoutGlobalScope('current_site');
+        $query = Prompt::query()->withoutGlobalScope('current_site')->whereNull('site_id');
         $admin = request()->user('admin');
         abort_unless($admin instanceof Admin, 403);
 

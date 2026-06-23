@@ -7,17 +7,14 @@ use Illuminate\Support\Facades\Schema;
 
 class SiteDefaultContentPromptService
 {
+    public function __construct(private readonly DefaultContentPromptService $defaultContentPromptService) {}
+
     /**
      * @return list<string>
      */
     public function defaultNames(): array
     {
-        return [
-            'GEO Marketing · Trust-Based Article Generation (English)',
-            'GEO Ranking-Style Article Generation (English)',
-            'GEO营销学·信任型正文生成',
-            'GEO榜单型正文生成',
-        ];
+        return $this->defaultContentPromptService->defaultNames();
     }
 
     public function ensureForSiteId(int $siteId): void

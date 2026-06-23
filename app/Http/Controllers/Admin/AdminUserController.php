@@ -10,6 +10,7 @@ use App\Models\Site;
 use App\Models\SitePlanSubscription;
 use App\Services\Billing\AdminPlanSubscriptionService;
 use App\Services\Billing\PlanSubscriptionService;
+use App\Services\DefaultContentPromptService;
 use App\Support\AdminWeb;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
@@ -33,7 +34,8 @@ class AdminUserController extends Controller
 {
     public function __construct(
         private readonly PlanSubscriptionService $subscriptionService,
-        private readonly AdminPlanSubscriptionService $adminSubscriptionService
+        private readonly AdminPlanSubscriptionService $adminSubscriptionService,
+        private readonly DefaultContentPromptService $defaultContentPromptService
     ) {}
 
     /**
@@ -211,6 +213,8 @@ class AdminUserController extends Controller
                 ]);
 
                 if (! $shouldOpenSubscription) {
+                    $this->defaultContentPromptService->ensureForAgent($admin);
+
                     return;
                 }
 
@@ -237,6 +241,7 @@ class AdminUserController extends Controller
                         endsAt: $endsAt,
                         remark: (string) ($payload['subscription_remark'] ?? '')
                     );
+                    $this->defaultContentPromptService->ensureForAgent($admin);
 
                     return;
                 }

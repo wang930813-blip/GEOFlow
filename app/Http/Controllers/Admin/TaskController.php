@@ -499,6 +499,7 @@ class TaskController extends Controller
         )
             ->select(['id', 'name'])
             ->where('type', 'content')
+            ->whereNull('site_id')
             ->orderByDesc('id')
             ->get()
             ->map(static fn (Prompt $row): array => ['id' => (int) $row->id, 'name' => (string) $row->name])

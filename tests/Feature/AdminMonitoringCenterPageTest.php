@@ -24,6 +24,8 @@ class AdminMonitoringCenterPageTest extends TestCase
             ->assertSee('行业竞争力分析报表')
             ->assertSee('href="'.route('admin.monitoring-center.index', ['report' => 'industry']).'"', false)
             ->assertSee('/assets/monitoring-center/assets/backgrounds/enterprise-space-bg.png', false)
+            ->assertSee('/assets/monitoring-center/assets/ai-platforms/deepseek.png', false)
+            ->assertDontSee('"assets/ai-platforms/deepseek.png"', false)
             ->assertDontSee('鐩戞祴涓', false)
             ->assertDontSee('admin-topbar', false);
     }

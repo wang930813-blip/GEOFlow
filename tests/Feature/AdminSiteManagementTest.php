@@ -248,21 +248,13 @@ class AdminSiteManagementTest extends TestCase
         $this->assertNull($otherSite->deleted_at);
     }
 
-    public function test_super_admin_can_create_site_with_domain_members_and_default_content_prompts(): void
+    public function test_super_admin_can_create_site_with_domain_members_without_site_level_prompt_copies(): void
     {
         $this->withoutMiddleware(ValidateCsrfToken::class);
 
         $superAdmin = $this->createAdmin('platform_creator', 'super_admin');
         $owner = $this->createAdmin('client_owner', 'admin');
         $member = $this->createAdmin('client_editor', 'admin');
-        $defaultPromptNames = Prompt::withoutGlobalScope('current_site')
-            ->whereNull('site_id')
-            ->where('type', 'content')
-            ->pluck('name')
-            ->all();
-
-        $this->assertCount(4, $defaultPromptNames);
-
         $this->actingAs($superAdmin, 'admin')
             ->post(route('admin.sites.manage.store'), [
                 'name' => 'Client A Site',
@@ -291,11 +283,9 @@ class AdminSiteManagementTest extends TestCase
         $createdPrompts = Prompt::withoutGlobalScope('current_site')
             ->where('site_id', $site->id)
             ->where('type', 'content')
-            ->whereIn('name', $defaultPromptNames)
-            ->pluck('name')
-            ->all();
+            ->count();
 
-        $this->assertEqualsCanonicalizing($defaultPromptNames, $createdPrompts);
+        $this->assertSame(0, $createdPrompts);
     }
 
     public function test_super_admin_can_update_site_and_toggle_status(): void

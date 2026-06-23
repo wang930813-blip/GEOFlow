@@ -47,6 +47,7 @@ class CatalogGeoFlowService
             'prompts.owner_admin_id'
         )
             ->where('type', 'content')
+            ->whereNull('site_id')
             ->orderBy('name')
             ->get(['id', 'name', 'type'])
             ->map(fn (Prompt $p) => $p->getAttributes())
