@@ -199,7 +199,7 @@ class KeywordLibraryController extends Controller
 
     public function bulkStoreKeywords(Request $request, int $libraryId): RedirectResponse
     {
-        KeywordLibrary::query()->whereKey($libraryId)->firstOrFail();
+        $library = KeywordLibrary::query()->whereKey($libraryId)->firstOrFail();
 
         $payload = $request->validate([
             'keywords' => ['required', 'array', 'min:1'],
