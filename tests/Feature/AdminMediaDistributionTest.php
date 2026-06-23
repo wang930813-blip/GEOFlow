@@ -1889,6 +1889,11 @@ class AdminMediaDistributionTest extends TestCase
             ->assertSee('100家特价媒体套餐')
             ->assertSee('100家媒体')
             ->assertSee('docs 文档链接')
+            ->assertSee('查看媒体名单')
+            ->assertSee('100家特价媒体套餐媒体名单')
+            ->assertSee('排名不分先后')
+            ->assertSee('健康网资讯')
+            ->assertSee('财经金融网')
             ->assertSee(route('admin.media-distribution.submissions.index', ['media_resource_id' => (int) $package->id]), false)
             ->assertSee('name="media_resource_ids[]"', false)
             ->assertSee('value="'.(int) $package->id.'"', false);

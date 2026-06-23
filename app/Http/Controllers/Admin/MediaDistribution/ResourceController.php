@@ -79,6 +79,7 @@ class ResourceController extends Controller
             'adminSiteName' => AdminWeb::siteName(),
             'resources' => $query->paginate(20)->withQueryString(),
             'packageResource' => $this->packageResource(),
+            'packageMediaNames' => $this->packageMediaNames(),
             'sites' => (bool) auth('admin')->user()?->isSuperAdmin()
                 ? Site::query()->orderBy('id')->get(['id', 'name'])
                 : collect(),
@@ -282,5 +283,21 @@ class ResourceController extends Controller
             ->where('status', 'active')
             ->orderByDesc('id')
             ->first();
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function packageMediaNames(): array
+    {
+        $names = config('media_distribution.package.media_names', []);
+        if (! is_array($names)) {
+            return [];
+        }
+
+        return array_values(array_filter(array_map(
+            static fn ($name): string => trim((string) $name),
+            $names
+        )));
     }
 }

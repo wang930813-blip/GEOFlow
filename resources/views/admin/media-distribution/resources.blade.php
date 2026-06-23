@@ -122,6 +122,12 @@
                                 {{ $packageResource->remarks }}
                             @endif
                         </p>
+                        @if (! empty($packageMediaNames))
+                            <button type="button" class="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-orange-700 hover:text-orange-800" data-open-media-package-modal="media-package-list-modal">
+                                <i data-lucide="list-checks" class="h-4 w-4"></i>
+                                查看媒体名单
+                            </button>
+                        @endif
                     </div>
                     <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
                         <div class="rounded-md bg-white px-4 py-2 text-sm text-slate-600 ring-1 ring-orange-100">
@@ -134,6 +140,30 @@
                     </div>
                 </div>
             </section>
+            @if (! empty($packageMediaNames))
+                <div id="media-package-list-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 px-4 py-6" data-media-package-modal>
+                    <div class="flex max-h-[85vh] w-full max-w-5xl flex-col overflow-hidden rounded-lg bg-white text-left shadow-xl">
+                        <div class="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
+                            <div>
+                                <h2 class="text-lg font-semibold text-gray-900">100家特价媒体套餐媒体名单</h2>
+                                <p class="mt-1 text-sm text-gray-500">以下媒体排名不分先后，发布成功后的媒体发布链接为{{ $packageResource->packagePublishedUrlType() }}。</p>
+                            </div>
+                            <button type="button" class="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600" data-close-media-package-modal>
+                                <i data-lucide="x" class="h-5 w-5"></i>
+                            </button>
+                        </div>
+                        <div class="overflow-y-auto px-6 py-5">
+                            <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                                @foreach ($packageMediaNames as $mediaName)
+                                    <div class="truncate rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700" title="{{ $mediaName }}">
+                                        {{ $mediaName }}
+                                    </div>
+                                @endforeach
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            @endif
         @endif
 
         <form method="GET" action="{{ route('admin.media-distribution.resources.index') }}" class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
@@ -342,10 +372,20 @@
                 return;
             }
 
+            const openPackageButton = event.target.closest('[data-open-media-package-modal]');
+            if (openPackageButton) {
+                const modal = document.getElementById(openPackageButton.getAttribute('data-open-media-package-modal'));
+                modal?.classList.remove('hidden');
+                modal?.classList.add('flex');
+                return;
+            }
+
             const closeButton = event.target.closest('[data-close-price-modal]');
+            const closePackageButton = event.target.closest('[data-close-media-package-modal]');
             const clickedBackdrop = event.target.matches('[data-price-modal]');
-            if (closeButton || clickedBackdrop) {
-                const modal = event.target.closest('[data-price-modal]') || event.target;
+            const clickedPackageBackdrop = event.target.matches('[data-media-package-modal]');
+            if (closeButton || closePackageButton || clickedBackdrop || clickedPackageBackdrop) {
+                const modal = event.target.closest('[data-price-modal], [data-media-package-modal]') || event.target;
                 modal?.classList.add('hidden');
                 modal?.classList.remove('flex');
             }
@@ -356,6 +396,10 @@
                 return;
             }
             document.querySelectorAll('[data-price-modal]').forEach(function (modal) {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            });
+            document.querySelectorAll('[data-media-package-modal]').forEach(function (modal) {
                 modal.classList.add('hidden');
                 modal.classList.remove('flex');
             });
