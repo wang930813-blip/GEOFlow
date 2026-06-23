@@ -419,10 +419,17 @@ class PlatformPlanManagementTest extends TestCase
             ->get(route('admin.plan-usages.index'))
             ->assertOk()
             ->assertSee('usage_agent_user')
-            ->assertSee('usage_agent')
             ->assertSee('代理使用情况站点')
             ->assertDontSee('API Token 数量')
             ->assertDontSee('usage_direct');
+
+        $agentResponse = $this->actingAs($agent, 'admin')
+            ->get(route('admin.plan-usages.index'));
+
+        $agentResponse->assertOk();
+        $agentHtml = $agentResponse->getContent();
+        $this->assertSame(1, substr_count($agentHtml, 'data-plan-usage-row'));
+        $this->assertStringNotContainsString('<span class="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs text-slate-600">usage_agent</span>', $agentHtml);
 
         $this->actingAs($superAdmin, 'admin')
             ->get(route('admin.plan-usages.index'))
@@ -431,6 +438,35 @@ class PlatformPlanManagementTest extends TestCase
             ->assertSee('usage_direct')
             ->assertSee('已用 2 / 5')
             ->assertDontSee('API Token 数量');
+    }
+
+    public function test_agent_profile_shows_own_plan_version_but_usage_rows_exclude_agent_subscription(): void
+    {
+        $superAdmin = $this->admin('profile_plan_root', 'super_admin');
+        $agent = $this->admin('profile_plan_agent', 'agent_admin');
+        $agentUser = $this->admin('profile_plan_user', 'site_user', $agent);
+        $site = $this->site('代理个人中心用户站点', $agentUser, 'agent');
+        $site->forceFill(['agent_admin_id' => (int) $agent->id])->save();
+
+        $plan = $this->plan('代理当前版本套餐', [
+            PlatformPlan::RESOURCE_BRAND_DIAGNOSES => 5,
+        ]);
+
+        $subscriptionService = app(AdminPlanSubscriptionService::class);
+        $subscriptionService->openAgentOwner($agent, $plan, $superAdmin, now()->subMinute(), now()->addDays(30));
+        $subscriptionService->inheritForAgentUserFromAccount($agent, $agentUser, $site, $superAdmin);
+
+        $response = $this->actingAs($agent, 'admin')
+            ->get(route('admin.profile.index'));
+
+        $response
+            ->assertOk()
+            ->assertSee('当前规格')
+            ->assertSee('代理当前版本套餐')
+            ->assertSee('profile_plan_user');
+
+        $html = $response->getContent();
+        $this->assertStringNotContainsString('<span class="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs text-slate-600">profile_plan_agent</span>', $html);
     }
 
     public function test_plan_usage_hides_team_member_resource_for_direct_owner_and_agent_user_rows(): void

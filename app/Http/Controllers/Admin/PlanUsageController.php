@@ -67,10 +67,12 @@ class PlanUsageController extends Controller
 
         if ($admin->isAgentAdmin()) {
             return $query
+                ->where('admin_id', '!=', (int) $admin->id)
                 ->where(function (Builder $query) use ($admin): void {
-                    $query->where('admin_id', (int) $admin->id)
-                        ->orWhere('inherited_from_admin_id', (int) $admin->id)
-                        ->orWhereHas('admin', fn (Builder $adminQuery) => $adminQuery->where('created_by', (int) $admin->id));
+                    $query->where('inherited_from_admin_id', (int) $admin->id)
+                        ->orWhereHas('admin', fn (Builder $adminQuery) => $adminQuery
+                            ->where('created_by', (int) $admin->id)
+                            ->where('role', 'site_user'));
                 });
         }
 

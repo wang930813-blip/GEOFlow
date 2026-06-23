@@ -146,10 +146,14 @@
                                     {{ ['agent' => '代理', 'direct' => '直客', 'internal' => '内部'][$site->customer_mode ?? 'internal'] ?? $site->customer_mode }}
                                 </td>
                                 <td class="px-5 py-4 align-top text-sm text-gray-600">
-                                    @php($latestSubscription = $site->planSubscriptions->first())
-                                    @if ($latestSubscription)
-                                        <div>{{ $latestSubscription->plan?->name ?? '规格已删除' }}</div>
-                                        <div class="mt-1 text-xs text-gray-400">{{ $latestSubscription->ends_at?->format('Y-m-d') ?? '-' }} 到期</div>
+                                    @php
+                                        $latestSubscription = $site->planSubscriptions->first();
+                                        $accountSubscription = ($accountPlanSubscriptionsBySite ?? collect())->get((int) $site->owner_admin_id.':'.(int) $site->id);
+                                        $displaySubscription = $latestSubscription ?: $accountSubscription;
+                                    @endphp
+                                    @if ($displaySubscription)
+                                        <div>{{ $displaySubscription->plan?->name ?? '规格已删除' }}</div>
+                                        <div class="mt-1 text-xs text-gray-400">{{ $displaySubscription->ends_at?->format('Y-m-d') ?? '-' }} 到期</div>
                                     @else
                                         <span class="text-gray-400">未开通</span>
                                     @endif

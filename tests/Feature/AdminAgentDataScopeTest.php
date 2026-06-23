@@ -65,6 +65,8 @@ class AdminAgentDataScopeTest extends TestCase
             ->get(route('admin.b2b-websites.index'))
             ->assertOk()
             ->assertSee('B2B')
+            ->assertSee('仅查看')
+            ->assertDontSee('鏌ョ湅')
             ->assertDontSee('admin.b2b-websites.open');
 
         $this->actingAs($scenario['agent'], 'admin')

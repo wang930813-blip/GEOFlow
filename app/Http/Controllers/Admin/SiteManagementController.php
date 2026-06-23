@@ -11,6 +11,7 @@ use App\Support\AdminWeb;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -41,6 +42,7 @@ class SiteManagementController extends Controller
             'adminSiteName' => AdminWeb::siteName(),
             'sites' => $sites,
             'admins' => $admins,
+            'accountPlanSubscriptionsBySite' => $this->accountPlanSubscriptionsBySite($sites),
             'isAgentSiteManager' => $isAgentSiteManager,
             'isSuperSiteManager' => $admin->isSuperAdmin(),
         ]);
@@ -282,5 +284,30 @@ class SiteManagementController extends Controller
             ->when($admin->isSuperAdmin(), fn ($query) => $query
                 ->orderByRaw("CASE WHEN LOWER(COALESCE(role, '')) IN ('super_admin', 'superadmin') THEN 0 ELSE 1 END"))
             ->orderBy('username');
+    }
+
+    /**
+     * @param  Collection<int,Site>  $sites
+     * @return Collection<string,AdminPlanSubscription>
+     */
+    private function accountPlanSubscriptionsBySite(Collection $sites): Collection
+    {
+        $siteIds = $sites->pluck('id')->map(fn ($id): int => (int) $id)->filter()->unique()->values();
+        $ownerIds = $sites->pluck('owner_admin_id')->map(fn ($id): int => (int) $id)->filter()->unique()->values();
+
+        if ($siteIds->isEmpty() || $ownerIds->isEmpty()) {
+            return collect();
+        }
+
+        return AdminPlanSubscription::query()
+            ->with('plan:id,name,code')
+            ->whereIn('site_id', $siteIds)
+            ->whereIn('admin_id', $ownerIds)
+            ->activeNow()
+            ->orderByDesc('ends_at')
+            ->orderByDesc('id')
+            ->get()
+            ->unique(fn (AdminPlanSubscription $subscription): string => (int) $subscription->admin_id.':'.(int) $subscription->site_id)
+            ->keyBy(fn (AdminPlanSubscription $subscription): string => (int) $subscription->admin_id.':'.(int) $subscription->site_id);
     }
 }

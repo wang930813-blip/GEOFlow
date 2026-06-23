@@ -3,8 +3,10 @@
 namespace Tests\Feature;
 
 use App\Models\Admin;
+use App\Models\PlatformPlan;
 use App\Models\Prompt;
 use App\Models\Site;
+use App\Services\Billing\AdminPlanSubscriptionService;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -151,6 +153,56 @@ class AdminSiteManagementTest extends TestCase
         $this->assertDatabaseMissing('sites', [
             'name' => 'Ownerless Agent Site',
         ]);
+    }
+
+    public function test_agent_site_management_shows_inherited_user_account_plan(): void
+    {
+        $agent = $this->createAdmin('site_plan_agent_owner', 'agent_admin');
+        $member = $this->createAdmin('site_plan_member', 'site_user', $agent);
+        $plan = PlatformPlan::query()->create([
+            'name' => '代理继承规格',
+            'code' => 'agent-inherited-site-plan-'.str()->random(6),
+            'audience' => 'agent',
+            'duration_days' => 30,
+            'status' => 'active',
+            'sort_order' => 0,
+        ]);
+        $plan->entitlements()->create([
+            'resource_key' => PlatformPlan::RESOURCE_BRAND_DIAGNOSES,
+            'enabled' => true,
+            'quota_value' => 3,
+            'quota_period' => 'cycle',
+            'unit' => 'times',
+            'meta' => [],
+        ]);
+
+        app(AdminPlanSubscriptionService::class)->openAgentOwner(
+            agent: $agent,
+            plan: $plan,
+            operator: $agent,
+            startsAt: now()->subMinute(),
+            endsAt: now()->addDays(30)
+        );
+
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $member->id,
+            'name' => '代理用户独立官网',
+            'domain' => 'agent-member-site.geo.xinzhidi.cn',
+            'status' => 'active',
+            'customer_mode' => 'agent',
+            'agent_admin_id' => (int) $agent->id,
+        ]);
+        $site->members()->attach((int) $member->id, ['role' => 'owner']);
+        app(AdminPlanSubscriptionService::class)->inheritForAgentUserFromAccount($agent, $member, $site, $agent);
+
+        $response = $this->actingAs($agent, 'admin')
+            ->get(route('admin.sites.manage.index'));
+
+        $response
+            ->assertOk()
+            ->assertSee('代理用户独立官网')
+            ->assertSee('代理继承规格')
+            ->assertDontSee('未开通');
     }
 
     public function test_agent_admin_cannot_update_toggle_or_delete_other_sites(): void

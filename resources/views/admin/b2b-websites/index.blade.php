@@ -49,7 +49,7 @@
                             </form>
                         @else
                             <button type="button" class="inline-flex w-full items-center justify-center rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-medium text-gray-500" disabled>
-                                鏌ョ湅
+                                仅查看
                             </button>
                         @endif
                     </div>

@@ -71,11 +71,13 @@ class ProfileController extends Controller
         }
 
         if ($admin->isAgentAdmin()) {
+            $ownSubscription = $this->agentOwnSubscription($admin);
+
             return [
+                ['label' => '当前规格', 'value' => $ownSubscription?->plan?->name ?? '未开通', 'desc' => '代理账号当前版本'],
                 ['label' => '下级用户', 'value' => Admin::query()->where('created_by', (int) $admin->id)->where('role', 'site_user')->count(), 'desc' => '当前代理名下会员'],
                 ['label' => '有效套餐', 'value' => $this->agentSubscriptionQuery($admin)->activeNow()->count(), 'desc' => '下级用户有效规格'],
                 ['label' => '开通站点', 'value' => Site::query()->where('agent_admin_id', (int) $admin->id)->count(), 'desc' => '已关联代理的客户站点'],
-                ['label' => '账号定位', 'value' => '开户管理', 'desc' => '代理不消耗业务规格'],
             ];
         }
 
@@ -206,12 +208,26 @@ class ProfileController extends Controller
     private function agentSubscriptionQuery(Admin $admin): Builder
     {
         return AdminPlanSubscription::query()
+            ->where('admin_id', '!=', (int) $admin->id)
             ->where(function (Builder $query) use ($admin): void {
                 $query->whereHas('admin', fn (Builder $adminQuery) => $adminQuery
                     ->where('created_by', (int) $admin->id)
                     ->where('role', 'site_user'))
                     ->orWhere('inherited_from_admin_id', (int) $admin->id);
             });
+    }
+
+    private function agentOwnSubscription(Admin $admin): ?AdminPlanSubscription
+    {
+        return AdminPlanSubscription::query()
+            ->with('plan:id,name,code')
+            ->where('admin_id', (int) $admin->id)
+            ->where('mode', 'agent_owner')
+            ->activeNow()
+            ->orderByRaw('CASE WHEN site_id IS NULL THEN 0 ELSE 1 END')
+            ->orderByDesc('ends_at')
+            ->orderByDesc('id')
+            ->first();
     }
 
     private function ownSubscriptionQuery(Admin $admin): Builder
