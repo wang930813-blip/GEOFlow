@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\AiModel;
+use App\Models\Admin;
 use App\Models\Author;
 use App\Models\Category;
 use App\Models\DistributionChannel;
@@ -45,10 +46,13 @@ class TaskController extends Controller
     /**
      * 任务管理首页：渲染列表与运行面板。
      */
-    public function index(): View
+    public function index(Request $request): View
     {
+        $admin = $request->user('admin');
+        abort_unless($admin instanceof Admin, 403);
+
         try {
-            $overview = $this->taskMonitoringQueryService->buildAdminOverview();
+            $overview = $this->taskMonitoringQueryService->buildAdminOverview($admin);
             $tasks = $overview['tasks'];
             $workers = $overview['worker_overview'];
             $queueStats = $overview['queue_overview'];
@@ -81,6 +85,8 @@ class TaskController extends Controller
      */
     public function toggleStatus(Request $request, int $taskId): RedirectResponse
     {
+        $this->abortIfAgentAdmin($request);
+
         if ($taskId <= 0) {
             return back()->withErrors(__('admin.tasks.message.status_update_failed'));
         }
@@ -104,8 +110,10 @@ class TaskController extends Controller
     /**
      * 删除单个任务（含关联数据级联清理）。
      */
-    public function destroyTask(int $taskId): RedirectResponse
+    public function destroyTask(Request $request, int $taskId): RedirectResponse
     {
+        $this->abortIfAgentAdmin($request);
+
         if ($taskId <= 0) {
             return back()->withErrors(__('admin.tasks.message.status_update_failed'));
         }
@@ -124,6 +132,8 @@ class TaskController extends Controller
      */
     public function create(Request $request): View
     {
+        $this->abortIfAgentAdmin($request);
+
         $formOptions = $this->loadTaskFormOptions();
         $prefilledTitleLibraryId = $this->resolvePrefilledTitleLibraryId($request, $formOptions['titleLibraries']);
         $prefilledFixedTitleId = $this->resolvePrefilledFixedTitleId($request, $prefilledTitleLibraryId, $formOptions['titles']);
@@ -150,6 +160,8 @@ class TaskController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
+        $this->abortIfAgentAdmin($request);
+
         if (! Category::query()->exists()) {
             return redirect()
                 ->route('admin.categories.create')
@@ -181,8 +193,10 @@ class TaskController extends Controller
     /**
      * 任务编辑页：与创建页共用同一 Blade 模板。
      */
-    public function edit(int $taskId): View|RedirectResponse
+    public function edit(Request $request, int $taskId): View|RedirectResponse
     {
+        $this->abortIfAgentAdmin($request);
+
         try {
             $task = $this->taskLifecycleService->getTask($taskId);
         } catch (Throwable $e) {
@@ -237,6 +251,8 @@ class TaskController extends Controller
      */
     public function update(Request $request, int $taskId): RedirectResponse
     {
+        $this->abortIfAgentAdmin($request);
+
         if (! Category::query()->exists()) {
             return redirect()
                 ->route('admin.categories.create')
@@ -264,8 +280,11 @@ class TaskController extends Controller
      */
     public function healthCheck(Request $request): JsonResponse
     {
+        $admin = $request->user('admin');
+        abort_unless($admin instanceof Admin, 403);
+
         try {
-            $overview = $this->taskMonitoringQueryService->buildAdminOverview();
+            $overview = $this->taskMonitoringQueryService->buildAdminOverview($admin);
 
             return response()->json([
                 'success' => true,
@@ -287,6 +306,8 @@ class TaskController extends Controller
      */
     public function batchAction(Request $request): JsonResponse
     {
+        $this->abortIfAgentAdmin($request);
+
         // 批量接口仅允许 start/stop 两个动作，避免无效写入。
         $payload = $request->validate([
             'task_id' => ['required', 'integer', 'min:1'],
@@ -317,7 +338,9 @@ class TaskController extends Controller
      */
     private function loadTasks(): array
     {
-        return $this->taskMonitoringQueryService->buildTaskSnapshot();
+        $admin = request()->user('admin');
+
+        return $this->taskMonitoringQueryService->buildTaskSnapshot($admin instanceof Admin ? $admin : null);
     }
 
     /**
@@ -325,7 +348,8 @@ class TaskController extends Controller
      */
     private function loadRuntimePanels(): array
     {
-        $overview = $this->taskMonitoringQueryService->buildAdminOverview();
+        $admin = request()->user('admin');
+        $overview = $this->taskMonitoringQueryService->buildAdminOverview($admin instanceof Admin ? $admin : null);
 
         return [
             $overview['worker_overview'],
@@ -739,5 +763,11 @@ class TaskController extends Controller
         } catch (Throwable) {
             return '';
         }
+    }
+
+    private function abortIfAgentAdmin(Request $request): void
+    {
+        $admin = $request->user('admin');
+        abort_if($admin instanceof Admin && $admin->isAgentAdmin(), 403);
     }
 }

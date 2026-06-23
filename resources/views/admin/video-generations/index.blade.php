@@ -15,6 +15,7 @@
             'queued' => '排队中',
             default => $status,
         };
+        $canOperateVideos = (bool) ($canOperateVideos ?? true);
     @endphp
 
     <div class="space-y-5">
@@ -23,10 +24,12 @@
                 <h1 class="text-2xl font-bold text-gray-900">生成视频</h1>
                 <p class="mt-1 text-sm text-gray-600">创建 AI 视频生成任务，完成后可预览、下载，并发布到已绑定的自媒体账号。</p>
             </div>
+            @if($canOperateVideos)
             <a href="{{ route('admin.video-generations.create') }}" class="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 text-sm font-medium text-white shadow-sm hover:bg-indigo-700">
                 <i data-lucide="plus" class="h-4 w-4"></i>
                 创建视频
             </a>
+            @endif
         </div>
 
         <section class="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">

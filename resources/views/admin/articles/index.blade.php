@@ -25,6 +25,7 @@
     $clearTaskFilterUrl = route('admin.articles.index', request()->except(['task_id', 'page']));
     $selfMediaArticleAccounts = collect($selfMediaArticleAccounts ?? []);
     $selfMediaPlatformLabels = (array) ($selfMediaPlatformLabels ?? []);
+    $canOperateArticles = (bool) ($canOperateArticles ?? true);
 @endphp
 
 @section('content')
@@ -34,6 +35,7 @@
                 <h1 class="text-2xl font-bold text-gray-900">{{ $pageTitle }}</h1>
                 <p class="mt-1 text-sm text-gray-600">{{ $isTrashView ? __('admin.articles.trash.subtitle') : __('admin.articles.page_subtitle') }}</p>
             </div>
+            @if($canOperateArticles)
             <div class="flex flex-wrap gap-2 justify-end">
                 @if($isTrashView)
                     <a href="{{ $articlesIndexUrl }}" class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
@@ -67,6 +69,7 @@
                     {{ __('admin.button.bulk_actions') }}
                 </button>
             </div>
+            @endif
         </div>
 
         @if($isTrashView)
@@ -255,6 +258,7 @@
                         {{ $isTrashView ? __('admin.articles.trash.list_title') : __('admin.articles.list_title') }}
                         <span class="text-sm text-gray-500">{{ __('admin.articles.list_total', ['count' => $articles->total()]) }}</span>
                     </h3>
+                    @if($canOperateArticles)
                     <div class="flex flex-wrap gap-2">
                         @if(!$isTrashView)
                         <a href="{{ route('admin.articles.create') }}" class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-blue-600 hover:bg-blue-700">
@@ -275,6 +279,7 @@
                             {{ __('admin.button.bulk_actions') }}
                         </button>
                     </div>
+                    @endif
                 </div>
             </div>
 
@@ -288,7 +293,7 @@
                             <i data-lucide="arrow-left" class="w-4 h-4 mr-2"></i>
                             {{ __('admin.articles.trash.back') }}
                         </a>
-                    @else
+                    @elseif($canOperateArticles)
                         <a href="{{ route('admin.tasks.create') }}" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
                             <i data-lucide="plus" class="w-4 h-4 mr-2"></i>
                             {{ __('admin.button.generate_articles') }}
@@ -296,6 +301,7 @@
                     @endif
                 </div>
             @else
+                @if($canOperateArticles)
                 <div id="batch-actions" class="hidden px-6 py-3 bg-gray-50 border-b border-gray-200">
                     <form method="POST" action="{{ route('admin.articles.batch.update-status') }}" id="batch-form">
                         @csrf
@@ -341,14 +347,17 @@
                         </div>
                     </form>
                 </div>
+                @endif
 
                 <div class="overflow-x-auto">
                     <table class="min-w-full divide-y divide-gray-200">
                         <thead class="bg-gray-50">
                         <tr>
+                            @if($canOperateArticles)
                             <th class="batch-checkbox hidden px-6 py-3 text-left">
                                 <input type="checkbox" id="select-all" class="rounded border-gray-300 text-blue-600 shadow-sm">
                             </th>
+                            @endif
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.articles.column.id') }}</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.articles.column.info') }}</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.articles.column.task_author') }}</th>
@@ -401,13 +410,15 @@
                                 }
                             @endphp
                             <tr class="hover:bg-gray-50">
+                                @if($canOperateArticles)
                                 <td class="batch-checkbox hidden px-6 py-4">
                                     <input type="checkbox" value="{{ (int) $article->id }}" class="article-checkbox rounded border-gray-300 text-blue-600 shadow-sm">
                                 </td>
+                                @endif
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-mono">#{{ (int) $article->id }}</td>
                                 <td class="px-6 py-4">
                                     <div class="text-sm font-medium text-gray-900 truncate">
-                                        @if($isTrashView)
+                                        @if($isTrashView || ! $canOperateArticles)
                                             <span>{{ $article->title }}</span>
                                         @else
                                             <a href="{{ route('admin.articles.edit', ['articleId' => (int) $article->id]) }}" class="hover:text-blue-600">{{ $article->title }}</a>
@@ -473,6 +484,7 @@
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                     @if($isTrashView)
+                                        @if($canOperateArticles)
                                         <div class="flex items-center space-x-2">
                                             <form method="POST" action="{{ route('admin.articles.restore', ['articleId' => (int) $article->id]) }}" class="inline" onsubmit="return confirm(@json(__('admin.articles.trash.confirm_restore')))">
                                                 @csrf
@@ -487,14 +499,20 @@
                                                 </button>
                                             </form>
                                         </div>
+                                        @else
+                                            <span class="text-gray-400">-</span>
+                                        @endif
                                     @else
                                         <div class="flex items-center space-x-2">
+                                            @if($canOperateArticles)
                                             <a href="{{ route('admin.articles.edit', ['articleId' => (int) $article->id]) }}" class="text-green-600 hover:text-green-800" title="{{ __('admin.button.edit') }}">
                                                 <i data-lucide="edit" class="w-4 h-4"></i>
                                             </a>
+                                            @endif
                                             <a href="{{ route('admin.articles.download', ['articleId' => (int) $article->id]) }}" class="text-blue-600 hover:text-blue-800" title="{{ __('admin.button.download_word') }}">
                                                 <i data-lucide="download" class="w-4 h-4"></i>
                                             </a>
+                                            @if($canOperateArticles)
                                             @if($selfMediaArticleAccounts->isNotEmpty())
                                                 <button
                                                     type="button"
@@ -521,6 +539,7 @@
                                             <button type="button" onclick="deleteArticle({{ (int) $article->id }})" class="text-red-600 hover:text-red-800" title="{{ __('admin.button.delete') }}">
                                                 <i data-lucide="trash-2" class="w-4 h-4"></i>
                                             </button>
+                                            @endif
                                         </div>
                                     @endif
                                 </td>

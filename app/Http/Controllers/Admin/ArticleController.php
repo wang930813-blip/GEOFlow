@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Admin;
 use App\Models\Article;
 use App\Models\Author;
 use App\Models\Category;
@@ -11,12 +12,14 @@ use App\Models\Site;
 use App\Models\Task;
 use App\Services\Crebee\SelfMediaArticlePublishService;
 use App\Services\GeoFlow\DistributionOrchestrator;
+use App\Support\AdminDataScope;
 use App\Support\AdminWeb;
 use App\Support\Crebee\SelfMediaPlatformCatalog;
 use App\Support\CurrentSite;
 use App\Support\GeoFlow\ArticleWorkflow;
 use App\Support\Site\SiteSettingsBag;
 use Illuminate\Database\QueryException;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -33,15 +36,21 @@ use Throwable;
  */
 class ArticleController extends Controller
 {
-    public function __construct(private readonly DistributionOrchestrator $distributionOrchestrator) {}
+    public function __construct(
+        private readonly DistributionOrchestrator $distributionOrchestrator,
+        private readonly AdminDataScope $adminDataScope,
+    ) {}
 
     /**
      * 文章管理首页：渲染筛选与列表。
      */
     public function index(Request $request): View
     {
+        $admin = $request->user('admin');
+        abort_unless($admin instanceof Admin, 403);
+
         $filters = $this->buildFilters($request);
-        $articles = $this->queryArticles($filters);
+        $articles = $this->queryArticles($filters, $admin);
         $isTrashView = (bool) ($filters['trashed'] ?? false);
 
         return view('admin.articles.index', [
@@ -51,11 +60,11 @@ class ArticleController extends Controller
             'activeMenu' => 'articles',
             'adminSiteName' => AdminWeb::siteName(),
             'articles' => $articles,
-            'stats' => $isTrashView ? $this->loadTrashStats() : $this->loadStats(),
+            'stats' => $isTrashView ? $this->loadTrashStats($admin) : $this->loadStats($admin),
             'filters' => $filters,
-            'tasks' => $this->loadTaskOptions(),
-            'categories' => $this->loadCategoryOptions(),
-            'authors' => $this->loadAuthorOptions(),
+            'tasks' => $this->loadTaskOptions($admin),
+            'categories' => $this->loadCategoryOptions($admin),
+            'authors' => $this->loadAuthorOptions($admin),
             'articlesI18n' => $this->articlesI18n(),
             'isTrashView' => $isTrashView,
             'trashI18n' => $this->trashI18n(),
@@ -65,6 +74,7 @@ class ArticleController extends Controller
             'selfMediaPlatformLogos' => collect(SelfMediaArticlePublishService::articlePlatforms())
                 ->mapWithKeys(fn (string $platform): array => [$platform => SelfMediaPlatformCatalog::logoPath($platform)])
                 ->all(),
+            'canOperateArticles' => ! $admin->isAgentAdmin(),
         ]);
     }
 
@@ -73,6 +83,8 @@ class ArticleController extends Controller
      */
     public function batchUpdateStatus(Request $request): RedirectResponse
     {
+        $this->abortIfAgentAdmin($request);
+
         $articleIds = $this->extractArticleIds($request);
         if (empty($articleIds)) {
             return back()->withErrors(__('admin.articles.message.select_articles'));
@@ -90,6 +102,8 @@ class ArticleController extends Controller
      */
     public function batchUpdateReview(Request $request): RedirectResponse
     {
+        $this->abortIfAgentAdmin($request);
+
         $articleIds = $this->extractArticleIds($request);
         if (empty($articleIds)) {
             return back()->withErrors(__('admin.articles.message.select_articles'));
@@ -107,6 +121,8 @@ class ArticleController extends Controller
      */
     public function batchDelete(Request $request): RedirectResponse
     {
+        $this->abortIfAgentAdmin($request);
+
         $articleIds = $this->extractArticleIds($request);
         if (empty($articleIds)) {
             return back()->withErrors(__('admin.articles.message.select_articles'));
@@ -124,6 +140,8 @@ class ArticleController extends Controller
      */
     public function batchRestore(Request $request): RedirectResponse
     {
+        $this->abortIfAgentAdmin($request);
+
         $articleIds = $this->extractArticleIds($request);
         if (empty($articleIds)) {
             return back()->withErrors(__('admin.articles.message.select_articles'));
@@ -143,6 +161,8 @@ class ArticleController extends Controller
      */
     public function batchForceDelete(Request $request): RedirectResponse
     {
+        $this->abortIfAgentAdmin($request);
+
         $articleIds = $this->extractArticleIds($request);
         if (empty($articleIds)) {
             return back()->withErrors(__('admin.articles.message.select_articles'));
@@ -163,8 +183,10 @@ class ArticleController extends Controller
     /**
      * 清空文章垃圾箱（全部永久删除）。
      */
-    public function emptyTrash(): RedirectResponse
+    public function emptyTrash(Request $request): RedirectResponse
     {
+        $this->abortIfAgentAdmin($request);
+
         try {
             $models = Article::onlyTrashed()->get();
             if ($models->isEmpty()) {
@@ -184,8 +206,10 @@ class ArticleController extends Controller
     /**
      * 恢复单篇已删除文章。
      */
-    public function restore(int $articleId): RedirectResponse
+    public function restore(Request $request, int $articleId): RedirectResponse
     {
+        $this->abortIfAgentAdmin($request);
+
         $article = Article::onlyTrashed()->whereKey($articleId)->firstOrFail();
         $article->restore();
 
@@ -195,8 +219,10 @@ class ArticleController extends Controller
     /**
      * 永久删除单篇已删除文章。
      */
-    public function forceDelete(int $articleId): RedirectResponse
+    public function forceDelete(Request $request, int $articleId): RedirectResponse
     {
+        $this->abortIfAgentAdmin($request);
+
         $article = Article::onlyTrashed()->whereKey($articleId)->firstOrFail();
         $article->forceDelete();
 
@@ -209,12 +235,16 @@ class ArticleController extends Controller
      * 输出 Word 兼容的 HTML（带 MSO 命名空间），Word 可直接打开；
      * 不依赖 PHPWord，零额外依赖。包含基础信息 + SEO 设置 + 文章正文。
      */
-    public function downloadWord(int $articleId): Response
+    public function downloadWord(Request $request, int $articleId): Response
     {
-        $article = Article::query()
+        $admin = $request->user('admin');
+        abort_unless($admin instanceof Admin, 403);
+
+        $query = Article::query()
             ->with(['author:id,name', 'category:id,name'])
-            ->whereKey($articleId)
-            ->firstOrFail();
+            ->whereKey($articleId);
+        $this->adminDataScope->applySiteScope($query, $admin);
+        $article = $query->firstOrFail();
 
         $title = (string) $article->title;
         $slug = (string) ($article->slug ?? '');
@@ -521,8 +551,12 @@ HTML;
     /**
      * 文章创建页：与编辑页共用一个 Blade 模板。
      */
-    public function create(): View
+    public function create(Request $request): View
     {
+        $this->abortIfAgentAdmin($request);
+        $admin = $request->user('admin');
+        abort_unless($admin instanceof Admin, 403);
+
         return view('admin.articles.form', [
             'pageTitle' => __('admin.article_create.page_title'),
             'activeMenu' => 'articles',
@@ -530,7 +564,7 @@ HTML;
             'isEdit' => false,
             'articleId' => null,
             'articleForm' => null,
-            'formOptions' => $this->loadFormOptions(),
+            'formOptions' => $this->loadFormOptions($admin),
         ]);
     }
 
@@ -539,6 +573,8 @@ HTML;
      */
     public function store(Request $request): RedirectResponse
     {
+        $this->abortIfAgentAdmin($request);
+
         $payload = $this->validateArticleForm($request, false);
         $workflowState = ArticleWorkflow::normalizeState(
             $payload['status'],
@@ -578,8 +614,12 @@ HTML;
     /**
      * 文章编辑页：复用创建页模板并回填现有数据。
      */
-    public function edit(int $articleId): View|RedirectResponse
+    public function edit(Request $request, int $articleId): View|RedirectResponse
     {
+        $this->abortIfAgentAdmin($request);
+        $admin = $request->user('admin');
+        abort_unless($admin instanceof Admin, 403);
+
         $article = Article::query()
             ->with(['task:id,name', 'author:id,name', 'category:id,name'])
             ->whereKey($articleId)
@@ -608,7 +648,7 @@ HTML;
                 'is_hot' => (bool) ($article->is_hot ?? false),
                 'is_featured' => (bool) ($article->is_featured ?? false),
             ],
-            'formOptions' => $this->loadFormOptions(),
+            'formOptions' => $this->loadFormOptions($admin),
         ]);
     }
 
@@ -617,6 +657,8 @@ HTML;
      */
     public function update(Request $request, int $articleId): RedirectResponse
     {
+        $this->abortIfAgentAdmin($request);
+
         $payload = $this->validateArticleForm($request, true);
         $article = Article::query()->whereKey($articleId)->firstOrFail();
 
@@ -734,11 +776,13 @@ HTML;
      *     trashed: bool
      * }  $filters
      */
-    private function queryArticles(array $filters): LengthAwarePaginator
+    private function queryArticles(array $filters, Admin $admin): LengthAwarePaginator
     {
         $query = ($filters['trashed'] ?? false)
             ? Article::onlyTrashed()
             : Article::query();
+
+        $this->adminDataScope->applySiteScope($query, $admin);
 
         $query->with([
             'task:id,name,need_review',
@@ -814,9 +858,10 @@ HTML;
     /**
      * @return array{total: int, published: int, draft: int, pending_review: int, today: int}
      */
-    private function loadStats(): array
+    private function loadStats(Admin $admin): array
     {
         $baseQuery = Article::query();
+        $this->adminDataScope->applySiteScope($baseQuery, $admin);
 
         return [
             'total' => (clone $baseQuery)->count(),
@@ -830,23 +875,28 @@ HTML;
     /**
      * @return array{trashed_total: int}
      */
-    private function loadTrashStats(): array
+    private function loadTrashStats(Admin $admin): array
     {
+        $query = Article::onlyTrashed();
+        $this->adminDataScope->applySiteScope($query, $admin);
+
         return [
-            'trashed_total' => Article::onlyTrashed()->count(),
+            'trashed_total' => $query->count(),
         ];
     }
 
     /**
      * @return array<int, array{id: int, name: string}>
      */
-    private function loadTaskOptions(): array
+    private function loadTaskOptions(Admin $admin): array
     {
         try {
-            return Task::query()
+            $query = Task::query()
                 ->select(['id', 'name'])
-                ->orderBy('name')
-                ->get()
+                ->orderBy('name');
+            $this->adminDataScope->applySiteScope($query, $admin);
+
+            return $query->get()
                 ->map(fn (Task $task): array => [
                     'id' => (int) $task->id,
                     'name' => (string) $task->name,
@@ -860,13 +910,15 @@ HTML;
     /**
      * @return array<int, array{id: int, name: string}>
      */
-    private function loadCategoryOptions(): array
+    private function loadCategoryOptions(Admin $admin): array
     {
         try {
-            return Category::query()
+            $query = Category::query()
                 ->select(['id', 'name'])
-                ->orderBy('name')
-                ->get()
+                ->orderBy('name');
+            $this->adminDataScope->applySiteScope($query, $admin);
+
+            return $query->get()
                 ->map(fn (Category $category): array => [
                     'id' => (int) $category->id,
                     'name' => (string) $category->name,
@@ -880,13 +932,18 @@ HTML;
     /**
      * @return array<int, array{id: int, name: string}>
      */
-    private function loadAuthorOptions(): array
+    private function loadAuthorOptions(?Admin $admin = null): array
     {
         try {
-            return Author::query()
+            $query = Author::query()
                 ->select(['id', 'name'])
-                ->orderBy('name')
-                ->get()
+                ->orderBy('name');
+
+            if ($admin instanceof Admin) {
+                $this->adminDataScope->applySiteScope($query, $admin);
+            }
+
+            return $query->get()
                 ->map(fn (Author $author): array => [
                     'id' => (int) $author->id,
                     'name' => (string) $author->name,
@@ -922,16 +979,21 @@ HTML;
      *     authors: array<int, array{id: int, name: string}>
      * }
      */
-    private function loadFormOptions(): array
+    private function loadFormOptions(?Admin $admin = null): array
     {
         $categories = [];
-        $authors = $this->loadAuthorOptions();
+        $authors = $this->loadAuthorOptions($admin);
 
         try {
-            $categories = Category::query()
+            $query = Category::query()
                 ->select(['id', 'name'])
-                ->orderBy('name')
-                ->get()
+                ->orderBy('name');
+
+            if ($admin instanceof Admin) {
+                $this->adminDataScope->applySiteScope($query, $admin);
+            }
+
+            $categories = $query->get()
                 ->map(fn (Category $category): array => [
                     'id' => (int) $category->id,
                     'name' => (string) $category->name,
@@ -1092,6 +1154,12 @@ HTML;
         }
 
         return back()->with('message', __('admin.articles.message.batch_delete_success', ['count' => count($articleIds)]));
+    }
+
+    private function abortIfAgentAdmin(Request $request): void
+    {
+        $admin = $request->user('admin');
+        abort_if($admin instanceof Admin && $admin->isAgentAdmin(), 403);
     }
 
     /**

@@ -1,6 +1,7 @@
 @extends('admin.layouts.app')
 
 @section('content')
+    @php($canOpenB2BWebsites = (bool) ($canOpenB2BWebsites ?? true))
     <div class="space-y-6">
         <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
@@ -38,7 +39,7 @@
                                 <i data-lucide="check-circle-2" class="mr-1.5 h-4 w-4"></i>
                                 已开通
                             </button>
-                        @else
+                        @elseif ($canOpenB2BWebsites)
                             <form method="POST" action="{{ route('admin.b2b-websites.open', ['websiteKey' => $website['key']]) }}">
                                 @csrf
                                 <button type="submit" class="inline-flex w-full items-center justify-center rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800">
@@ -46,6 +47,10 @@
                                     开通
                                 </button>
                             </form>
+                        @else
+                            <button type="button" class="inline-flex w-full items-center justify-center rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-medium text-gray-500" disabled>
+                                鏌ョ湅
+                            </button>
                         @endif
                     </div>
                 </div>

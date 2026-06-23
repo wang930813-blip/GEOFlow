@@ -23,6 +23,7 @@ class VideoSelfMediaPublishController extends Controller
     {
         $admin = $request->user('admin');
         abort_unless($admin instanceof Admin, 403);
+        abort_if($admin->isAgentAdmin(), 403);
 
         $site = app(CurrentSite::class)->get();
         abort_unless($site instanceof Site, 403);

@@ -8,6 +8,7 @@ use App\Models\CrebeeAccount;
 use App\Models\Site;
 use App\Models\VideoGenerationJob;
 use App\Services\VideoGeneration\VideoGenerationService;
+use App\Support\AdminDataScope;
 use App\Support\AdminWeb;
 use App\Support\Crebee\SelfMediaPlatformCatalog;
 use App\Support\CurrentSite;
@@ -25,12 +26,13 @@ class VideoGenerationController extends Controller
 {
     public function __construct(
         private readonly VideoGenerationService $service,
+        private readonly AdminDataScope $adminDataScope,
     ) {}
 
     public function index(Request $request): View
     {
         $admin = $this->admin($request);
-        $site = $this->site();
+        $site = $this->nullableSite();
 
         $videos = $this->visibleVideos($admin, $site)
             ->with('owner:id,username,display_name,role')
@@ -45,12 +47,14 @@ class VideoGenerationController extends Controller
             'site' => $site,
             'videos' => $videos,
             'platformLabels' => SelfMediaPlatformCatalog::videoPlatformLabels(),
+            'canOperateVideos' => ! $admin->isAgentAdmin(),
         ]);
     }
 
     public function create(Request $request): View
     {
         $admin = $this->admin($request);
+        abort_if($admin->isAgentAdmin(), 403);
         $this->site();
 
         return view('admin.video-generations.create', [
@@ -64,6 +68,7 @@ class VideoGenerationController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $admin = $this->admin($request);
+        abort_if($admin->isAgentAdmin(), 403);
         $site = $this->site();
 
         $payload = $request->validate([
@@ -106,7 +111,7 @@ class VideoGenerationController extends Controller
     public function show(Request $request, VideoGenerationJob $videoGeneration): View
     {
         $admin = $this->admin($request);
-        $site = $this->site();
+        $site = $this->nullableSite();
         $this->authorizeVideo($videoGeneration, $admin, $site);
 
         return view('admin.video-generations.show', [
@@ -115,17 +120,21 @@ class VideoGenerationController extends Controller
             'adminSiteName' => AdminWeb::siteName(),
             'site' => $site,
             'video' => $videoGeneration,
-            'selfMediaVideoAccounts' => $this->loadSelfMediaVideoAccounts($admin, $site),
+            'selfMediaVideoAccounts' => $site instanceof Site && ! $admin->isAgentAdmin()
+                ? $this->loadSelfMediaVideoAccounts($admin, $site)
+                : collect(),
             'selfMediaPlatformLabels' => SelfMediaPlatformCatalog::videoPlatformLabels(),
             'selfMediaPlatformLogos' => collect(SelfMediaPlatformCatalog::videoPlatforms())
                 ->mapWithKeys(fn (string $platform): array => [$platform => SelfMediaPlatformCatalog::logoPath($platform)])
                 ->all(),
+            'canOperateVideos' => ! $admin->isAgentAdmin(),
         ]);
     }
 
     public function updateCover(Request $request, VideoGenerationJob $videoGeneration): RedirectResponse
     {
         $admin = $this->admin($request);
+        abort_if($admin->isAgentAdmin(), 403);
         $site = $this->site();
         $this->authorizeVideo($videoGeneration, $admin, $site);
 
@@ -145,7 +154,7 @@ class VideoGenerationController extends Controller
     public function download(Request $request, VideoGenerationJob $videoGeneration): StreamedResponse
     {
         $admin = $this->admin($request);
-        $site = $this->site();
+        $site = $this->nullableSite();
         $this->authorizeVideo($videoGeneration, $admin, $site);
 
         abort_if((string) $videoGeneration->status !== 'success', 404);
@@ -205,9 +214,20 @@ class VideoGenerationController extends Controller
         return $site;
     }
 
-    private function visibleVideos(Admin $admin, Site $site): Builder
+    private function nullableSite(): ?Site
     {
-        $query = VideoGenerationJob::query()->where('site_id', (int) $site->id);
+        return app(CurrentSite::class)->get();
+    }
+
+    private function visibleVideos(Admin $admin, ?Site $site): Builder
+    {
+        $query = VideoGenerationJob::query();
+
+        if (! $admin->isSuperAdmin()) {
+            $this->adminDataScope->applySiteScope($query, $admin);
+        } elseif ($site instanceof Site) {
+            $query->where('site_id', (int) $site->id);
+        }
 
         if (! ($admin->isSuperAdmin() || $admin->isAgentAdmin())) {
             $query->where('owner_admin_id', (int) $admin->id);
@@ -216,9 +236,18 @@ class VideoGenerationController extends Controller
         return $query;
     }
 
-    private function authorizeVideo(VideoGenerationJob $video, Admin $admin, Site $site): void
+    private function authorizeVideo(VideoGenerationJob $video, Admin $admin, ?Site $site): void
     {
-        abort_if((int) $video->site_id !== (int) $site->id, 404);
+        if ($admin->isSuperAdmin()) {
+            if ($site instanceof Site) {
+                abort_if((int) $video->site_id !== (int) $site->id, 404);
+            }
+
+            return;
+        }
+
+        $visibleSiteIds = $this->adminDataScope->visibleSiteIds($admin);
+        abort_if($visibleSiteIds === [] || ! in_array((int) $video->site_id, $visibleSiteIds ?? [], true), 404);
 
         if (! ($admin->isSuperAdmin() || $admin->isAgentAdmin())) {
             abort_if((int) $video->owner_admin_id !== (int) $admin->id, 404);

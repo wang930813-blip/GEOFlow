@@ -21,13 +21,14 @@
             'queued' => '排队中',
             default => $status,
         };
+        $siteDisplayName = $site instanceof \App\Models\Site ? $site->name : '代理下属用户';
     @endphp
 
     <div class="space-y-5">
         <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
                 <h1 class="text-2xl font-bold text-gray-900">自媒体发布记录</h1>
-                <p class="mt-1 text-sm text-gray-600">当前站点：{{ $site->name }}。查看文章发布到自媒体平台的任务状态和发布链接。</p>
+                <p class="mt-1 text-sm text-gray-600">当前站点：{{ $siteDisplayName }}。查看文章发布到自媒体平台的任务状态和发布链接。</p>
             </div>
             <a href="{{ route('admin.crebee-accounts.index') }}" class="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50">
                 <i data-lucide="share-2" class="h-4 w-4"></i>

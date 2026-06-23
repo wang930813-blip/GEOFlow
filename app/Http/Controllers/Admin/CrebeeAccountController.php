@@ -8,6 +8,7 @@ use App\Models\CrebeeAccount;
 use App\Models\CrebeeAgent;
 use App\Models\CrebeeBindRequest;
 use App\Models\Site;
+use App\Support\AdminDataScope;
 use App\Support\AdminWeb;
 use App\Support\Crebee\SelfMediaPlatformCatalog;
 use App\Support\CurrentSite;
@@ -19,15 +20,18 @@ use Illuminate\View\View;
 
 class CrebeeAccountController extends Controller
 {
+    public function __construct(private readonly AdminDataScope $adminDataScope) {}
+
     public function index(Request $request): View
     {
         $admin = $request->user('admin');
         abort_unless($admin instanceof Admin, 403);
 
         $site = app(CurrentSite::class)->get();
-        abort_unless($site instanceof Site, 403);
 
-        $canManage = $this->canManageBindings($admin);
+        abort_unless($site instanceof Site || $admin->isAgentAdmin(), 403);
+
+        $canManage = $this->canManageBindings($admin) && $site instanceof Site;
 
         $boundAccounts = $this->visibleBoundAccounts($admin, $site)
             ->with(['agent:id,name,agent_uid,last_seen_at,crebee_status,version', 'owner:id,username,display_name,role', 'site:id,name'])
@@ -64,6 +68,7 @@ class CrebeeAccountController extends Controller
             'adminSiteName' => AdminWeb::siteName(),
             'site' => $site,
             'canManage' => $canManage,
+            'canRequestBinding' => $site instanceof Site && ! $admin->isAgentAdmin(),
             'platforms' => $platforms,
             'platformStates' => $platformStates,
             'bindRequests' => $bindRequests,
@@ -244,25 +249,37 @@ class CrebeeAccountController extends Controller
 
     private function canManageBindings(Admin $admin): bool
     {
-        return $admin->isSuperAdmin() || $admin->isAgentAdmin();
+        return $admin->isSuperAdmin();
     }
 
-    private function visibleBoundAccounts(Admin $admin, Site $site): Builder
+    private function visibleBoundAccounts(Admin $admin, ?Site $site): Builder
     {
-        $query = CrebeeAccount::query()->where('site_id', (int) $site->id);
+        $query = CrebeeAccount::query();
 
-        if ($this->canManageBindings($admin)) {
+        if ($site instanceof Site) {
+            $query->where('site_id', (int) $site->id);
+        } else {
+            $this->adminDataScope->applySiteScope($query, $admin);
+        }
+
+        if ($admin->isSuperAdmin() || $admin->isAgentAdmin()) {
             return $query;
         }
 
         return $query->where('owner_admin_id', (int) $admin->id);
     }
 
-    private function visibleBindRequests(Admin $admin, Site $site): Builder
+    private function visibleBindRequests(Admin $admin, ?Site $site): Builder
     {
-        $query = CrebeeBindRequest::query()->where('site_id', (int) $site->id);
+        $query = CrebeeBindRequest::query();
 
-        if ($this->canManageBindings($admin)) {
+        if ($site instanceof Site) {
+            $query->where('site_id', (int) $site->id);
+        } else {
+            $this->adminDataScope->applySiteScope($query, $admin);
+        }
+
+        if ($admin->isSuperAdmin() || $admin->isAgentAdmin()) {
             return $query;
         }
 
@@ -285,8 +302,19 @@ class CrebeeAccountController extends Controller
      * @param  array<int,string>  $platformKeys
      * @return array<string,array<string,mixed>>
      */
-    private function platformStates(Admin $admin, Site $site, array $platformKeys): array
+    private function platformStates(Admin $admin, ?Site $site, array $platformKeys): array
     {
+        if (! $site instanceof Site) {
+            return collect($platformKeys)
+                ->mapWithKeys(static fn (string $platform): array => [$platform => [
+                    'status' => 'available',
+                    'account' => null,
+                    'request' => null,
+                    'can_request' => false,
+                ]])
+                ->all();
+        }
+
         $boundAccounts = CrebeeAccount::query()
             ->where('site_id', (int) $site->id)
             ->where('owner_admin_id', (int) $admin->id)

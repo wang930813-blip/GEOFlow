@@ -16,6 +16,7 @@
             default => $status,
         };
         $videoUrl = $video->firstVideoUrl();
+        $canOperateVideos = (bool) ($canOperateVideos ?? true);
     @endphp
 
     <div class="space-y-5">
@@ -32,7 +33,7 @@
                     <i data-lucide="arrow-left" class="h-4 w-4"></i>
                     返回列表
                 </a>
-                @if((string) $video->status === 'success' && $videoUrl !== '')
+                @if($canOperateVideos && (string) $video->status === 'success' && $videoUrl !== '')
                     <button type="button" onclick="document.getElementById('self-media-publish-modal').classList.remove('hidden')" class="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 text-sm font-medium text-white shadow-sm hover:bg-indigo-700">
                         <i data-lucide="send" class="h-4 w-4"></i>
                         发布自媒体
@@ -59,7 +60,7 @@
                                 下载视频
                             </a>
                         </div>
-                    @else
+                    @elseif($canOperateVideos)
                         <div class="flex h-72 items-center justify-center rounded-lg bg-slate-50 text-sm text-slate-500">
                             视频尚未生成完成
                         </div>
@@ -89,6 +90,7 @@
                     @else
                         <div class="mt-4 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-700">发布视频到自媒体前需要补充封面图。</div>
                     @endif
+                    @if($canOperateVideos)
                     <form method="POST" action="{{ route('admin.video-generations.cover.update', $video) }}" class="mt-4 space-y-3">
                         @csrf
                         <input name="cover_image" value="{{ old('cover_image', $video->cover_image) }}" class="block h-10 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" placeholder="https://...">
@@ -97,6 +99,7 @@
                             保存封面
                         </button>
                     </form>
+                    @endif
                 </section>
             </aside>
         </div>
@@ -107,6 +110,7 @@
         </section>
     </div>
 
+    @if($canOperateVideos)
     <div id="self-media-publish-modal" class="fixed inset-0 z-50 hidden overflow-y-auto" aria-labelledby="self-media-publish-title" role="dialog" aria-modal="true">
         <div class="flex min-h-screen items-center justify-center px-4 py-8">
             <div class="fixed inset-0 bg-slate-900/40" onclick="document.getElementById('self-media-publish-modal').classList.add('hidden')"></div>
@@ -168,4 +172,5 @@
             </form>
         </div>
     </div>
+    @endif
 @endsection

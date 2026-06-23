@@ -166,7 +166,7 @@ class AdminCrebeeAccountBindingTest extends TestCase
             ->assertDontSee('公众号官方');
     }
 
-    public function test_agent_admin_can_unbind_current_site_account_but_not_other_site_account(): void
+    public function test_agent_admin_cannot_unbind_self_media_accounts(): void
     {
         $agentAdmin = $this->admin('crebee_unbind_agent', 'agent_admin');
         $otherAgent = $this->admin('crebee_other_agent', 'agent_admin');
@@ -179,19 +179,19 @@ class AdminCrebeeAccountBindingTest extends TestCase
         $this->actingAs($agentAdmin, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
             ->post(route('admin.crebee-accounts.unbind', $ownAccount))
-            ->assertRedirect(route('admin.crebee-accounts.index'));
+            ->assertForbidden();
 
         $this->assertDatabaseHas('crebee_accounts', [
             'id' => (int) $ownAccount->id,
-            'site_id' => null,
-            'owner_admin_id' => null,
-            'status' => 'available',
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $agentAdmin->id,
+            'status' => 'bound',
         ]);
 
         $this->actingAs($agentAdmin, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
             ->post(route('admin.crebee-accounts.unbind', $otherAccount))
-            ->assertNotFound();
+            ->assertForbidden();
 
         $this->assertDatabaseHas('crebee_accounts', [
             'id' => (int) $otherAccount->id,
@@ -238,7 +238,7 @@ class AdminCrebeeAccountBindingTest extends TestCase
             ->assertSessionHasErrors('platform');
     }
 
-    public function test_agent_admin_can_mark_current_site_binding_request_processing(): void
+    public function test_agent_admin_can_view_current_site_binding_request_but_cannot_mark_processing(): void
     {
         $agentAdmin = $this->admin('crebee_request_operator', 'agent_admin');
         $siteUser = $this->admin('crebee_request_owner', 'site_user', $agentAdmin);
@@ -257,16 +257,16 @@ class AdminCrebeeAccountBindingTest extends TestCase
         $this->actingAs($agentAdmin, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
             ->post(route('admin.crebee-accounts.requests.processing', $request))
-            ->assertRedirect(route('admin.crebee-accounts.index'));
+            ->assertForbidden();
 
         $this->assertDatabaseHas('crebee_bind_requests', [
             'id' => (int) $request->id,
-            'operator_admin_id' => (int) $agentAdmin->id,
-            'status' => 'processing',
+            'operator_admin_id' => null,
+            'status' => 'pending',
         ]);
     }
 
-    public function test_agent_admin_cannot_operate_other_site_binding_request(): void
+    public function test_agent_admin_cannot_operate_binding_requests(): void
     {
         $agentAdmin = $this->admin('crebee_request_agent_a', 'agent_admin');
         $otherAgent = $this->admin('crebee_request_agent_b', 'agent_admin');
@@ -277,7 +277,7 @@ class AdminCrebeeAccountBindingTest extends TestCase
         $this->actingAs($agentAdmin, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
             ->post(route('admin.crebee-accounts.requests.processing', $request))
-            ->assertNotFound();
+            ->assertForbidden();
 
         $this->assertDatabaseHas('crebee_bind_requests', [
             'id' => (int) $request->id,

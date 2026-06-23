@@ -49,13 +49,15 @@
             }
             return $url;
         };
+        $canRequestBinding = (bool) ($canRequestBinding ?? true);
+        $siteDisplayName = $site instanceof \App\Models\Site ? $site->name : '代理下属用户';
     @endphp
 
     <div class="space-y-6">
         <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
                 <h1 class="text-2xl font-bold text-gray-900">自媒体账号绑定</h1>
-                <p class="mt-1 text-sm text-gray-600">当前站点：{{ $site->name }}。本页管理本地自媒体客户端同步回来的平台账号归属。</p>
+                <p class="mt-1 text-sm text-gray-600">当前站点：{{ $siteDisplayName }}。本页管理本地自媒体客户端同步回来的平台账号归属。</p>
             </div>
             <div class="flex flex-wrap items-center gap-2">
                 <a href="{{ route('admin.crebee-publish-records.index') }}" class="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50">
@@ -70,7 +72,8 @@
             </div>
         </div>
 
-        <section class="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+        @if ($canRequestBinding)
+            <section class="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
             <div class="border-b border-slate-200 px-5 py-4">
                 <h2 class="text-lg font-semibold text-gray-900">选择要绑定的平台</h2>
                 <p class="mt-1 text-sm text-slate-500">点击平台提交绑定申请。运营发送对应平台二维码后，扫码登录成功会自动绑定到你的账号。</p>
@@ -156,7 +159,8 @@
                     </div>
                 @endforeach
             </div>
-        </section>
+            </section>
+        @endif
 
         <section class="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
             <div class="border-b border-slate-200 px-5 py-4">

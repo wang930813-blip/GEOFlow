@@ -3,28 +3,36 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Admin;
 use App\Models\AdminB2BWebsiteOpening;
 use App\Support\AdminDashboard\B2BIndustryWebsiteCatalog;
 use App\Support\AdminWeb;
 use App\Support\CurrentSite;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 
 class B2BWebsiteController extends Controller
 {
-    public function index(B2BIndustryWebsiteCatalog $b2bCatalog): View
+    public function index(Request $request, B2BIndustryWebsiteCatalog $b2bCatalog): View
     {
+        $admin = $request->user('admin');
+        abort_unless($admin instanceof Admin, 403);
+
         return view('admin.b2b-websites.index', [
             'pageTitle' => 'B2B行业网站',
             'activeMenu' => 'b2b_websites',
             'adminSiteName' => AdminWeb::siteName(),
             'b2bWebsites' => $this->buildB2BWebsites($b2bCatalog),
+            'canOpenB2BWebsites' => ! $admin->isAgentAdmin(),
         ]);
     }
 
-    public function open(string $websiteKey, B2BIndustryWebsiteCatalog $b2bCatalog): RedirectResponse
+    public function open(Request $request, string $websiteKey, B2BIndustryWebsiteCatalog $b2bCatalog): RedirectResponse
     {
+        $admin = $request->user('admin');
+        abort_unless($admin instanceof Admin && ! $admin->isAgentAdmin(), 403);
         abort_unless($b2bCatalog->exists($websiteKey), 404);
 
         $siteId = (int) (app(CurrentSite::class)->id() ?? 0);

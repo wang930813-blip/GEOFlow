@@ -2,8 +2,11 @@
 
 namespace App\Models\Concerns;
 
+use App\Models\Admin;
+use App\Support\AdminDataScope;
 use App\Support\CurrentSite;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Auth;
 
 trait BelongsToSite
 {
@@ -13,6 +16,17 @@ trait BelongsToSite
             $siteId = app(CurrentSite::class)->id();
             if ($siteId !== null && $siteId > 0) {
                 $builder->where($builder->getModel()->getTable().'.site_id', $siteId);
+
+                return;
+            }
+
+            $admin = Auth::guard('admin')->user();
+            if ($admin instanceof Admin && $admin->isAgentAdmin()) {
+                app(AdminDataScope::class)->applySiteScope(
+                    $builder,
+                    $admin,
+                    $builder->getModel()->getTable().'.site_id'
+                );
             }
         });
 

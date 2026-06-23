@@ -2,9 +2,12 @@
 
 namespace App\Services\GeoFlow;
 
+use App\Models\Admin;
 use App\Models\Task;
 use App\Models\TaskRun;
 use App\Models\WorkerHeartbeat;
+use App\Support\AdminDataScope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -18,7 +21,8 @@ use Illuminate\Support\Facades\DB;
 class TaskMonitoringQueryService
 {
     public function __construct(
-        private readonly HorizonMetricsAdapter $horizonMetrics
+        private readonly HorizonMetricsAdapter $horizonMetrics,
+        private readonly AdminDataScope $adminDataScope,
     ) {}
 
     /**
@@ -31,15 +35,15 @@ class TaskMonitoringQueryService
      *     recent_runs:list<array<string,mixed>>
      * }
      */
-    public function buildAdminOverview(): array
+    public function buildAdminOverview(?Admin $admin = null): array
     {
-        $tasks = $this->listTaskMonitoringRows();
+        $tasks = $this->listTaskMonitoringRows($admin);
 
         return [
             'tasks' => $tasks,
             'queue_overview' => $this->horizonMetrics->queueOverview('geoflow'),
             'worker_overview' => $this->workerOverview(),
-            'recent_runs' => $this->recentRuns(),
+            'recent_runs' => $this->recentRuns($admin),
         ];
     }
 
@@ -48,9 +52,9 @@ class TaskMonitoringQueryService
      *
      * @return list<array<string,mixed>>
      */
-    public function buildTaskSnapshot(): array
+    public function buildTaskSnapshot(?Admin $admin = null): array
     {
-        return $this->listTaskMonitoringRows();
+        return $this->listTaskMonitoringRows($admin);
     }
 
     /**
@@ -103,14 +107,25 @@ class TaskMonitoringQueryService
     /**
      * @return list<array<string,mixed>>
      */
-    private function listTaskMonitoringRows(): array
+    private function listTaskMonitoringRows(?Admin $admin = null): array
     {
         /** @var Collection<int, Task> $tasks */
-        $tasks = Task::query()
+        $tasks = $this->visibleTaskQuery($admin)
             ->orderByDesc('created_at')
             ->get();
 
         return $this->decorateTasks($tasks)->values()->all();
+    }
+
+    private function visibleTaskQuery(?Admin $admin = null): Builder
+    {
+        $query = Task::query();
+
+        if ($admin instanceof Admin) {
+            $this->adminDataScope->applySiteScope($query, $admin);
+        }
+
+        return $query;
     }
 
     /**
@@ -375,15 +390,19 @@ class TaskMonitoringQueryService
     /**
      * @return list<array<string,mixed>>
      */
-    private function recentRuns(): array
+    private function recentRuns(?Admin $admin = null): array
     {
-        return TaskRun::query()
+        $query = TaskRun::query()
             ->select(['id', 'task_id', 'status', 'error_message', 'created_at'])
             ->with(['task:id,name'])
+            ->when($admin instanceof Admin, function (Builder $query) use ($admin): void {
+                $query->whereIn('task_id', $this->visibleTaskQuery($admin)->select('tasks.id'));
+            })
             ->orderByDesc('created_at')
             ->orderByDesc('id')
-            ->limit(5)
-            ->get()
+            ->limit(5);
+
+        return $query->get()
             ->map(static fn (TaskRun $row): array => [
                 'id' => (int) $row->id,
                 'task_id' => (int) $row->task_id,

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Admin;
 use App\Models\CrebeePublishJobItem;
 use App\Models\Site;
+use App\Support\AdminDataScope;
 use App\Support\AdminWeb;
 use App\Support\Crebee\SelfMediaPlatformCatalog;
 use App\Support\CurrentSite;
@@ -15,13 +16,15 @@ use Illuminate\View\View;
 
 class CrebeePublishRecordController extends Controller
 {
+    public function __construct(private readonly AdminDataScope $adminDataScope) {}
+
     public function index(Request $request): View
     {
         $admin = $request->user('admin');
         abort_unless($admin instanceof Admin, 403);
 
         $site = app(CurrentSite::class)->get();
-        abort_unless($site instanceof Site, 403);
+        abort_unless($site instanceof Site || $admin->isAgentAdmin(), 403);
 
         $records = CrebeePublishJobItem::query()
             ->with([
@@ -30,7 +33,12 @@ class CrebeePublishRecordController extends Controller
                 'job.owner:id,username,display_name,role',
             ])
             ->whereHas('job', function (Builder $query) use ($admin, $site): void {
-                $query->where('site_id', (int) $site->id);
+                if ($site instanceof Site) {
+                    $query->where('site_id', (int) $site->id);
+                } else {
+                    $this->adminDataScope->applySiteScope($query, $admin, 'crebee_publish_jobs.site_id');
+                }
+
                 if (! $this->canViewSiteRecords($admin)) {
                     $query->where('owner_admin_id', (int) $admin->id);
                 }
