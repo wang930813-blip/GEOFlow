@@ -480,10 +480,17 @@
                 </div>
 
                                 <div class="mt-6 flex flex-wrap justify-center gap-3 border-t border-slate-200 pt-5">
-                    <a href="{{ route('admin.brand-diagnosis.report', ['run' => $record['id']]) }}" target="_blank" rel="noopener noreferrer" class="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-                        <i data-lucide="file-text" class="h-4 w-4"></i>
-                        查看报告
-                    </a>
+                    @if ($record['has_report'] ?? false)
+                        <a href="{{ route('admin.brand-diagnosis.report', ['run' => $record['id']]) }}" target="_blank" rel="noopener noreferrer" class="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                            <i data-lucide="file-text" class="h-4 w-4"></i>
+                            查看报告
+                        </a>
+                    @else
+                        <span class="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-5 text-sm font-semibold text-slate-400">
+                            <i data-lucide="file-clock" class="h-4 w-4"></i>
+                            报告生成中
+                        </span>
+                    @endif
                     <button type="button" data-record-toggle class="inline-flex h-10 items-center gap-2 rounded-md border border-orange-200 bg-orange-50 px-5 text-sm font-semibold text-orange-700 hover:bg-orange-100">
                         <i data-lucide="chevrons-up" class="h-4 w-4"></i>
                         <span data-record-toggle-label>收起结果</span>

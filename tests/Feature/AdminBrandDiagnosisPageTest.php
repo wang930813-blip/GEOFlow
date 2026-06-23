@@ -313,6 +313,69 @@ class AdminBrandDiagnosisPageTest extends TestCase
         $this->assertStringNotContainsString(route('admin.brand-diagnosis.report.download', ['run' => $failedRun->id]), $html);
     }
 
+    public function test_brand_diagnosis_record_only_links_to_report_after_completion(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('brand_report_pending_link_admin');
+        $pendingRun = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => '待完成品牌',
+            'platforms' => ['doubao'],
+            'status' => 'questions_ready',
+            'total_questions' => 1,
+            'completed_questions' => 0,
+            'failed_questions' => 0,
+            'billing_mode' => 'pending_confirmation',
+            'usage_date' => null,
+        ]);
+        $completedRun = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => '已完成品牌',
+            'platforms' => ['doubao'],
+            'status' => 'completed',
+            'total_questions' => 1,
+            'completed_questions' => 1,
+            'failed_questions' => 0,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+        ]);
+
+        $html = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.brand-diagnosis.index'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString(route('admin.brand-diagnosis.report', ['run' => $completedRun->id]), $html);
+        $this->assertStringNotContainsString(route('admin.brand-diagnosis.report', ['run' => $pendingRun->id]), $html);
+    }
+
+    public function test_site_user_can_open_own_completed_brand_diagnosis_report(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('brand_report_site_user_admin', 'site_user');
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => '用户品牌',
+            'platforms' => ['doubao'],
+            'status' => 'completed',
+            'total_questions' => 1,
+            'completed_questions' => 1,
+            'failed_questions' => 0,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.brand-diagnosis.report', ['run' => $run->id]))
+            ->assertOk()
+            ->assertSee('用户品牌')
+            ->assertSee('品牌诊断报告');
+    }
+
     public function test_brand_diagnosis_report_page_uses_collected_diagnosis_data(): void
     {
         [$admin, $site] = $this->createAdminWithSite('brand_report_view_admin');

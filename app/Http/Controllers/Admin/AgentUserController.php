@@ -9,6 +9,7 @@ use App\Models\PlatformPlan;
 use App\Models\Site;
 use App\Services\Billing\AdminPlanSubscriptionService;
 use App\Support\AdminWeb;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -100,15 +101,47 @@ class AgentUserController extends Controller
         return redirect()->route('admin.agent-users.index')->with('message', '普通用户已创建');
     }
 
+    public function update(int $adminId, Request $request): RedirectResponse
+    {
+        $agent = auth('admin')->user();
+        abort_unless($agent instanceof Admin && $agent->isAgentAdmin(), 403);
+
+        $target = $this->agentMemberQuery($agent)
+            ->whereKey($adminId)
+            ->firstOrFail();
+
+        $payload = $request->validate([
+            'display_name' => ['nullable', 'string', 'max:100'],
+            'email' => ['nullable', 'email', 'max:191'],
+            'password' => ['nullable', 'string', 'min:8', 'same:confirm_password'],
+            'confirm_password' => ['nullable', 'string', 'min:8'],
+        ], [
+            'password.same' => '两次输入的密码不一致',
+            'password.min' => '密码不能少于 8 位',
+            'confirm_password.min' => '密码不能少于 8 位',
+        ]);
+
+        $attributes = [
+            'display_name' => trim((string) ($payload['display_name'] ?? '')),
+            'email' => trim((string) ($payload['email'] ?? '')),
+        ];
+
+        if (filled($payload['password'] ?? null)) {
+            $attributes['password'] = (string) $payload['password'];
+        }
+
+        $target->update($attributes);
+
+        return redirect()->route('admin.agent-users.index')->with('message', '用户信息已更新');
+    }
+
     public function toggleStatus(int $adminId, Request $request): RedirectResponse
     {
         $agent = auth('admin')->user();
         abort_unless($agent instanceof Admin && $agent->isAgentAdmin(), 403);
 
-        $target = Admin::query()
+        $target = $this->agentMemberQuery($agent)
             ->whereKey($adminId)
-            ->where('role', 'site_user')
-            ->where('created_by', (int) $agent->id)
             ->firstOrFail();
 
         $nextStatus = (string) $request->input('next_status', '') === 'active' ? 'active' : 'inactive';
@@ -166,11 +199,19 @@ class AgentUserController extends Controller
 
     private function activeMemberCount(Admin $agent): int
     {
-        return Admin::query()
-            ->where('role', 'site_user')
-            ->where('created_by', (int) $agent->id)
+        return $this->agentMemberQuery($agent)
             ->where('status', 'active')
             ->count();
+    }
+
+    /**
+     * @return Builder<Admin>
+     */
+    private function agentMemberQuery(Admin $agent): Builder
+    {
+        return Admin::query()
+            ->where('role', 'site_user')
+            ->where('created_by', (int) $agent->id);
     }
 
     private function defaultUserSiteName(Admin $admin): string

@@ -8,6 +8,7 @@ use App\Models\Site;
 use App\Services\Billing\PlanSubscriptionService;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
 class AgentUserManagementTest extends TestCase
@@ -381,6 +382,63 @@ class AgentUserManagementTest extends TestCase
             ->assertSee('agent_list_second')
             ->assertSee('Second Customer Site')
             ->assertSee('2 / 3');
+    }
+
+    public function test_agent_admin_can_edit_own_site_user_profile_and_password(): void
+    {
+        $agent = $this->createAdmin('agent_edit_owner', 'agent_admin');
+        $site = $this->createSite('Agent Edit Context', $agent, 'agent');
+        $plan = $this->createPlanWithTeamMembers(3);
+        $this->openAgentPlan($agent, $site, $plan);
+        $member = $this->createAdmin('agent_edit_member', 'site_user', $agent);
+        $memberSite = $this->createSite('Agent Edit Member Site', $member, 'agent', $agent);
+        app(\App\Services\Billing\AdminPlanSubscriptionService::class)->inheritForAgentUserSite($agent, $member, $site, $memberSite, $agent);
+
+        $this->actingAs($agent, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.agent-users.index'))
+            ->assertOk()
+            ->assertSee('编辑')
+            ->assertSee('data-agent-user-edit', false)
+            ->assertSee(route('admin.agent-users.update', ['adminId' => (int) $member->id]), false);
+
+        $this->actingAs($agent, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.agent-users.update', ['adminId' => (int) $member->id]), [
+                'display_name' => '更新后的用户名',
+                'email' => 'updated-agent-member@example.com',
+                'password' => 'new-secret-123',
+                'confirm_password' => 'new-secret-123',
+            ])
+            ->assertRedirect(route('admin.agent-users.index'));
+
+        $member->refresh();
+        $this->assertSame('agent_edit_member', (string) $member->username);
+        $this->assertSame('site_user', (string) $member->role);
+        $this->assertSame((int) $agent->id, (int) $member->created_by);
+        $this->assertSame('更新后的用户名', (string) $member->display_name);
+        $this->assertSame('updated-agent-member@example.com', (string) $member->email);
+        $this->assertTrue(Hash::check('new-secret-123', (string) $member->password));
+    }
+
+    public function test_agent_admin_cannot_edit_other_agent_site_user(): void
+    {
+        $agent = $this->createAdmin('agent_edit_scope_owner', 'agent_admin');
+        $agentSite = $this->createSite('Agent Edit Scope Context', $agent, 'agent');
+        $otherAgent = $this->createAdmin('other_agent_edit_scope_owner', 'agent_admin');
+        $otherMember = $this->createAdmin('other_agent_edit_scope_member', 'site_user', $otherAgent);
+
+        $this->actingAs($agent, 'admin')
+            ->withSession(['current_site_id' => (int) $agentSite->id])
+            ->post(route('admin.agent-users.update', ['adminId' => (int) $otherMember->id]), [
+                'display_name' => '不应修改',
+                'email' => 'blocked@example.com',
+            ])
+            ->assertNotFound();
+
+        $otherMember->refresh();
+        $this->assertSame('other_agent_edit_scope_member', (string) $otherMember->display_name);
+        $this->assertSame('other_agent_edit_scope_member@example.com', (string) $otherMember->email);
     }
 
     private function createPlanWithTeamMembers(int $limit): PlatformPlan

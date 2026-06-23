@@ -367,6 +367,7 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
         Route::middleware('admin.agent')->prefix('agent-users')->name('agent-users.')->group(function () {
             Route::get('/', [AgentUserController::class, 'index'])->name('index');
             Route::post('/', [AgentUserController::class, 'store'])->name('store');
+            Route::post('{adminId}', [AgentUserController::class, 'update'])->name('update');
             Route::post('{adminId}/toggle-status', [AgentUserController::class, 'toggleStatus'])->name('toggle-status');
         });
         Route::prefix('plan-usages')->name('plan-usages.')->group(function () {
