@@ -138,6 +138,25 @@ class AdminHeaderNavigationTest extends TestCase
         $this->assertMenuRouteActive($primaryNav, route('admin.crebee-accounts.index'));
     }
 
+    public function test_top_navigation_group_dropdowns_are_hover_driven(): void
+    {
+        $admin = $this->createAdmin('header_hover_nav_admin', 'super_admin');
+
+        $html = $this->actingAs($admin, 'admin')
+            ->get(route('admin.dashboard'))
+            ->assertOk()
+            ->getContent();
+
+        $primaryNav = $this->section($html, 'data-admin-primary-nav');
+        $adminCss = file_get_contents(public_path('assets/css/admin.css')) ?: '';
+
+        $this->assertStringContainsString('data-admin-nav-group', $primaryNav);
+        $this->assertStringContainsString('data-admin-nav-dropdown', $primaryNav);
+        $this->assertStringContainsString('.admin-nav-group:hover .admin-nav-dropdown', $adminCss);
+        $this->assertStringContainsString('.admin-nav-group:focus-within .admin-nav-dropdown', $adminCss);
+        $this->assertStringNotContainsString('group-hover:', $primaryNav);
+    }
+
     public function test_profile_and_monitoring_center_pages_are_accessible(): void
     {
         $admin = $this->createAdmin('header_profile_admin', 'super_admin');

@@ -530,6 +530,22 @@ body.admin-ui .admin-locale-select:focus {
     background: var(--aliyun-primary);
 }
 
+.admin-nav-group {
+    isolation: isolate;
+}
+
+.admin-nav-dropdown {
+    pointer-events: none;
+}
+
+.admin-nav-group:hover .admin-nav-dropdown,
+.admin-nav-group:focus-within .admin-nav-dropdown {
+    visibility: visible !important;
+    opacity: 1 !important;
+    transform: translateY(0) !important;
+    pointer-events: auto;
+}
+
 .admin-topbar button[onclick="toggleUserMenu()"]:hover,
 .admin-topbar button[onclick="toggleModuleMenu()"]:hover,
 .admin-topbar button[onclick="toggleAdminNotifications()"]:hover {

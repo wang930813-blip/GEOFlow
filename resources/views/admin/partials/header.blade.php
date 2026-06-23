@@ -303,18 +303,20 @@
                     @foreach ($primaryMenu as $item)
                         @if (($item['type'] ?? 'link') === 'group')
                             @php($isGroupActive = $groupIsActive($item))
-                            <div class="relative group">
-                                <button type="button" class="admin-nav-link @if($isGroupActive) is-active font-medium @endif inline-flex shrink-0 items-center gap-1 whitespace-nowrap px-2 lg:px-3 py-2 text-sm transition-colors duration-200">
+                            <div class="admin-nav-group relative" data-admin-nav-group>
+                                <button type="button" class="admin-nav-link @if($isGroupActive) is-active font-medium @endif inline-flex shrink-0 items-center gap-1 whitespace-nowrap px-2 lg:px-3 py-2 text-sm transition-colors duration-200" aria-haspopup="true">
                                     <span>{{ $item['name'] }}</span>
                                     <i data-lucide="chevron-down" class="h-3.5 w-3.5"></i>
                                 </button>
-                                <div class="admin-menu-panel invisible absolute left-0 top-full z-50 mt-2 w-48 translate-y-1 rounded-md bg-white py-2 opacity-0 shadow-lg transition duration-150 group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:visible group-focus-within:translate-y-0 group-focus-within:opacity-100">
+                                <div class="admin-nav-dropdown invisible absolute left-0 top-full z-50 w-48 translate-y-1 pt-1 opacity-0 transition duration-150" data-admin-nav-dropdown>
+                                    <div class="admin-menu-panel rounded-md bg-white py-2 shadow-lg">
                                     @foreach ($item['items'] as $child)
                                         <a href="{{ $menuUrl($child) }}"
                                            class="@if($resolvedActive === ($child['key'] ?? '')) admin-menu-item-active @endif flex items-center rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100">
                                             {{ $child['name'] }}
                                         </a>
                                     @endforeach
+                                    </div>
                                 </div>
                             </div>
                         @else
