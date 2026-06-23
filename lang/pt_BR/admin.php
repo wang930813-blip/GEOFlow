@@ -2412,6 +2412,7 @@ return array_replace_recursive($base, [
             'ai_parse_failed' => 'Falha na análise semântica da IA: :message',
             'ai_all_models_failed' => 'Todos os modelos de IA disponíveis falharam. Detalhes: :messages',
             'ai_config_help' => 'Verifique a URL Base da API do modelo, ID do modelo, chave da API, cota da conta e permissões. Após corrigir, retorne ao histórico de importação e execute novamente o trabalho que falhou.',
+            'ai_runtime_failure_help' => 'Um modelo de IA foi chamado, mas o serviço upstream retornou erro ou expirou. Tente novamente mais tarde ou peça a um administrador para trocar o modelo ou verificar o gateway de IA.',
             'ai_config_button' => 'Configurar API de IA',
             'fetch_status_failed' => 'Falha ao buscar o status do trabalho',
             'job_failed' => 'O trabalho de importação falhou',

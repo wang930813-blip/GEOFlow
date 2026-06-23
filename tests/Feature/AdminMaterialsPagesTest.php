@@ -510,6 +510,45 @@ class AdminMaterialsPagesTest extends TestCase
         $this->assertDatabaseCount('url_import_jobs', 0);
     }
 
+    public function test_url_import_failed_ai_call_does_not_show_missing_config_contact_prompt(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'url_import_ai_call_failed_admin',
+            'password' => 'secret-123',
+            'email' => 'url-import-ai-call-failed@example.com',
+            'display_name' => 'Url Import AI Call Failed Admin',
+            'role' => 'site_user',
+            'status' => 'active',
+        ]);
+        $site = $this->createSiteForAdmin($admin, true);
+        $message = 'AI 智能解析失败：所有可用 AI 模型均调用失败。失败详情：GPT-5.5 / gpt-5.5：HTTP request returned status code 524: error code: 524';
+
+        $job = UrlImportJob::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'url' => 'https://example.test/report',
+            'normalized_url' => 'https://example.test/report',
+            'source_domain' => 'example.test',
+            'page_title' => '',
+            'status' => 'failed',
+            'current_step' => 'knowledge',
+            'progress_percent' => 100,
+            'options_json' => '{}',
+            'result_json' => '',
+            'error_message' => $message,
+            'created_by' => 'tester',
+            'finished_at' => now(),
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.url-import.show', ['jobId' => (int) $job->id]))
+            ->assertOk()
+            ->assertSee('HTTP request returned status code 524')
+            ->assertSee(__('admin.url_import.error.ai_runtime_failure_help'))
+            ->assertDontSee(__('admin.url_import.error.ai_config_contact_admin'));
+    }
+
     public function test_url_import_run_dispatches_queue_job_when_queue_is_async(): void
     {
         Config::set('queue.default', 'redis');

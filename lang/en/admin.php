@@ -2891,6 +2891,7 @@ return [
             'ai_parse_failed' => 'AI semantic parsing failed: :message',
             'ai_all_models_failed' => 'All available AI models failed. Details: :messages',
             'ai_config_help' => 'Check the model API Base URL, model ID, API key, account quota, and model permissions. After fixing them, return to import history and rerun the failed job.',
+            'ai_runtime_failure_help' => 'An AI model was called, but the upstream AI service returned an error or timed out. Try again later, or ask an administrator to switch models or check the AI gateway.',
             'ai_config_button' => 'Configure AI API',
             'ai_config_contact_admin' => 'This account cannot configure AI. Contact the agent or platform administrator to finish AI setup before continuing.',
             'fetch_status_failed' => 'Failed to fetch job status',

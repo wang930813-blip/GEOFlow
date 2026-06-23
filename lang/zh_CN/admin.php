@@ -2894,6 +2894,7 @@ return [
             'ai_parse_failed' => 'AI 智能解析失败：:message',
             'ai_all_models_failed' => '所有可用 AI 模型均调用失败。失败详情：:messages',
             'ai_config_help' => '请检查模型 API Base URL、模型 ID、API Key、账号额度和模型权限。确认后可回到采集历史重新运行失败任务。',
+            'ai_runtime_failure_help' => 'AI 模型已被调用，但上游 AI 服务返回错误或超时。请稍后重试，或联系管理员切换可用模型/检查 AI 网关状态。',
             'ai_config_button' => '去配置 AI API',
             'ai_config_contact_admin' => '当前账号不能配置 AI，请联系所属代理或平台管理员完成 AI 配置后再操作。',
             'fetch_status_failed' => '获取状态失败',

@@ -23,6 +23,20 @@
     $currentStepKey = $legacyStepAliases[$job->current_step] ?? ($job->current_step ?: 'queued');
     $currentStepIndex = array_search($currentStepKey, $stepKeys, true);
     $currentStepIndex = $currentStepIndex === false ? -1 : $currentStepIndex;
+    $errorMessage = (string) $job->error_message;
+    $isAiConfigurationFailure = $errorMessage !== '' && (
+        str_contains($errorMessage, __('admin.url_import.error.ai_model_required')) ||
+        str_contains($errorMessage, __('admin.url_import.error.ai_url_missing')) ||
+        str_contains($errorMessage, __('admin.url_import.error.ai_key_missing'))
+    );
+    $failedHelpText = $isAiConfigurationFailure
+        ? (($canManageAiConfig ?? false) ? __('admin.url_import.error.ai_config_help') : __('admin.url_import.error.ai_config_contact_admin'))
+        : __('admin.url_import.error.ai_runtime_failure_help');
+    $aiConfigurationFailureMarkers = [
+        __('admin.url_import.error.ai_model_required'),
+        __('admin.url_import.error.ai_url_missing'),
+        __('admin.url_import.error.ai_key_missing'),
+    ];
 @endphp
 
 @section('content')
@@ -159,9 +173,9 @@
         @if ($job->status === 'failed')
             <div class="rounded-2xl border border-red-200 bg-red-50 p-6">
                 <h3 class="text-base font-semibold text-red-800">{{ __('admin.url_import.error.job_failed') }}</h3>
-                <p class="mt-2 text-sm text-red-700">{{ $job->error_message }}</p>
-                <p class="mt-3 text-sm leading-6 text-red-700">{{ ($canManageAiConfig ?? false) ? __('admin.url_import.error.ai_config_help') : __('admin.url_import.error.ai_config_contact_admin') }}</p>
-                @if ($canManageAiConfig ?? false)
+                <p class="mt-2 text-sm text-red-700">{{ $errorMessage }}</p>
+                <p class="mt-3 text-sm leading-6 text-red-700">{{ $failedHelpText }}</p>
+                @if (($canManageAiConfig ?? false) && $isAiConfigurationFailure)
                     <a href="{{ route('admin.ai-models.index') }}" target="_blank" rel="noopener noreferrer" class="mt-4 inline-flex items-center rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700">
                         <i data-lucide="external-link" class="mr-2 h-4 w-4"></i>
                         {{ __('admin.url_import.error.ai_config_button') }}
@@ -300,8 +314,10 @@
             const failedTitleText = @json(__('admin.url_import.error.job_failed'));
             const aiConfigHelpText = @json(__('admin.url_import.error.ai_config_help'));
             const aiConfigContactText = @json(__('admin.url_import.error.ai_config_contact_admin'));
+            const aiRuntimeFailureHelpText = @json(__('admin.url_import.error.ai_runtime_failure_help'));
             const aiConfigButtonText = @json(__('admin.url_import.error.ai_config_button'));
             const canManageAiConfig = @json((bool) ($canManageAiConfig ?? false));
+            const aiConfigurationFailureMarkers = @json($aiConfigurationFailureMarkers);
             const processingHintTemplate = @json(__('admin.url_import.section.processing_hint', ['current' => '__CURRENT__', 'next' => '__NEXT__']));
             const completedHintText = @json(__('admin.url_import.progress.result_ready'));
             let polling = null;
@@ -423,17 +439,21 @@
                 if (!runtimeError) {
                     return;
                 }
-                const aiConfigAction = canManageAiConfig
+                const isAiConfigurationFailure = aiConfigurationFailureMarkers.some((marker) => marker && String(message || '').includes(marker));
+                const aiConfigAction = canManageAiConfig && isAiConfigurationFailure
                     ? `<a href="${escapeHtml(root.dataset.aiConfigUrl || '#')}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center justify-center rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700">
                             ${escapeHtml(aiConfigButtonText)}
                         </a>`
                     : '';
+                const helpText = isAiConfigurationFailure
+                    ? (canManageAiConfig ? aiConfigHelpText : aiConfigContactText)
+                    : aiRuntimeFailureHelpText;
                 runtimeError.innerHTML = `
                     <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <span>${escapeHtml(message)}</span>
                         ${aiConfigAction}
                     </div>
-                    <p class="mt-2 text-sm font-normal leading-6">${escapeHtml(canManageAiConfig ? aiConfigHelpText : aiConfigContactText)}</p>
+                    <p class="mt-2 text-sm font-normal leading-6">${escapeHtml(helpText)}</p>
                 `;
                 runtimeError.classList.remove('hidden');
             };
