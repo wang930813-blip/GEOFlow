@@ -198,7 +198,7 @@ class CategoryController extends Controller
         $baseSlug = $slug;
         $counter = 2;
         while (true) {
-            $existsQuery = Category::query()->where('slug', $slug);
+            $existsQuery = Category::query()->withoutGlobalScopes()->where('slug', $slug);
             if ($excludeId > 0) {
                 $existsQuery->where('id', '!=', $excludeId);
             }

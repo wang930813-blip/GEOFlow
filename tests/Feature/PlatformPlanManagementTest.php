@@ -469,6 +469,116 @@ class PlatformPlanManagementTest extends TestCase
         $this->assertStringNotContainsString('<span class="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs text-slate-600">profile_plan_agent</span>', $html);
     }
 
+    public function test_agent_profile_usage_rows_hide_team_members_deleted_records_and_render_usage_progress(): void
+    {
+        $superAdmin = $this->admin('profile_usage_root', 'super_admin');
+        $agent = $this->admin('profile_usage_agent', 'agent_admin');
+        $activeUser = $this->admin('profile_usage_active_user', 'site_user', $agent);
+        $deletedUser = $this->admin('profile_usage_deleted_user', 'site_user', $agent);
+        $deletedSiteUser = $this->admin('profile_usage_deleted_site_user', 'site_user', $agent);
+
+        $activeSite = $this->agentUserSite('Profile Active Usage Site', $activeUser, $agent);
+        $deletedUserSite = $this->agentUserSite('Profile Deleted User Site', $deletedUser, $agent);
+        $deletedSite = $this->agentUserSite('Profile Deleted Site', $deletedSiteUser, $agent);
+
+        $plan = $this->plan('Profile Usage Plan', [
+            PlatformPlan::RESOURCE_CREDITS => 1600,
+            PlatformPlan::RESOURCE_BRAND_DIAGNOSES => 10,
+            PlatformPlan::RESOURCE_ARTICLE_GENERATIONS => 0,
+            PlatformPlan::RESOURCE_TEAM_MEMBERS => 71,
+        ]);
+        $deletedUserPlan = $this->plan('Profile Deleted User Plan', [
+            PlatformPlan::RESOURCE_BRAND_DIAGNOSES => 5,
+        ]);
+        $deletedSitePlan = $this->plan('Profile Deleted Site Plan', [
+            PlatformPlan::RESOURCE_BRAND_DIAGNOSES => 5,
+        ]);
+
+        $subscriptionService = app(AdminPlanSubscriptionService::class);
+        $subscriptionService->openAgentOwner($agent, $plan, $superAdmin, now()->subMinute(), now()->addDays(30));
+        $subscriptionService->inheritForAgentUserFromAccount($agent, $activeUser, $activeSite, $superAdmin);
+
+        AdminPlanSubscription::query()->create([
+            'admin_id' => (int) $deletedUser->id,
+            'site_id' => (int) $deletedUserSite->id,
+            'plan_id' => (int) $deletedUserPlan->id,
+            'inherited_from_admin_id' => (int) $agent->id,
+            'mode' => 'agent_user',
+            'status' => 'active',
+            'starts_at' => now()->subMinute(),
+            'ends_at' => now()->addDays(30),
+            'entitlements_snapshot' => (array) $subscriptionService->activeAgentOwnerSubscription($agent)?->entitlements_snapshot,
+        ]);
+        AdminPlanSubscription::query()->create([
+            'admin_id' => (int) $deletedSiteUser->id,
+            'site_id' => (int) $deletedSite->id,
+            'plan_id' => (int) $deletedSitePlan->id,
+            'inherited_from_admin_id' => (int) $agent->id,
+            'mode' => 'agent_user',
+            'status' => 'active',
+            'starts_at' => now()->subMinute(),
+            'ends_at' => now()->addDays(30),
+            'entitlements_snapshot' => (array) $subscriptionService->activeAgentOwnerSubscription($agent)?->entitlements_snapshot,
+        ]);
+
+        app(AdminResourceQuotaService::class)->consume((int) $activeUser->id, (int) $activeSite->id, PlatformPlan::RESOURCE_BRAND_DIAGNOSES, 3, [
+            'idempotency_key' => 'profile-usage-brand',
+        ]);
+        app(AdminResourceQuotaService::class)->consume((int) $activeUser->id, (int) $activeSite->id, PlatformPlan::RESOURCE_ARTICLE_GENERATIONS, 2, [
+            'idempotency_key' => 'profile-usage-article-unlimited',
+        ]);
+        AdminCreditAccount::query()->updateOrCreate([
+            'admin_id' => (int) $activeUser->id,
+            'site_id' => (int) $activeSite->id,
+        ], [
+            'balance' => '1200.00',
+            'frozen_balance' => '0.00',
+            'total_granted' => '1600.00',
+            'total_consumed' => '400.00',
+        ]);
+
+        $deletedUser->delete();
+        $deletedSite->delete();
+
+        $response = $this->actingAs($agent, 'admin')
+            ->get(route('admin.profile.index'));
+
+        $response
+            ->assertOk()
+            ->assertSee('profile_usage_active_user')
+            ->assertSee('Profile Active Usage Site')
+            ->assertSee('已用 400.00 / 1600')
+            ->assertSee('已用 3 / 10')
+            ->assertSee('已用 2 / 不限')
+            ->assertDontSee(PlatformPlan::resourceCatalog()[PlatformPlan::RESOURCE_TEAM_MEMBERS]['label'])
+            ->assertDontSee('Profile Deleted User Plan')
+            ->assertDontSee('Profile Deleted Site Plan');
+
+        $html = $response->getContent();
+        $this->assertStringContainsString('style="width: 25%"', $html);
+        $this->assertStringContainsString('style="width: 30%"', $html);
+        $this->assertStringContainsString('data-resource-key="'.PlatformPlan::RESOURCE_ARTICLE_GENERATIONS.'"', $html);
+
+        $usageResponse = $this->actingAs($agent, 'admin')
+            ->get(route('admin.plan-usages.index'));
+
+        $usageResponse
+            ->assertOk()
+            ->assertSee('profile_usage_active_user')
+            ->assertSee('Profile Active Usage Site')
+            ->assertSee('已用 400.00 / 1600')
+            ->assertSee('已用 3 / 10')
+            ->assertSee('已用 2 / 不限')
+            ->assertDontSee(PlatformPlan::resourceCatalog()[PlatformPlan::RESOURCE_TEAM_MEMBERS]['label'])
+            ->assertDontSee('Profile Deleted User Plan')
+            ->assertDontSee('Profile Deleted Site Plan');
+
+        $usageHtml = $usageResponse->getContent();
+        $this->assertStringContainsString('style="width: 25%"', $usageHtml);
+        $this->assertStringContainsString('style="width: 30%"', $usageHtml);
+        $this->assertStringContainsString('data-resource-key="'.PlatformPlan::RESOURCE_ARTICLE_GENERATIONS.'"', $usageHtml);
+    }
+
     public function test_plan_usage_hides_team_member_resource_for_direct_owner_and_agent_user_rows(): void
     {
         $superAdmin = $this->admin('usage_team_root', 'super_admin');
@@ -557,6 +667,20 @@ class PlatformPlanManagementTest extends TestCase
             'name' => $name,
             'status' => 'active',
             'customer_mode' => $mode,
+        ]);
+        $site->members()->attach((int) $owner->id, ['role' => 'owner']);
+
+        return $site;
+    }
+
+    private function agentUserSite(string $name, Admin $owner, Admin $agent): Site
+    {
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $owner->id,
+            'agent_admin_id' => (int) $agent->id,
+            'name' => $name,
+            'status' => 'active',
+            'customer_mode' => 'agent',
         ]);
         $site->members()->attach((int) $owner->id, ['role' => 'owner']);
 

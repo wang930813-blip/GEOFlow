@@ -143,6 +143,10 @@ class ProfileController extends Controller
     private function subscriptionRows(Admin $admin, array $resourceCatalog): Collection
     {
         $subscriptions = $this->visibleSubscriptionQuery($admin)
+            ->whereHas('admin')
+            ->where(function (Builder $query): void {
+                $query->whereNull('site_id')->orWhereHas('site');
+            })
             ->with(['admin:id,username,display_name,role,created_by', 'plan:id,name,code', 'site:id,name'])
             ->orderByDesc('created_at')
             ->limit($admin->isSuperAdmin() ? 12 : 20)
@@ -165,21 +169,46 @@ class ProfileController extends Controller
 
         return $subscriptions->map(function (AdminPlanSubscription $subscription) use ($resourceCatalog, $usages, $creditAccounts): array {
             $usageByKey = $usages->get((int) $subscription->id, collect())->keyBy('resource_key');
+            $creditAccount = $creditAccounts->get((int) $subscription->admin_id.':'.(int) $subscription->site_id);
             $resources = collect((array) $subscription->entitlements_snapshot)
                 ->filter(fn ($entitlement, string $key): bool => is_array($entitlement)
                     && (bool) ($entitlement['enabled'] ?? false)
-                    && isset($resourceCatalog[$key]))
-                ->map(function (array $entitlement, string $key) use ($resourceCatalog, $usageByKey): array {
+                    && isset($resourceCatalog[$key])
+                    && ! $this->shouldHideResourceForSubscription($subscription, $key))
+                ->map(function (array $entitlement, string $key) use ($resourceCatalog, $usageByKey, $creditAccount): array {
                     $quota = (int) ($entitlement['quota_value'] ?? 0);
+                    $period = (string) ($entitlement['quota_period'] ?? 'cycle');
+                    $isUnlimited = $period === 'unlimited' || $quota <= 0;
+
+                    if ($key === PlatformPlan::RESOURCE_CREDITS && $creditAccount instanceof AdminCreditAccount) {
+                        $used = (float) $creditAccount->total_consumed;
+                        $remaining = (float) $creditAccount->balance;
+
+                        return [
+                            'key' => $key,
+                            'label' => $resourceCatalog[$key]['label'],
+                            'quota' => $isUnlimited ? null : $quota,
+                            'used' => number_format($used, 2, '.', ''),
+                            'remaining' => $isUnlimited ? null : number_format($remaining, 2, '.', ''),
+                            'period' => $isUnlimited ? 'unlimited' : $period,
+                            'unit' => (string) ($entitlement['unit'] ?? $resourceCatalog[$key]['unit']),
+                            'percent' => $isUnlimited ? 100 : min(100, (int) round($used / max(1, $quota) * 100)),
+                            'is_unlimited' => $isUnlimited,
+                        ];
+                    }
+
                     $used = (int) ($usageByKey->get($key)?->used_amount ?? 0);
 
                     return [
                         'key' => $key,
                         'label' => $resourceCatalog[$key]['label'],
-                        'quota' => $quota,
+                        'quota' => $isUnlimited ? null : $quota,
                         'used' => $used,
-                        'remaining' => max(0, $quota - $used),
-                        'percent' => $quota > 0 ? min(100, (int) round($used / $quota * 100)) : 0,
+                        'remaining' => $isUnlimited ? null : max(0, $quota - $used),
+                        'period' => $isUnlimited ? 'unlimited' : $period,
+                        'unit' => (string) ($entitlement['unit'] ?? $resourceCatalog[$key]['unit']),
+                        'percent' => $isUnlimited ? 100 : min(100, (int) round($used / max(1, $quota) * 100)),
+                        'is_unlimited' => $isUnlimited,
                     ];
                 })
                 ->values();
@@ -187,7 +216,7 @@ class ProfileController extends Controller
             return [
                 'subscription' => $subscription,
                 'resources' => $resources,
-                'creditAccount' => $creditAccounts->get((int) $subscription->admin_id.':'.(int) $subscription->site_id),
+                'creditAccount' => $creditAccount,
             ];
         });
     }
@@ -209,12 +238,28 @@ class ProfileController extends Controller
     {
         return AdminPlanSubscription::query()
             ->where('admin_id', '!=', (int) $admin->id)
+            ->whereHas('admin')
+            ->whereHas('site')
             ->where(function (Builder $query) use ($admin): void {
                 $query->whereHas('admin', fn (Builder $adminQuery) => $adminQuery
                     ->where('created_by', (int) $admin->id)
                     ->where('role', 'site_user'))
                     ->orWhere('inherited_from_admin_id', (int) $admin->id);
             });
+    }
+
+    private function shouldHideResourceForSubscription(AdminPlanSubscription $subscription, string $resourceKey): bool
+    {
+        if ($resourceKey !== PlatformPlan::RESOURCE_TEAM_MEMBERS) {
+            return false;
+        }
+
+        $admin = $subscription->admin;
+        if ($admin instanceof Admin && ($admin->isDirectAdmin() || $admin->isSiteUser())) {
+            return true;
+        }
+
+        return in_array((string) $subscription->mode, ['direct_owner', 'agent_user'], true);
     }
 
     private function agentOwnSubscription(Admin $admin): ?AdminPlanSubscription

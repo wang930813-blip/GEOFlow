@@ -47,7 +47,11 @@ class PlanUsageController extends Controller
 
     private function visibleSubscriptions(Admin $admin, Request $request): Builder
     {
-        $query = AdminPlanSubscription::query();
+        $query = AdminPlanSubscription::query()
+            ->whereHas('admin')
+            ->where(function (Builder $query): void {
+                $query->whereNull('site_id')->orWhereHas('site');
+            });
 
         if ($admin->isSuperAdmin()) {
             $siteId = (int) $request->query('site_id', 0);
@@ -68,6 +72,7 @@ class PlanUsageController extends Controller
         if ($admin->isAgentAdmin()) {
             return $query
                 ->where('admin_id', '!=', (int) $admin->id)
+                ->whereHas('site')
                 ->where(function (Builder $query) use ($admin): void {
                     $query->where('inherited_from_admin_id', (int) $admin->id)
                         ->orWhereHas('admin', fn (Builder $adminQuery) => $adminQuery
@@ -105,16 +110,35 @@ class PlanUsageController extends Controller
 
         return $subscriptions->map(function (AdminPlanSubscription $subscription) use ($resourceCatalog, $usageBySubscription, $creditAccounts): array {
             $usages = $usageBySubscription->get((int) $subscription->id, collect())->keyBy('resource_key');
+            $creditAccount = $creditAccounts->get((int) $subscription->admin_id.':'.(int) $subscription->site_id);
             $resources = collect((array) $subscription->entitlements_snapshot)
                 ->filter(fn ($entitlement, string $key): bool => is_array($entitlement)
                     && (bool) ($entitlement['enabled'] ?? false)
                     && isset($resourceCatalog[$key])
                     && ! $this->shouldHideResourceForSubscription($subscription, $key))
-                ->map(function (array $entitlement, string $key) use ($resourceCatalog, $usages): array {
+                ->map(function (array $entitlement, string $key) use ($resourceCatalog, $usages, $creditAccount): array {
                     $quota = (int) ($entitlement['quota_value'] ?? 0);
                     $period = (string) ($entitlement['quota_period'] ?? 'cycle');
-                    $used = (int) ($usages->get($key)?->used_amount ?? 0);
                     $isUnlimited = $period === 'unlimited' || $quota <= 0;
+
+                    if ($key === PlatformPlan::RESOURCE_CREDITS && $creditAccount instanceof AdminCreditAccount) {
+                        $used = (float) $creditAccount->total_consumed;
+                        $remaining = (float) $creditAccount->balance;
+
+                        return [
+                            'key' => $key,
+                            'label' => $resourceCatalog[$key]['label'],
+                            'quota' => $isUnlimited ? null : $quota,
+                            'used' => number_format($used, 2, '.', ''),
+                            'remaining' => $isUnlimited ? null : number_format($remaining, 2, '.', ''),
+                            'period' => $isUnlimited ? 'unlimited' : $period,
+                            'unit' => (string) ($entitlement['unit'] ?? $resourceCatalog[$key]['unit']),
+                            'percent' => $isUnlimited ? 100 : min(100, (int) round($used / max(1, $quota) * 100)),
+                            'is_unlimited' => $isUnlimited,
+                        ];
+                    }
+
+                    $used = (int) ($usages->get($key)?->used_amount ?? 0);
 
                     return [
                         'key' => $key,
@@ -124,13 +148,12 @@ class PlanUsageController extends Controller
                         'remaining' => $isUnlimited ? null : max(0, $quota - $used),
                         'period' => $isUnlimited ? 'unlimited' : $period,
                         'unit' => (string) ($entitlement['unit'] ?? $resourceCatalog[$key]['unit']),
-                        'percent' => $isUnlimited ? 0 : min(100, (int) round($used / $quota * 100)),
+                        'percent' => $isUnlimited ? 100 : min(100, (int) round($used / max(1, $quota) * 100)),
                         'is_unlimited' => $isUnlimited,
                     ];
                 })
                 ->values();
 
-            $creditAccount = $creditAccounts->get((int) $subscription->admin_id.':'.(int) $subscription->site_id);
             $creditEntitlement = (array) data_get((array) $subscription->entitlements_snapshot, PlatformPlan::RESOURCE_CREDITS, []);
             $hasUnlimitedCredits = (bool) ($creditEntitlement['enabled'] ?? false)
                 && (int) ($creditEntitlement['quota_value'] ?? 0) <= 0;
