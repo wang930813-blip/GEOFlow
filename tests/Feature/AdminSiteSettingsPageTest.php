@@ -102,6 +102,8 @@ class AdminSiteSettingsPageTest extends TestCase
             $settingsResponse
                 ->assertOk()
                 ->assertSee('name="public_domain"', false)
+                ->assertSee('data-copy-public-domain', false)
+                ->assertSee('locked-'.$role.'.example.test')
                 ->assertSee('name="admin_base_path"', false)
                 ->assertSee('disabled', false);
 

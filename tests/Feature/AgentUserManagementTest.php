@@ -221,9 +221,11 @@ class AgentUserManagementTest extends TestCase
 
         $this->assertSame('site_user', (string) $member->role);
         $this->assertMatchesRegularExpression('/^[a-z0-9]{8}$/', (string) $memberSite->name);
+        $this->assertSame($memberSite->name.'.geo.xinzhidi.cn', (string) $memberSite->domain);
         $this->assertDatabaseHas('sites', [
             'id' => (int) $memberSite->id,
             'owner_admin_id' => (int) $member->id,
+            'domain' => $memberSite->name.'.geo.xinzhidi.cn',
             'customer_mode' => 'agent',
             'agent_admin_id' => (int) $agent->id,
         ]);
@@ -412,6 +414,7 @@ class AgentUserManagementTest extends TestCase
             ->get(route('admin.agent-users.index'))
             ->assertOk()
             ->assertSee('Agent List Visible Plan')
+            ->assertSee('.geo.xinzhidi.cn')
             ->assertSee(route('admin.plan-usages.index', ['admin_id' => (int) $member->id]), false);
 
         $this->actingAs($agent, 'admin')
