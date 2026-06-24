@@ -531,10 +531,10 @@ class PlatformPlanManagementTest extends TestCase
             'admin_id' => (int) $activeUser->id,
             'site_id' => (int) $activeSite->id,
         ], [
-            'balance' => '1200.00',
+            'balance' => '1594.00',
             'frozen_balance' => '0.00',
             'total_granted' => '1600.00',
-            'total_consumed' => '400.00',
+            'total_consumed' => '6.00',
         ]);
 
         $deletedUser->delete();
@@ -547,7 +547,7 @@ class PlatformPlanManagementTest extends TestCase
             ->assertOk()
             ->assertSee('profile_usage_active_user')
             ->assertSee('Profile Active Usage Site')
-            ->assertSee('已用 400.00 / 1600')
+            ->assertSee('已用 6.00 / 1600')
             ->assertSee('已用 3 / 10')
             ->assertSee('已用 2 / 不限')
             ->assertDontSee(PlatformPlan::resourceCatalog()[PlatformPlan::RESOURCE_TEAM_MEMBERS]['label'])
@@ -555,7 +555,7 @@ class PlatformPlanManagementTest extends TestCase
             ->assertDontSee('Profile Deleted Site Plan');
 
         $html = $response->getContent();
-        $this->assertStringContainsString('style="width: 25%"', $html);
+        $this->assertStringContainsString('style="width: 0%; min-width: 6px"', $html);
         $this->assertStringContainsString('style="width: 30%"', $html);
         $this->assertStringContainsString('data-resource-key="'.PlatformPlan::RESOURCE_ARTICLE_GENERATIONS.'"', $html);
 
@@ -566,7 +566,7 @@ class PlatformPlanManagementTest extends TestCase
             ->assertOk()
             ->assertSee('profile_usage_active_user')
             ->assertSee('Profile Active Usage Site')
-            ->assertSee('已用 400.00 / 1600')
+            ->assertSee('已用 6.00 / 1600')
             ->assertSee('已用 3 / 10')
             ->assertSee('已用 2 / 不限')
             ->assertDontSee(PlatformPlan::resourceCatalog()[PlatformPlan::RESOURCE_TEAM_MEMBERS]['label'])
@@ -574,7 +574,7 @@ class PlatformPlanManagementTest extends TestCase
             ->assertDontSee('Profile Deleted Site Plan');
 
         $usageHtml = $usageResponse->getContent();
-        $this->assertStringContainsString('style="width: 25%"', $usageHtml);
+        $this->assertStringContainsString('style="width: 0%; min-width: 6px"', $usageHtml);
         $this->assertStringContainsString('style="width: 30%"', $usageHtml);
         $this->assertStringContainsString('data-resource-key="'.PlatformPlan::RESOURCE_ARTICLE_GENERATIONS.'"', $usageHtml);
     }

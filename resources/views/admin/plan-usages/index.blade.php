@@ -105,6 +105,7 @@
                         <div class="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                             @forelse ($row['resources'] as $resource)
                                 @php($isUnlimited = (bool) ($resource['is_unlimited'] ?? false))
+                                @php($barStyle = 'width: '.$resource['percent'].'%'.(! $isUnlimited && (float) $resource['used'] > 0 && (float) $resource['percent'] < 1 ? '; min-width: 6px' : ''))
                                 <div class="rounded-md border p-4 {{ $isUnlimited ? 'border-emerald-100 bg-emerald-50/30' : 'border-slate-200 bg-white' }}" data-resource-key="{{ $resource['key'] }}">
                                     <div class="flex items-start justify-between gap-3">
                                         <div class="text-sm font-medium text-gray-900">{{ $resource['label'] }}</div>
@@ -112,7 +113,7 @@
                                     </div>
                                     <div class="mt-2 text-sm text-slate-600">已用 {{ $resource['used'] }} / {{ $isUnlimited ? '不限' : $resource['quota'] }}</div>
                                     <div class="mt-3 h-2 overflow-hidden rounded-full {{ $isUnlimited ? 'bg-emerald-100' : 'bg-slate-100' }}">
-                                        <div class="h-full rounded-full {{ $isUnlimited ? 'bg-emerald-400' : 'bg-indigo-500' }}" style="width: {{ $resource['percent'] }}%"></div>
+                                        <div class="h-full rounded-full {{ $isUnlimited ? 'bg-emerald-400' : 'bg-indigo-500' }}" style="{{ $barStyle }}"></div>
                                     </div>
                                 </div>
                             @empty
