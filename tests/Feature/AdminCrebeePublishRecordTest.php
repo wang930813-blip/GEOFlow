@@ -63,6 +63,60 @@ class AdminCrebeePublishRecordTest extends TestCase
             ->assertSee('待结果');
     }
 
+    public function test_super_admin_can_view_all_self_media_publish_records_without_site_scope(): void
+    {
+        $superAdmin = $this->admin('crebee_publish_super', 'super_admin');
+        $firstOwner = $this->admin('crebee_publish_first_owner', 'direct_admin');
+        $secondOwner = $this->admin('crebee_publish_second_owner', 'direct_admin');
+        $firstSite = $this->site('First Publish Site', $firstOwner, 'direct');
+        $secondSite = $this->site('Second Publish Site', $secondOwner, 'direct');
+        $agent = $this->agent();
+        $firstAccount = $this->account($agent, $firstSite, $firstOwner, 'douyin', 'douyin-account-001', 'First Account', '');
+        $secondAccount = $this->account($agent, $secondSite, $secondOwner, 'bilibili', 'bilibili-account-001', 'Second Account', '');
+
+        $this->publishJob($agent, $firstSite, $firstOwner, $firstAccount, 'First Site Published Article', 'success', 'https://example.test/first');
+        $this->publishJob($agent, $secondSite, $secondOwner, $secondAccount, 'Second Site Published Article', 'success', 'https://example.test/second');
+
+        $this->actingAs($superAdmin, 'admin')
+            ->withSession(['current_site_id' => (int) $firstSite->id])
+            ->get(route('admin.crebee-publish-records.index'))
+            ->assertOk()
+            ->assertSee('First Site Published Article')
+            ->assertSee('Second Site Published Article')
+            ->assertSee('全部站点');
+    }
+
+    public function test_self_media_publish_records_use_admin_pagination_size(): void
+    {
+        config(['geoflow.admin_items_per_page' => 2]);
+
+        $superAdmin = $this->admin('crebee_publish_page_super', 'super_admin');
+        $owner = $this->admin('crebee_publish_page_owner', 'direct_admin');
+        $site = $this->site('Paginated Publish Site', $owner, 'direct');
+        $agent = $this->agent();
+        $account = $this->account($agent, $site, $owner, 'douyin', 'douyin-page-account-001', 'Page Account', '');
+
+        $this->publishJob($agent, $site, $owner, $account, 'Oldest Published Article', 'success', 'https://example.test/oldest');
+        $this->publishJob($agent, $site, $owner, $account, 'Middle Published Article', 'success', 'https://example.test/middle');
+        $this->publishJob($agent, $site, $owner, $account, 'Newest Published Article', 'success', 'https://example.test/newest');
+
+        $this->actingAs($superAdmin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.crebee-publish-records.index'))
+            ->assertOk()
+            ->assertSee('Newest Published Article')
+            ->assertSee('Middle Published Article')
+            ->assertDontSee('Oldest Published Article')
+            ->assertSee('page=2', false);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.crebee-publish-records.index', ['page' => 2]))
+            ->assertOk()
+            ->assertSee('Oldest Published Article')
+            ->assertDontSee('Newest Published Article');
+    }
+
     private function publishJob(
         CrebeeAgent $agent,
         Site $site,

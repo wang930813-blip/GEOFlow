@@ -24,7 +24,8 @@ class CrebeePublishRecordController extends Controller
         abort_unless($admin instanceof Admin, 403);
 
         $site = app(CurrentSite::class)->get();
-        abort_unless($site instanceof Site || $admin->isAgentAdmin(), 403);
+        abort_unless($admin->isSuperAdmin() || $site instanceof Site || $admin->isAgentAdmin(), 403);
+        $perPage = max(1, min(100, (int) config('geoflow.admin_items_per_page', 20)));
 
         $records = CrebeePublishJobItem::query()
             ->with([
@@ -33,6 +34,10 @@ class CrebeePublishRecordController extends Controller
                 'job.owner:id,username,display_name,role',
             ])
             ->whereHas('job', function (Builder $query) use ($admin, $site): void {
+                if ($admin->isSuperAdmin()) {
+                    return;
+                }
+
                 if ($site instanceof Site) {
                     $query->where('site_id', (int) $site->id);
                 } else {
@@ -44,7 +49,7 @@ class CrebeePublishRecordController extends Controller
                 }
             })
             ->orderByDesc('id')
-            ->paginate(10)
+            ->paginate($perPage)
             ->withQueryString();
 
         return view('admin.crebee-publish-records.index', [
@@ -54,6 +59,9 @@ class CrebeePublishRecordController extends Controller
             'site' => $site,
             'records' => $records,
             'platformLabels' => SelfMediaPlatformCatalog::labels(),
+            'scopeLabel' => $admin->isSuperAdmin()
+                ? '全部站点'
+                : ($site instanceof Site ? (string) $site->name : '代理下属用户'),
         ]);
     }
 
