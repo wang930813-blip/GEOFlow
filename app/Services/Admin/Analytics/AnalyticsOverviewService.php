@@ -325,15 +325,19 @@ class AnalyticsOverviewService
             ->groupBy('status')
             ->pluck('c', 'status')
             ->all();
-        $recentFailures = DB::table('task_runs as tr')
-            ->leftJoin('tasks as t', 'tr.task_id', '=', 't.id')
-            ->where('tr.status', 'failed')
-            ->whereBetween('tr.created_at', [$filter->start(), $filter->end()])
-            ->when($filter->taskId !== null, fn ($query) => $query->where('tr.task_id', $filter->taskId))
-            ->orderByDesc('tr.created_at')
-            ->select('tr.id', 'tr.error_message', 'tr.created_at', 't.name as task_name')
+        $recentFailures = $this->filteredTaskRuns($filter)
+            ->with(['task:id,name'])
+            ->where('status', 'failed')
+            ->orderByDesc('created_at')
+            ->select('id', 'task_id', 'error_message', 'created_at')
             ->limit(4)
             ->get()
+            ->map(fn (TaskRun $run): object => (object) [
+                'id' => (int) $run->id,
+                'error_message' => (string) $run->error_message,
+                'created_at' => $run->created_at,
+                'task_name' => $run->task?->name,
+            ])
             ->all();
 
         return [

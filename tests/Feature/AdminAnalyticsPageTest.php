@@ -364,6 +364,195 @@ class AdminAnalyticsPageTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_recent_task_failures_are_scoped_to_current_user_site(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-06-24 12:00:00'));
+
+        $visibleUser = Admin::query()->create([
+            'username' => 'analytics_visible_user',
+            'password' => 'secret-123',
+            'email' => 'visible@example.com',
+            'display_name' => 'Visible User',
+            'role' => 'site_user',
+            'status' => 'active',
+        ]);
+        $otherUser = Admin::query()->create([
+            'username' => 'analytics_other_user',
+            'password' => 'secret-123',
+            'email' => 'other@example.com',
+            'display_name' => 'Other User',
+            'role' => 'site_user',
+            'status' => 'active',
+        ]);
+
+        $visibleSite = Site::query()->create([
+            'owner_admin_id' => (int) $visibleUser->id,
+            'name' => 'Visible Analytics Site',
+            'status' => 'active',
+        ]);
+        $visibleSite->members()->attach((int) $visibleUser->id, ['role' => 'owner']);
+
+        $otherSite = Site::query()->create([
+            'owner_admin_id' => (int) $otherUser->id,
+            'name' => 'Other Analytics Site',
+            'status' => 'active',
+        ]);
+        $otherSite->members()->attach((int) $otherUser->id, ['role' => 'owner']);
+
+        $visibleTask = Task::query()->create([
+            'site_id' => (int) $visibleSite->id,
+            'owner_admin_id' => (int) $visibleUser->id,
+            'name' => '当前用户论文辅导任务',
+            'status' => 'active',
+        ]);
+        $otherTask = Task::query()->create([
+            'site_id' => (int) $otherSite->id,
+            'owner_admin_id' => (int) $otherUser->id,
+            'name' => '其他用户论文辅导任务',
+            'status' => 'active',
+        ]);
+
+        TaskRun::query()->create([
+            'task_id' => (int) $visibleTask->id,
+            'site_id' => (int) $visibleSite->id,
+            'owner_admin_id' => (int) $visibleUser->id,
+            'status' => 'failed',
+            'error_message' => '当前账号规格额度不足，请联系平台升级或续费',
+            'created_at' => Carbon::parse('2026-06-24 10:00:00'),
+        ]);
+        TaskRun::query()->create([
+            'task_id' => (int) $otherTask->id,
+            'site_id' => (int) $otherSite->id,
+            'owner_admin_id' => (int) $otherUser->id,
+            'status' => 'failed',
+            'error_message' => '其他账号规格额度不足，请联系平台升级或续费',
+            'created_at' => Carbon::parse('2026-06-24 11:00:00'),
+        ]);
+
+        app(CurrentSite::class)->set(null);
+
+        $this->actingAs($visibleUser, 'admin')
+            ->withSession(['current_site_id' => (int) $visibleSite->id])
+            ->get(route('admin.analytics', [
+                'preset' => 'custom',
+                'date_from' => '2026-06-24',
+                'date_to' => '2026-06-24',
+            ]))
+            ->assertOk()
+            ->assertSee('当前用户论文辅导任务')
+            ->assertSee('当前账号规格额度不足，请联系平台升级或续费')
+            ->assertDontSee('其他用户论文辅导任务')
+            ->assertDontSee('其他账号规格额度不足，请联系平台升级或续费');
+
+        app(CurrentSite::class)->set(null);
+        Carbon::setTestNow();
+    }
+
+    public function test_recent_task_failures_are_scoped_to_agent_child_users(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-06-24 12:00:00'));
+
+        $agent = Admin::query()->create([
+            'username' => 'analytics_agent',
+            'password' => 'secret-123',
+            'email' => 'analytics-agent@example.com',
+            'display_name' => 'Analytics Agent',
+            'role' => 'agent_admin',
+            'status' => 'active',
+        ]);
+        $agentUser = Admin::query()->create([
+            'username' => 'analytics_agent_user',
+            'password' => 'secret-123',
+            'email' => 'analytics-agent-user@example.com',
+            'display_name' => 'Analytics Agent User',
+            'role' => 'site_user',
+            'status' => 'active',
+            'created_by' => (int) $agent->id,
+        ]);
+        $otherAgent = Admin::query()->create([
+            'username' => 'analytics_other_agent',
+            'password' => 'secret-123',
+            'email' => 'analytics-other-agent@example.com',
+            'display_name' => 'Analytics Other Agent',
+            'role' => 'agent_admin',
+            'status' => 'active',
+        ]);
+        $otherAgentUser = Admin::query()->create([
+            'username' => 'analytics_other_agent_user',
+            'password' => 'secret-123',
+            'email' => 'analytics-other-agent-user@example.com',
+            'display_name' => 'Analytics Other Agent User',
+            'role' => 'site_user',
+            'status' => 'active',
+            'created_by' => (int) $otherAgent->id,
+        ]);
+
+        $agentSite = Site::query()->create([
+            'owner_admin_id' => (int) $agentUser->id,
+            'agent_admin_id' => (int) $agent->id,
+            'name' => 'Agent Analytics Site',
+            'status' => 'active',
+            'customer_mode' => 'agent',
+        ]);
+        $agentSite->members()->attach((int) $agentUser->id, ['role' => 'owner']);
+
+        $otherAgentSite = Site::query()->create([
+            'owner_admin_id' => (int) $otherAgentUser->id,
+            'agent_admin_id' => (int) $otherAgent->id,
+            'name' => 'Other Agent Analytics Site',
+            'status' => 'active',
+            'customer_mode' => 'agent',
+        ]);
+        $otherAgentSite->members()->attach((int) $otherAgentUser->id, ['role' => 'owner']);
+
+        $agentTask = Task::query()->withoutGlobalScopes()->create([
+            'site_id' => (int) $agentSite->id,
+            'owner_admin_id' => (int) $agentUser->id,
+            'name' => '代理下级论文辅导任务',
+            'status' => 'active',
+        ]);
+        $otherAgentTask = Task::query()->withoutGlobalScopes()->create([
+            'site_id' => (int) $otherAgentSite->id,
+            'owner_admin_id' => (int) $otherAgentUser->id,
+            'name' => '其他代理论文辅导任务',
+            'status' => 'active',
+        ]);
+
+        TaskRun::query()->withoutGlobalScopes()->create([
+            'task_id' => (int) $agentTask->id,
+            'site_id' => (int) $agentSite->id,
+            'owner_admin_id' => (int) $agentUser->id,
+            'status' => 'failed',
+            'error_message' => '代理下级账号规格额度不足',
+            'created_at' => Carbon::parse('2026-06-24 10:00:00'),
+        ]);
+        TaskRun::query()->withoutGlobalScopes()->create([
+            'task_id' => (int) $otherAgentTask->id,
+            'site_id' => (int) $otherAgentSite->id,
+            'owner_admin_id' => (int) $otherAgentUser->id,
+            'status' => 'failed',
+            'error_message' => '其他代理账号规格额度不足',
+            'created_at' => Carbon::parse('2026-06-24 11:00:00'),
+        ]);
+
+        app(CurrentSite::class)->set(null);
+
+        $this->actingAs($agent, 'admin')
+            ->get(route('admin.analytics', [
+                'preset' => 'custom',
+                'date_from' => '2026-06-24',
+                'date_to' => '2026-06-24',
+            ]))
+            ->assertOk()
+            ->assertSee('代理下级论文辅导任务')
+            ->assertSee('代理下级账号规格额度不足')
+            ->assertDontSee('其他代理论文辅导任务')
+            ->assertDontSee('其他代理账号规格额度不足');
+
+        app(CurrentSite::class)->set(null);
+        Carbon::setTestNow();
+    }
+
     public function test_analytics_charts_use_compact_three_point_date_axis(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-05-21 12:00:00'));
