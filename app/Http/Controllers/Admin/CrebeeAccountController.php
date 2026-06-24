@@ -159,6 +159,20 @@ class CrebeeAccountController extends Controller
 
         abort_unless(in_array((string) $bindRequest->status, $this->activeRequestStatuses(), true), 404);
 
+        $hasProcessingRequest = CrebeeBindRequest::query()
+            ->where('platform', (string) $bindRequest->platform)
+            ->where('status', 'processing')
+            ->where('id', '!=', (int) $bindRequest->id)
+            ->where(function (Builder $query): void {
+                $query->whereNull('expired_at')
+                    ->orWhere('expired_at', '>', now());
+            })
+            ->exists();
+
+        if ($hasProcessingRequest) {
+            return back()->withErrors(['platform' => '该平台已有二维码已发送的绑定申请，请先完成或标记失败后再处理下一条']);
+        }
+
         $bindRequest->forceFill([
             'status' => 'processing',
             'operator_admin_id' => (int) $admin->id,

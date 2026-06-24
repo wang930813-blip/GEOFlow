@@ -333,7 +333,7 @@ class CrebeeAgentController extends BaseApiController
     {
         $activeRequests = CrebeeBindRequest::query()
             ->where('platform', (string) $account->platform)
-            ->whereIn('status', ['pending', 'processing'])
+            ->where('status', 'processing')
             ->where(function ($query): void {
                 $query->whereNull('expired_at')
                     ->orWhere('expired_at', '>', now());

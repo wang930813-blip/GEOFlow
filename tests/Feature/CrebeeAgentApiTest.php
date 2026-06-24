@@ -299,7 +299,7 @@ class CrebeeAgentApiTest extends TestCase
             'site_id' => (int) $site->id,
             'owner_admin_id' => (int) $owner->id,
             'platform' => 'bilibili',
-            'status' => 'pending',
+            'status' => 'processing',
             'requested_at' => now(),
             'expired_at' => now()->addHours(2),
             'meta' => [],
@@ -338,7 +338,50 @@ class CrebeeAgentApiTest extends TestCase
         $this->assertNotNull($request->fresh()->confirmed_at);
     }
 
-    public function test_crebee_agent_sync_does_not_auto_bind_when_multiple_active_requests_share_platform(): void
+    public function test_crebee_agent_sync_does_not_auto_bind_pending_requests_until_operator_starts_processing(): void
+    {
+        $agent = $this->createAgent();
+        $owner = $this->admin('crebee_pending_bind_owner', 'direct_admin');
+        $site = $this->site('CreBee Pending Bind Site', $owner, 'direct');
+        CrebeeBindRequest::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $owner->id,
+            'platform' => 'weibo',
+            'status' => 'pending',
+            'requested_at' => now(),
+            'expired_at' => now()->addHours(2),
+            'meta' => [],
+        ]);
+
+        $this->agentJson($agent)->postJson('/api/v1/crebee-agent/accounts/sync', [
+            'accounts' => [
+                [
+                    'account_id' => 'weibo-pending-account',
+                    'account_platform' => 'weibo',
+                    'nickname' => 'Pending Weibo Account',
+                ],
+            ],
+        ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.synced', 1)
+            ->assertJsonPath('data.auto_bound', 0);
+
+        $this->assertDatabaseHas('crebee_accounts', [
+            'agent_id' => (int) $agent->id,
+            'site_id' => null,
+            'owner_admin_id' => null,
+            'platform' => 'weibo',
+            'crebee_account_id' => 'weibo-pending-account',
+            'status' => 'available',
+        ]);
+        $this->assertDatabaseHas('crebee_bind_requests', [
+            'platform' => 'weibo',
+            'status' => 'pending',
+        ]);
+    }
+
+    public function test_crebee_agent_sync_does_not_auto_bind_when_multiple_processing_requests_share_platform(): void
     {
         $agent = $this->createAgent();
         $firstOwner = $this->admin('crebee_multi_owner_one', 'direct_admin');
@@ -349,7 +392,7 @@ class CrebeeAgentApiTest extends TestCase
             'site_id' => (int) $firstSite->id,
             'owner_admin_id' => (int) $firstOwner->id,
             'platform' => 'xiaohongshu',
-            'status' => 'pending',
+            'status' => 'processing',
             'requested_at' => now(),
             'expired_at' => now()->addHours(2),
             'meta' => [],

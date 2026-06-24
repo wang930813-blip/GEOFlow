@@ -23,7 +23,7 @@
         };
         $requestStatusName = fn (string $status): string => match ($status) {
             'pending' => '待处理',
-            'processing' => '处理中',
+            'processing' => '二维码已发送',
             'confirmed' => '已绑定',
             'failed' => '失败',
             'expired' => '已过期',
@@ -33,7 +33,7 @@
             'available' => '未绑定',
             'bound' => '已绑定',
             'pending' => '待处理',
-            'processing' => '处理中',
+            'processing' => '二维码已发送',
             'confirmed' => '已绑定',
             'failed' => '失败',
             'expired' => '已过期',
@@ -140,8 +140,10 @@
                                         <div>{{ $latestRequest->requested_at?->format('Y-m-d H:i') ?? '-' }}</div>
                                     @if ((string) $latestRequest->failure_reason !== '')
                                         <div class="truncate text-red-600">{{ $latestRequest->failure_reason }}</div>
+                                    @elseif ((string) $latestRequest->status === 'processing')
+                                        <div>运营已发送二维码，请扫码登录</div>
                                     @else
-                                        <div>等待运营处理</div>
+                                        <div>等待运营发送二维码</div>
                                     @endif
                                     </div>
                                 @elseif ($canRequestBinding)
@@ -175,7 +177,7 @@
         <section class="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
             <div class="border-b border-slate-200 px-5 py-4">
                 <h2 class="text-lg font-semibold text-gray-900">{{ $canManage ? '绑定申请' : '我的绑定申请' }}</h2>
-                <p class="mt-1 text-sm text-slate-500">{{ $canManage ? '运营处理用户提交的平台扫码申请。单个平台只有一个有效申请时，新同步账号会自动绑定。' : '这里展示你提交过的平台绑定进度。' }}</p>
+                <p class="mt-1 text-sm text-slate-500">{{ $canManage ? '运营先点击“发送二维码/开始处理”，该申请会锁定为二维码已发送；用户扫码登录成功后，新同步账号会自动绑定到这条申请。' : '这里展示你提交过的平台绑定进度。' }}</p>
             </div>
             <div class="overflow-x-auto">
                 <table class="min-w-full divide-y divide-slate-200">
@@ -215,14 +217,27 @@
                                 </td>
                                 @if ($canManage)
                                     <td class="px-5 py-4 align-top text-right">
-                                        @if (in_array((string) $bindRequest->status, ['pending', 'processing'], true))
+                                        @if ((string) $bindRequest->status === 'pending')
                                             <div class="flex justify-end gap-2">
                                                 <form method="POST" action="{{ route('admin.crebee-accounts.requests.processing', $bindRequest) }}">
                                                     @csrf
                                                     <button type="submit" class="inline-flex h-9 items-center justify-center rounded-md bg-blue-600 px-3 text-sm font-medium text-white hover:bg-blue-700">
-                                                        二维码已发送
+                                                        发送二维码/开始处理
                                                     </button>
                                                 </form>
+                                                <form method="POST" action="{{ route('admin.crebee-accounts.requests.fail', $bindRequest) }}" onsubmit="return confirm(@js('确定将该绑定申请标记为失败吗？'));">
+                                                    @csrf
+                                                    <input type="hidden" name="failure_reason" value="运营标记失败">
+                                                    <button type="submit" class="inline-flex h-9 items-center justify-center rounded-md border border-red-200 px-3 text-sm font-medium text-red-600 hover:bg-red-50">
+                                                        标记失败
+                                                    </button>
+                                                </form>
+                                            </div>
+                                        @elseif ((string) $bindRequest->status === 'processing')
+                                            <div class="flex justify-end gap-2">
+                                                <span class="inline-flex h-9 items-center justify-center rounded-md bg-blue-50 px-3 text-sm font-medium text-blue-700">
+                                                    二维码已发送
+                                                </span>
                                                 <form method="POST" action="{{ route('admin.crebee-accounts.requests.fail', $bindRequest) }}" onsubmit="return confirm(@js('确定将该绑定申请标记为失败吗？'));">
                                                     @csrf
                                                     <input type="hidden" name="failure_reason" value="运营标记失败">

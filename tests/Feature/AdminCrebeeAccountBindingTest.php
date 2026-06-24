@@ -128,6 +128,35 @@ class AdminCrebeeAccountBindingTest extends TestCase
         ]);
     }
 
+    public function test_super_admin_cannot_start_second_processing_request_for_same_platform(): void
+    {
+        $superAdmin = $this->admin('crebee_processing_conflict_root', 'super_admin');
+        $firstOwner = $this->admin('crebee_processing_conflict_one', 'direct_admin');
+        $secondOwner = $this->admin('crebee_processing_conflict_two', 'direct_admin');
+        $firstSite = $this->site('CreBee Processing Conflict One', $firstOwner, 'direct');
+        $secondSite = $this->site('CreBee Processing Conflict Two', $secondOwner, 'direct');
+        $processing = $this->bindRequest($firstSite, $firstOwner, 'douyin');
+        $pending = $this->bindRequest($secondSite, $secondOwner, 'douyin');
+        $processing->forceFill([
+            'status' => 'processing',
+            'operator_admin_id' => (int) $superAdmin->id,
+        ])->save();
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.crebee-accounts.requests.processing', $pending))
+            ->assertSessionHasErrors('platform');
+
+        $this->assertDatabaseHas('crebee_bind_requests', [
+            'id' => (int) $processing->id,
+            'status' => 'processing',
+        ]);
+        $this->assertDatabaseHas('crebee_bind_requests', [
+            'id' => (int) $pending->id,
+            'status' => 'pending',
+            'operator_admin_id' => null,
+        ]);
+    }
+
     public function test_site_user_only_sees_own_bound_crebee_accounts(): void
     {
         $agentAdmin = $this->admin('crebee_agent_owner', 'agent_admin');
