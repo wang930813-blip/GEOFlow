@@ -74,7 +74,7 @@
                                     <div class="mt-1 text-xs text-gray-400">{{ $member->username }}</div>
                                 </td>
                                 <td class="px-5 py-4 align-top text-sm text-gray-600">
-                                    {{ $memberSite?->name ?? '-' }}
+                                    {{ trim((string) ($memberSite?->domain ?? '')) !== '' ? $memberSite->domain : ($memberSite?->name ?? '-') }}
                                 </td>
                                 <td class="px-5 py-4 align-top">
                                     <div class="text-sm font-medium text-gray-900">{{ $planName }}</div>

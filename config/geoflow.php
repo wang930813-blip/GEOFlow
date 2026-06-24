@@ -41,6 +41,7 @@ return [
     'update_metadata_url' => $updateMetadataUrl,
     'update_metadata_cache_ttl_seconds' => (int) env('GEOFLOW_UPDATE_METADATA_CACHE_TTL', 86400),
     'operation_guide_url' => env('GEOFLOW_OPERATION_GUIDE_URL', ''),
+    'customer_site_domain_base' => trim((string) env('GEOFLOW_CUSTOMER_SITE_DOMAIN_BASE', 'geo.xinzhidi.cn'), " \t\n\r\0\x0B."),
 
     // 前台列表每页条数
     'items_per_page' => (int) env('GEOFLOW_ITEMS_PER_PAGE', 12),

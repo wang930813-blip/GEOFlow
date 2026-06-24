@@ -35,7 +35,7 @@ class AgentUserController extends Controller
             ->with(['sites' => fn ($query) => $query
                 ->where('customer_mode', 'agent')
                 ->where('agent_admin_id', (int) $agent->id)
-                ->select(['sites.id', 'sites.name', 'sites.owner_admin_id', 'sites.customer_mode', 'sites.agent_admin_id'])])
+                ->select(['sites.id', 'sites.name', 'sites.domain', 'sites.owner_admin_id', 'sites.customer_mode', 'sites.agent_admin_id'])])
             ->with(['accountPlanSubscriptions' => fn ($query) => $query
                 ->select(['id', 'admin_id', 'site_id', 'plan_id', 'mode', 'status', 'starts_at', 'ends_at', 'created_at'])
                 ->where('mode', 'agent_user')
@@ -86,10 +86,11 @@ class AgentUserController extends Controller
                 'created_by' => (int) $agent->id,
             ]);
 
+            $sitePrefix = $this->randomUserSitePrefix();
             $userSite = Site::query()->create([
                 'owner_admin_id' => (int) $admin->id,
-                'name' => $this->randomUserSiteName(),
-                'domain' => '',
+                'name' => $sitePrefix,
+                'domain' => $this->customerSiteDomain($sitePrefix),
                 'status' => 'active',
                 'customer_mode' => 'agent',
                 'agent_admin_id' => (int) $agent->id,
@@ -225,13 +226,22 @@ class AgentUserController extends Controller
             ->where('created_by', (int) $agent->id);
     }
 
-    private function randomUserSiteName(): string
+    private function randomUserSitePrefix(): string
     {
         do {
             $name = Str::lower(Str::random(8));
-        } while (Site::query()->where('name', $name)->exists());
+        } while (
+            Site::query()->where('name', $name)->exists()
+            || Site::query()->where('domain', $this->customerSiteDomain($name))->exists()
+        );
 
         return $name;
     }
 
+    private function customerSiteDomain(string $prefix): string
+    {
+        $base = trim((string) config('geoflow.customer_site_domain_base', 'geo.xinzhidi.cn'), " \t\n\r\0\x0B.");
+
+        return $base !== '' ? $prefix.'.'.$base : '';
+    }
 }

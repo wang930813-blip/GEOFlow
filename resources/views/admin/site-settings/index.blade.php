@@ -53,11 +53,26 @@
 
                     <div class="rounded-lg border border-amber-200 bg-amber-50 p-4">
                         <label class="block text-sm font-medium text-gray-900 mb-2">前台访问域名</label>
-                        <input type="text" name="public_domain"
-                               value="{{ old('public_domain', $publicDomain ?? '') }}"
-                               class="mb-3 w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
-                               @disabled(!($canEditDomainSettings ?? false))
-                               placeholder="client.example.com">
+                        @if ($canEditDomainSettings ?? false)
+                            <input type="text" name="public_domain"
+                                   value="{{ old('public_domain', $publicDomain ?? '') }}"
+                                   class="mb-3 w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                   placeholder="client.example.com">
+                        @else
+                            <div class="mb-3 flex flex-col gap-2 sm:flex-row">
+                                <input type="text" name="public_domain"
+                                       value="{{ $publicDomain ?? '' }}"
+                                       readonly disabled
+                                       data-public-domain-value
+                                       class="h-10 min-w-0 flex-1 rounded-md border border-gray-300 bg-gray-100 px-3 text-sm text-gray-700 shadow-sm disabled:cursor-not-allowed">
+                                <button type="button"
+                                        data-copy-public-domain="{{ $publicDomain ?? '' }}"
+                                        class="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700">
+                                    <i data-lucide="copy" class="h-4 w-4"></i>
+                                    <span data-copy-public-domain-label>复制</span>
+                                </button>
+                            </div>
+                        @endif
                         <p class="mb-4 text-xs leading-5 text-amber-800">
                             {{ ($canEditDomainSettings ?? false) ? '用于二级域名前台访问，只填写域名即可，例如 client.example.com。' : '域名由平台管理员配置，当前账号不可修改。' }}
                         </p>
@@ -582,6 +597,45 @@
             if (typeof lucide !== 'undefined') {
                 lucide.createIcons();
             }
+
+            document.querySelectorAll('[data-copy-public-domain]').forEach((button) => {
+                button.addEventListener('click', async () => {
+                    const value = button.dataset.copyPublicDomain || '';
+                    if (value === '') {
+                        return;
+                    }
+
+                    try {
+                        if (navigator.clipboard && window.isSecureContext) {
+                            await navigator.clipboard.writeText(value);
+                        } else {
+                            const textarea = document.createElement('textarea');
+                            textarea.value = value;
+                            textarea.setAttribute('readonly', 'readonly');
+                            textarea.style.position = 'fixed';
+                            textarea.style.left = '-9999px';
+                            document.body.appendChild(textarea);
+                            textarea.select();
+                            document.execCommand('copy');
+                            textarea.remove();
+                        }
+
+                        const label = button.querySelector('[data-copy-public-domain-label]');
+                        if (label) {
+                            const previous = label.textContent;
+                            label.textContent = '已复制';
+                            window.setTimeout(() => {
+                                label.textContent = previous || '复制';
+                            }, 1400);
+                        }
+                    } catch (error) {
+                        const label = button.querySelector('[data-copy-public-domain-label]');
+                        if (label) {
+                            label.textContent = '复制失败';
+                        }
+                    }
+                });
+            });
 
             const adList = document.getElementById('article-ad-list');
             const emptyState = document.getElementById('article-ad-empty');
