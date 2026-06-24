@@ -686,7 +686,15 @@ class AdminMediaDistributionTest extends TestCase
     {
         $this->withoutMiddleware(ValidateCsrfToken::class);
         [$superAdmin] = $this->createAdminWithSite('media_credit_root', 'super_admin');
-        [, $site] = $this->createAdminWithSite('media_credit_owner', 'admin');
+        [$admin, $site] = $this->createAdminWithSite('media_credit_owner', 'admin');
+        $account = AdminCreditAccount::query()->create([
+            'admin_id' => (int) $admin->id,
+            'site_id' => (int) $site->id,
+            'balance' => '0.00',
+            'frozen_balance' => '0.00',
+            'total_granted' => '0.00',
+            'total_consumed' => '0.00',
+        ]);
         $resource = MediaResource::query()->create([
             'source_type' => 'website_media',
             'external_resource_id' => '73880',
@@ -697,14 +705,14 @@ class AdminMediaDistributionTest extends TestCase
         ]);
 
         $this->actingAs($superAdmin, 'admin')
-            ->post(route('admin.media-distribution.credits.recharge', ['site' => $site->id]), [
+            ->post(route('admin.media-distribution.credits.recharge', ['account' => $account->id]), [
                 'amount' => '200',
                 'remark' => '首次充值',
             ])
             ->assertRedirect(route('admin.media-distribution.credits.index'));
 
         $this->actingAs($superAdmin, 'admin')
-            ->post(route('admin.media-distribution.credits.adjust', ['site' => $site->id]), [
+            ->post(route('admin.media-distribution.credits.adjust', ['account' => $account->id]), [
                 'amount' => '-25',
                 'remark' => 'manual debit',
             ])
@@ -716,17 +724,104 @@ class AdminMediaDistributionTest extends TestCase
             ])
             ->assertRedirect(route('admin.media-distribution.resources.index'));
 
-        $this->assertDatabaseHas('site_credit_accounts', [
+        $this->assertDatabaseHas('admin_credit_accounts', [
+            'admin_id' => (int) $admin->id,
             'site_id' => $site->id,
             'balance' => '175.00',
         ]);
-        $this->assertDatabaseHas('site_credit_ledger', [
+        $this->assertDatabaseHas('admin_credit_ledger', [
+            'admin_id' => (int) $admin->id,
             'site_id' => $site->id,
             'type' => 'adjust',
             'amount' => '-25.00',
             'balance_after' => '175.00',
         ]);
         $this->assertSame('88.00', $resource->fresh()->sale_price);
+    }
+
+    public function test_media_credit_management_lists_account_site_pairs_and_excludes_deleted_users(): void
+    {
+        [$superAdmin] = $this->createAdminWithSite('media_account_credit_root', 'super_admin');
+        [$activeAdmin, $activeSite] = $this->createAdminWithSite('media_account_credit_active', 'admin');
+        [$deletedAdmin, $deletedSite] = $this->createAdminWithSite('media_account_credit_deleted', 'admin');
+        $activeAdmin->forceFill(['display_name' => 'Active Account'])->save();
+        $activeSite->forceFill(['name' => 'Active Site'])->save();
+        $deletedAdmin->forceFill(['display_name' => 'Deleted Account'])->save();
+        $deletedSite->forceFill(['name' => 'Deleted Site'])->save();
+
+        AdminCreditAccount::query()->create([
+            'admin_id' => (int) $activeAdmin->id,
+            'site_id' => (int) $activeSite->id,
+            'balance' => '100.00',
+            'frozen_balance' => '0.00',
+            'total_granted' => '100.00',
+            'total_consumed' => '0.00',
+        ]);
+        AdminCreditAccount::query()->create([
+            'admin_id' => (int) $deletedAdmin->id,
+            'site_id' => (int) $deletedSite->id,
+            'balance' => '200.00',
+            'frozen_balance' => '0.00',
+            'total_granted' => '200.00',
+            'total_consumed' => '0.00',
+        ]);
+        $deletedAdmin->delete();
+
+        $this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.media-distribution.credits.index'))
+            ->assertOk()
+            ->assertSee('Active Account[Active Site]')
+            ->assertDontSee('Deleted Account')
+            ->assertDontSee('Deleted Account[Deleted Site]');
+    }
+
+    public function test_super_admin_can_recharge_and_adjust_account_credits(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+        [$superAdmin] = $this->createAdminWithSite('media_account_recharge_root', 'super_admin');
+        [$admin, $site] = $this->createAdminWithSite('media_account_recharge_owner', 'admin');
+        $account = AdminCreditAccount::query()->create([
+            'admin_id' => (int) $admin->id,
+            'site_id' => (int) $site->id,
+            'balance' => '0.00',
+            'frozen_balance' => '0.00',
+            'total_granted' => '0.00',
+            'total_consumed' => '0.00',
+        ]);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.media-distribution.credits.recharge', ['account' => $account->id]), [
+                'amount' => '200',
+                'remark' => 'account recharge',
+            ])
+            ->assertRedirect(route('admin.media-distribution.credits.index'));
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.media-distribution.credits.adjust', ['account' => $account->id]), [
+                'amount' => '-25',
+                'remark' => 'account debit',
+            ])
+            ->assertRedirect(route('admin.media-distribution.credits.index'));
+
+        $this->assertDatabaseHas('admin_credit_accounts', [
+            'id' => (int) $account->id,
+            'admin_id' => (int) $admin->id,
+            'site_id' => (int) $site->id,
+            'balance' => '175.00',
+            'total_granted' => '200.00',
+        ]);
+        $this->assertDatabaseHas('admin_credit_ledger', [
+            'admin_id' => (int) $admin->id,
+            'site_id' => (int) $site->id,
+            'type' => 'adjust',
+            'amount' => '-25.00',
+            'balance_after' => '175.00',
+            'remark' => 'account debit',
+        ]);
+        $this->assertDatabaseMissing('site_credit_accounts', [
+            'site_id' => (int) $site->id,
+            'balance' => '175.00',
+        ]);
     }
 
     public function test_super_admin_can_apply_media_price_multiplier_to_all_resources(): void
@@ -2208,7 +2303,7 @@ class AdminMediaDistributionTest extends TestCase
             'points_amount' => '88.00',
             'status' => 'submitted',
         ]);
-        $this->grantAdminCredits($admin, $site, '100.00');
+        $account = $this->grantAdminCredits($admin, $site, '100.00');
 
         $submissionsCsv = $this->actingAs($superAdmin, 'admin')
             ->get(route('admin.media-distribution.submissions.export'));
@@ -2218,7 +2313,7 @@ class AdminMediaDistributionTest extends TestCase
         $this->assertStringContainsString((string) $submission->id, $submissionsCsv->streamedContent());
 
         $creditsCsv = $this->actingAs($superAdmin, 'admin')
-            ->post(route('admin.media-distribution.credits.adjust', ['site' => $site->id]), [
+            ->post(route('admin.media-distribution.credits.adjust', ['account' => $account->id]), [
                 'amount' => '10',
                 'remark' => 'export ledger',
             ])
@@ -2442,13 +2537,14 @@ class AdminMediaDistributionTest extends TestCase
     public function test_super_admin_can_view_and_export_all_site_consumption_records(): void
     {
         [$superAdmin] = $this->createAdminWithSite('media_consumption_root', 'super_admin');
-        [, $siteA] = $this->createAdminWithSite('media_consumption_a', 'admin');
-        [, $siteB] = $this->createAdminWithSite('media_consumption_b', 'admin');
+        [$adminA, $siteA] = $this->createAdminWithSite('media_consumption_a', 'admin');
+        [$adminB, $siteB] = $this->createAdminWithSite('media_consumption_b', 'admin');
         [$articleA, $resourceA] = $this->createArticleAndResource($siteA, 'consumption-a');
         [$articleB, $resourceB] = $this->createArticleAndResource($siteB, 'consumption-b');
-        foreach ([[$siteA, $articleA, $resourceA, 'order-a'], [$siteB, $articleB, $resourceB, 'order-b']] as [$site, $article, $resource, $order]) {
+        foreach ([[$adminA, $siteA, $articleA, $resourceA, 'order-a'], [$adminB, $siteB, $articleB, $resourceB, 'order-b']] as [$admin, $site, $article, $resource, $order]) {
             $submission = MediaSubmission::query()->create([
                 'site_id' => $site->id,
+                'owner_admin_id' => (int) $admin->id,
                 'article_id' => $article->id,
                 'media_resource_id' => $resource->id,
                 'source_type' => $resource->source_type,
@@ -2460,7 +2556,8 @@ class AdminMediaDistributionTest extends TestCase
                 'points_amount' => '88.00',
                 'status' => 'submitted',
             ]);
-            SiteCreditLedger::query()->create([
+            AdminCreditLedger::query()->create([
+                'admin_id' => (int) $admin->id,
                 'site_id' => $site->id,
                 'submission_id' => $submission->id,
                 'type' => 'deduct',

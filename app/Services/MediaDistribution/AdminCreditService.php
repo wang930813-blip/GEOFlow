@@ -53,6 +53,30 @@ class AdminCreditService
         });
     }
 
+    public function adjust(int $adminId, int $siteId, string $amount, ?int $operatorAdminId, string $remark = ''): AdminCreditAccount
+    {
+        return DB::transaction(function () use ($adminId, $siteId, $amount, $operatorAdminId, $remark): AdminCreditAccount {
+            $account = $this->lockedAccount($adminId, $siteId);
+            $amountCents = $this->moneyToCents($amount);
+            if ($amountCents === 0) {
+                throw new RuntimeException('调整积分不能为 0');
+            }
+
+            $balance = $this->moneyToCents($account->balance) + $amountCents;
+            if ($balance < 0) {
+                throw new RuntimeException('扣减后账号积分不能为负数');
+            }
+
+            $account->forceFill([
+                'balance' => $this->centsToMoney($balance),
+            ])->save();
+
+            $this->ledger($adminId, $siteId, null, 'adjust', $amountCents, $account, $operatorAdminId, $remark);
+
+            return $account;
+        });
+    }
+
     public function deductForSubmission(MediaSubmission $submission, int $adminId, ?int $operatorAdminId): AdminCreditAccount
     {
         return DB::transaction(function () use ($submission, $adminId, $operatorAdminId): AdminCreditAccount {

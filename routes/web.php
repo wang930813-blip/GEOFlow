@@ -135,8 +135,8 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
                 Route::post('resources/price-multiplier', [MediaDistributionResourceController::class, 'updatePriceMultiplier'])->name('resources.price-multiplier');
                 Route::post('resources/{resource}/price', [MediaDistributionResourceController::class, 'updatePrice'])->name('resources.price');
                 Route::post('resources/{resource}/site-price', [MediaDistributionResourceController::class, 'updateSitePrice'])->name('resources.site-price');
-                Route::post('credits/{site}/recharge', [MediaDistributionCreditController::class, 'recharge'])->name('credits.recharge');
-                Route::post('credits/{site}/adjust', [MediaDistributionCreditController::class, 'adjust'])->name('credits.adjust');
+                Route::post('credits/{account}/recharge', [MediaDistributionCreditController::class, 'recharge'])->name('credits.recharge');
+                Route::post('credits/{account}/adjust', [MediaDistributionCreditController::class, 'adjust'])->name('credits.adjust');
                 Route::get('settings', [MediaDistributionSettingController::class, 'index'])->name('settings.index');
                 Route::post('settings', [MediaDistributionSettingController::class, 'update'])->name('settings.update');
             });

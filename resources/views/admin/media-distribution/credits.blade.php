@@ -5,7 +5,7 @@
         <div class="flex items-start justify-between gap-4">
             <div>
                 <h1 class="text-2xl font-bold text-gray-900">媒体积分管理</h1>
-                <p class="mt-1 text-sm text-gray-600">每个站点独立积分，媒体投稿按积分价 1:1 消耗。</p>
+                <p class="mt-1 text-sm text-gray-600">按账号管理媒体投稿积分；同一站点下不同用户独立计分，显示格式为 用户[站点]。</p>
             </div>
             <div class="flex flex-wrap gap-2">
                 <a href="{{ route('admin.media-distribution.credits.export') }}" class="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50">
@@ -31,23 +31,24 @@
 
         <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
             @foreach ($accounts as $account)
+                @php($accountDisplayName = ($account->admin?->name ?? '-') . '[' . ($account->site?->name ?? '-') . ']')
                 <div class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
                     <div class="flex items-start justify-between gap-4">
                         <div>
-                            <div class="text-sm text-gray-500">{{ $account->site?->name }}</div>
+                            <div class="text-sm font-medium text-gray-700">{{ $accountDisplayName }}</div>
                             <div class="mt-2 text-3xl font-semibold text-gray-900">{{ $account->balance }}</div>
                             <div class="mt-1 text-sm text-gray-500">冻结：{{ $account->frozen_balance }} · 累计消耗：{{ $account->total_consumed }}</div>
                         </div>
                         <i data-lucide="coins" class="h-8 w-8 text-indigo-500"></i>
                     </div>
                     @if ($isSuperAdmin)
-                        <form method="POST" action="{{ route('admin.media-distribution.credits.recharge', ['site' => $account->site_id]) }}" class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-5">
+                        <form method="POST" action="{{ route('admin.media-distribution.credits.recharge', ['account' => $account->id]) }}" class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-5">
                             @csrf
                             <input name="amount" type="number" min="0.01" step="0.01" required class="h-10 rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:col-span-2" placeholder="充值积分">
                             <input name="remark" class="h-10 rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:col-span-2" placeholder="备注">
                             <button class="h-10 rounded-md bg-indigo-600 px-4 text-sm font-medium text-white hover:bg-indigo-700">充值</button>
                         </form>
-                        <form method="POST" action="{{ route('admin.media-distribution.credits.adjust', ['site' => $account->site_id]) }}" class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-5">
+                        <form method="POST" action="{{ route('admin.media-distribution.credits.adjust', ['account' => $account->id]) }}" class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-5">
                             @csrf
                             <input name="amount" type="number" step="0.01" required class="h-10 rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:col-span-2" placeholder="调整积分 +/-">
                             <input name="remark" class="h-10 rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:col-span-2" placeholder="扣减或调整备注">
@@ -67,7 +68,7 @@
                     <thead class="bg-slate-50">
                         <tr>
                             <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">时间</th>
-                            <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">站点</th>
+                            <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">用户[站点]</th>
                             <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">类型</th>
                             <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">变动</th>
                             <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">余额</th>
@@ -76,9 +77,10 @@
                     </thead>
                     <tbody class="divide-y divide-slate-200 bg-white">
                         @forelse ($ledger as $row)
+                            @php($ledgerDisplayName = ($row->admin?->name ?? '-') . '[' . ($row->site?->name ?? '-') . ']')
                             <tr>
                                 <td class="px-5 py-3 text-sm text-gray-500">{{ $row->created_at?->format('Y-m-d H:i') }}</td>
-                                <td class="px-5 py-3 text-sm text-gray-700">{{ $row->site?->name }}</td>
+                                <td class="px-5 py-3 text-sm text-gray-700">{{ $ledgerDisplayName }}</td>
                                 <td class="px-5 py-3 text-sm text-gray-700">{{ $row->type }}</td>
                                 <td class="px-5 py-3 text-sm font-medium {{ (float) $row->amount >= 0 ? 'text-green-700' : 'text-red-600' }}">{{ $row->amount }}</td>
                                 <td class="px-5 py-3 text-sm text-gray-700">{{ $row->balance_after }}</td>
