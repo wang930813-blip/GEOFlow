@@ -345,6 +345,40 @@ class AdminVideoGenerationTest extends TestCase
             ->assertJsonPath('data.job.tasks.0.contentType', 'video');
     }
 
+    public function test_video_publish_excludes_platforms_that_require_category_auxiliary_data(): void
+    {
+        [$admin, $site] = $this->provisionSubscribedAdmin('video_publish_supported_platform_owner', videoQuota: 3, crebeeQuota: 10);
+        $video = $this->completedVideo($site, $admin, 'Supported video platform guard');
+        $agent = $this->agent();
+        $douyin = $this->account($agent, $site, $admin, 'douyin', 'supported-douyin-account', 'Douyin Allowed Account');
+        $zhihu = $this->account($agent, $site, $admin, 'zhihu', 'unsupported-zhihu-account', 'Zhihu Category Account');
+        $qiehao = $this->account($agent, $site, $admin, 'qiehao', 'unsupported-qiehao-account', 'Qiehao Category Account');
+        $wangyihao = $this->account($agent, $site, $admin, 'wangyihao', 'unsupported-wangyihao-account', 'Wangyihao Category Account');
+
+        $response = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.video-generations.show', ['videoGeneration' => (int) $video->id]));
+
+        $response->assertOk();
+        $response->assertSee('Douyin Allowed Account');
+        $response->assertDontSee('Zhihu Category Account');
+        $response->assertDontSee('Qiehao Category Account');
+        $response->assertDontSee('Wangyihao Category Account');
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->from(route('admin.video-generations.show', ['videoGeneration' => (int) $video->id]))
+            ->post(route('admin.video-generations.self-media.publish', ['videoGeneration' => (int) $video->id]), [
+                'crebee_account_ids' => [(int) $zhihu->id, (int) $qiehao->id, (int) $wangyihao->id],
+            ])
+            ->assertRedirect(route('admin.video-generations.show', ['videoGeneration' => (int) $video->id]))
+            ->assertSessionHasErrors('crebee_account_ids');
+
+        $this->assertSame(0, CrebeePublishJob::query()->count());
+        $this->assertSame(0, CrebeePublishJobItem::query()->count());
+        $this->assertModelExists($douyin);
+    }
+
     public function test_video_self_media_publish_blocks_when_selected_platforms_exceed_remaining_quota(): void
     {
         [$admin, $site] = $this->provisionSubscribedAdmin('video_publish_quota_block_owner', videoQuota: 3, crebeeQuota: 1);

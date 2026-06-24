@@ -51,18 +51,17 @@ class SelfMediaPlatformCatalog
      */
     public static function videoPlatforms(): array
     {
+        // Keep this list to platforms whose video params can be built without
+        // per-account auxiliary category/topic lookups.
         return [
             'douyin',
             'bilibili',
             'kuaishou',
             'shipinhao',
             'xiaohongshu',
-            'zhihu',
             'weibo',
             'baijiahao',
             'toutiaohao',
-            'qiehao',
-            'wangyihao',
         ];
     }
 
