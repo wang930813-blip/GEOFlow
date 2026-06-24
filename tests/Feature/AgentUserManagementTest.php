@@ -101,6 +101,9 @@ class AgentUserManagementTest extends TestCase
             ->get(route('admin.agent-users.index'))
             ->assertOk()
             ->assertSee('autocomplete="off"', false)
+            ->assertSee('name="username"', false)
+            ->assertDontSee('name="display_name"', false)
+            ->assertDontSee('name="email"', false)
             ->assertDontSee('value="stale_agent_member"', false)
             ->assertDontSee('value="Stale Agent Member"', false)
             ->assertDontSee('value="stale-agent-member@example.com"', false);
@@ -217,6 +220,7 @@ class AgentUserManagementTest extends TestCase
         $memberSite = Site::query()->where('owner_admin_id', (int) $member->id)->firstOrFail();
 
         $this->assertSame('site_user', (string) $member->role);
+        $this->assertMatchesRegularExpression('/^[a-z0-9]{8}$/', (string) $memberSite->name);
         $this->assertDatabaseHas('sites', [
             'id' => (int) $memberSite->id,
             'owner_admin_id' => (int) $member->id,
@@ -384,6 +388,40 @@ class AgentUserManagementTest extends TestCase
             ->assertSee('2 / 3');
     }
 
+    public function test_agent_user_list_shows_plan_name_and_usage_link_for_each_member(): void
+    {
+        $agent = $this->createAdmin('agent_list_plan_owner', 'agent_admin');
+        $site = $this->createSite('Agent List Plan Context', $agent, 'agent');
+        $plan = $this->createPlanWithTeamMembers(3);
+        $plan->forceFill(['name' => 'Agent List Visible Plan'])->save();
+        $this->openAgentPlan($agent, $site, $plan);
+
+        $this->actingAs($agent, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.agent-users.store'), [
+                'username' => 'agent_list_plan_member',
+                'password' => 'secret-123',
+                'confirm_password' => 'secret-123',
+            ])
+            ->assertRedirect(route('admin.agent-users.index'));
+
+        $member = Admin::query()->where('username', 'agent_list_plan_member')->firstOrFail();
+
+        $this->actingAs($agent, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.agent-users.index'))
+            ->assertOk()
+            ->assertSee('Agent List Visible Plan')
+            ->assertSee(route('admin.plan-usages.index', ['admin_id' => (int) $member->id]), false);
+
+        $this->actingAs($agent, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.plan-usages.index', ['admin_id' => (int) $member->id]))
+            ->assertOk()
+            ->assertSee('agent_list_plan_member')
+            ->assertSee('Agent List Visible Plan');
+    }
+
     public function test_agent_admin_can_edit_own_site_user_profile_and_password(): void
     {
         $agent = $this->createAdmin('agent_edit_owner', 'agent_admin');
@@ -403,7 +441,9 @@ class AgentUserManagementTest extends TestCase
             ->assertDontSee('data-member=', false)
             ->assertSee('data-member-id="'.(int) $member->id.'"', false)
             ->assertSee('data-member-username="agent_edit_member"', false)
-            ->assertSee('data-member-email="agent_edit_member@example.com"', false)
+            ->assertDontSee('data-member-email=', false)
+            ->assertDontSee('name="display_name"', false)
+            ->assertDontSee('name="email"', false)
             ->assertSee(route('admin.agent-users.update', ['adminId' => (int) $member->id]), false);
 
         $this->actingAs($agent, 'admin')

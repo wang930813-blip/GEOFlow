@@ -356,6 +356,7 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::get('/', fn () => redirect()->route('admin.site-settings.sensitive-words'))->name('index');
             Route::post('sensitive-words', [SecuritySettingsController::class, 'storeSensitiveWords'])->name('words.store');
             Route::post('sensitive-words/{wordId}/delete', [SecuritySettingsController::class, 'destroySensitiveWord'])->name('words.delete');
+            Route::get('password', [SecuritySettingsController::class, 'editPassword'])->name('password.edit');
             Route::post('password', [SecuritySettingsController::class, 'updatePassword'])->name('password.update');
         });
 

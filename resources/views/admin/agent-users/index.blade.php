@@ -5,7 +5,7 @@
         <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
                 <h1 class="text-2xl font-bold text-gray-900">代理用户管理</h1>
-                <p class="mt-1 text-sm text-gray-600">代理可以创建客户用户；每个客户用户都有自己的前台站点和独立规格计数。</p>
+                <p class="mt-1 text-sm text-gray-600">代理可以创建客户账号；每个客户账号都会生成独立前台站点并继承代理当前规格。</p>
             </div>
             <div class="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800">
                 子账号：{{ $quota['used'] }} / {{ $quota['quota'] === null ? '不限' : $quota['quota'] }}
@@ -19,33 +19,25 @@
                 </div>
                 <div>
                     <h2 class="text-lg font-semibold text-gray-900">新增普通用户</h2>
-                    <p class="text-sm text-gray-500">创建后系统会自动给该用户生成独立前台站点，并继承代理当前规格。</p>
+                    <p class="text-sm text-gray-500">创建后系统会自动生成 8 位随机前台站点名，并继承代理当前规格。</p>
                 </div>
             </div>
 
             <form method="POST" action="{{ route('admin.agent-users.store') }}" autocomplete="off" class="grid grid-cols-1 gap-4 xl:grid-cols-12">
                 @csrf
-                <div class="xl:col-span-2">
-                    <label class="mb-1 block text-sm font-medium text-gray-700">用户名</label>
+                <div class="xl:col-span-3">
+                    <label class="mb-1 block text-sm font-medium text-gray-700">账号</label>
                     <input name="username" required autocomplete="new-password" value="" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
                 </div>
-                <div class="xl:col-span-2">
-                    <label class="mb-1 block text-sm font-medium text-gray-700">显示名称</label>
-                    <input name="display_name" autocomplete="off" value="" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
-                </div>
-                <div class="xl:col-span-2">
-                    <label class="mb-1 block text-sm font-medium text-gray-700">邮箱</label>
-                    <input name="email" type="email" autocomplete="new-password" value="" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
-                </div>
-                <div class="xl:col-span-2">
+                <div class="xl:col-span-3">
                     <label class="mb-1 block text-sm font-medium text-gray-700">密码</label>
                     <input name="password" type="password" required autocomplete="new-password" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
                 </div>
-                <div class="xl:col-span-2">
+                <div class="xl:col-span-3">
                     <label class="mb-1 block text-sm font-medium text-gray-700">确认密码</label>
                     <input name="confirm_password" type="password" required autocomplete="new-password" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
                 </div>
-                <div class="flex items-end sm:justify-end xl:col-span-2">
+                <div class="flex items-end sm:justify-end xl:col-span-3">
                     <button type="submit" class="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 text-sm font-medium text-white transition hover:bg-indigo-700 sm:w-auto sm:min-w-28">
                         <i data-lucide="save" class="h-4 w-4"></i>
                         创建
@@ -64,23 +56,32 @@
                         <tr>
                             <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">账号</th>
                             <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">前台站点</th>
-                            <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">邮箱</th>
+                            <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">套餐</th>
                             <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">状态</th>
                             <th class="px-5 py-3 text-right text-xs font-medium uppercase tracking-wider text-slate-500">操作</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-200 bg-white">
                         @forelse ($members as $member)
+                            @php
+                                $memberSite = $member->sites->first();
+                                $memberSubscription = $member->accountPlanSubscriptions->first();
+                                $planName = $memberSubscription?->plan?->name ?? '未开通';
+                            @endphp
                             <tr>
                                 <td class="px-5 py-4 align-top">
                                     <div class="text-sm font-semibold text-gray-900">{{ $member->display_name ?: $member->username }}</div>
                                     <div class="mt-1 text-xs text-gray-400">{{ $member->username }}</div>
                                 </td>
                                 <td class="px-5 py-4 align-top text-sm text-gray-600">
-                                    @php($memberSite = $member->sites->first())
                                     {{ $memberSite?->name ?? '-' }}
                                 </td>
-                                <td class="px-5 py-4 align-top text-sm text-gray-600">{{ $member->email ?: '-' }}</td>
+                                <td class="px-5 py-4 align-top">
+                                    <div class="text-sm font-medium text-gray-900">{{ $planName }}</div>
+                                    @if ($memberSubscription?->ends_at)
+                                        <div class="mt-1 text-xs text-gray-400">到期：{{ $memberSubscription->ends_at->format('Y-m-d') }}</div>
+                                    @endif
+                                </td>
                                 <td class="px-5 py-4 align-top">
                                     @if ($member->status === 'active')
                                         <span class="inline-flex rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">启用</span>
@@ -89,14 +90,15 @@
                                     @endif
                                 </td>
                                 <td class="px-5 py-4 align-top text-right">
-                                    <div class="inline-flex items-center justify-end gap-3">
+                                    <div class="inline-flex flex-wrap items-center justify-end gap-3">
+                                        <a href="{{ route('admin.plan-usages.index', ['admin_id' => (int) $member->id]) }}" class="text-sm font-medium text-slate-600 hover:text-slate-900">
+                                            规格用量
+                                        </a>
                                         <button
                                             type="button"
                                             data-agent-user-edit
                                             data-member-id="{{ (int) $member->id }}"
                                             data-member-username="{{ $member->username }}"
-                                            data-member-display-name="{{ $member->display_name ?? '' }}"
-                                            data-member-email="{{ $member->email ?? '' }}"
                                             class="text-sm font-medium text-blue-600 hover:text-blue-800"
                                         >
                                             编辑
@@ -126,7 +128,7 @@
                 <div class="flex items-center justify-between border-b border-slate-200 px-5 py-4">
                     <div>
                         <h3 class="text-lg font-semibold text-gray-900">编辑普通用户</h3>
-                        <p class="mt-1 text-xs text-gray-500">用户名和归属关系不可修改，密码留空则保持不变。</p>
+                        <p class="mt-1 text-xs text-gray-500">账号和归属关系不可修改，密码留空则保持不变。</p>
                     </div>
                     <button type="button" data-agent-user-edit-close class="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-400 hover:bg-slate-100 hover:text-gray-600" aria-label="关闭">
                         <i data-lucide="x" class="h-4 w-4"></i>
@@ -135,16 +137,8 @@
                 <form id="agent-user-edit-form" method="POST" action="#" autocomplete="off" class="space-y-4 px-5 py-5">
                     @csrf
                     <div>
-                        <label for="agent_user_edit_username" class="mb-1 block text-sm font-medium text-gray-700">用户名</label>
+                        <label for="agent_user_edit_username" class="mb-1 block text-sm font-medium text-gray-700">账号</label>
                         <input id="agent_user_edit_username" type="text" disabled class="block h-10 w-full rounded-md border border-slate-200 bg-slate-50 px-3 text-sm text-slate-500">
-                    </div>
-                    <div>
-                        <label for="agent_user_edit_display_name" class="mb-1 block text-sm font-medium text-gray-700">显示名称</label>
-                        <input id="agent_user_edit_display_name" name="display_name" autocomplete="off" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
-                    </div>
-                    <div>
-                        <label for="agent_user_edit_email" class="mb-1 block text-sm font-medium text-gray-700">邮箱</label>
-                        <input id="agent_user_edit_email" name="email" type="email" autocomplete="off" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
                     </div>
                     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         <div>
@@ -176,8 +170,6 @@
             const modal = document.getElementById('agent-user-edit-modal');
             const form = document.getElementById('agent-user-edit-form');
             const usernameInput = document.getElementById('agent_user_edit_username');
-            const displayNameInput = document.getElementById('agent_user_edit_display_name');
-            const emailInput = document.getElementById('agent_user_edit_email');
             const passwordInput = document.getElementById('agent_user_edit_password');
             const confirmPasswordInput = document.getElementById('agent_user_edit_confirm_password');
 
@@ -188,16 +180,8 @@
 
             document.querySelectorAll('[data-agent-user-edit]').forEach((button) => {
                 button.addEventListener('click', () => {
-                    const member = {
-                        id: button.dataset.memberId || '',
-                        username: button.dataset.memberUsername || '',
-                        display_name: button.dataset.memberDisplayName || '',
-                        email: button.dataset.memberEmail || '',
-                    };
-                    form.action = updateRouteTemplate.replace('__ADMIN_ID__', member.id);
-                    usernameInput.value = member.username || '';
-                    displayNameInput.value = member.display_name || '';
-                    emailInput.value = member.email || '';
+                    form.action = updateRouteTemplate.replace('__ADMIN_ID__', button.dataset.memberId || '');
+                    usernameInput.value = button.dataset.memberUsername || '';
                     passwordInput.value = '';
                     confirmPasswordInput.value = '';
                     modal?.classList.remove('hidden');

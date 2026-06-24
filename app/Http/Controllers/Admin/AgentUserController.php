@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 use RuntimeException;
 
@@ -35,6 +36,13 @@ class AgentUserController extends Controller
                 ->where('customer_mode', 'agent')
                 ->where('agent_admin_id', (int) $agent->id)
                 ->select(['sites.id', 'sites.name', 'sites.owner_admin_id', 'sites.customer_mode', 'sites.agent_admin_id'])])
+            ->with(['accountPlanSubscriptions' => fn ($query) => $query
+                ->select(['id', 'admin_id', 'site_id', 'plan_id', 'mode', 'status', 'starts_at', 'ends_at', 'created_at'])
+                ->where('mode', 'agent_user')
+                ->activeNow()
+                ->with('plan:id,name,code')
+                ->orderByDesc('ends_at')
+                ->orderByDesc('id')])
             ->orderBy('id')
             ->get();
 
@@ -54,8 +62,6 @@ class AgentUserController extends Controller
 
         $payload = $request->validate([
             'username' => ['required', 'string', 'regex:/^[A-Za-z0-9_.-]{3,50}$/', 'unique:admins,username'],
-            'display_name' => ['nullable', 'string', 'max:100'],
-            'email' => ['nullable', 'email', 'max:191'],
             'password' => ['required', 'string', 'min:8', 'same:confirm_password'],
             'confirm_password' => ['required', 'string', 'min:8'],
         ], [
@@ -72,8 +78,8 @@ class AgentUserController extends Controller
         DB::transaction(function () use ($payload, $agent): void {
             $admin = Admin::query()->create([
                 'username' => trim((string) $payload['username']),
-                'display_name' => trim((string) ($payload['display_name'] ?? '')),
-                'email' => trim((string) ($payload['email'] ?? '')),
+                'display_name' => '',
+                'email' => '',
                 'password' => (string) $payload['password'],
                 'role' => 'site_user',
                 'status' => 'active',
@@ -82,7 +88,7 @@ class AgentUserController extends Controller
 
             $userSite = Site::query()->create([
                 'owner_admin_id' => (int) $admin->id,
-                'name' => $this->defaultUserSiteName($admin),
+                'name' => $this->randomUserSiteName(),
                 'domain' => '',
                 'status' => 'active',
                 'customer_mode' => 'agent',
@@ -121,10 +127,15 @@ class AgentUserController extends Controller
             'confirm_password.min' => '密码不能少于 8 位',
         ]);
 
-        $attributes = [
-            'display_name' => trim((string) ($payload['display_name'] ?? '')),
-            'email' => trim((string) ($payload['email'] ?? '')),
-        ];
+        $attributes = [];
+
+        if (array_key_exists('display_name', $payload)) {
+            $attributes['display_name'] = trim((string) ($payload['display_name'] ?? ''));
+        }
+
+        if (array_key_exists('email', $payload)) {
+            $attributes['email'] = trim((string) ($payload['email'] ?? ''));
+        }
 
         if (filled($payload['password'] ?? null)) {
             $attributes['password'] = (string) $payload['password'];
@@ -214,8 +225,13 @@ class AgentUserController extends Controller
             ->where('created_by', (int) $agent->id);
     }
 
-    private function defaultUserSiteName(Admin $admin): string
+    private function randomUserSiteName(): string
     {
-        return $admin->name.' 的前台站点';
+        do {
+            $name = Str::lower(Str::random(8));
+        } while (Site::query()->where('name', $name)->exists());
+
+        return $name;
     }
+
 }

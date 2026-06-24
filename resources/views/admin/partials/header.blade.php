@@ -26,6 +26,7 @@
     $changelogLinks = is_array($updateLinks['changelog'] ?? null) ? $updateLinks['changelog'] : [];
     $notificationChangelogUrl = (string) ($changelogLinks[$localeForChangelog] ?? $changelogLinks['zh-CN'] ?? 'https://github.com/yaojingang/GEOFlow/blob/main/docs/CHANGELOG.md');
     $notificationGithubUrl = (string) ($updateLinks['github'] ?? 'https://github.com/yaojingang/GEOFlow');
+    $operationGuideUrl = trim((string) config('geoflow.operation_guide_url', ''));
 
     $primaryMenu = [
         [
@@ -76,6 +77,14 @@
                 ['key' => 'video_generations', 'route' => 'admin.video-generations.index', 'name' => '生成视频', 'visible' => true],
             ],
         ],
+        [
+            'type' => 'link',
+            'key' => 'operation_guide',
+            'url' => $operationGuideUrl,
+            'name' => '操作指引',
+            'external' => true,
+            'visible' => $operationGuideUrl !== '',
+        ],
     ];
 
     $primaryMenu = collect($primaryMenu)
@@ -93,6 +102,7 @@
         ->values();
 
     $accountMenu = collect([
+        ['key' => 'password', 'route' => 'admin.security-settings.password.edit', 'name' => '修改密码', 'icon' => 'key-round', 'visible' => true],
         ['key' => 'profile', 'route' => 'admin.profile.index', 'name' => '个人中心', 'icon' => 'user-circle', 'visible' => true],
         ['key' => 'ai_config', 'route' => 'admin.ai.configurator', 'name' => __('admin.nav.ai_config'), 'icon' => 'bot', 'visible' => $canManageAiConfig],
         ['key' => 'site_settings', 'route' => 'admin.site-settings.index', 'name' => __('admin.nav.system_settings'), 'icon' => 'settings', 'visible' => ! $isAgentAdmin],
@@ -251,6 +261,8 @@
         'admin.security-settings.index' => 'site_settings',
         'admin.security-settings.words.store' => 'site_settings',
         'admin.security-settings.words.delete' => 'site_settings',
+        'admin.security-settings.password.edit' => 'password',
+        'admin.security-settings.password.update' => 'password',
         'admin.admin-users.index' => 'admin_users',
         'admin.admin-activity-logs' => 'activity_logs',
         'admin.agent-users.index' => 'agent_users',
@@ -321,6 +333,7 @@
                             </div>
                         @else
                             <a href="{{ $menuUrl($item) }}"
+                               @if(! empty($item['external'])) target="_blank" rel="noopener noreferrer" @endif
                                class="admin-nav-link @if($resolvedActive === ($item['key'] ?? '')) is-active font-medium @endif inline-flex shrink-0 items-center whitespace-nowrap px-2 lg:px-3 py-2 text-sm transition-colors duration-200">
                                 {{ $item['name'] }}
                             </a>
@@ -421,6 +434,11 @@
                                 <i data-lucide="{{ $profileMenuItem['icon'] }}" class="h-4 w-4 shrink-0"></i>
                                 <span class="truncate">{{ $profileMenuItem['name'] }}</span>
                             </a>
+                            <a href="{{ route('admin.security-settings.password.edit') }}"
+                               class="@if($resolvedActive === 'password') admin-menu-item-active @endif flex items-center gap-2 rounded-md px-2 py-2 text-sm font-medium text-gray-800 hover:bg-gray-100">
+                                <i data-lucide="key-round" class="h-4 w-4 shrink-0"></i>
+                                <span class="truncate">修改密码</span>
+                            </a>
                         </div>
                         <div class="border-t border-gray-100"></div>
                         <div class="space-y-3 px-2 py-3">
@@ -468,6 +486,7 @@
                         @endforeach
                     @else
                         <a href="{{ $menuUrl($item) }}"
+                           @if(! empty($item['external'])) target="_blank" rel="noopener noreferrer" @endif
                            class="admin-nav-link @if($resolvedActive === ($item['key'] ?? '')) is-active @endif block rounded-md px-3 py-2 text-base font-medium transition-colors duration-200">
                             {{ $item['name'] }}
                         </a>

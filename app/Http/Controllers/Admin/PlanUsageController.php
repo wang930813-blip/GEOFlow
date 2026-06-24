@@ -56,11 +56,13 @@ class PlanUsageController extends Controller
         if ($admin->isSuperAdmin()) {
             $siteId = (int) $request->query('site_id', 0);
             $planId = (int) $request->query('plan_id', 0);
+            $adminId = (int) $request->query('admin_id', 0);
             $keyword = trim((string) $request->query('keyword', ''));
 
             return $query
                 ->when($siteId > 0, fn (Builder $query) => $query->where('site_id', $siteId))
                 ->when($planId > 0, fn (Builder $query) => $query->where('plan_id', $planId))
+                ->when($adminId > 0, fn (Builder $query) => $query->where('admin_id', $adminId))
                 ->when($keyword !== '', function (Builder $query) use ($keyword): void {
                     $query->whereHas('admin', function (Builder $adminQuery) use ($keyword): void {
                         $adminQuery->where('username', 'like', '%'.$keyword.'%')
@@ -70,6 +72,8 @@ class PlanUsageController extends Controller
         }
 
         if ($admin->isAgentAdmin()) {
+            $adminId = (int) $request->query('admin_id', 0);
+
             return $query
                 ->where('admin_id', '!=', (int) $admin->id)
                 ->whereHas('site')
@@ -78,7 +82,8 @@ class PlanUsageController extends Controller
                         ->orWhereHas('admin', fn (Builder $adminQuery) => $adminQuery
                             ->where('created_by', (int) $admin->id)
                             ->where('role', 'site_user'));
-                });
+                })
+                ->when($adminId > 0, fn (Builder $query) => $query->where('admin_id', $adminId));
         }
 
         $site = app(CurrentSite::class)->get();

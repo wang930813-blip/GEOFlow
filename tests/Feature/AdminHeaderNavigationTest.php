@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Admin;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Config;
 use Tests\TestCase;
 
 class AdminHeaderNavigationTest extends TestCase
@@ -12,6 +13,8 @@ class AdminHeaderNavigationTest extends TestCase
 
     public function test_header_shows_grouped_top_navigation_and_single_user_menu_for_super_admin(): void
     {
+        Config::set('geoflow.operation_guide_url', 'https://guide.example.test/start');
+
         $admin = $this->createAdmin('header_super_admin', 'super_admin');
 
         $html = $this->actingAs($admin, 'admin')
@@ -23,6 +26,8 @@ class AdminHeaderNavigationTest extends TestCase
         $userMenu = $this->section($html, 'data-admin-user-menu');
 
         $this->assertStringContainsString(route('admin.dashboard'), $primaryNav);
+        $this->assertStringContainsString('https://guide.example.test/start', $primaryNav);
+        $this->assertStringContainsString('target="_blank"', $primaryNav);
         $this->assertStringContainsString('全域数析', $primaryNav);
         $this->assertStringContainsString(route('admin.brand-diagnosis.index'), $primaryNav);
         $this->assertStringContainsString(route('admin.monitoring-center.index'), $primaryNav);
@@ -33,6 +38,7 @@ class AdminHeaderNavigationTest extends TestCase
         $this->assertStringNotContainsString(route('admin.platform-plans.index'), $primaryNav);
 
         $this->assertStringContainsString(route('admin.profile.index'), $userMenu);
+        $this->assertStringContainsString(route('admin.security-settings.password.edit'), $userMenu);
         $this->assertStringContainsString('data-account-menu-group="operations"', $userMenu);
         $this->assertStringContainsString('data-account-menu-group="accounts"', $userMenu);
         $this->assertStringContainsString(route('admin.ai.configurator'), $userMenu);
@@ -62,6 +68,7 @@ class AdminHeaderNavigationTest extends TestCase
         $userMenu = $this->section($html, 'data-admin-user-menu');
 
         $this->assertStringContainsString(route('admin.profile.index'), $userMenu);
+        $this->assertStringContainsString(route('admin.security-settings.password.edit'), $userMenu);
         $this->assertStringContainsString('data-account-menu-group="operations"', $userMenu);
         $this->assertStringContainsString(route('admin.ai.configurator'), $userMenu);
         $this->assertStringNotContainsString(route('admin.site-settings.index'), $userMenu);
@@ -89,6 +96,7 @@ class AdminHeaderNavigationTest extends TestCase
         $userMenu = $this->section($html, 'data-admin-user-menu');
 
         $this->assertStringContainsString(route('admin.profile.index'), $userMenu);
+        $this->assertStringContainsString(route('admin.security-settings.password.edit'), $userMenu);
         $this->assertStringContainsString('data-account-menu-group="operations"', $userMenu);
         $this->assertStringNotContainsString(route('admin.ai.configurator'), $userMenu);
         $this->assertStringContainsString(route('admin.site-settings.index'), $userMenu);
@@ -115,6 +123,7 @@ class AdminHeaderNavigationTest extends TestCase
         $userMenu = $this->section($html, 'data-admin-user-menu');
 
         $this->assertStringContainsString(route('admin.profile.index'), $userMenu);
+        $this->assertStringContainsString(route('admin.security-settings.password.edit'), $userMenu);
         $this->assertStringContainsString('data-account-menu-group="operations"', $userMenu);
         $this->assertStringNotContainsString(route('admin.ai.configurator'), $userMenu);
         $this->assertStringContainsString(route('admin.site-settings.index'), $userMenu);
@@ -192,6 +201,20 @@ class AdminHeaderNavigationTest extends TestCase
 
         $userMenu = $this->section($html, 'data-admin-user-menu');
         $this->assertStringNotContainsString(route('admin.api-tokens.index'), $userMenu);
+    }
+
+    public function test_agent_and_site_user_can_open_password_change_page(): void
+    {
+        foreach (['agent_admin', 'site_user'] as $role) {
+            $admin = $this->createAdmin('header_password_'.$role, $role);
+
+            $this->actingAs($admin, 'admin')
+                ->get(route('admin.security-settings.password.edit'))
+                ->assertOk()
+                ->assertSee('name="current_password"', false)
+                ->assertSee('name="new_password"', false)
+                ->assertSee('name="confirm_password"', false);
+        }
     }
 
     private function createAdmin(string $username, string $role): Admin

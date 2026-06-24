@@ -39,6 +39,15 @@ class SecuritySettingsController extends Controller
         ]);
     }
 
+    public function editPassword(): View
+    {
+        return view('admin.security-settings.password', [
+            'pageTitle' => '修改密码',
+            'activeMenu' => 'password',
+            'adminSiteName' => AdminWeb::siteName(),
+        ]);
+    }
+
     /**
      * 批量添加敏感词。
      */
