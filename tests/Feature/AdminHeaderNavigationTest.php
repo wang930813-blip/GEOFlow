@@ -154,6 +154,46 @@ class AdminHeaderNavigationTest extends TestCase
         $this->assertMenuRouteActive($primaryNav, route('admin.crebee-accounts.index'));
     }
 
+    public function test_operation_guide_url_is_selected_by_admin_role(): void
+    {
+        Config::set('geoflow.operation_guide_url', 'https://guide.example.test/default');
+        Config::set('geoflow.operation_guide_agent_url', 'https://guide.example.test/agent');
+        Config::set('geoflow.operation_guide_user_url', 'https://guide.example.test/user');
+
+        $agent = $this->createAdmin('header_guide_agent_admin', 'agent_admin');
+        $siteUser = $this->createAdmin('header_guide_site_user', 'site_user');
+        $directAdmin = $this->createAdmin('header_guide_direct_admin', 'direct_admin');
+        $superAdmin = $this->createAdmin('header_guide_super_admin', 'super_admin');
+
+        $agentPrimaryNav = $this->section($this->actingAs($agent, 'admin')
+            ->get(route('admin.dashboard'))
+            ->assertOk()
+            ->getContent(), 'data-admin-primary-nav');
+        $this->assertStringContainsString('https://guide.example.test/agent', $agentPrimaryNav);
+        $this->assertStringNotContainsString('https://guide.example.test/user', $agentPrimaryNav);
+
+        $siteUserPrimaryNav = $this->section($this->actingAs($siteUser, 'admin')
+            ->get(route('admin.dashboard'))
+            ->assertOk()
+            ->getContent(), 'data-admin-primary-nav');
+        $this->assertStringContainsString('https://guide.example.test/user', $siteUserPrimaryNav);
+        $this->assertStringNotContainsString('https://guide.example.test/agent', $siteUserPrimaryNav);
+
+        $directAdminPrimaryNav = $this->section($this->actingAs($directAdmin, 'admin')
+            ->get(route('admin.dashboard'))
+            ->assertOk()
+            ->getContent(), 'data-admin-primary-nav');
+        $this->assertStringContainsString('https://guide.example.test/user', $directAdminPrimaryNav);
+        $this->assertStringNotContainsString('https://guide.example.test/agent', $directAdminPrimaryNav);
+
+        $superAdminPrimaryNav = $this->section($this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.dashboard'))
+            ->assertOk()
+            ->getContent(), 'data-admin-primary-nav');
+        $this->assertStringContainsString('https://guide.example.test/default', $superAdminPrimaryNav);
+        $this->assertStringNotContainsString('https://guide.example.test/agent', $superAdminPrimaryNav);
+    }
+
     public function test_top_navigation_group_dropdowns_are_hover_driven(): void
     {
         $admin = $this->createAdmin('header_hover_nav_admin', 'super_admin');

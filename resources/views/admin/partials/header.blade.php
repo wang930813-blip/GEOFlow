@@ -26,7 +26,18 @@
     $changelogLinks = is_array($updateLinks['changelog'] ?? null) ? $updateLinks['changelog'] : [];
     $notificationChangelogUrl = (string) ($changelogLinks[$localeForChangelog] ?? $changelogLinks['zh-CN'] ?? 'https://github.com/yaojingang/GEOFlow/blob/main/docs/CHANGELOG.md');
     $notificationGithubUrl = (string) ($updateLinks['github'] ?? 'https://github.com/yaojingang/GEOFlow');
-    $operationGuideUrl = trim((string) config('geoflow.operation_guide_url', ''));
+    $operationGuideDefaultUrl = trim((string) config('geoflow.operation_guide_url', ''));
+    $operationGuideAgentUrl = trim((string) config('geoflow.operation_guide_agent_url', ''));
+    $operationGuideUserUrl = trim((string) config('geoflow.operation_guide_user_url', ''));
+    $operationGuideUrl = $operationGuideDefaultUrl;
+    if ($isAgentAdmin) {
+        $operationGuideUrl = $operationGuideAgentUrl !== '' ? $operationGuideAgentUrl : $operationGuideDefaultUrl;
+    } elseif ($isDirectAdmin || $isSiteUser || ! $isSuperAdmin) {
+        $operationGuideUrl = $operationGuideUserUrl !== '' ? $operationGuideUserUrl : $operationGuideDefaultUrl;
+    }
+    if ($operationGuideUrl === '' && ! $isAgentAdmin) {
+        $operationGuideUrl = $operationGuideUserUrl;
+    }
 
     $primaryMenu = [
         [
