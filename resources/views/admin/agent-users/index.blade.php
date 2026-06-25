@@ -103,6 +103,7 @@
                                             data-agent-user-edit
                                             data-member-id="{{ (int) $member->id }}"
                                             data-member-username="{{ $member->username }}"
+                                            data-member-display-name="{{ $member->display_name }}"
                                             class="text-sm font-medium text-blue-600 hover:text-blue-800"
                                         >
                                             编辑
@@ -132,7 +133,7 @@
                 <div class="flex items-center justify-between border-b border-slate-200 px-5 py-4">
                     <div>
                         <h3 class="text-lg font-semibold text-gray-900">编辑普通用户</h3>
-                        <p class="mt-1 text-xs text-gray-500">账号和归属关系不可修改，密码留空则保持不变。</p>
+                        <p class="mt-1 text-xs text-gray-500">账号和归属关系不可修改，显示名称可调整，密码留空则保持不变。</p>
                     </div>
                     <button type="button" data-agent-user-edit-close class="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-400 hover:bg-slate-100 hover:text-gray-600" aria-label="关闭">
                         <i data-lucide="x" class="h-4 w-4"></i>
@@ -143,6 +144,10 @@
                     <div>
                         <label for="agent_user_edit_username" class="mb-1 block text-sm font-medium text-gray-700">账号</label>
                         <input id="agent_user_edit_username" type="text" disabled class="block h-10 w-full rounded-md border border-slate-200 bg-slate-50 px-3 text-sm text-slate-500">
+                    </div>
+                    <div>
+                        <label for="agent_user_edit_display_name" class="mb-1 block text-sm font-medium text-gray-700">显示名称</label>
+                        <input id="agent_user_edit_display_name" name="display_name" type="text" autocomplete="off" placeholder="选填，留空则展示账号" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
                     </div>
                     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         <div>
@@ -174,6 +179,7 @@
             const modal = document.getElementById('agent-user-edit-modal');
             const form = document.getElementById('agent-user-edit-form');
             const usernameInput = document.getElementById('agent_user_edit_username');
+            const displayNameInput = document.getElementById('agent_user_edit_display_name');
             const passwordInput = document.getElementById('agent_user_edit_password');
             const confirmPasswordInput = document.getElementById('agent_user_edit_confirm_password');
 
@@ -186,6 +192,7 @@
                 button.addEventListener('click', () => {
                     form.action = updateRouteTemplate.replace('__ADMIN_ID__', button.dataset.memberId || '');
                     usernameInput.value = button.dataset.memberUsername || '';
+                    displayNameInput.value = button.dataset.memberDisplayName || '';
                     passwordInput.value = '';
                     confirmPasswordInput.value = '';
                     modal?.classList.remove('hidden');
