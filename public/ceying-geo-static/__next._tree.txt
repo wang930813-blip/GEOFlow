@@ -1,4 +1,4 @@
-:HL["./_next/static/chunks/0_r-go80ulj5-.css","style"]
+:HL["./_next/static/chunks/1mkfly0ii5rya.css","style"]
 :HL["./brand/ceying-ai-logo.png","image"]
 :HL["./contact/wechat-qrcode.png","image"]
-0:{"tree":{"name":"","param":null,"prefetchHints":16,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":0,"slots":null}}},"staleTime":300,"buildId":"F5A2oykJ7zbUDUul5AAtm"}
+0:{"tree":{"name":"","param":null,"prefetchHints":16,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":0,"slots":null}}},"staleTime":300,"buildId":"enlp4ZUE9hPZiNW91h9BO"}
