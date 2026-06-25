@@ -450,21 +450,6 @@ body.admin-ui .editor-textarea {
     border-radius: var(--aliyun-radius) !important;
 }
 
-body.admin-ui .admin-locale-select {
-    width: auto;
-    min-height: 0;
-    border: 0 !important;
-    border-radius: 0 !important;
-    background-color: transparent !important;
-    box-shadow: none !important;
-    padding: 0 20px 0 0 !important;
-}
-
-body.admin-ui .admin-locale-select:focus {
-    border-color: transparent !important;
-    box-shadow: none !important;
-}
-
 .admin-topbar {
     position: sticky;
     top: 0;

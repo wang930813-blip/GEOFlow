@@ -26,6 +26,8 @@
     $changelogLinks = is_array($updateLinks['changelog'] ?? null) ? $updateLinks['changelog'] : [];
     $notificationChangelogUrl = (string) ($changelogLinks[$localeForChangelog] ?? $changelogLinks['zh-CN'] ?? 'https://github.com/yaojingang/GEOFlow/blob/main/docs/CHANGELOG.md');
     $notificationGithubUrl = (string) ($updateLinks['github'] ?? 'https://github.com/yaojingang/GEOFlow');
+    $supportedLocales = \App\Support\AdminWeb::supportedLocales();
+    $currentAdminLocale = app()->getLocale();
     $operationGuideDefaultUrl = trim((string) config('geoflow.operation_guide_url', ''));
     $operationGuideAgentUrl = trim((string) config('geoflow.operation_guide_agent_url', ''));
     $operationGuideUserUrl = trim((string) config('geoflow.operation_guide_user_url', ''));
@@ -401,6 +403,28 @@
                     </div>
                 @endif
 
+                @if(count($supportedLocales) > 1)
+                    <div class="relative hidden md:block" data-admin-locale-menu>
+                        <button onclick="toggleLocaleMenu()" class="flex h-9 max-w-[8.5rem] items-center gap-1.5 rounded-md border border-white/10 px-2.5 text-sm font-medium transition-colors duration-200 hover:bg-white/10" type="button" aria-label="Language">
+                            <i data-lucide="languages" class="h-4 w-4 shrink-0"></i>
+                            <span class="max-w-[5.5rem] truncate">{{ $supportedLocales[$currentAdminLocale] ?? $currentAdminLocale }}</span>
+                            <i data-lucide="chevron-down" class="h-3.5 w-3.5 shrink-0"></i>
+                        </button>
+
+                        <div id="locale-menu" class="admin-menu-panel hidden absolute right-0 mt-2 w-40 overflow-hidden rounded-md border bg-white py-1 z-50">
+                            @foreach ($supportedLocales as $localeCode => $localeLabel)
+                                <a href="{{ route('admin.locale.switch', ['locale' => $localeCode]) }}"
+                                   class="@if($currentAdminLocale === $localeCode) admin-menu-item-active @endif flex items-center justify-between gap-2 rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                    <span class="truncate">{{ $localeLabel }}</span>
+                                    @if($currentAdminLocale === $localeCode)
+                                        <i data-lucide="check" class="h-4 w-4 shrink-0"></i>
+                                    @endif
+                                </a>
+                            @endforeach
+                        </div>
+                    </div>
+                @endif
+
                 <div class="relative">
                     <button onclick="toggleUserMenu()" class="flex h-9 items-center gap-2 rounded-md border border-white/10 px-2 text-sm transition-colors duration-200 hover:bg-white/10" type="button" aria-label="账号菜单">
                         <div class="admin-user-avatar w-8 h-8 rounded-md flex items-center justify-center">
@@ -534,6 +558,13 @@
         }
     }
 
+    function toggleLocaleMenu() {
+        const menu = document.getElementById('locale-menu');
+        if (menu) {
+            menu.classList.toggle('hidden');
+        }
+    }
+
     @if($hasVersionUpdate)
         function toggleAdminNotifications() {
             const menu = document.getElementById('admin-notification-menu');
@@ -552,12 +583,16 @@
 
     document.addEventListener('click', function (event) {
         const userMenu = document.getElementById('user-menu');
+        const localeMenu = document.getElementById('locale-menu');
         const mobileMenu = document.getElementById('mobile-menu');
         @if($hasVersionUpdate)
             const notificationMenu = document.getElementById('admin-notification-menu');
         @endif
         if (userMenu && ! event.target.closest('[onclick="toggleUserMenu()"]') && ! userMenu.contains(event.target)) {
             userMenu.classList.add('hidden');
+        }
+        if (localeMenu && ! event.target.closest('[onclick="toggleLocaleMenu()"]') && ! localeMenu.contains(event.target)) {
+            localeMenu.classList.add('hidden');
         }
         @if($hasVersionUpdate)
             if (notificationMenu && ! event.target.closest('[onclick="toggleAdminNotifications()"]') && ! notificationMenu.contains(event.target)) {

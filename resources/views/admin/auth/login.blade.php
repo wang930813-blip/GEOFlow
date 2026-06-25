@@ -10,13 +10,24 @@
 </head>
 <body class="admin-ui admin-login-page overflow-hidden">
 <div class="fixed right-4 top-4 z-50">
-    <select onchange="window.location.href=this.value" class="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-600 shadow-sm">
-        @foreach (\App\Support\AdminWeb::supportedLocales() as $localeCode => $localeLabel)
-            <option value="{{ route('admin.locale.switch', ['locale' => $localeCode]) }}" @selected(app()->getLocale() === $localeCode)>
-                {{ $localeLabel }}
-            </option>
-        @endforeach
-    </select>
+    <div class="relative" data-admin-locale-menu>
+        <button onclick="toggleLocaleMenu()" type="button" class="flex h-8 items-center gap-1.5 rounded-md border border-gray-300 bg-white px-2.5 text-xs font-medium text-gray-600 shadow-sm hover:bg-gray-50">
+            <i data-lucide="languages" class="h-3.5 w-3.5"></i>
+            <span>{{ \App\Support\AdminWeb::supportedLocales()[app()->getLocale()] ?? app()->getLocale() }}</span>
+            <i data-lucide="chevron-down" class="h-3 w-3"></i>
+        </button>
+        <div id="locale-menu" class="admin-menu-panel hidden absolute right-0 mt-2 w-40 overflow-hidden rounded-md border bg-white py-1 z-50">
+            @foreach (\App\Support\AdminWeb::supportedLocales() as $localeCode => $localeLabel)
+                <a href="{{ route('admin.locale.switch', ['locale' => $localeCode]) }}"
+                   class="flex items-center justify-between gap-2 rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                    <span class="truncate">{{ $localeLabel }}</span>
+                    @if(app()->getLocale() === $localeCode)
+                        <i data-lucide="check" class="h-4 w-4 shrink-0"></i>
+                    @endif
+                </a>
+            @endforeach
+        </div>
+    </div>
 </div>
 <div class="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md px-4">
     <div class="rounded-lg p-8 login-form">
@@ -71,6 +82,20 @@
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         if (typeof lucide !== 'undefined') lucide.createIcons();
+    });
+
+    function toggleLocaleMenu() {
+        const menu = document.getElementById('locale-menu');
+        if (menu) {
+            menu.classList.toggle('hidden');
+        }
+    }
+
+    document.addEventListener('click', function (event) {
+        const localeMenu = document.getElementById('locale-menu');
+        if (localeMenu && ! event.target.closest('[onclick="toggleLocaleMenu()"]') && ! localeMenu.contains(event.target)) {
+            localeMenu.classList.add('hidden');
+        }
     });
 </script>
 </body>

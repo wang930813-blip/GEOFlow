@@ -60,4 +60,17 @@ class AdminLocaleSwitchTest extends TestCase
                 ->assertDontSee('dashboard.heading');
         }
     }
+
+    public function test_admin_login_page_renders_custom_locale_switcher(): void
+    {
+        $html = $this->get(route('admin.login'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('data-admin-locale-menu', $html);
+        $this->assertStringContainsString('id="locale-menu"', $html);
+        $this->assertStringContainsString('onclick="toggleLocaleMenu()"', $html);
+        $this->assertStringContainsString('function toggleLocaleMenu()', $html);
+        $this->assertStringNotContainsString('admin-locale-select', $html);
+    }
 }

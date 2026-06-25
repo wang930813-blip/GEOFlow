@@ -52,7 +52,12 @@ class AdminHeaderNavigationTest extends TestCase
         $this->assertStringNotContainsString('data-admin-module-menu', $html);
         $this->assertStringContainsString('管理', $html);
 
-        $this->assertStringNotContainsString('admin-locale-select', $html);
+        $this->assertStringContainsString('data-admin-locale-menu', $html);
+        $this->assertStringContainsString('id="locale-menu"', $html);
+        $this->assertStringContainsString('onclick="toggleLocaleMenu()"', $html);
+        $this->assertStringContainsString('function toggleLocaleMenu()', $html);
+        $this->assertStringContainsString(route('admin.locale.switch', ['locale' => 'en']), $html);
+        $this->assertStringNotContainsString('id="admin-locale-select"', $html);
         $this->assertStringNotContainsString('onclick="toggleModuleMenu()"', $html);
     }
 
