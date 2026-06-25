@@ -62,6 +62,7 @@ class AgentUserController extends Controller
 
         $payload = $request->validate([
             'username' => ['required', 'string', 'regex:/^[A-Za-z0-9_.-]{3,50}$/', 'unique:admins,username'],
+            'display_name' => ['nullable', 'string', 'max:100'],
             'password' => ['required', 'string', 'min:8', 'same:confirm_password'],
             'confirm_password' => ['required', 'string', 'min:8'],
         ], [
@@ -78,7 +79,7 @@ class AgentUserController extends Controller
         DB::transaction(function () use ($payload, $agent): void {
             $admin = Admin::query()->create([
                 'username' => trim((string) $payload['username']),
-                'display_name' => '',
+                'display_name' => trim((string) ($payload['display_name'] ?? '')),
                 'email' => '',
                 'password' => (string) $payload['password'],
                 'role' => 'site_user',
