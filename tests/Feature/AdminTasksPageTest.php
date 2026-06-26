@@ -69,6 +69,37 @@ class AdminTasksPageTest extends TestCase
             ->assertSee(__('admin.task_create.page_heading'));
     }
 
+    public function test_task_create_page_hides_distribution_channel_create_entry(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'tasks_admin_create_no_distribution_entry',
+            'password' => 'secret-123',
+            'email' => 'tasks-admin-create-no-distribution-entry@example.com',
+            'display_name' => 'Tasks Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'Distribution Entry Hidden Site',
+            'status' => 'active',
+        ]);
+        $site->members()->attach((int) $admin->id, ['role' => 'owner']);
+        Category::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Distribution Entry Hidden Category',
+            'slug' => 'distribution-entry-hidden-category',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.tasks.create'))
+            ->assertOk()
+            ->assertSee(__('admin.task_create.section.distribution_title'))
+            ->assertDontSee(route('admin.distribution.create'), false)
+            ->assertDontSee(__('admin.task_create.distribution.create_link'));
+    }
+
     public function test_task_create_page_shows_scheduled_publish_controls(): void
     {
         $admin = Admin::query()->create([

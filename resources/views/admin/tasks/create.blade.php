@@ -283,7 +283,6 @@
                         @if (empty($formOptions['distributionChannels']))
                             <div class="rounded-md bg-gray-50 px-4 py-3 text-sm text-gray-600">
                                 {{ $t('task_create.distribution.empty') }}
-                                <a href="{{ route('admin.distribution.create') }}" class="font-medium text-blue-600 hover:text-blue-700">{{ $t('task_create.distribution.create_link') }}</a>
                             </div>
                         @else
                             <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
