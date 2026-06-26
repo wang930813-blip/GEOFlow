@@ -280,11 +280,7 @@
                             </div>
                         </fieldset>
 
-                        @if (empty($formOptions['distributionChannels']))
-                            <div class="rounded-md bg-gray-50 px-4 py-3 text-sm text-gray-600">
-                                {{ $t('task_create.distribution.empty') }}
-                            </div>
-                        @else
+                        @if (! empty($formOptions['distributionChannels']))
                             <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
                                 @foreach ($formOptions['distributionChannels'] as $channel)
                                     @php($channelId = (string) $channel['id'])

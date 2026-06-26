@@ -96,6 +96,7 @@ class AdminTasksPageTest extends TestCase
             ->get(route('admin.tasks.create'))
             ->assertOk()
             ->assertSee(__('admin.task_create.section.distribution_title'))
+            ->assertDontSee(__('admin.task_create.distribution.empty'))
             ->assertDontSee(route('admin.distribution.create'), false)
             ->assertDontSee(__('admin.task_create.distribution.create_link'));
     }
