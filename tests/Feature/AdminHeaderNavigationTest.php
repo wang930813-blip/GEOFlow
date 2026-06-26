@@ -89,6 +89,22 @@ class AdminHeaderNavigationTest extends TestCase
         $this->assertStringContainsString('代理', $html);
     }
 
+    public function test_agent_admin_primary_navigation_hides_monitoring_center(): void
+    {
+        $admin = $this->createAdmin('header_agent_monitoring_hidden', 'agent_admin');
+
+        $html = $this->actingAs($admin, 'admin')
+            ->get(route('admin.dashboard'))
+            ->assertOk()
+            ->getContent();
+
+        $primaryNav = $this->section($html, 'data-admin-primary-nav');
+
+        $this->assertStringContainsString(route('admin.geo-reports.index'), $primaryNav);
+        $this->assertStringContainsString(route('admin.brand-diagnosis.index'), $primaryNav);
+        $this->assertStringNotContainsString(route('admin.monitoring-center.index'), $primaryNav);
+    }
+
     public function test_header_user_menu_hides_management_items_for_direct_admin(): void
     {
         $admin = $this->createAdmin('header_direct_admin', 'direct_admin');

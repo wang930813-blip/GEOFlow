@@ -57,7 +57,7 @@
             'items' => [
                 ['key' => 'geo_reports', 'route' => 'admin.geo-reports.index', 'name' => 'GEO 报表', 'visible' => true],
                 ['key' => 'brand_diagnosis', 'route' => 'admin.brand-diagnosis.index', 'name' => '品牌诊断/报告', 'visible' => true],
-                ['key' => 'monitoring_center', 'route' => 'admin.monitoring-center.index', 'name' => '监测中心', 'visible' => true],
+                ['key' => 'monitoring_center', 'route' => 'admin.monitoring-center.index', 'name' => '监测中心', 'visible' => ! $isAgentAdmin],
             ],
         ],
         [
