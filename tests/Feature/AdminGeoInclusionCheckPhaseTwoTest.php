@@ -147,6 +147,45 @@ class AdminGeoInclusionCheckPhaseTwoTest extends TestCase
         $this->assertSame(1, GeoInclusionCheckResult::query()->count());
     }
 
+    public function test_inclusion_check_job_releases_transient_ai_overload_without_marking_failed(): void
+    {
+        $library = $this->createLibraryWithQuestion();
+        $keyword = $library->keywords()->firstOrFail();
+        $question = $keyword->questionVariants()->firstOrFail();
+        $run = GeoInclusionCheckRun::query()->create([
+            'keyword_library_id' => (int) $library->id,
+            'platforms' => ['doubao'],
+            'status' => 'pending',
+            'total_checks' => 1,
+            'completed_checks' => 0,
+            'failed_checks' => 0,
+        ]);
+
+        $this->app->bind(AiSearchPlatformChecker::class, static fn () => new class implements AiSearchPlatformChecker {
+            public function check(string $platform, string $question, KeywordLibrary $library, Keyword $keyword): AiSearchCheckResponse
+            {
+                throw new \RuntimeException('AI search check failed: AI provider [runtime_geo_inclusion_doubao_test] is overloaded.');
+            }
+        });
+
+        $job = (new ProcessGeoInclusionCheckJob(
+            runId: (int) $run->id,
+            keywordId: (int) $keyword->id,
+            questionVariantId: (int) $question->id,
+            platform: 'doubao'
+        ))->withFakeQueueInteractions();
+
+        $job->handle($this->app->make(AiSearchPlatformChecker::class));
+
+        $job->assertReleased(30);
+
+        $run->refresh();
+        $this->assertSame('running', $run->status);
+        $this->assertSame(0, (int) $run->completed_checks);
+        $this->assertSame(0, (int) $run->failed_checks);
+        $this->assertSame(0, GeoInclusionCheckResult::query()->where('run_id', (int) $run->id)->count());
+    }
+
     public function test_inclusion_check_job_result_inherits_run_owner(): void
     {
         $owner = $this->createAdmin('inclusion_result_owner_admin');

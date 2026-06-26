@@ -16,7 +16,7 @@ class ProcessGeoInclusionCheckJob implements ShouldQueue
 {
     use Queueable;
 
-    public int $tries = 1;
+    public int $tries = 3;
 
     public int $timeout = 180;
 
@@ -38,6 +38,14 @@ class ProcessGeoInclusionCheckJob implements ShouldQueue
             'keyword:'.$this->keywordId,
             'platform:'.$this->platform,
         ];
+    }
+
+    /**
+     * @return array<int,int>
+     */
+    public function backoff(): array
+    {
+        return [30, 120];
     }
 
     public function handle(AiSearchPlatformChecker $checker): void
@@ -84,6 +92,12 @@ class ProcessGeoInclusionCheckJob implements ShouldQueue
 
             $this->markProgress((int) $run->id, failed: false);
         } catch (Throwable $exception) {
+            if ($this->shouldRetryTransientAiFailure($exception)) {
+                $this->release($this->retryDelaySeconds());
+
+                return;
+            }
+
             GeoInclusionCheckResult::query()->updateOrCreate(
                 [
                     'run_id' => (int) $run->id,
@@ -108,6 +122,44 @@ class ProcessGeoInclusionCheckJob implements ShouldQueue
 
             $this->markProgress((int) $run->id, failed: true);
         }
+    }
+
+    private function shouldRetryTransientAiFailure(Throwable $exception): bool
+    {
+        if ($this->attempts() >= $this->tries) {
+            return false;
+        }
+
+        return $this->isTransientAiFailure($exception);
+    }
+
+    private function retryDelaySeconds(): int
+    {
+        $delays = $this->backoff();
+        $attemptIndex = max(0, $this->attempts() - 1);
+
+        return (int) ($delays[$attemptIndex] ?? end($delays) ?: 30);
+    }
+
+    private function isTransientAiFailure(Throwable $exception): bool
+    {
+        for ($current = $exception; $current instanceof Throwable; $current = $current->getPrevious()) {
+            $message = mb_strtolower($current->getMessage(), 'UTF-8');
+
+            if (
+                str_contains($message, 'is overloaded')
+                || str_contains($message, 'provider overloaded')
+                || str_contains($message, 'rate limited')
+                || str_contains($message, 'rate limit')
+                || str_contains($message, 'too many requests')
+                || str_contains($message, '429')
+                || str_contains($message, '503')
+            ) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function markProgress(int $runId, bool $failed): void

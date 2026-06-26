@@ -1,0 +1,787 @@
+<?php
+
+namespace App\Services\MonitoringCenter;
+
+use App\Models\Admin;
+use App\Models\Article;
+use App\Models\BrandDiagnosisBrandMention;
+use App\Models\BrandDiagnosisResult;
+use App\Models\BrandDiagnosisSource;
+use App\Models\GeoInclusionCheckResult;
+use App\Models\GeoInclusionCheckRun;
+use App\Models\KeywordLibrary;
+use App\Models\KeywordQuestionVariant;
+use App\Models\KnowledgeBase;
+use App\Models\Site;
+use App\Support\CurrentSite;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
+
+class MonitoringReportDataService
+{
+    private const DEFAULT_MODEL_PLATFORMS = [
+        'doubao',
+        'qianwen',
+        'deepseek',
+        'yuanbao',
+        'wenxin',
+    ];
+
+    /**
+     * @return array<string,mixed>
+     */
+    public function enterpriseReport(Admin $admin, ?Site $site = null): array
+    {
+        $context = $this->resolveContext($admin, $site);
+        $companyName = $this->resolveCompanyName($context);
+        $modelCollection = $this->modelCollection($context);
+        $searchRows = $this->searchRows($context, $companyName);
+        $distillationWords = $this->distillationWords($context);
+        $platformCount = $this->distinctPlatforms($context)->count();
+        $articleTrend = $this->articleTrend($context);
+        $summary = [
+            'model_collection_total' => $this->metric((int) collect($modelCollection)->sum('value'), 12),
+            'distillation_word_count' => $this->metric((int) $this->scope(KeywordQuestionVariant::query(), $context)->count(), 20),
+            'new_distillation_word_count' => $this->metric((int) $this->scope(KeywordQuestionVariant::query(), $context)->whereDate('created_at', now()->toDateString())->count(), 3),
+            'search_report_count' => $this->metric((int) $this->scope(BrandDiagnosisResult::query(), $context)->where('status', 'success')->count(), 10),
+            'platform_count' => $this->metric($platformCount, 5),
+            'source_count' => $this->metric((int) $this->scope(BrandDiagnosisSource::query(), $context)->count(), 10),
+        ];
+
+        return [
+            'context' => $this->reportContext($context, $companyName),
+            'summary' => $summary,
+            'model_collection' => $modelCollection,
+            'metrics' => $this->hasActualSummaryData($summary) ? $this->enterpriseMetrics($context, $modelCollection, $platformCount) : [],
+            'distillation_words' => $distillationWords,
+            'platform_filters' => $searchRows !== [] ? $this->platformFilters($searchRows) : [],
+            'trend' => $articleTrend,
+            'search_rows' => $searchRows,
+        ];
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    public function industryReport(Admin $admin, ?Site $site = null): array
+    {
+        $context = $this->resolveContext($admin, $site);
+        $companyName = $this->resolveCompanyName($context);
+        $platforms = $this->platformAnalysis($context);
+        $competitors = $this->competitors($context);
+        $sentiment = $this->sentiment($context);
+        $sourceCount = $this->distinctSourceCount($context);
+
+        return [
+            'context' => $this->reportContext($context, $companyName),
+            'summary' => [
+                $this->metric((int) $this->scope(KeywordQuestionVariant::query(), $context)->count(), 20) + ['label' => '蒸馏词数量(个)'],
+                $this->metric((int) $this->scope(BrandDiagnosisResult::query(), $context)->where('status', 'success')->count(), 10) + ['label' => 'AI搜索竞争力分析数量(次)'],
+                $this->metric($this->distinctPlatforms($context)->count(), 5) + ['label' => '覆盖AI平台'],
+                $this->metric($sourceCount, 10) + ['label' => '引用信源平台数(个)'],
+            ],
+            'brand_profile' => $this->brandProfile($context, $companyName),
+            'overall' => $this->overallTopRankShare($context),
+            'platforms' => $platforms,
+            'competitors' => $competitors,
+            'sentiment' => $sentiment,
+        ];
+    }
+
+    /**
+     * @return array{admin:Admin,site:?Site,site_id:?int,owner_admin_id:?int}
+     */
+    private function resolveContext(Admin $admin, ?Site $site): array
+    {
+        $site ??= app(CurrentSite::class)->get();
+
+        if (! $site instanceof Site) {
+            $site = $admin->sites()->orderBy('sites.id')->first();
+        }
+
+        if (! $site instanceof Site && $admin->isSuperAdmin()) {
+            $site = Site::query()->orderBy('id')->first();
+        }
+
+        $ownerAdminId = (int) ($site?->owner_admin_id ?: 0);
+        if ($ownerAdminId <= 0 && ($admin->isDirectAdmin() || $admin->isSiteUser() || ! $admin->isAgentAdmin())) {
+            $ownerAdminId = (int) $admin->id;
+        }
+
+        return [
+            'admin' => $admin,
+            'site' => $site,
+            'site_id' => $site instanceof Site ? (int) $site->id : null,
+            'owner_admin_id' => $ownerAdminId > 0 ? $ownerAdminId : null,
+        ];
+    }
+
+    /**
+     * @param  array{site:?Site,site_id:?int,owner_admin_id:?int}  $context
+     */
+    private function scope(Builder $query, array $context, string $siteColumn = 'site_id', string $ownerColumn = 'owner_admin_id'): Builder
+    {
+        if ($context['site_id'] !== null) {
+            $query->where($siteColumn, (int) $context['site_id']);
+        }
+
+        if ($context['owner_admin_id'] !== null) {
+            $query->where($ownerColumn, (int) $context['owner_admin_id']);
+        }
+
+        if ($context['site_id'] === null && $context['owner_admin_id'] === null) {
+            $query->whereRaw('1 = 0');
+        }
+
+        return $query;
+    }
+
+    /**
+     * @param  array{admin:Admin,site:?Site,site_id:?int,owner_admin_id:?int}  $context
+     */
+    private function resolveCompanyName(array $context): string
+    {
+        $knowledge = $this->scope(KnowledgeBase::query(), $context)
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->first(['name', 'description', 'content']);
+
+        if ($knowledge instanceof KnowledgeBase) {
+            $company = $this->extractCompanyName(implode("\n", [
+                (string) $knowledge->content,
+                (string) $knowledge->description,
+                (string) $knowledge->name,
+            ]));
+            if ($company !== '') {
+                return $company;
+            }
+        }
+
+        $libraryCompany = $this->scope(KeywordLibrary::query(), $context)
+            ->whereNotNull('company_name')
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->value('company_name');
+        if (is_string($libraryCompany) && trim($libraryCompany) !== '') {
+            return $this->cleanText($libraryCompany);
+        }
+
+        if ($context['site'] instanceof Site && trim((string) $context['site']->name) !== '') {
+            return $this->cleanText((string) $context['site']->name);
+        }
+
+        return $this->cleanText($context['admin']->name);
+    }
+
+    private function extractCompanyName(string $text): string
+    {
+        $text = trim($text);
+        if ($text === '') {
+            return '';
+        }
+
+        foreach ([
+            '/(?:公司名称|企业名称|品牌名称|公司名|企业名|品牌名)\s*[：:]\s*([^\r\n，,。；;]+)/u',
+            '/([一-龥A-Za-z0-9（）()·\-\s]{2,80}(?:有限责任公司|股份有限公司|有限公司|集团|公司))/u',
+        ] as $pattern) {
+            if (preg_match($pattern, $text, $matches) === 1) {
+                return $this->cleanText((string) $matches[1]);
+            }
+        }
+
+        return '';
+    }
+
+    private function cleanText(string $value): string
+    {
+        $value = trim(preg_replace('/\s+/u', ' ', $value) ?? $value);
+
+        return trim($value, " \t\n\r\0\x0B：:，,。；;");
+    }
+
+    /**
+     * @param  array{admin:Admin,site:?Site,site_id:?int,owner_admin_id:?int}  $context
+     * @return array<string,string>
+     */
+    private function reportContext(array $context, string $companyName): array
+    {
+        return [
+            'company_name' => $companyName,
+            'site_name' => $context['site'] instanceof Site ? (string) $context['site']->name : '',
+            'date' => now()->format('Y-m-d'),
+            'updated_at' => now()->format('Y-m-d H:i'),
+        ];
+    }
+
+    /**
+     * @return array{actual:int,display:int,is_polished:bool}
+     */
+    private function metric(int $actual, int $visualMinimum = 0): array
+    {
+        $display = $actual > 0 ? max($actual, $visualMinimum) : 0;
+
+        return [
+            'actual' => $actual,
+            'display' => $display,
+            'is_polished' => $display !== $actual,
+        ];
+    }
+
+    /**
+     * @param  array<string,mixed>  $context
+     * @return list<array{name:string,value:int}>
+     */
+    private function modelCollection(array $context): array
+    {
+        $checkedPlatforms = $this->checkedInclusionPlatforms($context);
+        $collected = $this->scope(GeoInclusionCheckResult::query(), $context)
+            ->where('status', 'success')
+            ->select('platform')
+            ->selectRaw('COUNT(*) as result_count')
+            ->groupBy('platform')
+            ->orderByDesc('result_count')
+            ->orderBy('platform')
+            ->get()
+            ->mapWithKeys(fn ($row): array => [(string) $row->platform => (int) $row->result_count]);
+
+        if ($checkedPlatforms->isEmpty() && $collected->isEmpty()) {
+            return [];
+        }
+
+        return collect(self::DEFAULT_MODEL_PLATFORMS)
+            ->merge($checkedPlatforms)
+            ->merge($collected->keys())
+            ->unique()
+            ->map(fn (string $platform): array => [
+                'name' => $this->modelPlatformLabel($platform),
+                'value' => (int) ($collected[$platform] ?? 0),
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  array<string,mixed>  $context
+     * @return Collection<int,string>
+     */
+    private function checkedInclusionPlatforms(array $context): Collection
+    {
+        return $this->scope(GeoInclusionCheckRun::query(), $context)
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->get(['platforms'])
+            ->flatMap(fn (GeoInclusionCheckRun $run): array => (array) $run->platforms)
+            ->map(static fn (mixed $platform): string => strtolower(trim((string) $platform)))
+            ->filter()
+            ->unique()
+            ->values();
+    }
+
+    /**
+     * @param  array<string,mixed>  $context
+     * @param  list<array{name:string,value:int,key:string}>  $modelCollection
+     * @return list<array<string,mixed>>
+     */
+    private function enterpriseMetrics(array $context, array $modelCollection, int $platformCount): array
+    {
+        $total = (int) collect($modelCollection)->sum('value');
+        $todayCollectionTotal = (int) $this->scope(GeoInclusionCheckResult::query(), $context)
+            ->where('status', 'success')
+            ->whereDate('checked_at', now()->toDateString())
+            ->count();
+        $yesterdayCollectionTotal = (int) $this->scope(GeoInclusionCheckResult::query(), $context)
+            ->where('status', 'success')
+            ->whereDate('checked_at', now()->subDay()->toDateString())
+            ->count();
+        $distillationWords = (int) $this->scope(KeywordQuestionVariant::query(), $context)->count();
+        $newWords = (int) $this->scope(KeywordQuestionVariant::query(), $context)
+            ->whereDate('created_at', now()->toDateString())
+            ->count();
+        $thirtyDayDistillationWords = (int) $this->scope(KeywordQuestionVariant::query(), $context)
+            ->where('created_at', '>=', now()->subDays(29)->startOfDay())
+            ->count();
+        $thirtyDayNewWords = (int) $this->scope(KeywordQuestionVariant::query(), $context)
+            ->whereBetween('created_at', [now()->subDays(29)->startOfDay(), now()->endOfDay()])
+            ->whereDate('created_at', now()->toDateString())
+            ->count();
+        $siteJumpSourceCount = (int) $this->scope(BrandDiagnosisSource::query(), $context)
+            ->where('source_type', 'url_citation')
+            ->count();
+        $contactSourceCount = (int) $this->scope(BrandDiagnosisSource::query(), $context)
+            ->whereIn('source_type', ['contact', 'contact_info', 'contact_citation'])
+            ->count();
+        $sourceCount = $siteJumpSourceCount + $contactSourceCount;
+
+        return [
+            [
+                'label' => 'AI大模型排名收录总量',
+                'value' => $total,
+                'actual' => $total,
+                'sub_items' => [
+                    ['label' => '今日新增', 'value' => $todayCollectionTotal],
+                    ['label' => '较昨日', 'value' => $total - $yesterdayCollectionTotal],
+                ],
+                'accent' => '#f08b35',
+            ],
+            [
+                'label' => 'AI搜索词数量',
+                'value' => $distillationWords,
+                'actual' => $distillationWords,
+                'secondary_label' => '新增词数量',
+                'secondary_value' => $newWords,
+                'sub_items' => [
+                    ['label' => '较30日', 'value' => $thirtyDayDistillationWords],
+                    ['label' => '较30日', 'value' => $thirtyDayNewWords],
+                ],
+                'accent' => '#0aa8ff',
+            ],
+            [
+                'label' => '收录AI平台数量',
+                'value' => $platformCount,
+                'actual' => $platformCount,
+                'sub_items' => [
+                    ['label' => '总平台数', 'value' => count(self::DEFAULT_MODEL_PLATFORMS)],
+                ],
+                'accent' => '#8c52ff',
+            ],
+            [
+                'label' => 'AI搜索转化方式收录总量',
+                'value' => $siteJumpSourceCount,
+                'actual' => $sourceCount,
+                'secondary_label' => '联系方式曝光',
+                'secondary_value' => $contactSourceCount,
+                'value_labels' => ['站内跳转曝光', '联系方式曝光'],
+                'accent' => '#17d9a2',
+            ],
+        ];
+    }
+
+    /**
+     * @param  array<string,mixed>  $context
+     * @return list<array{word:string,size:int,tone:string}>
+     */
+    private function distillationWords(array $context): array
+    {
+        $tones = ['strong', 'soft', 'pale'];
+
+        return $this->scope(KeywordQuestionVariant::query(), $context)
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->limit(24)
+            ->get(['question'])
+            ->map(fn (KeywordQuestionVariant $variant, int $index): array => [
+                'word' => (string) $variant->question,
+                'size' => 13 + ($index % 4),
+                'tone' => $tones[$index % count($tones)],
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  list<array<string,mixed>>  $searchRows
+     * @return list<array{name:string,terminal:string,total:int,key:string}>
+     */
+    private function platformFilters(array $searchRows): array
+    {
+        $items = [[
+            'key' => '全部',
+            'name' => '全部',
+            'terminal' => '全部',
+            'total' => count($searchRows),
+        ]];
+
+        foreach (collect($searchRows)
+            ->groupBy(fn (array $row): string => (string) ($row['platform'] ?? '').'|'.(string) ($row['terminal'] ?? 'PC'))
+            ->sortKeys() as $group) {
+            $row = $group->first();
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $name = (string) ($row['platform'] ?? '');
+            $terminal = (string) ($row['terminal'] ?? 'PC');
+            if ($name === '') {
+                continue;
+            }
+
+            $items[] = [
+                'key' => $name.'-'.$terminal,
+                'name' => $name,
+                'terminal' => $terminal,
+                'total' => $group->count(),
+            ];
+        }
+
+        return $items;
+    }
+
+    /**
+     * @param  array<string,array{actual:int,display:int,is_polished:bool}>  $summary
+     */
+    private function hasActualSummaryData(array $summary): bool
+    {
+        return collect($summary)->contains(fn (array $metric): bool => (int) $metric['actual'] > 0);
+    }
+
+    /**
+     * @param  array<string,mixed>  $context
+     * @return array{last_7:list<array{date:string,created:int,published:int}>,last_30:list<array{date:string,created:int,published:int}>}
+     */
+    private function articleTrend(array $context): array
+    {
+        $articles = $this->scope(Article::query(), $context)
+            ->where('created_at', '>=', now()->subDays(29)->startOfDay())
+            ->get(['created_at', 'published_at', 'status']);
+
+        return [
+            'last_7' => $this->articleTrendForDays($articles, 7),
+            'last_30' => $this->articleTrendForDays($articles, 30),
+        ];
+    }
+
+    /**
+     * @param  Collection<int,Article>  $articles
+     * @return list<array{date:string,created:int,published:int}>
+     */
+    private function articleTrendForDays(Collection $articles, int $days): array
+    {
+        $rows = [];
+        for ($i = $days - 1; $i >= 0; $i--) {
+            $date = now()->subDays($i)->toDateString();
+            $rows[] = [
+                'date' => $date,
+                'created' => $articles->filter(fn (Article $article): bool => $article->created_at?->toDateString() === $date)->count(),
+                'published' => $articles->filter(fn (Article $article): bool => $article->published_at?->toDateString() === $date && (string) $article->status === 'published')->count(),
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @param  array<string,mixed>  $context
+     * @return list<array<string,mixed>>
+     */
+    private function searchRows(array $context, string $companyName): array
+    {
+        $articles = $this->scope(Article::query(), $context)
+            ->where('status', 'published')
+            ->orderByDesc('published_at')
+            ->limit(30)
+            ->get(['id', 'title', 'content', 'keywords', 'published_at']);
+
+        return $this->scope(BrandDiagnosisResult::query(), $context)
+            ->with(['question:id,question', 'sources:id,result_id,title,url,domain,platform'])
+            ->where('status', 'success')
+            ->orderByDesc('checked_at')
+            ->orderByDesc('id')
+            ->limit(80)
+            ->get()
+            ->map(function (BrandDiagnosisResult $result) use ($articles, $companyName): array {
+                $question = (string) ($result->question?->question ?? '');
+
+                return [
+                    'id' => (int) $result->id,
+                    'question' => $question,
+                    'platform_key' => (string) $result->platform,
+                    'platform' => $this->platformLabel((string) $result->platform),
+                    'terminal' => 'PC',
+                    'date' => ($result->checked_at ?? $result->created_at)?->format('Y-m-d') ?? '',
+                    'time' => ($result->checked_at ?? $result->created_at)?->format('Y-m-d H:i:s') ?? '',
+                    'target' => $companyName,
+                    'answer' => Str::limit(strip_tags((string) $result->answer), 220),
+                    'sources' => $result->sources->map(fn ($source): array => [
+                        'title' => (string) $source->title,
+                        'url' => (string) $source->url,
+                        'domain' => (string) $source->domain,
+                    ])->values()->all(),
+                    'related_articles' => $this->relatedArticles($articles, $question, $companyName),
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  Collection<int,Article>  $articles
+     * @return list<array{id:int,title:string,published_at:string}>
+     */
+    private function relatedArticles(Collection $articles, string $question, string $companyName): array
+    {
+        $needles = collect([$companyName, $question])
+            ->filter(fn (string $value): bool => trim($value) !== '')
+            ->map(fn (string $value): string => mb_strtolower($value))
+            ->values();
+
+        return $articles
+            ->filter(function (Article $article) use ($needles): bool {
+                $haystack = mb_strtolower((string) $article->title.' '.(string) $article->content.' '.(string) $article->keywords);
+
+                return $needles->contains(fn (string $needle): bool => $needle !== '' && str_contains($haystack, $needle));
+            })
+            ->take(3)
+            ->map(fn (Article $article): array => [
+                'id' => (int) $article->id,
+                'title' => (string) $article->title,
+                'published_at' => $article->published_at?->format('Y-m-d') ?? '',
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  array<string,mixed>  $context
+     * @return Collection<int,string>
+     */
+    private function distinctPlatforms(array $context): Collection
+    {
+        $geoPlatforms = $this->scope(GeoInclusionCheckResult::query(), $context)
+            ->where('status', 'success')
+            ->distinct()
+            ->pluck('platform');
+        $diagnosisPlatforms = $this->scope(BrandDiagnosisResult::query(), $context)
+            ->where('status', 'success')
+            ->distinct()
+            ->pluck('platform');
+
+        return $geoPlatforms
+            ->merge($diagnosisPlatforms)
+            ->filter()
+            ->unique()
+            ->values();
+    }
+
+    /**
+     * @param  array<string,mixed>  $context
+     * @return array{company_name:string,brand_names:list<string>,core_services:list<string>,description:string}
+     */
+    private function brandProfile(array $context, string $companyName): array
+    {
+        $library = $this->scope(KeywordLibrary::query(), $context)
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->first(['company_name', 'domain_keyword', 'industry', 'brand_description']);
+
+        $services = collect([
+            $library?->domain_keyword,
+            $library?->industry,
+        ])->filter(fn ($value): bool => is_string($value) && trim($value) !== '')
+            ->map(fn (string $value): string => $this->cleanText($value))
+            ->unique()
+            ->values()
+            ->all();
+
+        return [
+            'company_name' => $companyName,
+            'brand_names' => collect([$companyName, $library?->company_name])
+                ->filter(fn ($value): bool => is_string($value) && trim($value) !== '')
+                ->map(fn (string $value): string => $this->cleanText($value))
+                ->unique()
+                ->values()
+                ->all(),
+            'core_services' => $services,
+            'description' => $library instanceof KeywordLibrary ? (string) $library->brand_description : '',
+        ];
+    }
+
+    /**
+     * @param  array<string,mixed>  $context
+     * @return array<string,mixed>
+     */
+    private function overallTopRankShare(array $context): array
+    {
+        $totalResults = (int) $this->scope(BrandDiagnosisResult::query(), $context)
+            ->where('status', 'success')
+            ->count();
+        $topFive = (int) $this->scope(BrandDiagnosisBrandMention::query(), $context)
+            ->where('is_target_brand', true)
+            ->whereBetween('mention_rank', [1, 5])
+            ->count();
+
+        return [
+            'top5_count' => $topFive,
+            'top5_rate' => $this->rate($topFive, $totalResults),
+            'top_rank_rates' => $this->topRankRates($context),
+        ];
+    }
+
+    /**
+     * @param  array<string,mixed>  $context
+     * @return list<array<string,mixed>>
+     */
+    private function platformAnalysis(array $context): array
+    {
+        $results = $this->scope(BrandDiagnosisResult::query(), $context)
+            ->where('status', 'success')
+            ->get(['id', 'platform', 'sentiment']);
+        $mentions = $this->scope(BrandDiagnosisBrandMention::query(), $context)
+            ->where('is_target_brand', true)
+            ->get(['platform', 'mention_rank']);
+        $sources = $this->scope(BrandDiagnosisSource::query(), $context)->get(['platform', 'domain', 'url']);
+
+        return $results
+            ->groupBy('platform')
+            ->map(function (Collection $platformResults, string $platform) use ($mentions, $sources): array {
+                $total = $platformResults->count();
+                $platformMentions = $mentions->where('platform', $platform);
+                $platformSources = $sources->where('platform', $platform);
+
+                return [
+                    'platform_key' => $platform,
+                    'platform' => $this->platformLabel($platform),
+                    'analysis_count' => $total,
+                    'top_rank_rates' => $this->rankRatesForMentions($platformMentions, $total),
+                    'positive_sentiment_rate' => $this->rate($platformResults->where('sentiment', 'positive')->count(), $total),
+                    'source_count' => $platformSources
+                        ->map(fn ($source): string => (string) ($source->domain ?: $source->url))
+                        ->filter()
+                        ->unique()
+                        ->count(),
+                ];
+            })
+            ->sortByDesc('analysis_count')
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  array<string,mixed>  $context
+     * @return list<array<string,mixed>>
+     */
+    private function competitors(array $context): array
+    {
+        return $this->scope(BrandDiagnosisBrandMention::query(), $context)
+            ->where('is_target_brand', false)
+            ->get(['brand_name', 'platform', 'mention_count', 'mention_rank'])
+            ->groupBy('brand_name')
+            ->map(function (Collection $mentions, string $brandName): array {
+                return [
+                    'brand_name' => $brandName,
+                    'mention_count' => (int) $mentions->sum('mention_count'),
+                    'best_rank' => (int) $mentions->min('mention_rank'),
+                    'platforms' => $mentions
+                        ->groupBy('platform')
+                        ->map(fn (Collection $platformMentions, string $platform): array => [
+                            'platform_key' => $platform,
+                            'platform' => $this->platformLabel($platform),
+                            'mention_count' => (int) $platformMentions->sum('mention_count'),
+                            'best_rank' => (int) $platformMentions->min('mention_rank'),
+                        ])
+                        ->values()
+                        ->all(),
+                ];
+            })
+            ->sortByDesc('mention_count')
+            ->values()
+            ->take(10)
+            ->all();
+    }
+
+    /**
+     * @param  array<string,mixed>  $context
+     * @return array<string,mixed>
+     */
+    private function sentiment(array $context): array
+    {
+        $results = $this->scope(BrandDiagnosisResult::query(), $context)
+            ->where('status', 'success')
+            ->get(['platform', 'sentiment']);
+        $total = $results->count();
+
+        return [
+            'overall' => [
+                'positive_rate' => $this->rate($results->where('sentiment', 'positive')->count(), $total),
+                'neutral_rate' => $this->rate($results->where('sentiment', 'neutral')->count(), $total),
+                'negative_rate' => $this->rate($results->where('sentiment', 'negative')->count(), $total),
+            ],
+            'platforms' => $results
+                ->groupBy('platform')
+                ->map(function (Collection $platformResults, string $platform): array {
+                    $total = $platformResults->count();
+
+                    return [
+                        'platform_key' => $platform,
+                        'platform' => $this->platformLabel($platform),
+                        'positive_rate' => $this->rate($platformResults->where('sentiment', 'positive')->count(), $total),
+                        'neutral_rate' => $this->rate($platformResults->where('sentiment', 'neutral')->count(), $total),
+                        'negative_rate' => $this->rate($platformResults->where('sentiment', 'negative')->count(), $total),
+                    ];
+                })
+                ->values()
+                ->all(),
+        ];
+    }
+
+    /**
+     * @param  array<string,mixed>  $context
+     * @return array{top1:float,top2:float,top3:float,top4:float,top5:float}
+     */
+    private function topRankRates(array $context): array
+    {
+        $total = (int) $this->scope(BrandDiagnosisResult::query(), $context)
+            ->where('status', 'success')
+            ->count();
+        $mentions = $this->scope(BrandDiagnosisBrandMention::query(), $context)
+            ->where('is_target_brand', true)
+            ->get(['mention_rank']);
+
+        return $this->rankRatesForMentions($mentions, $total);
+    }
+
+    /**
+     * @param  Collection<int,BrandDiagnosisBrandMention>  $mentions
+     * @return array{top1:float,top2:float,top3:float,top4:float,top5:float}
+     */
+    private function rankRatesForMentions(Collection $mentions, int $total): array
+    {
+        $rates = [];
+        for ($rank = 1; $rank <= 5; $rank++) {
+            $rates['top'.$rank] = $this->rate($mentions->where('mention_rank', $rank)->count(), $total);
+        }
+
+        return $rates;
+    }
+
+    /**
+     * @param  array<string,mixed>  $context
+     */
+    private function distinctSourceCount(array $context): int
+    {
+        return $this->scope(BrandDiagnosisSource::query(), $context)
+            ->get(['domain', 'url'])
+            ->map(fn ($source): string => (string) ($source->domain ?: $source->url))
+            ->filter()
+            ->unique()
+            ->count();
+    }
+
+    private function rate(int $part, int $total): float
+    {
+        return $total > 0 ? round($part * 100 / $total, 2) : 0.0;
+    }
+
+    private function modelPlatformLabel(string $platform): string
+    {
+        return match (strtolower($platform)) {
+            'yuanbao', 'tencent_yuanbao' => '元宝',
+            default => $this->platformLabel($platform),
+        };
+    }
+
+    private function platformLabel(string $platform): string
+    {
+        return match (strtolower($platform)) {
+            'doubao' => '豆包',
+            'deepseek' => 'DeepSeek',
+            'yuanbao', 'tencent_yuanbao' => '腾讯元宝',
+            'wenxin', 'ernie' => '文心一言',
+            'qianwen', 'tongyi' => '千问',
+            'kimi' => 'Kimi',
+            'xinghuo', 'spark' => '讯飞星火',
+            'baidu_ai' => '百度AI',
+            default => $platform,
+        };
+    }
+}

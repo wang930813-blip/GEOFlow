@@ -1,0 +1,2401 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>大模型数据报表 - 静态复刻</title>
+  <style>
+    :root {
+      --bg: #020816;
+      --panel: rgba(4, 22, 50, .84);
+      --ink: #eaf7ff;
+      --muted: #83a9cc;
+      --line: rgba(0, 147, 255, .34);
+      --blue: #1f89ff;
+      --violet: #9a63ff;
+      --green: #27e5bd;
+      --orange: #ff9c45;
+      --cyan: #13d7ff;
+      --shadow: 0 0 28px rgba(0, 145, 255, .18);
+      --radius: 10px;
+      --hero-bg-width: max(1780px, 100vw);
+      --fixed-header-height: 126px;
+      --fixed-header-flow-space: 110px;
+      --fixed-header-line-y: 58px;
+      --report-title-center-y: var(--fixed-header-line-y);
+      --content-top-gap: 32px;
+    }
+    @font-face {
+      font-family: "TitleIconfont";
+      src: url("assets/iconfont/title-icons.woff2") format("woff2");
+      font-display: swap;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      overflow-x: hidden;
+      color: var(--ink);
+      min-height: 100vh;
+      background:
+        linear-gradient(180deg, rgba(1, 12, 32, .04) 0%, rgba(1, 10, 28, .18) 38%, rgba(0, 6, 18, .38) 100%),
+        url("assets/backgrounds/enterprise-space-bg.png") top center / var(--hero-bg-width) auto no-repeat,
+        #020816;
+      font-family: "PingFang SC", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: 0;
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: -2;
+      pointer-events: none;
+      background:
+        radial-gradient(circle at 10% 9%, rgba(63, 221, 255, .85) 0 1px, transparent 1.8px),
+        radial-gradient(circle at 78% 13%, rgba(77, 170, 255, .65) 0 1px, transparent 1.8px),
+        radial-gradient(circle at 48% 31%, rgba(255, 255, 255, .45) 0 1px, transparent 1.7px),
+        radial-gradient(circle at 23% 58%, rgba(18, 191, 255, .5) 0 1px, transparent 1.6px);
+      background-size: 260px 190px, 340px 230px, 420px 280px, 310px 260px;
+      opacity: .55;
+    }
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: -3;
+      pointer-events: none;
+      background:
+        radial-gradient(ellipse at 50% 0%, rgba(53, 172, 255, .16) 0%, rgba(10, 62, 128, .08) 30%, transparent 54%),
+        linear-gradient(180deg, rgba(0, 10, 30, .05), rgba(0, 5, 16, .36));
+    }
+    img { max-width: 100%; }
+    button, input, select { font: inherit; }
+    button { cursor: pointer; }
+
+    @view-transition {
+      navigation: auto;
+    }
+
+    ::view-transition-old(report-switcher),
+    ::view-transition-new(report-switcher) {
+      animation-duration: .28s;
+      animation-timing-function: cubic-bezier(.22, 1, .36, 1);
+    }
+
+    .page {
+      width: 100%;
+      max-width: 100%;
+      margin: 0 auto;
+      padding: 14px 18px 48px;
+      position: relative;
+      isolation: isolate;
+    }
+    .panel,
+    .metric-card,
+    .collection-row,
+    .filter-chip,
+    tbody tr {
+      animation: dataFadeIn .55s cubic-bezier(.22, 1, .36, 1) both;
+      animation-delay: var(--load-delay, 0s);
+    }
+    .counting {
+      display: inline-block;
+      min-width: max-content;
+      font-variant-numeric: tabular-nums;
+      animation: numberPulse .72s cubic-bezier(.22, 1, .36, 1) both;
+    }
+    @keyframes dataFadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(12px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    @keyframes numberPulse {
+      0% {
+        opacity: .25;
+        transform: translateY(4px);
+      }
+      65% {
+        opacity: 1;
+        transform: translateY(0) scale(1.025);
+      }
+      100% {
+        opacity: 1;
+        transform: none;
+      }
+    }
+
+    .report-header {
+      display: grid;
+      grid-template-columns: 410px 1fr 470px;
+      align-items: center;
+      gap: 18px;
+      min-height: 72px;
+      position: relative;
+      z-index: 1000;
+    }
+    .report-header::before {
+      display: none;
+    }
+    .brand-strip {
+      display: flex;
+      align-items: center;
+      min-width: 0;
+    }
+    .brand-logo {
+      display: block;
+      width: min(320px, 100%);
+      height: 54px;
+      object-fit: contain;
+      object-position: left center;
+      filter: none;
+    }
+    .report-title {
+      position: absolute;
+      left: 50%;
+      top: var(--report-title-center-y);
+      z-index: 1;
+      width: max-content;
+      transform: translate(-50%, -50%);
+      margin: 0;
+      text-align: center;
+      color: #f4fbff;
+      font-size: clamp(28px, 3vw, 46px);
+      font-weight: 950;
+      font-style: italic;
+      text-shadow:
+        0 0 8px rgba(87, 181, 255, .82),
+        0 3px 0 rgba(22, 83, 170, .58);
+    }
+    .company-box {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 18px;
+      font-size: 16px;
+      min-width: 0;
+      position: relative;
+      z-index: 1001;
+      overflow: visible;
+      view-transition-name: report-switcher;
+    }
+    .company-meta {
+      width: 300px;
+      flex: 0 0 300px;
+      text-align: center;
+      line-height: 1.55;
+      white-space: nowrap;
+      color: #e8f6ff;
+      font-size: 14px;
+      text-shadow: 0 0 8px rgba(34, 165, 255, .36);
+    }
+    .report-menu {
+      position: relative;
+      width: 220px;
+      flex: 0 0 220px;
+      min-width: 220px;
+      z-index: 1002;
+    }
+    .report-menu[open] { z-index: 2000; }
+    .report-menu summary {
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border-radius: 24px;
+      color: #fff;
+      padding: 0 16px 0 18px;
+      list-style: none;
+      background: linear-gradient(135deg, #0d5dff 0%, #244bce 48%, #14235f 100%);
+      box-shadow: inset 0 0 0 1px rgba(95, 194, 255, .5), 0 0 22px rgba(30, 122, 255, .32);
+      cursor: pointer;
+      user-select: none;
+    }
+    .report-menu summary::-webkit-details-marker { display: none; }
+    .report-menu summary::after {
+      content: "";
+      width: 0;
+      height: 0;
+      border-left: 5px solid transparent;
+      border-right: 5px solid transparent;
+      border-top: 6px solid #fff;
+    }
+    .report-menu[open] summary::after { transform: rotate(180deg); }
+    .report-menu-list {
+      position: absolute;
+      top: calc(100% + 6px);
+      right: 0;
+      z-index: 2001;
+      min-width: 226px;
+      padding: 6px;
+      border: 1px solid rgba(60, 190, 255, .46);
+      border-radius: 7px;
+      background: rgba(3, 19, 42, .96);
+      box-shadow: 0 18px 38px rgba(0, 10, 36, .58), 0 0 18px rgba(0, 171, 255, .22);
+    }
+    .report-menu-list a,
+    .report-menu-list span {
+      display: block;
+      padding: 8px 12px;
+      border-radius: 5px;
+      color: #d9f4ff;
+      text-decoration: none;
+      white-space: nowrap;
+      font-weight: 750;
+      line-height: 1.25;
+    }
+    .report-menu-list a:hover {
+      color: #fff;
+      background: linear-gradient(135deg, #2e7dff, #8b49ff);
+    }
+    .report-menu-list span {
+      color: #fff;
+      background: linear-gradient(135deg, #0f72ff, #844eff);
+      margin-bottom: 4px;
+    }
+    .report-select {
+      min-width: 230px;
+      height: 40px;
+      border: 0;
+      border-radius: 24px;
+      color: #fff;
+      padding: 0 44px 0 20px;
+      appearance: none;
+      background:
+        linear-gradient(45deg, transparent 50%, #fff 50%) right 20px top 17px / 8px 8px no-repeat,
+        linear-gradient(135deg, #0f72ff, #a44eff);
+      box-shadow: 0 10px 22px rgba(78, 94, 245, .22);
+    }
+    .company-box {
+      width: 560px;
+      flex: 0 0 560px;
+      gap: 18px;
+      justify-content: flex-end;
+    }
+    .report-header {
+      grid-template-columns: 410px 1fr 560px;
+    }
+    .company-meta {
+      width: 282px;
+      flex: 0 0 282px;
+      font-size: 15px;
+    }
+    .report-menu {
+      width: 260px;
+      min-width: 260px;
+      flex: 0 0 260px;
+      font-size: 16px;
+    }
+    .report-menu summary {
+      width: 260px;
+      height: 44px;
+      min-height: 44px;
+      padding: 0 18px 0 22px;
+      border-radius: 24px;
+      font-size: 16px;
+      font-weight: 850;
+      line-height: 44px;
+      background: linear-gradient(135deg, #2f7cff 0%, #4e60f5 58%, #9456ff 100%);
+      box-shadow: inset 0 0 0 1px rgba(167, 214, 255, .45), 0 8px 24px rgba(53, 95, 255, .26);
+    }
+    .report-menu-list {
+      width: 260px;
+      min-width: 260px;
+    }
+    @media (min-width: 1101px) {
+      .page {
+        padding-top: 14px;
+      }
+      .report-header {
+        position: relative;
+        height: var(--fixed-header-height);
+        min-height: 0;
+        padding: 0 18px;
+        z-index: 5000;
+        background: transparent;
+      }
+      .report-header::before {
+        display: none;
+      }
+      .report-header::after {
+        display: none;
+      }
+      .brand-strip {
+        position: absolute;
+        top: var(--fixed-header-line-y);
+        left: 18px;
+        z-index: 1001;
+        transform: translateY(-50%);
+      }
+      .report-title {
+        z-index: 1001;
+      }
+      .company-box {
+        position: absolute;
+        top: var(--fixed-header-line-y);
+        right: 18px;
+        height: 47px;
+        align-self: auto;
+        margin-top: 0;
+        transform: translateY(-50%);
+      }
+      .company-box .report-menu { align-self: flex-start; }
+    }
+
+    .panel {
+      position: relative;
+      overflow: hidden;
+      background:
+        linear-gradient(180deg, rgba(9, 36, 76, .88), rgba(3, 18, 43, .9));
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      border: 1px solid rgba(0, 174, 255, .62);
+    }
+    .panel::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      pointer-events: none;
+      background:
+        linear-gradient(90deg, rgba(40, 190, 255, .48), transparent 18%, transparent 82%, rgba(40, 190, 255, .48)),
+        linear-gradient(180deg, rgba(40, 190, 255, .32), transparent 16%);
+      opacity: .22;
+    }
+    .panel::after {
+      content: "";
+      position: absolute;
+      left: 18px;
+      right: 18px;
+      top: 0;
+      height: 1px;
+      pointer-events: none;
+      background: linear-gradient(90deg, transparent, rgba(37, 209, 255, .88), transparent);
+      box-shadow: 0 0 18px rgba(0, 190, 255, .74);
+    }
+    .section-title {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 0 0 16px;
+      font-size: 18px;
+      font-weight: 850;
+      color: #f0fbff;
+      text-shadow: 0 0 10px rgba(0, 190, 255, .44);
+    }
+    .title-icon {
+      width: 24px;
+      height: 24px;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      border-radius: 5px;
+      background: linear-gradient(135deg, #156dff, #10c9ff);
+      box-shadow: 0 0 12px rgba(0, 170, 255, .55);
+      font-size: 13px;
+    }
+    .title-icon::before {
+      font-family: "TitleIconfont";
+      font-size: 15px;
+      font-style: normal;
+      font-weight: 400;
+      line-height: 1;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    .title-icon.model::before { content: "\e72b"; }
+    .title-icon.metrics::before { content: "\e936"; }
+    .title-icon.cloud::before { content: "\e72a"; }
+    .title-icon.trend::before { content: "\e935"; }
+    .title-icon.report::before { content: "\e694"; }
+
+    .model-collection {
+      margin-top: var(--content-top-gap);
+      padding: 16px 18px 18px;
+    }
+    .collection-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 12px;
+    }
+    .collection-total {
+      min-width: 210px;
+      display: flex;
+      align-items: baseline;
+      justify-content: flex-end;
+      gap: 10px;
+      color: #a6c9e5;
+      font-weight: 750;
+    }
+    .collection-total strong {
+      color: #32d7ff;
+      font-size: 30px;
+      line-height: 1;
+      font-weight: 950;
+      text-shadow: 0 0 14px rgba(0, 204, 255, .72);
+    }
+    .collection-chart {
+      display: grid;
+      gap: 6px;
+    }
+    .collection-row {
+      min-height: 42px;
+      display: grid;
+      grid-template-columns: 190px minmax(180px, 1fr) 92px;
+      align-items: center;
+      gap: 18px;
+      padding: 5px 10px;
+      position: relative;
+      z-index: 1;
+      border: 1px solid rgba(39, 139, 238, .34);
+      border-radius: 6px;
+      background:
+        linear-gradient(90deg, rgba(16, 72, 142, .36), rgba(5, 26, 59, .18));
+      box-shadow: inset 0 0 18px rgba(29, 105, 210, .12);
+    }
+    .collection-info {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .collection-info .platform-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 7px;
+      flex: 0 0 32px;
+    }
+    .collection-text {
+      min-width: 0;
+      display: grid;
+      gap: 3px;
+    }
+    .collection-name {
+      color: #f0fbff;
+      font-size: 16px;
+      font-weight: 850;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .collection-share {
+      color: #8fb5d3;
+      font-size: 12px;
+      font-weight: 650;
+    }
+    .collection-track {
+      position: relative;
+      height: 18px;
+      overflow: hidden;
+      border-radius: 999px;
+      background:
+        linear-gradient(90deg, rgba(40, 111, 197, .62), rgba(35, 92, 158, .48)),
+        rgba(18, 54, 103, .86);
+      border: 1px solid rgba(111, 190, 255, .28);
+      box-shadow:
+        inset 0 1px 0 rgba(194, 236, 255, .18),
+        inset 0 -1px 0 rgba(0, 17, 44, .48),
+        0 0 10px rgba(40, 169, 255, .1);
+    }
+    .collection-track::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: repeating-linear-gradient(
+        90deg,
+        rgba(222, 247, 255, .13) 0 1px,
+        transparent 1px 72px
+      );
+      opacity: .48;
+      pointer-events: none;
+    }
+    .collection-track::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      border-radius: inherit;
+      box-shadow: inset 0 0 0 1px rgba(172, 226, 255, .08);
+      pointer-events: none;
+    }
+    .collection-bar {
+      position: relative;
+      z-index: 1;
+      display: block;
+      width: var(--bar);
+      height: 100%;
+      border-radius: inherit;
+      background: var(--fill, linear-gradient(90deg, #3578ff, #70d4ff));
+      box-shadow: 0 0 14px rgba(35, 208, 255, .38);
+      transform-origin: left center;
+      animation: collectionBar .7s ease both;
+      animation-delay: var(--load-delay, 0s);
+    }
+    .collection-value {
+      color: #f6fbff;
+      text-align: right;
+      font-size: 18px;
+      font-weight: 900;
+    }
+    @keyframes collectionBar {
+      from {
+        opacity: .25;
+        transform: scaleX(.08);
+      }
+      to {
+        opacity: 1;
+        transform: scaleX(1);
+      }
+    }
+    .platform-icon {
+      width: 26px;
+      height: 26px;
+      display: grid;
+      place-items: center;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 900;
+      background: var(--icon-bg, linear-gradient(135deg, #316dff, #61d8ff));
+      box-shadow: 0 0 16px rgba(0, 145, 255, .34);
+    }
+    .platform-icon.logo-icon {
+      overflow: hidden;
+      background: rgba(255,255,255,.96);
+      box-shadow: 0 0 12px rgba(38, 150, 255, .36);
+    }
+    .platform-icon.logo-icon img {
+      width: 100%;
+      height: 100%;
+      display: block;
+      border-radius: inherit;
+      object-fit: cover;
+    }
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      margin-top: 18px;
+      align-items: stretch;
+    }
+    .metric-cards, .keyword-cloud { height: 100%; padding: 18px; min-height: 476px; }
+    .metric-cards {
+      overflow: hidden;
+      padding: 21px 22px 23px;
+      border: 1px solid rgba(20, 169, 255, .95);
+      border-radius: 8px;
+      background:
+        radial-gradient(circle at 12% 20%, rgba(18, 88, 164, .28), transparent 28%),
+        radial-gradient(circle at 74% 18%, rgba(13, 93, 196, .16), transparent 30%),
+        linear-gradient(135deg, #031831 0%, #06142f 52%, #071226 100%);
+      box-shadow: inset 0 0 0 1px rgba(28, 118, 209, .18), 0 14px 38px rgba(1, 10, 31, .18);
+    }
+    .metric-cards .section-title {
+      margin-bottom: 20px;
+      color: #f5fbff;
+      font-size: 18px;
+      text-shadow: 0 0 12px rgba(71, 179, 255, .28);
+    }
+    .metric-cards .title-icon {
+      width: 24px;
+      height: 24px;
+      overflow: visible;
+      border-radius: 5px;
+      background: linear-gradient(135deg, #156dff, #10c9ff);
+      box-shadow: 0 0 12px rgba(0, 170, 255, .55);
+    }
+    .metric-cards .title-icon::before {
+      content: "\e936";
+      width: auto;
+      height: auto;
+      display: block;
+      background: none;
+      font-family: "TitleIconfont";
+      font-size: 15px;
+      font-style: normal;
+      font-weight: 400;
+      line-height: 1;
+    }
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-rows: none;
+      gap: 18px 13px;
+      margin-top: 24px;
+      align-items: start;
+    }
+    .metric-card {
+      position: relative;
+      aspect-ratio: var(--card-ratio, 2.214);
+      height: auto;
+      display: block;
+      padding: 0;
+      overflow: hidden;
+      border-radius: 8px;
+      background: var(--card-bg) center / 100% 100% no-repeat;
+      box-shadow: 0 0 18px rgba(0, 116, 255, .14);
+      align-self: start;
+      container-type: inline-size;
+    }
+    .metric-card::after {
+      display: none;
+    }
+    .metric-card.primary {
+      grid-row: auto;
+      height: auto;
+    }
+    .metric-content {
+      position: absolute;
+      z-index: 1;
+      display: grid;
+      gap: 9px;
+      min-width: 0;
+      left: 34%;
+      right: 3%;
+      top: 30%;
+    }
+    .metric-card.is-single .metric-content { left: 36%; right: 3%; top: 26%; }
+    .metric-card.is-search .metric-content { top: 25%; }
+    .metric-card.is-platform .metric-content { left: 36%; right: 3%; top: 29%; }
+    .metric-card.is-conversion .metric-content { top: 26%; }
+    .metric-kicker {
+      color: #6db7e4;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+    .metric-label {
+      color: rgba(207, 224, 239, .78);
+      font-size: 13px;
+      font-size: clamp(13px, 4.2cqw, 22px);
+      font-weight: 800;
+      line-height: 1.35;
+      white-space: nowrap;
+      text-shadow: 0 2px 6px rgba(0, 0, 0, .34);
+    }
+    .metric-label.info-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .metric-label.info-label::after {
+      content: "i";
+      width: clamp(12px, 3.8cqw, 24px);
+      height: clamp(12px, 3.8cqw, 24px);
+      display: inline-grid;
+      place-items: center;
+      border: 1.5px solid rgba(207, 224, 239, .72);
+      border-radius: 50%;
+      color: rgba(207, 224, 239, .78);
+      font-size: clamp(9px, 2.4cqw, 16px);
+      line-height: 1;
+      font-family: Georgia, serif;
+      font-weight: 800;
+    }
+    .metric-main {
+      margin: 0;
+      color: #f8fcff;
+      text-shadow: 0 3px 10px rgba(0, 0, 0, .38);
+      font-size: 35px;
+      font-size: clamp(32px, 11.2cqw, 62px);
+      line-height: 1;
+      font-weight: 950;
+      font-variant-numeric: tabular-nums;
+    }
+    .metric-card.primary .metric-main {
+      font-size: 35px;
+      font-size: clamp(32px, 11.2cqw, 62px);
+      letter-spacing: .02em;
+    }
+    .metric-sub {
+      display: flex;
+      flex-wrap: nowrap;
+      gap: 9px;
+      gap: clamp(9px, 2.8cqw, 26px);
+      color: rgba(177, 198, 217, .78);
+      font-size: 12px;
+      font-size: clamp(12px, 3.7cqw, 22px);
+      font-weight: 760;
+    }
+    .metric-sub > span {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 4px;
+      min-height: auto;
+      padding: 0;
+      border-radius: 0;
+      background: transparent;
+      box-shadow: none;
+      white-space: nowrap;
+    }
+    .metric-sub .counting {
+      min-width: auto;
+    }
+    .metric-stat-grid {
+      display: grid;
+      grid-template-columns: 46% 46%;
+      gap: 5%;
+      align-items: start;
+    }
+    .metric-card.is-search .metric-stat-grid {
+      grid-template-columns: 48% 42%;
+      gap: 5%;
+    }
+    .metric-card.is-conversion .metric-stat-grid {
+      grid-template-columns: 46% 46%;
+      gap: 5%;
+    }
+    .metric-summary-label {
+      margin-bottom: 0;
+      text-align: left;
+    }
+    .metric-value-label {
+      margin-top: 11px;
+      margin-top: clamp(8px, 3.2cqw, 18px);
+      color: rgba(177, 198, 217, .78);
+      font-size: 12px;
+      font-size: clamp(12px, 3.6cqw, 21px);
+      line-height: 1.2;
+      font-weight: 750;
+      white-space: nowrap;
+    }
+    .metric-stat {
+      min-width: 0;
+    }
+    .metric-stat .metric-main {
+      font-size: 30px;
+      font-size: clamp(28px, 9.6cqw, 56px);
+    }
+    .metric-stat .metric-label {
+      margin-bottom: 8px;
+    }
+    .metric-card.primary .metric-sub {
+      margin-top: 4px;
+    }
+    .up { color: #22f09e; font-weight: 800; }
+
+    @media (max-width: 1280px) and (min-width: 1101px) {
+      .metric-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .keyword-cloud {
+      position: relative;
+      overflow: hidden;
+    }
+    .keyword-cloud .section-title {
+      position: relative;
+      z-index: 2;
+    }
+    .cloud-stage {
+      position: relative;
+      height: 450px;
+      overflow: hidden;
+      z-index: 1;
+      background:
+        radial-gradient(ellipse at 50% 86%, rgba(0, 126, 255, .22), transparent 24%),
+        radial-gradient(circle at 50% 58%, rgba(0, 201, 255, .18), transparent 20%),
+        transparent;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      perspective: 800px;
+      transform-style: preserve-3d;
+    }
+    .cloud-stage::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      background:
+        radial-gradient(ellipse at 50% 84%, rgba(0, 126, 255, .2), transparent 32%),
+        radial-gradient(circle at 50% 56%, rgba(0, 201, 255, .12), transparent 24%);
+      pointer-events: none;
+    }
+    .cloud-word {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      z-index: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: var(--pad, 8px 18px);
+      border-radius: 999px;
+      color: var(--fg, #5d8cff);
+      font-size: var(--size, 16px);
+      line-height: 1;
+      font-weight: 800;
+      background: var(--bg, #dfe9ff);
+      box-shadow: 0 4px 12px rgba(68, 128, 247, var(--shadow, 0));
+      text-shadow: 0 0 10px currentColor;
+      opacity: 0;
+      filter: blur(var(--blur, 0));
+      white-space: nowrap;
+      backface-visibility: hidden;
+      transform: translate3d(var(--start-x, 0), var(--start-y, 0), -1000px) scale(.1);
+      animation: cloudFlight var(--float-duration, 10s) linear var(--float-delay, 0s) infinite;
+      will-change: transform, opacity;
+    }
+    .cloud-word.strong {
+      --bg: rgba(0, 198, 255, .18);
+      --fg: #fff;
+      --shadow: .2;
+    }
+    .cloud-word.soft {
+      --bg: rgba(38, 91, 255, .18);
+      --fg: #a878ff;
+      --shadow: 0;
+    }
+    .cloud-word.pale {
+      --bg: transparent;
+      --fg: #22d9ff;
+      --shadow: 0;
+    }
+    .cloud-word.ghost {
+      --bg: transparent;
+      --fg: rgba(77, 201, 255, .28);
+      --shadow: 0;
+    }
+    .cloud-word.mini {
+      --pad: 5px 12px;
+    }
+    @keyframes cloudFlight {
+      0% {
+        transform: translate3d(var(--start-x, 0), var(--start-y, 0), -1000px) scale(.1);
+        opacity: 0;
+      }
+      20% {
+        opacity: var(--opacity, 1);
+      }
+      80% {
+        opacity: var(--opacity, 1);
+      }
+      100% {
+        transform: translate3d(var(--path-x, 0), var(--path-y, 0), -910px) scale(4);
+        opacity: 0;
+      }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .panel,
+      .metric-card,
+      .collection-row,
+      .filter-chip,
+      tbody tr,
+      .counting,
+      .collection-bar,
+      .bar {
+        animation: none;
+      }
+      .cloud-word {
+        animation: none;
+        opacity: var(--opacity, 1);
+        transform: translate3d(var(--static-x, 0), var(--static-y, 0), -950px) scale(var(--static-scale, 1));
+      }
+    }
+    .trend-panel {
+      margin-top: 18px;
+      padding: 18px 28px 24px;
+    }
+    .trend-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 8px;
+    }
+    .legend {
+      display: flex;
+      justify-content: center;
+      gap: 18px;
+      color: #b8d7ee;
+      font-size: 14px;
+    }
+    .legend span::before {
+      content: "";
+      display: inline-block;
+      width: 28px;
+      height: 16px;
+      margin-right: 8px;
+      border-radius: 4px;
+      vertical-align: -3px;
+      background: var(--legend);
+    }
+    .legend .create::before {
+      background: linear-gradient(135deg, #2487ff, #63d9ff);
+      box-shadow: 0 0 10px rgba(51, 165, 255, .58);
+    }
+    .legend .publish::before {
+      background: linear-gradient(135deg, #8b56ff, #da62ff);
+      box-shadow: 0 0 10px rgba(180, 78, 255, .55);
+    }
+    .period-select {
+      width: 122px;
+      height: 38px;
+      border: 0;
+      border-radius: 20px;
+      padding: 0 38px 0 18px;
+      color: #d9f4ff;
+      outline: none;
+      appearance: none;
+      -webkit-appearance: none;
+      -moz-appearance: none;
+      background-color: rgba(3, 17, 42, .72);
+      background-image:
+        url("data:image/svg+xml,%3Csvg width='16' height='16' viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M4 6L8 10L12 6' stroke='%23d9f4ff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"),
+        linear-gradient(135deg, rgba(11, 63, 134, .8) 0%, rgba(7, 24, 58, .92) 100%);
+      background-repeat: no-repeat, no-repeat;
+      background-position: right 16px center, 0 0;
+      background-size: 16px 16px, 100% 100%;
+      box-shadow: inset 0 0 0 1px rgba(68, 178, 255, .38), 0 0 14px rgba(0, 136, 255, .16);
+      cursor: pointer;
+      line-height: 38px;
+    }
+    .period-select::-ms-expand { display: none; }
+    .chart {
+      position: relative;
+      height: 286px;
+      padding: 26px 34px 42px 70px;
+    }
+    .y-lines {
+      position: absolute;
+      inset: 26px 34px 42px 70px;
+      display: grid;
+      grid-template-rows: repeat(5, 1fr);
+      border-bottom: 1px solid rgba(65, 143, 224, .35);
+    }
+    .y-lines i { border-top: 1px solid rgba(65, 143, 224, .26); }
+    .y-label {
+      position: absolute;
+      top: calc(26px + ((100% - 68px) * var(--tick)));
+      left: 10px;
+      width: 48px;
+      color: #8fb8d7;
+      font-size: 13px;
+      line-height: 18px;
+      text-align: right;
+      transform: translateY(-50%);
+      white-space: nowrap;
+    }
+    .bars {
+      position: relative;
+      z-index: 1;
+      height: 100%;
+      display: grid;
+      grid-template-columns: repeat(18, 1fr);
+      align-items: end;
+      gap: 10px;
+    }
+    .bar-pair {
+      height: 100%;
+      display: flex;
+      align-items: end;
+      justify-content: center;
+      gap: 5px;
+    }
+    .bar {
+      width: 45%;
+      min-width: 8px;
+      border-radius: 2px 2px 0 0;
+      background: var(--bar);
+      box-shadow: 0 0 12px rgba(44, 157, 255, .42);
+      transform-origin: bottom;
+      animation: chartBarLoad .72s cubic-bezier(.22, 1, .36, 1) both;
+      animation-delay: var(--load-delay, 0s);
+    }
+    .bar-pair {
+      position: relative;
+      border-radius: 6px 6px 0 0;
+      cursor: pointer;
+      outline: none;
+      transition: background .18s ease, filter .18s ease;
+    }
+    .bar-pair::before {
+      content: "";
+      position: absolute;
+      inset: -6px -3px 0;
+      border-radius: 7px 7px 0 0;
+      opacity: 0;
+      background: linear-gradient(180deg, rgba(96, 205, 255, .16), rgba(132, 86, 255, .08));
+      box-shadow: inset 0 0 0 1px rgba(105, 216, 255, .2);
+      transition: opacity .18s ease;
+    }
+    .bar-pair:hover::before,
+    .bar-pair.is-active::before,
+    .bar-pair:focus-visible::before {
+      opacity: 1;
+    }
+    .bar-pair:hover .bar,
+    .bar-pair.is-active .bar,
+    .bar-pair:focus-visible .bar {
+      filter: brightness(1.16) saturate(1.2);
+      box-shadow: 0 0 16px rgba(93, 203, 255, .58), 0 0 18px rgba(181, 85, 255, .44);
+    }
+    @keyframes chartBarLoad {
+      from {
+        opacity: .35;
+        transform: scaleY(.08);
+      }
+      to {
+        opacity: 1;
+        transform: scaleY(1);
+      }
+    }
+    .x-labels {
+      position: absolute;
+      left: 70px;
+      right: 34px;
+      bottom: 8px;
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      color: #8fb8d7;
+      font-size: 13px;
+    }
+    .x-labels span {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: clip;
+      white-space: nowrap;
+    }
+    .chart-tooltip {
+      position: absolute;
+      z-index: 8;
+      min-width: 176px;
+      padding: 10px 12px;
+      border: 1px solid rgba(82, 195, 255, .45);
+      border-radius: 8px;
+      color: #eaf7ff;
+      background: rgba(3, 18, 42, .94);
+      box-shadow: 0 16px 34px rgba(0, 8, 28, .55), 0 0 18px rgba(0, 171, 255, .2);
+      opacity: 0;
+      pointer-events: none;
+      transform: translate(-50%, -100%) translateY(-10px);
+      transition: opacity .16s ease, transform .16s ease;
+      backdrop-filter: blur(10px);
+    }
+    .chart-tooltip.is-visible {
+      opacity: 1;
+    }
+    .chart-tooltip.is-below {
+      transform: translate(-50%, 10px);
+    }
+    .chart-tooltip::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      bottom: -7px;
+      width: 12px;
+      height: 12px;
+      border-right: 1px solid rgba(82, 195, 255, .45);
+      border-bottom: 1px solid rgba(82, 195, 255, .45);
+      background: rgba(3, 18, 42, .94);
+      transform: translateX(-50%) rotate(45deg);
+    }
+    .chart-tooltip.is-below::after {
+      top: -7px;
+      bottom: auto;
+      border: 0;
+      border-left: 1px solid rgba(82, 195, 255, .45);
+      border-top: 1px solid rgba(82, 195, 255, .45);
+    }
+    .tooltip-date {
+      margin-bottom: 8px;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 850;
+      white-space: nowrap;
+    }
+    .tooltip-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      color: #b8d7ee;
+      font-size: 12px;
+      line-height: 1.6;
+      white-space: nowrap;
+    }
+    .tooltip-row strong {
+      color: #fff;
+      font-size: 14px;
+      font-weight: 900;
+      font-variant-numeric: tabular-nums;
+    }
+    .tooltip-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .tooltip-label::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--dot);
+      box-shadow: 0 0 10px var(--dot);
+    }
+
+    .report-section {
+      margin-top: 18px;
+      padding: 22px 26px;
+    }
+    .platform-filter {
+      display: grid;
+      grid-template-columns: repeat(8, minmax(120px, 1fr));
+      gap: 10px;
+      margin-top: 14px;
+      margin-bottom: 18px;
+    }
+    .filter-chip {
+      min-height: 54px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 10px;
+      border: 1px solid rgba(59, 135, 233, .36);
+      border-radius: 5px;
+      padding: 8px 12px;
+      color: #b8d9f1;
+      text-align: left;
+      background: rgba(6, 28, 66, .7);
+      box-shadow: inset 0 0 12px rgba(35, 109, 214, .08);
+    }
+    .filter-chip.active {
+      border-color: #1ca8ff;
+      color: #fff;
+      background: linear-gradient(135deg, #116cff, #159dff);
+      box-shadow: inset 0 0 14px rgba(122, 215, 255, .42), 0 0 18px rgba(0, 125, 255, .34);
+    }
+    .filter-chip .platform-icon {
+      width: 24px;
+      height: 24px;
+      flex: 0 0 auto;
+      font-size: 12px;
+    }
+    .filter-text {
+      min-width: 0;
+      flex: 1 1 auto;
+      display: block;
+      line-height: 1.2;
+      font-size: 13px;
+      text-align: left;
+    }
+    .filter-text strong {
+      display: block;
+      font-size: 14px;
+      font-weight: 850;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .search-filter {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .date-range {
+      display: grid;
+      grid-template-columns: 160px 26px 160px;
+      align-items: center;
+      color: #a0a8b7;
+    }
+    .input {
+      height: 42px;
+      border: 1px solid rgba(68, 145, 233, .45);
+      border-radius: 4px;
+      padding: 0 14px;
+      color: #d9f4ff;
+      background: rgba(3, 16, 40, .72);
+      outline: none;
+      box-shadow: inset 0 0 12px rgba(34, 116, 210, .08);
+    }
+    .input::placeholder { color: #789cb9; }
+    .search-input { width: min(280px, 42vw); }
+    .search-input {
+      padding-right: 42px;
+      background-image:
+        url("data:image/svg+xml,%3Csvg width='18' height='18' viewBox='0 0 20 20' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M9 15.5a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13ZM14 14l4 4' stroke='%23b9def6' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 14px center;
+      background-size: 18px 18px;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid rgba(56, 140, 235, .42);
+      border-radius: 4px;
+      background: rgba(2, 13, 34, .54);
+    }
+    table {
+      width: 100%;
+      min-width: 980px;
+      table-layout: fixed;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+    .col-index { width: 5%; }
+    .col-question { width: 25%; }
+    .col-platform { width: 18%; }
+    .col-date { width: 18%; }
+    .col-target { width: 18%; }
+    .col-actions { width: 16%; }
+    th, td {
+      padding: 15px 16px;
+      border-bottom: 1px solid rgba(49, 114, 202, .24);
+      text-align: left;
+      vertical-align: middle;
+    }
+    th {
+      color: #cbeaff;
+      background: linear-gradient(90deg, rgba(22, 83, 168, .58), rgba(9, 45, 96, .52));
+      font-weight: 850;
+    }
+    tbody tr { color: #d7e9f7; }
+    tbody tr:hover { background: rgba(26, 105, 210, .16); }
+    .question {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 750;
+    }
+    .copy-icon {
+      color: #5f83a7;
+      font-size: 12px;
+    }
+    .platform-cell {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+    }
+    .actions {
+      display: flex;
+      gap: 12px;
+      white-space: nowrap;
+    }
+    .link-btn {
+      border: 0;
+      color: #34a9ff;
+      background: transparent;
+      padding: 0;
+      font-weight: 400;
+    }
+    .pagination {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 8px;
+      padding: 16px 0 0;
+    }
+    .page-btn {
+      min-width: 34px;
+      height: 34px;
+      border: 0;
+      border-radius: 4px;
+      color: #b8d7ee;
+      background: rgba(5, 28, 65, .78);
+      box-shadow: inset 0 0 0 1px rgba(68, 145, 233, .28);
+    }
+    .page-btn.active {
+      color: #fff;
+      background: linear-gradient(135deg, #0f72ff, #174caa);
+      box-shadow: inset 0 0 0 1px rgba(116, 211, 255, .56), 0 0 14px rgba(0, 132, 255, .35);
+    }
+    .page-size {
+      height: 34px;
+      border: 1px solid rgba(68, 145, 233, .38);
+      border-radius: 4px;
+      padding: 0 8px;
+      color: #d9f4ff;
+      background: rgba(5, 28, 65, .78);
+    }
+
+    .snapshot-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      display: none;
+      place-items: center;
+      padding: 20px;
+      background: rgba(0, 7, 20, .72);
+    }
+    .snapshot-modal.open { display: grid; }
+    .voucher {
+      width: min(820px, 100%);
+      max-height: 88vh;
+      overflow: auto;
+      background: rgba(4, 20, 48, .98);
+      border-radius: 8px;
+      border: 1px solid rgba(48, 178, 255, .42);
+      box-shadow: 0 28px 80px rgba(0, 4, 20, .72), 0 0 26px rgba(0, 156, 255, .2);
+    }
+    .voucher-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      min-height: 58px;
+      padding: 0 22px;
+      background: rgba(12, 56, 114, .88);
+    }
+    .voucher-platform {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 850;
+    }
+    .close-btn {
+      width: 34px;
+      height: 34px;
+      border: 0;
+      border-radius: 50%;
+      color: #d9f4ff;
+      background: rgba(255,255,255,.12);
+    }
+    .voucher-body { padding: 24px; }
+    .voucher-title {
+      margin: 0;
+      font-size: 22px;
+    }
+    .voucher-time {
+      margin-top: 8px;
+      color: #8fb8d7;
+      font-size: 14px;
+    }
+    .ai-content {
+      margin: 20px 0;
+      padding: 18px;
+      border-radius: 6px;
+      background: rgba(3, 16, 40, .72);
+      line-height: 1.8;
+    }
+    mark {
+      padding: 0 4px;
+      border-radius: 3px;
+      background: #ffec7a;
+    }
+    .refs {
+      display: grid;
+      gap: 10px;
+      margin: 12px 0 22px;
+    }
+    .ref-item {
+      padding: 12px 14px;
+      border: 1px solid rgba(68, 145, 233, .38);
+      border-radius: 5px;
+      color: #cbeaff;
+      background: rgba(5, 24, 56, .82);
+    }
+    .primary-btn {
+      height: 42px;
+      border: 0;
+      border-radius: 24px;
+      color: #fff;
+      padding: 0 22px;
+      font-weight: 850;
+      background: linear-gradient(135deg, #216cff, #8b49ff);
+    }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 30px;
+      z-index: 30;
+      display: none;
+      transform: translateX(-50%);
+      padding: 10px 16px;
+      color: #fff;
+      border-radius: 6px;
+      background: rgba(24, 31, 50, .9);
+    }
+    .toast.show { display: block; }
+
+    @media (max-width: 1100px) {
+      .report-header { grid-template-columns: 1fr; }
+      .report-title {
+        position: static;
+        width: auto;
+        transform: none;
+        text-align: left;
+      }
+      .company-box {
+        width: 100%;
+        flex: 0 1 auto;
+        justify-content: space-between;
+      }
+      .dashboard-grid { grid-template-columns: 1fr; }
+      .platform-filter { grid-template-columns: repeat(4, minmax(120px, 1fr)); }
+      .collection-row { grid-template-columns: 170px minmax(160px, 1fr) 86px; }
+    }
+    @media (max-width: 1100px) and (min-width: 721px) {
+      .report-header { justify-items: center; }
+      .company-box .report-menu { align-self: flex-start; }
+    }
+    @media (max-width: 720px) {
+      :root {
+        --hero-bg-width: 1280px;
+        --content-top-gap: 18px;
+      }
+      .page { padding: 12px 10px 30px; }
+      .brand-logo { height: 46px; }
+      .report-title {
+        font-size: clamp(24px, 8vw, 32px);
+        line-height: 1.1;
+      }
+      .company-box, .search-filter { flex-direction: column; align-items: stretch; }
+      .company-meta {
+        width: 100%;
+        flex: 0 1 auto;
+        text-align: left;
+        white-space: normal;
+      }
+      .report-menu,
+      .report-select,
+      .search-input {
+        width: 100%;
+        min-width: 0;
+        flex: 0 1 auto;
+      }
+      .report-menu summary {
+        width: 100%;
+      }
+      .report-menu-list {
+        left: 0;
+        right: 0;
+        width: 100%;
+        min-width: 0;
+      }
+      .model-collection { padding: 16px; }
+      .collection-head {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+      .collection-total {
+        justify-content: flex-start;
+      }
+      .collection-row {
+        grid-template-columns: 1fr;
+        gap: 8px;
+      }
+      .collection-value {
+        text-align: left;
+      }
+      .metric-grid, .platform-filter { grid-template-columns: 1fr; }
+      .metric-cards,
+      .keyword-cloud,
+      .trend-panel,
+      .report-section {
+        padding: 16px;
+      }
+      .metric-grid {
+        grid-template-columns: 1fr;
+        grid-template-rows: none;
+      }
+      .metric-card {
+        height: auto;
+        padding: 0;
+      }
+      .metric-card.primary {
+        grid-row: auto;
+        height: auto;
+      }
+      .metric-label {
+        font-size: clamp(13px, 4.2cqw, 22px);
+      }
+      .metric-main {
+        font-size: clamp(32px, 11.2cqw, 62px);
+      }
+      .metric-card.primary .metric-main {
+        font-size: clamp(32px, 11.2cqw, 62px);
+      }
+      .metric-sub {
+        gap: clamp(9px, 2.8cqw, 26px);
+        font-size: clamp(12px, 3.7cqw, 22px);
+      }
+      .metric-stat-grid {
+        grid-template-columns: 46% 46%;
+        gap: 5%;
+      }
+      .metric-card.is-search .metric-stat-grid { grid-template-columns: 48% 42%; gap: 5%; }
+      .metric-card.is-conversion .metric-stat-grid { grid-template-columns: 46% 46%; gap: 5%; }
+      .metric-stat .metric-main { font-size: clamp(28px, 9.6cqw, 56px); }
+      .cloud-stage {
+        height: 250px;
+      }
+      .cloud-word {
+        padding: 6px 12px;
+        font-size: clamp(10px, 3.8vw, var(--size, 16px));
+      }
+      .trend-head {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+      .legend {
+        flex-wrap: wrap;
+        justify-content: flex-start;
+        gap: 10px 14px;
+      }
+      .chart {
+        height: 250px;
+        padding: 22px 18px 38px 58px;
+      }
+      .y-lines {
+        inset: 22px 18px 38px 58px;
+      }
+      .y-label {
+        top: calc(22px + ((100% - 60px) * var(--tick)));
+        left: 4px;
+        width: 42px;
+        font-size: 12px;
+      }
+      .bars {
+        gap: 5px;
+      }
+      .bar-pair {
+        height: 100%;
+        gap: 3px;
+      }
+      .bar {
+        min-width: 4px;
+      }
+      .x-labels {
+        left: 58px;
+        right: 18px;
+        font-size: 11px;
+      }
+      .date-range { grid-template-columns: 1fr; gap: 8px; }
+      .pagination {
+        justify-content: flex-start;
+        flex-wrap: wrap;
+      }
+      .voucher {
+        max-height: 92vh;
+      }
+      .voucher-head {
+        padding: 10px 14px;
+      }
+      .voucher-body {
+        padding: 16px;
+      }
+    }
+
+    @media (max-width: 430px) {
+      .page { padding: 10px 8px 26px; }
+      .report-header {
+        gap: 10px;
+      }
+      .brand-logo {
+        width: 180px;
+        height: 40px;
+      }
+      .company-meta {
+        font-size: 14px;
+      }
+      .report-menu summary {
+        height: auto;
+        min-height: 40px;
+        padding: 8px 14px;
+      }
+      .company-box {
+        gap: 10px;
+      }
+      .model-collection {
+        padding: 12px;
+      }
+      .collection-total strong {
+        font-size: 26px;
+      }
+      .collection-row {
+        padding: 10px;
+      }
+      .metric-cards,
+      .keyword-cloud,
+      .trend-panel,
+      .report-section {
+        padding: 12px;
+      }
+      .metric-grid {
+        gap: 12px;
+      }
+      .metric-card {
+        height: auto;
+        padding: 0;
+      }
+      .metric-card.primary {
+        height: auto;
+      }
+      .metric-main {
+        word-break: break-word;
+      }
+      .metric-card.primary .metric-main {
+      }
+      .metric-label {
+        white-space: nowrap;
+      }
+      .metric-sub > span {
+        white-space: nowrap;
+      }
+      .metric-card.is-single .metric-content,
+      .metric-card.is-platform .metric-content {
+        left: 35%;
+        right: 2%;
+      }
+      .metric-label {
+        font-size: clamp(12px, 4cqw, 20px);
+      }
+      .metric-main,
+      .metric-card.primary .metric-main {
+        font-size: clamp(29px, 10.5cqw, 58px);
+      }
+      .metric-stat .metric-main {
+        font-size: clamp(25px, 9cqw, 52px);
+      }
+      .metric-sub {
+        font-size: clamp(11px, 3.55cqw, 20px);
+      }
+      .metric-value-label {
+        font-size: clamp(11px, 3.35cqw, 19px);
+      }
+      .cloud-stage {
+        height: 220px;
+      }
+      .cloud-word {
+        padding: 5px 10px;
+        font-size: clamp(9px, 3.4vw, 16px);
+      }
+      .cloud-word.ghost {
+        display: none;
+      }
+      .chart {
+        height: 230px;
+        padding-left: 54px;
+      }
+      .y-lines {
+        left: 54px;
+      }
+      .y-label {
+        width: 40px;
+      }
+      .bars {
+        gap: 3px;
+      }
+      .bar-pair {
+        gap: 2px;
+      }
+      .bar {
+        min-width: 3px;
+      }
+      .x-labels {
+        left: 54px;
+        right: 18px;
+        font-size: 0;
+      }
+      .x-labels span::after {
+        content: attr(data-short);
+        font-size: 10px;
+        line-height: 12px;
+      }
+      .filter-chip {
+        min-height: 48px;
+      }
+      table {
+        min-width: 860px;
+        font-size: 13px;
+      }
+      th, td {
+        padding: 12px 10px;
+      }
+    }
+    @media (max-width: 720px) {
+      .page { padding-left: 10px; padding-right: 10px; }
+      .company-box {
+        width: 100%;
+        justify-self: center;
+      }
+      .report-menu summary {
+        height: 44px;
+        min-height: 44px;
+        padding: 0 18px 0 22px;
+        font-size: 16px;
+        line-height: 44px;
+      }
+    }
+
+    #metric-cards .metric-label {
+      font-weight: 500;
+    }
+    #metric-cards .metric-main,
+    #metric-cards .metric-card.primary .metric-main,
+    #metric-cards .metric-stat .metric-main {
+      font-size: 30px;
+      font-weight: 950;
+    }
+    #metric-cards .metric-sub,
+    #metric-cards .metric-sub > span,
+    #metric-cards .metric-value-label {
+      font-weight: 400;
+    }
+  </style>
+  <link rel="stylesheet" href="assets/responsive-report.css" />
+</head>
+<body>
+  <main class="page">
+    <header class="report-header">
+      <div class="brand-strip">
+        <img class="brand-logo" src="ceying-ai-logo.png" alt="策影AI" />
+      </div>
+      <h1 class="report-title">企业輿情分析报表</h1>
+      <div class="company-box">
+        <div class="company-meta">
+          @php($monitoringContext = $reportData['context'] ?? [])
+          <div>{{ $monitoringContext['company_name'] ?? '未识别企业' }}</div>
+          <div>数据更新日期：{{ $monitoringContext['date'] ?? now()->format('Y-m-d') }}</div>
+          <div>新知地（成都）人工智能科技有限公司</div>
+          <div>数据更新日期：2026-06-17</div>
+        </div>
+        <details class="report-menu">
+          <summary>企业輿情分析报表</summary>
+          <div class="report-menu-list">
+            <span>企业輿情分析报表</span>
+            <a href="ai-search-competition-report.html">行业竞争力分析报表</a>
+          </div>
+        </details>
+      </div>
+    </header>
+
+    <section id="model-collection" class="model-collection panel">
+      <div class="collection-head">
+        <h2 class="section-title"><span class="title-icon model" aria-hidden="true"></span>大模型收录</h2>
+        <div class="collection-total"><span>收录总量</span><strong id="collectionTotal">0</strong></div>
+      </div>
+      <div class="collection-chart" id="modelCollectionChart"></div>
+    </section>
+
+    <section class="dashboard-grid">
+      <div id="metric-cards" class="metric-cards panel">
+        <h2 class="section-title"><span class="title-icon metrics" aria-hidden="true"></span>数据指标</h2>
+        <div class="metric-grid" id="metricGrid"></div>
+      </div>
+      <div id="keyword-cloud" class="keyword-cloud panel">
+        <h2 class="section-title"><span class="title-icon cloud" aria-hidden="true"></span>蒸馏词</h2>
+        <div class="cloud-stage" id="cloudStage"></div>
+      </div>
+    </section>
+
+    <section id="trend-chart" class="trend-panel panel">
+      <div class="trend-head">
+        <h2 class="section-title"><span class="title-icon trend" aria-hidden="true"></span>文章数据与收录趋势图</h2>
+        <select class="period-select" id="periodSelect">
+          <option value="30">近30日</option>
+          <option value="7">近7日</option>
+        </select>
+      </div>
+      <div class="legend">
+        <span class="create">文章创作</span>
+        <span class="publish">文章发布</span>
+      </div>
+      <div class="chart">
+        <div class="y-lines"><i></i><i></i><i></i><i></i><i></i></div>
+        <span class="y-label" style="--tick:0">350条</span>
+        <span class="y-label" style="--tick:.2">280条</span>
+        <span class="y-label" style="--tick:.4">210条</span>
+        <span class="y-label" style="--tick:.6">140条</span>
+        <span class="y-label" style="--tick:.8">70条</span>
+        <span class="y-label" style="--tick:1">0条</span>
+        <div class="bars" id="bars"></div>
+        <div class="chart-tooltip" id="chartTooltip" role="status" aria-live="polite"></div>
+        <div class="x-labels" id="trendAxisLabels"></div>
+      </div>
+    </section>
+
+    <section class="report-section panel">
+      <h2 class="section-title"><span class="title-icon report" aria-hidden="true"></span>搜索报表</h2>
+      <div id="platform-filter" class="platform-filter"></div>
+      <div id="search-filter" class="search-filter">
+        <div class="date-range">
+          <input id="startDate" class="input" type="text" placeholder="开始日期" onfocus="this.type='date'" />
+          <span style="text-align:center">-</span>
+          <input id="endDate" class="input" type="text" placeholder="结束日期" onfocus="this.type='date'" />
+        </div>
+        <input id="questionSearch" class="input search-input" placeholder="请输入问题" />
+      </div>
+      <div class="table-wrap">
+        <table id="report-table">
+          <colgroup>
+            <col class="col-index" />
+            <col class="col-question" />
+            <col class="col-platform" />
+            <col class="col-date" />
+            <col class="col-target" />
+            <col class="col-actions" />
+          </colgroup>
+          <thead>
+            <tr>
+              <th>序号</th>
+              <th>问题 ⓘ</th>
+              <th>平台</th>
+              <th>查询时间</th>
+              <th>转化目标</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+      <div id="pagination" class="pagination"></div>
+    </section>
+  </main>
+
+  <div id="snapshot-modal" class="snapshot-modal" role="dialog" aria-modal="true" aria-label="快照凭证">
+    <div class="voucher">
+      <div class="voucher-head">
+        <div class="voucher-platform" id="voucherPlatform"></div>
+        <button class="close-btn" onclick="closeSnapshot()" aria-label="关闭">×</button>
+      </div>
+      <div class="voucher-body">
+        <h2 class="voucher-title" id="voucherTitle"></h2>
+        <div class="voucher-time" id="voucherTime"></div>
+        <div class="ai-content" id="voucherContent"></div>
+        <h3>参考资料</h3>
+        <div class="refs" id="voucherRefs"></div>
+        <button class="primary-btn" onclick="showToast('已模拟跳转到对应 AI 平台')">继续聊</button>
+      </div>
+    </div>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script>
+    window.__MONITORING_REPORT__ = {!! json_encode($reportData ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) !!};
+    const dynamicReport = window.__MONITORING_REPORT__ || {};
+    const iconStyles = {
+      "DeepSeek": "linear-gradient(135deg,#5e7cff,#8368ff)",
+      "豆包": "linear-gradient(135deg,#f4b0b9,#7f89ff)",
+      "元宝": "linear-gradient(135deg,#48dabd,#56a5ff)",
+      "文心一言": "linear-gradient(135deg,#2b7bff,#5bd9ff)",
+      "千问": "linear-gradient(135deg,#6b6cff,#a46bff)",
+      "纳米AI": "linear-gradient(135deg,#ff526c,#ff9f4f)",
+      "Kimi": "linear-gradient(135deg,#111827,#4b5563)",
+      "讯飞星火": "linear-gradient(135deg,#3bc7ff,#ff6d6d)",
+      "百度AI": "linear-gradient(135deg,#7545ff,#b56cff)",
+      "抖音AI": "linear-gradient(135deg,#0f172a,#ff3d6d)",
+      "夸克AI": "linear-gradient(135deg,#3751ff,#5c7cff)"
+    };
+    const modelLogos = {
+      "DeepSeek": "assets/ai-platforms/deepseek.png",
+      "豆包": "assets/ai-platforms/doubao.png",
+      "元宝": "assets/ai-platforms/yuanbao.png",
+      "腾讯元宝": "assets/ai-platforms/yuanbao.png",
+      "文心一言": "assets/ai-platforms/wenxin.png",
+      "千问": "assets/ai-platforms/qianwen.png"
+    };
+
+    let modelCollection = [
+      ["DeepSeek", 106758], ["豆包", 153278], ["元宝", 174100], ["文心一言", 51143],
+      ["千问", 12723]
+    ];
+
+    let metrics = [
+      { label: "AI大模型排名收录总量 ⓘ", value: 1046784, sub: [["今日新增", 7142], ["较昨日", 33324]], cardClass: "is-single", bgAsset: "assets/image-to-code/metric-card-backgrounds/card-ai-total.png", cardRatio: "381 / 168", accent: "#f08b35" },
+      { label: "AI搜索词数量 ⓘ　新增词数量 ⓘ", value: "74620　246", sub: [["较30日", 57886], ["较30日", 235]], cardClass: "is-search", bgAsset: "assets/image-to-code/metric-card-backgrounds/card-search-terms.png", cardRatio: "372 / 168", accent: "#0aa8ff" },
+      { label: "收录AI平台数量 ⓘ", value: 11, sub: [["总平台数", 11]], cardClass: "is-platform", bgAsset: "assets/image-to-code/metric-card-backgrounds/card-ai-platforms.png", cardRatio: "372 / 183", accent: "#8c52ff" },
+      { label: "AI搜索转化方式收录总量 ⓘ", value: "25992　40412", sub: [["站内跳转曝光", ""], ["联系方式曝光", ""]], cardClass: "is-conversion", bgAsset: "assets/image-to-code/metric-card-backgrounds/card-conversion.png", cardRatio: "372 / 177", accent: "#17d9a2", summaryLabel: "AI搜索转化方式收录总量 ⓘ", valueLabels: ["站内跳转曝光", "联系方式曝光"] }
+    ];
+
+    let cloudWords = [
+      { word: "推荐成都数字化服务公司", size: 16, tone: "strong", pathX: 480, pathY: -40, delay: 0, staticX: 210, staticY: -24, staticScale: 2.25 },
+      { word: "2026年成都软件定制开发行业推荐", size: 14, tone: "soft", pathX: -501, pathY: 290, delay: -9, staticX: -185, staticY: 118, staticScale: 2.35 },
+      { word: "软件定制开发哪家好", size: 13, tone: "pale", pathX: 73, pathY: -390, delay: -18, staticX: 35, staticY: -120, staticScale: 1.65 },
+      { word: "成都数字化服务公司哪家好", size: 16, tone: "strong", pathX: 584, pathY: 560, delay: -27, staticX: 245, staticY: 180, staticScale: 1.7 },
+      { word: "软件定制开发行业推荐有哪些", size: 14, tone: "soft", pathX: -1057, pathY: -90, delay: -36, staticX: -250, staticY: -42, staticScale: 1.2 },
+      { word: "2026年四川软件定制开发哪些好", size: 13, tone: "pale", pathX: 992, pathY: -255, delay: -45, staticX: 250, staticY: -82, staticScale: 1 },
+      { word: "推荐成都数字化服务公司", size: 16, tone: "strong", pathX: -330, pathY: 760, delay: -54, staticX: -52, staticY: 214, staticScale: .86 },
+      { word: "推荐成都数字化服务公司哪家好", size: 14, tone: "soft", pathX: -626, pathY: -452, delay: -63, staticX: -270, staticY: -104, staticScale: 2.4, opacity: .5 },
+      { word: "2026年数字化服务公司推荐", size: 13, tone: "pale", pathX: 1353, pathY: 250, delay: -72, staticX: 302, staticY: 76, staticScale: 2.55, opacity: .72 },
+      { word: "推荐成都数字化服务公司", size: 16, tone: "strong", pathX: -1403, pathY: 715, delay: -81, staticX: -292, staticY: 204, staticScale: 2.2 },
+      { word: "2026年成都软件定制开发行业推荐", size: 14, tone: "soft", pathX: 675, pathY: -600, delay: -90, staticX: 220, staticY: -126, staticScale: 2.3 },
+      { word: "软件定制开发哪家好", size: 13, tone: "pale", pathX: 498, pathY: 795, delay: -99, staticX: 174, staticY: 224, staticScale: 1.75 },
+      { word: "成都数字化服务公司", size: 16, tone: "strong", pathX: -1497, pathY: -325, delay: -108, staticX: -292, staticY: -68, staticScale: 1.7 },
+      { word: "成都软件定制开发", size: 14, tone: "soft", pathX: 1754, pathY: -145, delay: -117, staticX: 318, staticY: -30, staticScale: 1.42 },
+      { word: "四川软件定制开发", size: 13, tone: "pale", pathX: -1069, pathY: 830, delay: -126, staticX: -244, staticY: 238, staticScale: 1.2 },
+      { word: "数字化服务公司推荐", size: 16, tone: "strong", pathX: -247, pathY: -714, delay: -135, staticX: -48, staticY: -150, staticScale: .76, opacity: .82 },
+      { word: "软件定制开发行业推荐", size: 14, tone: "soft", pathX: 1513, pathY: 835, delay: -144, staticX: 288, staticY: 232, staticScale: .82, opacity: .68 },
+      { word: "成都数字化服务公司哪家好", size: 13, tone: "pale", pathX: -2035, pathY: 115, delay: -153, staticX: -350, staticY: 42, staticScale: 2.9, opacity: .42 },
+      { word: "2026年数字化服务公司推荐", size: 16, tone: "strong", pathX: 1483, pathY: -553, delay: -162, staticX: 326, staticY: -110, staticScale: 2.65, opacity: .76 },
+      { word: "软件定制开发行业推荐有哪些", size: 14, tone: "soft", pathX: -99, pathY: 980, delay: -171, staticX: -8, staticY: 245, staticScale: 2.45 }
+    ];
+
+    let platformFilters = [
+      ["全部", "全部", 1046806], ["DeepSeek", "PC", 53446], ["DeepSeek", "移动", 53325],
+      ["豆包", "PC", 76630], ["豆包", "移动", 76661], ["腾讯元宝", "PC", 87062],
+      ["腾讯元宝", "移动", 87051], ["文心一言", "PC", 25578], ["文心一言", "移动", 25578],
+      ["千问", "PC", 6368], ["千问", "移动", 6368]
+    ];
+
+    const questions = [
+      "推荐成都数字化服务公司", "2026年成都软件定制开发行业推荐", "软件定制开发哪家好",
+      "成都数字化服务公司哪家好", "软件定制开发行业推荐有哪些", "2026年四川软件定制开发哪些好",
+      "推荐成都数字化服务公司", "推荐成都数字化服务公司哪家好", "2026年数字化服务公司推荐",
+      "推荐成都数字化服务公司", "2026年成都软件定制开发行业推荐", "软件定制开发哪家好"
+    ];
+    const platformPool = platformFilters.slice(1);
+    let rows = Array.from({ length: 78 }, (_, i) => {
+      const p = platformPool[i % platformPool.length];
+      const q = questions[i % questions.length];
+      const target = "新知地（成都）人工智能科技有限公司";
+      return {
+        id: i + 1,
+        question: q,
+        platform: p[0],
+        terminal: p[1],
+        date: "2026-06-" + String(17 - (i % 9)).padStart(2, "0"),
+        target,
+        refs: ["成都数字化服务行业资料", "软件定制开发案例信息", "新知地企业服务介绍"]
+      };
+    });
+
+    const state = { platform: "全部", query: "", page: 1, pageSize: 10 };
+
+    function applyDynamicEnterpriseData() {
+      if (!dynamicReport || !Object.keys(dynamicReport).length) return;
+
+      if (Array.isArray(dynamicReport.model_collection) && dynamicReport.model_collection.length) {
+        modelCollection = dynamicReport.model_collection.map(item => [item.name, Number(item.value || 0)]);
+      }
+
+      if (Array.isArray(dynamicReport.metrics) && dynamicReport.metrics.length) {
+        const metricAssets = [
+          ["is-single", "assets/image-to-code/metric-card-backgrounds/card-ai-total.png", "381 / 168", "#f08b35"],
+          ["is-search", "assets/image-to-code/metric-card-backgrounds/card-search-terms.png", "372 / 168", "#0aa8ff"],
+          ["is-platform", "assets/image-to-code/metric-card-backgrounds/card-ai-platforms.png", "372 / 183", "#8c52ff"],
+          ["is-conversion", "assets/image-to-code/metric-card-backgrounds/card-conversion.png", "372 / 177", "#17d9a2"]
+        ];
+        metrics = dynamicReport.metrics.map((item, index) => {
+          const asset = metricAssets[index] || metricAssets[0];
+          const hasSecondValue = item.secondary_label;
+          const subItems = Array.isArray(item.sub_items)
+            ? item.sub_items.map(sub => [sub.label || "", Number(sub.value || 0)])
+            : null;
+          const valueLabels = Array.isArray(item.value_labels) ? item.value_labels : null;
+          return {
+            label: item.label,
+            value: hasSecondValue ? `${Number(item.value || 0)}　${Number(item.secondary_value || 0)}` : Number(item.value || 0),
+            sub: subItems || (hasSecondValue ? [[item.label, ""], [item.secondary_label, ""]] : [["当前", Number(item.value || 0)]]),
+            cardClass: asset[0],
+            bgAsset: asset[1],
+            cardRatio: asset[2],
+            accent: item.accent || asset[3],
+            summaryLabel: hasSecondValue ? item.label : undefined,
+            valueLabels: hasSecondValue ? (valueLabels || [item.label, item.secondary_label]) : undefined
+          };
+        });
+      }
+
+      if (Array.isArray(dynamicReport.distillation_words) && dynamicReport.distillation_words.length) {
+        cloudWords = dynamicReport.distillation_words.map((item, index) => ({
+          word: item.word,
+          size: Number(item.size || (13 + (index % 4))),
+          tone: item.tone || (index % 3 === 0 ? "strong" : index % 3 === 1 ? "soft" : "pale"),
+          pathX: ((index % 5) - 2) * 260,
+          pathY: ((index % 7) - 3) * 120,
+          delay: index * -9,
+          staticX: ((index % 5) - 2) * 92,
+          staticY: ((index % 7) - 3) * 42,
+          staticScale: 1 + ((index % 4) * .22)
+        }));
+      }
+
+      if (Array.isArray(dynamicReport.platform_filters) && dynamicReport.platform_filters.length) {
+        platformFilters = dynamicReport.platform_filters.map(item => [item.name, item.terminal, Number(item.total || 0)]);
+        state.platform = platformFilters[0]?.[0] || state.platform;
+      }
+
+      if (Array.isArray(dynamicReport.search_rows) && dynamicReport.search_rows.length) {
+        rows = dynamicReport.search_rows.map((row, index) => ({
+          id: row.id || index + 1,
+          question: row.question || "",
+          platform: row.platform || row.platform_key || "",
+          terminal: row.terminal || "PC",
+          date: row.date || "",
+          target: row.target || dynamicReport.context?.company_name || "",
+          answer: row.answer || "",
+          refs: (row.sources || []).map(source => source.title || source.domain || source.url).filter(Boolean),
+          sourceUrls: (row.sources || []).map(source => source.url).filter(Boolean),
+          relatedArticles: row.related_articles || []
+        }));
+      }
+
+      if (dynamicReport.trend?.last_30?.length) {
+        trendDates30 = dynamicReport.trend.last_30.map(item => item.date);
+        trendValues30 = dynamicReport.trend.last_30.map(item => [Number(item.created || 0), Number(item.published || 0)]);
+      }
+      if (dynamicReport.trend?.last_7?.length) {
+        trendDates7 = dynamicReport.trend.last_7.map(item => item.date);
+        trendValues7 = dynamicReport.trend.last_7.map(item => [Number(item.created || 0), Number(item.published || 0)]);
+      }
+    }
+
+    function fmt(num) {
+      return typeof num === "number" ? num.toLocaleString("zh-CN").replace(/,/g, "") : num;
+    }
+    function countNode(value, cls = "") {
+      return `<span class="counting ${cls}" data-count-to="${value}">0</span>`;
+    }
+    function formatMetricValue(value) {
+      if (typeof value === "number") return countNode(value);
+      return String(value).replace(/\d+/g, num => countNode(Number(num)));
+    }
+    function splitMetricLabel(label) {
+      return String(label).split("　").filter(Boolean);
+    }
+    function splitMetricValue(value) {
+      return String(value).split("　").filter(Boolean);
+    }
+    function icon(name) {
+      const label = name === "全部" ? "▦" : name === "腾讯元宝" ? "元" : name.slice(0, 1);
+      const logo = modelLogos[name];
+      if (logo) {
+        return `<span class="platform-icon logo-icon"><img src="${logo}" alt="${name}"></span>`;
+      }
+      return `<span class="platform-icon" style="--icon-bg:${iconStyles[name] || "linear-gradient(135deg,#216cff,#78d8ff)"}">${label}</span>`;
+    }
+
+    function renderModelCollection() {
+      const total = modelCollection.reduce((sum, [, value]) => sum + value, 0);
+      const max = Math.max(1, ...modelCollection.map(([, value]) => value));
+      const fills = ["linear-gradient(90deg,#266dff,#63dcff)", "linear-gradient(90deg,#7b56ff,#ca7cff)", "linear-gradient(90deg,#10c99d,#58e8d3)", "linear-gradient(90deg,#047cff,#43c8ff)", "linear-gradient(90deg,#7a54ff,#a16fff)"];
+      document.getElementById("collectionTotal").innerHTML = countNode(total);
+      document.getElementById("modelCollectionChart").innerHTML = modelCollection.map(([name, value], index) => {
+        const percent = value > 0 ? Math.max(8, Math.round(value / max * 100)) : 0;
+        const share = total > 0 ? (value / total * 100).toFixed(1) : "0.0";
+        return `<div class="collection-row" style="--load-delay:${index * .07}s">
+          <div class="collection-info">${icon(name)}
+            <span class="collection-text"><span class="collection-name">${name}</span><span class="collection-share">占比 ${share}%</span></span>
+          </div>
+          <div class="collection-track"><span class="collection-bar" style="--bar:${percent}%;--fill:${fills[index]}"></span></div>
+          <div class="collection-value">${countNode(value)}</div>
+        </div>`;
+      }).join("");
+    }
+
+    function renderMetrics() {
+      document.getElementById("metricGrid").innerHTML = metrics.map((m, index) => {
+        const labels = splitMetricLabel(m.label);
+        const values = splitMetricValue(m.value);
+        const mainLabel = labels[0] || m.label;
+        const explicitStatLabels = m.sub.filter(([, v]) => v === "").map(([k]) => k);
+        const statLabels = values.length > 1
+          ? values.map((_, i) => explicitStatLabels[i] || labels[i] || mainLabel)
+          : labels;
+        const trendItems = m.sub.filter(([, v]) => v !== "");
+        const statGrid = m.summaryLabel
+          ? `<div class="metric-label info-label metric-summary-label">${m.summaryLabel.replace(" ⓘ", "")}</div>
+             <div class="metric-stat-grid">
+              ${values.map((value, i) => `
+                <div class="metric-stat">
+                  <div class="metric-main">${formatMetricValue(value)}</div>
+                  <div class="metric-value-label">${m.valueLabels?.[i] || statLabels[i] || ""}</div>
+                </div>
+              `).join("")}
+            </div>`
+          : statLabels.length > 1
+          ? `<div class="metric-stat-grid">${statLabels.map((label, i) => `
+              <div class="metric-stat">
+                <div class="metric-label info-label">${label.replace(" ⓘ", "")}</div>
+                <div class="metric-main">${formatMetricValue(values[i] || "")}</div>
+              </div>
+            `).join("")}</div>`
+          : `<div class="metric-label info-label">${mainLabel.replace(" ⓘ", "")}</div><div class="metric-main">${formatMetricValue(m.value)}</div>`;
+        return `
+          <article class="metric-card ${m.cardClass || ""}" style="--accent:${m.accent};--card-bg:url('${m.bgAsset}');--card-ratio:${m.cardRatio};--load-delay:${index * .08}s">
+            <div class="metric-content">
+              ${statGrid}
+              ${trendItems.length ? `<div class="metric-sub">${trendItems.map(([k,v]) => `<span>${k} <b class="up">↗${countNode(v)}</b></span>`).join("")}</div>` : ""}
+            </div>
+          </article>
+        `;
+      }).join("");
+    }
+
+    function renderCloud() {
+      document.getElementById("cloudStage").innerHTML = cloudWords.map(({ word, size, tone = "soft", pad = "6px 18px", opacity = 1, blur = "0", pathX = 0, pathY = 0, duration = 10, delay = 0, staticX = pathX * .3, staticY = pathY * .3, staticScale = 1 }) => {
+        const startX = Math.round(pathX * .05 * 100) / 100;
+        const startY = Math.round(pathY * .05 * 100) / 100;
+        return `<span class="cloud-word ${tone}" style="--size:${size}px;--pad:${pad};--opacity:${opacity};--blur:${blur};--path-x:${pathX}px;--path-y:${pathY}px;--start-x:${startX}px;--start-y:${startY}px;--static-x:${staticX}px;--static-y:${staticY}px;--static-scale:${staticScale};--float-duration:${duration}s;--float-delay:${delay}s">${word}</span>`;
+      }).join("");
+    }
+
+    let trendDates30 = [
+      "2026-05-21", "2026-05-22", "2026-05-23", "2026-05-27", "2026-05-28", "2026-05-31",
+      "2026-06-01", "2026-06-02", "2026-06-03", "2026-06-08", "2026-06-09", "2026-06-10",
+      "2026-06-12", "2026-06-13", "2026-06-14", "2026-06-16", "2026-06-17", "2026-06-18"
+    ];
+    let trendDates7 = ["2026-06-12", "2026-06-13", "2026-06-14", "2026-06-15", "2026-06-16", "2026-06-17", "2026-06-18"];
+    let trendValues30 = [[88,90],[89,90],[90,90],[91,140],[120,138],[80,79],[78,80],[79,80],[80,78],[81,188],[79,160],[80,67],[81,318],[80,214],[22,142],[20,84],[24,106],[30,122]];
+    let trendValues7 = [[22,88],[24,105],[21,98],[26,124],[24,84],[31,86],[27,116]];
+    let activeTrendIndex = 0;
+
+    applyDynamicEnterpriseData();
+
+    function positionChartTooltip(pair, tooltip) {
+      const chart = document.querySelector(".chart");
+      const pairRect = pair.getBoundingClientRect();
+      const chartRect = chart.getBoundingClientRect();
+      const barRects = Array.from(pair.querySelectorAll(".bar")).map(bar => bar.getBoundingClientRect());
+      const anchorTop = Math.min(...barRects.map(rect => rect.top));
+      const anchorBottom = Math.max(...barRects.map(rect => rect.bottom));
+      const tooltipWidth = tooltip.offsetWidth || 176;
+      const tooltipHeight = tooltip.offsetHeight || 86;
+      const pairCenter = pairRect.left + pairRect.width / 2 - chartRect.left;
+      const x = Math.max(tooltipWidth / 2 + 8, Math.min(pairCenter, chartRect.width - tooltipWidth / 2 - 8));
+      const yAbove = anchorTop - chartRect.top - 12;
+      const yBelow = anchorBottom - chartRect.top + 10;
+      const minY = tooltipHeight + 10;
+      const maxY = chartRect.height - 16;
+      const canShowAbove = yAbove >= minY;
+      const showBelow = !canShowAbove && yBelow + tooltipHeight <= chartRect.height - 12;
+      const safeY = Math.max(minY, Math.min(yAbove, maxY));
+      tooltip.style.left = `${x}px`;
+      tooltip.style.top = showBelow ? `${Math.max(12, yBelow)}px` : `${safeY}px`;
+      tooltip.classList.toggle("is-below", showBelow);
+    }
+
+    function showChartTooltip(pair) {
+      const tooltip = document.getElementById("chartTooltip");
+      const pairs = Array.from(document.querySelectorAll(".bar-pair"));
+      pairs.forEach(item => item.classList.toggle("is-active", item === pair));
+      activeTrendIndex = Number(pair.dataset.index || 0);
+      tooltip.innerHTML = `
+        <div class="tooltip-date">${pair.dataset.date}</div>
+        <div class="tooltip-row"><span class="tooltip-label" style="--dot:#69d8ff">文章创作</span><strong>${pair.dataset.create}条</strong></div>
+        <div class="tooltip-row"><span class="tooltip-label" style="--dot:#d46dff">文章发布</span><strong>${pair.dataset.publish}条</strong></div>
+      `;
+      tooltip.classList.add("is-visible");
+      positionChartTooltip(pair, tooltip);
+    }
+
+    function bindChartInteractions() {
+      const pairs = Array.from(document.querySelectorAll(".bar-pair"));
+      pairs.forEach(pair => {
+        pair.addEventListener("pointerenter", () => showChartTooltip(pair));
+        pair.addEventListener("click", () => showChartTooltip(pair));
+        pair.addEventListener("focus", () => showChartTooltip(pair));
+        pair.addEventListener("keydown", event => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            showChartTooltip(pair);
+          }
+        });
+      });
+      const activePair = pairs[Math.min(activeTrendIndex, pairs.length - 1)] || pairs[0];
+      if (activePair) window.requestAnimationFrame(() => showChartTooltip(activePair));
+    }
+
+    function shortDateLabel(date) {
+      return String(date || "").slice(5) || String(date || "");
+    }
+
+    const TREND_AXIS_GROUP_SIZE = 6;
+
+    function trendAxisLabelsForPeriod(dates, days) {
+      if (days === 7) return dates.slice(-7);
+
+      const labels = [];
+      for (let index = 0; index < dates.length; index += TREND_AXIS_GROUP_SIZE) {
+        labels.push(dates[index]);
+      }
+
+      return labels;
+    }
+
+    function renderTrendAxisLabels(dates, days) {
+      const axis = document.getElementById("trendAxisLabels");
+      if (!axis || !dates.length) return;
+
+      const labels = trendAxisLabelsForPeriod(dates, days);
+      axis.style.gridTemplateColumns = `repeat(${labels.length}, minmax(0, 1fr))`;
+      axis.innerHTML = labels.map(date => {
+        return `<span data-short="${shortDateLabel(date)}">${date}</span>`;
+      }).join("");
+    }
+
+    function renderBars(days = 30) {
+      const data = days === 7 ? trendValues7 : trendValues30;
+      const dates = days === 7 ? trendDates7 : trendDates30;
+      const maxValue = Math.max(1, ...data.flat());
+      activeTrendIndex = Math.min(activeTrendIndex, data.length - 1);
+      document.getElementById("bars").style.gridTemplateColumns = `repeat(${data.length}, 1fr)`;
+      renderTrendAxisLabels(dates, days);
+      document.getElementById("bars").innerHTML = data.map(([a,b], index) => `
+        <div class="bar-pair" tabindex="0" role="button" aria-label="${dates[index]} 文章创作 ${a} 条，文章发布 ${b} 条" data-index="${index}" data-date="${dates[index]}" data-create="${a}" data-publish="${b}">
+          <span class="bar" style="--bar:linear-gradient(180deg,#69d8ff,#1978ff);height:${Math.max(3, a / maxValue * 100)}%;--load-delay:${index * .025}s"></span>
+          <span class="bar" style="--bar:linear-gradient(180deg,#d46dff,#7f4cff);height:${Math.max(3, b / maxValue * 100)}%;--load-delay:${index * .025 + .05}s"></span>
+        </div>
+      `).join("");
+      bindChartInteractions();
+    }
+
+    function renderPlatformFilters() {
+      document.getElementById("platform-filter").innerHTML = platformFilters.map(([name, term, total], index) => {
+        const key = name === "全部" ? "全部" : `${name}-${term}`;
+        const totalText = total === 99999 ? `${countNode(total)}+` : countNode(total);
+        return `<button class="filter-chip ${state.platform === key ? "active" : ""}" data-platform="${key}" style="--load-delay:${index * .035}s">
+          ${icon(name)}
+          <span class="filter-text"><strong>${name}</strong>${term === "全部" ? "" : term}(${totalText})</span>
+        </button>`;
+      }).join("");
+    }
+
+    function filteredRows() {
+      return rows.filter(row => {
+        const platformKey = `${row.platform}-${row.terminal}`;
+        const okPlatform = state.platform === "全部" || state.platform === platformKey;
+        const okQuery = !state.query || row.question.includes(state.query) || row.target.includes(state.query);
+        const start = document.getElementById("startDate").value;
+        const end = document.getElementById("endDate").value;
+        const okStart = !start || row.date >= start;
+        const okEnd = !end || row.date <= end;
+        return okPlatform && okQuery && okStart && okEnd;
+      });
+    }
+
+    function renderTable() {
+      const data = filteredRows();
+      const pages = Math.max(1, Math.ceil(data.length / state.pageSize));
+      state.page = Math.min(state.page, pages);
+      const start = (state.page - 1) * state.pageSize;
+      const slice = data.slice(start, start + state.pageSize);
+      document.getElementById("tableBody").innerHTML = slice.map((row, idx) => `
+        <tr style="--load-delay:${idx * .035}s">
+          <td>${start + idx + 1}</td>
+          <td><span class="question">🔥 ${row.question} <span class="copy-icon">⧉</span></span></td>
+          <td><span class="platform-cell">${icon(row.platform)} ${row.platform} (${row.terminal})</span></td>
+          <td>${row.date}</td>
+          <td>${row.target}</td>
+          <td><div class="actions">
+            <button class="link-btn" onclick="showToast('已模拟打开官方链接')">官方链接</button>
+            <button class="link-btn" onclick="openSnapshot(${row.id})">快照凭证</button>
+            <button class="link-btn" onclick="showToast('已模拟转到平台')">转到平台</button>
+          </div></td>
+        </tr>
+      `).join("") || `<tr><td colspan="6" style="text-align:center;color:#7b879b;padding:34px">暂无数据</td></tr>`;
+      renderPagination(data.length, pages);
+    }
+
+    function renderPagination(total, pages) {
+      let html = `<button class="page-btn" ${state.page === 1 ? "disabled" : ""} onclick="gotoPage(${state.page - 1})">‹</button>`;
+      for (let i = 1; i <= Math.min(5, pages); i++) {
+        html += `<button class="page-btn ${state.page === i ? "active" : ""}" onclick="gotoPage(${i})">${i}</button>`;
+      }
+      if (pages > 5) html += `<span style="padding:0 6px;color:#7b879b">...</span><button class="page-btn" onclick="gotoPage(${pages})">${pages}</button>`;
+      html += `<button class="page-btn" ${state.page === pages ? "disabled" : ""} onclick="gotoPage(${state.page + 1})">›</button>`;
+      html += `<select class="page-size" onchange="changePageSize(this.value)">
+        <option ${state.pageSize === 10 ? "selected" : ""} value="10">10 条/页</option>
+        <option ${state.pageSize === 20 ? "selected" : ""} value="20">20 条/页</option>
+        <option ${state.pageSize === 50 ? "selected" : ""} value="50">50 条/页</option>
+      </select>`;
+      document.getElementById("pagination").innerHTML = html;
+    }
+    function animateNumber(el, duration = 980) {
+      const target = Number(el.dataset.countTo || 0);
+      const start = performance.now();
+      const formatter = new Intl.NumberFormat("zh-CN", { useGrouping: false });
+      const step = now => {
+        const progress = Math.min(1, (now - start) / duration);
+        const eased = 1 - Math.pow(1 - progress, 3);
+        el.textContent = formatter.format(Math.round(target * eased));
+        if (progress < 1) requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    }
+    function startDataLoadingEffects(scope = document) {
+      scope.querySelectorAll("[data-count-to]").forEach((el, index) => {
+        el.style.animationDelay = `${Math.min(index * 18, 260)}ms`;
+        el.textContent = el.dataset.countTo || "0";
+      });
+    }
+
+    function gotoPage(page) {
+      state.page = Math.max(1, page);
+      renderTable();
+      startDataLoadingEffects(document.getElementById("report-table"));
+    }
+    function changePageSize(value) {
+      state.pageSize = Number(value);
+      state.page = 1;
+      renderTable();
+      startDataLoadingEffects(document.getElementById("report-table"));
+    }
+
+    function applyFilters() {
+      state.query = document.getElementById("questionSearch").value.trim();
+      state.page = 1;
+      renderTable();
+      startDataLoadingEffects(document.getElementById("report-table"));
+    }
+
+    function openSnapshot(id) {
+      const row = rows.find(item => item.id === id);
+      if (!row) return;
+      document.getElementById("voucherPlatform").innerHTML = `${icon(row.platform)}<span>${row.platform} (${row.terminal})</span>`;
+      document.getElementById("voucherTitle").textContent = row.question;
+      document.getElementById("voucherTime").textContent = `${row.date} 09:30:00　内容由 Ai 生成，不能完全保障真实`;
+      document.getElementById("voucherContent").innerHTML = `根据公开信息与搜索结果，<mark>${row.target}</mark> 与“${row.question}”高度相关。页面可展示企业介绍、官网链接、联系电话、产品能力和行业关键词命中情况，用于佐证 AI 搜索曝光与转化路径。`;
+      document.getElementById("voucherRefs").innerHTML = row.refs.map(ref => `<div class="ref-item">${ref}<br><small>https://example.com/${encodeURIComponent(ref)}</small></div>`).join("");
+      document.getElementById("snapshot-modal").classList.add("open");
+    }
+    function closeSnapshot() {
+      document.getElementById("snapshot-modal").classList.remove("open");
+    }
+    function showToast(text) {
+      const toast = document.getElementById("toast");
+      toast.textContent = text;
+      toast.classList.add("show");
+      clearTimeout(window.__toastTimer);
+      window.__toastTimer = setTimeout(() => toast.classList.remove("show"), 1700);
+    }
+
+    document.getElementById("platform-filter").addEventListener("click", event => {
+      const chip = event.target.closest("[data-platform]");
+      if (!chip) return;
+      state.platform = chip.dataset.platform;
+      state.page = 1;
+      renderPlatformFilters();
+      renderTable();
+      startDataLoadingEffects(document.querySelector(".report-section"));
+    });
+    document.getElementById("questionSearch").addEventListener("input", applyFilters);
+    document.getElementById("startDate").addEventListener("change", applyFilters);
+    document.getElementById("endDate").addEventListener("change", applyFilters);
+    document.getElementById("periodSelect").addEventListener("change", event => renderBars(Number(event.target.value)));
+    window.addEventListener("resize", () => {
+      const activePair = document.querySelector(".bar-pair.is-active");
+      const tooltip = document.getElementById("chartTooltip");
+      if (activePair && tooltip.classList.contains("is-visible")) positionChartTooltip(activePair, tooltip);
+    });
+    document.getElementById("snapshot-modal").addEventListener("click", event => {
+      if (event.target.id === "snapshot-modal") closeSnapshot();
+    });
+    renderModelCollection();
+    renderMetrics();
+    renderCloud();
+    renderBars();
+    renderPlatformFilters();
+    renderTable();
+    startDataLoadingEffects();
+  </script>
+</body>
+</html>

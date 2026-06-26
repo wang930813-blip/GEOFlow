@@ -3,22 +3,33 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Services\MonitoringCenter\MonitoringReportDataService;
+use App\Support\CurrentSite;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\File;
 
 class MonitoringCenterController extends Controller
 {
-    public function index(Request $request): Response
+    public function index(Request $request, MonitoringReportDataService $reports, CurrentSite $currentSite): Response
     {
         $report = $request->query('report') === 'industry' ? 'industry' : 'enterprise';
-        $sourceFile = $report === 'industry'
-            ? resource_path('views/admin/monitoring-center/reports/industry.html')
-            : resource_path('views/admin/monitoring-center/reports/enterprise.html');
+        $view = 'admin.monitoring-center.reports.'.$report;
+        $sourceFile = resource_path('views/admin/monitoring-center/reports/'.$report.'.blade.php');
 
         abort_unless(File::exists($sourceFile), 404);
 
-        return response($this->renderReport((string) File::get($sourceFile)), 200, [
+        $admin = $request->user('admin');
+        abort_unless($admin instanceof \App\Models\Admin, 403);
+
+        $reportData = $report === 'industry'
+            ? $reports->industryReport($admin, $currentSite->get())
+            : $reports->enterpriseReport($admin, $currentSite->get());
+
+        return response($this->renderReport((string) view($view, [
+            'reportData' => $reportData,
+            'report' => $report,
+        ])->render()), 200, [
             'Content-Type' => 'text/html; charset=UTF-8',
         ]);
     }
@@ -26,6 +37,8 @@ class MonitoringCenterController extends Controller
     private function renderReport(string $html): string
     {
         $assetBase = rtrim(asset('assets/monitoring-center'), '/');
+
+        $html = $this->removeLegacyStaticCompanyMeta($html);
 
         $html = str_replace(
             [
@@ -36,6 +49,7 @@ class MonitoringCenterController extends Controller
                 '"assets/',
                 "'assets/",
                 'src="ceying-ai-logo.png"',
+                'src="ceying-ai-logo1.png"',
                 'href="geo-dashboard-replica.html"',
                 'href="ai-search-competition-report.html"',
                 'window.location.replace("geo-dashboard-replica.html");',
@@ -48,7 +62,8 @@ class MonitoringCenterController extends Controller
                 "url('".$assetBase.'/assets/',
                 '"'.$assetBase.'/assets/',
                 "'".$assetBase.'/assets/',
-                'src="'.$assetBase.'/ceying-ai-logo.png"',
+                'src="'.$assetBase.'/ceying-ai-logo1.png"',
+                'src="'.$assetBase.'/ceying-ai-logo1.png"',
                 'href="'.route('admin.monitoring-center.index', ['report' => 'enterprise']).'"',
                 'href="'.route('admin.monitoring-center.index', ['report' => 'industry']).'"',
                 '// Monitoring center keeps the selected report on refresh.',
@@ -64,5 +79,10 @@ class MonitoringCenterController extends Controller
         $html = preg_replace('/<title>.*?<\/title>/su', '<title>'.$title.'</title>', $html, 1) ?? $html;
 
         return str_replace('<head>', '<head>'.PHP_EOL.'  <meta name="geoflow-page" content="monitoring-center" />', $html);
+    }
+
+    private function removeLegacyStaticCompanyMeta(string $html): string
+    {
+        return preg_replace('/\s*<div>[^<]*<\/div>\s*<div>[^<]*026-06-17<\/div>/u', '', $html) ?? $html;
     }
 }
