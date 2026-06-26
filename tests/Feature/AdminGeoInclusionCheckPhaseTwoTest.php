@@ -183,7 +183,8 @@ class AdminGeoInclusionCheckPhaseTwoTest extends TestCase
 
         app()->call([$job, 'handle']);
 
-        $job->assertReleased(30);
+        $this->assertSame(2, $job->tries);
+        $job->assertReleased(15);
 
         $run->refresh();
         $this->assertSame('running', $run->status);

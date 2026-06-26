@@ -18,7 +18,7 @@ class ProcessGeoInclusionCheckJob implements ShouldQueue
 {
     use Queueable;
 
-    public int $tries = 3;
+    public int $tries = 2;
 
     public int $timeout = 180;
 
@@ -47,7 +47,7 @@ class ProcessGeoInclusionCheckJob implements ShouldQueue
      */
     public function backoff(): array
     {
-        return [30, 120];
+        return [15];
     }
 
     public function handle(AiSearchPlatformChecker $checker, AiConfigurationScope $aiConfigurationScope): void
