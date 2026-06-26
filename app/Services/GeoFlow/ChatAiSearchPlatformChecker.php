@@ -19,9 +19,15 @@ class ChatAiSearchPlatformChecker implements AiSearchPlatformChecker
         private readonly AiConfigurationScope $aiConfigurationScope
     ) {}
 
-    public function check(string $platform, string $question, KeywordLibrary $library, Keyword $keyword): AiSearchCheckResponse
+    public function check(
+        string $platform,
+        string $question,
+        KeywordLibrary $library,
+        Keyword $keyword,
+        ?int $aiOwnerAdminId = null
+    ): AiSearchCheckResponse
     {
-        $model = $this->resolveAiModel();
+        $model = $this->resolveAiModel($aiOwnerAdminId);
         $providerUrl = OpenAiRuntimeProvider::resolveChatBaseUrl((string) ($model->api_url ?? ''));
         if ($providerUrl === '') {
             throw new RuntimeException('AI model API URL is not configured.');
@@ -82,12 +88,14 @@ class ChatAiSearchPlatformChecker implements AiSearchPlatformChecker
         return mb_stripos($haystack, $needle, 0, 'UTF-8') !== false;
     }
 
-    private function resolveAiModel(): AiModel
+    private function resolveAiModel(?int $aiOwnerAdminId = null): AiModel
     {
-        $model = $this->aiConfigurationScope->applyCurrentConsumerScope(
-            AiModel::query()->withoutGlobalScope('current_site'),
-            'ai_models.owner_admin_id'
-        )
+        $query = AiModel::query()->withoutGlobalScope('current_site');
+        $query = $aiOwnerAdminId !== null
+            ? $this->aiConfigurationScope->applyOwnerIdScope($query, $aiOwnerAdminId, 'ai_models.owner_admin_id')
+            : $this->aiConfigurationScope->applyCurrentConsumerScope($query, 'ai_models.owner_admin_id');
+
+        $model = $query
             ->where('status', 'active')
             ->where(function ($query): void {
                 $query->whereNull('model_type')

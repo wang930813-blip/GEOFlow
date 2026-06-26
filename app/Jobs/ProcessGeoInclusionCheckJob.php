@@ -3,11 +3,13 @@
 namespace App\Jobs;
 
 use App\Events\Admin\KeywordLibraryInclusionUpdated;
+use App\Models\Admin;
 use App\Models\GeoInclusionCheckResult;
 use App\Models\GeoInclusionCheckRun;
 use App\Models\Keyword;
 use App\Models\KeywordQuestionVariant;
 use App\Services\GeoFlow\AiSearchPlatformChecker;
+use App\Support\AiConfigurationScope;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Throwable;
@@ -48,7 +50,7 @@ class ProcessGeoInclusionCheckJob implements ShouldQueue
         return [30, 120];
     }
 
-    public function handle(AiSearchPlatformChecker $checker): void
+    public function handle(AiSearchPlatformChecker $checker, AiConfigurationScope $aiConfigurationScope): void
     {
         $run = GeoInclusionCheckRun::query()->whereKey($this->runId)->first();
         if (! $run || (string) $run->status === 'paused') {
@@ -66,7 +68,13 @@ class ProcessGeoInclusionCheckJob implements ShouldQueue
         ]);
 
         try {
-            $response = $checker->check($this->platform, $question, $library, $keyword);
+            $response = $checker->check(
+                $this->platform,
+                $question,
+                $library,
+                $keyword,
+                $this->resolveAiOwnerAdminId($run, $aiConfigurationScope)
+            );
 
             GeoInclusionCheckResult::query()->updateOrCreate(
                 [
@@ -139,6 +147,20 @@ class ProcessGeoInclusionCheckJob implements ShouldQueue
         $attemptIndex = max(0, $this->attempts() - 1);
 
         return (int) ($delays[$attemptIndex] ?? end($delays) ?: 30);
+    }
+
+    private function resolveAiOwnerAdminId(GeoInclusionCheckRun $run, AiConfigurationScope $aiConfigurationScope): ?int
+    {
+        $runOwnerAdminId = (int) ($run->owner_admin_id ?? 0);
+        if ($runOwnerAdminId <= 0) {
+            return null;
+        }
+
+        $runOwner = Admin::query()->whereKey($runOwnerAdminId)->first(['id', 'role', 'created_by']);
+
+        return $runOwner instanceof Admin
+            ? $aiConfigurationScope->ownerAdminIdForConsumer($runOwner)
+            : null;
     }
 
     private function isTransientAiFailure(Throwable $exception): bool

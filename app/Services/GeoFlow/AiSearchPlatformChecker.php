@@ -7,5 +7,11 @@ use App\Models\KeywordLibrary;
 
 interface AiSearchPlatformChecker
 {
-    public function check(string $platform, string $question, KeywordLibrary $library, Keyword $keyword): AiSearchCheckResponse;
+    public function check(
+        string $platform,
+        string $question,
+        KeywordLibrary $library,
+        Keyword $keyword,
+        ?int $aiOwnerAdminId = null
+    ): AiSearchCheckResponse;
 }

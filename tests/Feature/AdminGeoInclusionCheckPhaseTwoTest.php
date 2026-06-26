@@ -2,9 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Ai\Agents\MarkdownContentWriterAgent;
 use App\Events\Admin\KeywordLibraryInclusionUpdated;
 use App\Jobs\ProcessGeoInclusionCheckJob;
 use App\Models\Admin;
+use App\Models\AiModel;
 use App\Models\GeoInclusionCheckResult;
 use App\Models\GeoInclusionCheckRun;
 use App\Models\Keyword;
@@ -14,6 +16,8 @@ use App\Models\PlatformPlan;
 use App\Models\Site;
 use App\Services\GeoFlow\AiSearchCheckResponse;
 use App\Services\GeoFlow\AiSearchPlatformChecker;
+use App\Services\GeoFlow\ChatAiSearchPlatformChecker;
+use App\Support\GeoFlow\ApiKeyCrypto;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -106,7 +110,7 @@ class AdminGeoInclusionCheckPhaseTwoTest extends TestCase
         ]);
 
         $this->app->bind(AiSearchPlatformChecker::class, static fn () => new class implements AiSearchPlatformChecker {
-            public function check(string $platform, string $question, KeywordLibrary $library, Keyword $keyword): AiSearchCheckResponse
+            public function check(string $platform, string $question, KeywordLibrary $library, Keyword $keyword, ?int $aiOwnerAdminId = null): AiSearchCheckResponse
             {
                 return new AiSearchCheckResponse(
                     platform: $platform,
@@ -121,12 +125,14 @@ class AdminGeoInclusionCheckPhaseTwoTest extends TestCase
             }
         });
 
-        (new ProcessGeoInclusionCheckJob(
+        $job = new ProcessGeoInclusionCheckJob(
             runId: (int) $run->id,
             keywordId: (int) $keyword->id,
             questionVariantId: (int) $question->id,
             platform: 'doubao'
-        ))->handle($this->app->make(AiSearchPlatformChecker::class));
+        );
+
+        app()->call([$job, 'handle']);
 
         $this->assertDatabaseHas('geo_inclusion_check_results', [
             'run_id' => (int) $run->id,
@@ -162,7 +168,7 @@ class AdminGeoInclusionCheckPhaseTwoTest extends TestCase
         ]);
 
         $this->app->bind(AiSearchPlatformChecker::class, static fn () => new class implements AiSearchPlatformChecker {
-            public function check(string $platform, string $question, KeywordLibrary $library, Keyword $keyword): AiSearchCheckResponse
+            public function check(string $platform, string $question, KeywordLibrary $library, Keyword $keyword, ?int $aiOwnerAdminId = null): AiSearchCheckResponse
             {
                 throw new \RuntimeException('AI search check failed: AI provider [runtime_geo_inclusion_doubao_test] is overloaded.');
             }
@@ -175,7 +181,7 @@ class AdminGeoInclusionCheckPhaseTwoTest extends TestCase
             platform: 'doubao'
         ))->withFakeQueueInteractions();
 
-        $job->handle($this->app->make(AiSearchPlatformChecker::class));
+        app()->call([$job, 'handle']);
 
         $job->assertReleased(30);
 
@@ -184,6 +190,64 @@ class AdminGeoInclusionCheckPhaseTwoTest extends TestCase
         $this->assertSame(0, (int) $run->completed_checks);
         $this->assertSame(0, (int) $run->failed_checks);
         $this->assertSame(0, GeoInclusionCheckResult::query()->where('run_id', (int) $run->id)->count());
+    }
+
+    public function test_inclusion_check_job_uses_run_owner_ai_scope_when_queue_has_no_logged_in_admin(): void
+    {
+        $agent = $this->createAdmin('inclusion_ai_scope_agent');
+        $agent->forceFill(['role' => 'agent_admin'])->save();
+        $siteUser = $this->createAdmin('inclusion_ai_scope_user');
+        $siteUser->forceFill([
+            'role' => 'site_user',
+            'created_by' => (int) $agent->id,
+        ])->save();
+
+        $site = $this->createSiteForAdmin($siteUser);
+        $library = $this->createLibraryWithQuestion((int) $site->id);
+        $library->forceFill(['owner_admin_id' => (int) $siteUser->id])->save();
+        $keyword = $library->keywords()->firstOrFail();
+        $keyword->forceFill(['owner_admin_id' => (int) $siteUser->id])->save();
+        $question = $keyword->questionVariants()->firstOrFail();
+        $question->forceFill(['owner_admin_id' => (int) $siteUser->id])->save();
+
+        $this->createRuntimeChatModel('Platform Default Model', 'platform-default-model', null, 1);
+        $this->createRuntimeChatModel('Agent Scoped Model', 'agent-scoped-model', (int) $agent->id, 1);
+
+        $run = GeoInclusionCheckRun::withoutEvents(fn (): GeoInclusionCheckRun => GeoInclusionCheckRun::query()->withoutGlobalScopes()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $siteUser->id,
+            'keyword_library_id' => (int) $library->id,
+            'platforms' => ['doubao'],
+            'status' => 'pending',
+            'total_checks' => 1,
+            'completed_checks' => 0,
+            'failed_checks' => 0,
+        ]));
+
+        auth('admin')->logout();
+
+        $promptedModels = [];
+        MarkdownContentWriterAgent::fake(function (string $prompt, mixed $attachments, mixed $provider, string $model) use (&$promptedModels): string {
+            $promptedModels[] = $model;
+
+            return 'Acme is mentioned as a useful AI search visibility platform.';
+        })->preventStrayPrompts();
+
+        $job = new ProcessGeoInclusionCheckJob(
+            runId: (int) $run->id,
+            keywordId: (int) $keyword->id,
+            questionVariantId: (int) $question->id,
+            platform: 'doubao'
+        );
+
+        app()->call([$job, 'handle']);
+
+        $this->assertSame(['agent-scoped-model'], $promptedModels);
+        $this->assertDatabaseHas('geo_inclusion_check_results', [
+            'run_id' => (int) $run->id,
+            'owner_admin_id' => (int) $siteUser->id,
+            'status' => 'success',
+        ]);
     }
 
     public function test_inclusion_check_job_result_inherits_run_owner(): void
@@ -208,7 +272,7 @@ class AdminGeoInclusionCheckPhaseTwoTest extends TestCase
         ]);
 
         $this->app->bind(AiSearchPlatformChecker::class, static fn () => new class implements AiSearchPlatformChecker {
-            public function check(string $platform, string $question, KeywordLibrary $library, Keyword $keyword): AiSearchCheckResponse
+            public function check(string $platform, string $question, KeywordLibrary $library, Keyword $keyword, ?int $aiOwnerAdminId = null): AiSearchCheckResponse
             {
                 return new AiSearchCheckResponse(
                     platform: $platform,
@@ -223,12 +287,14 @@ class AdminGeoInclusionCheckPhaseTwoTest extends TestCase
             }
         });
 
-        (new ProcessGeoInclusionCheckJob(
+        $job = new ProcessGeoInclusionCheckJob(
             runId: (int) $run->id,
             keywordId: (int) $keyword->id,
             questionVariantId: (int) $question->id,
             platform: 'doubao'
-        ))->handle($this->app->make(AiSearchPlatformChecker::class));
+        );
+
+        app()->call([$job, 'handle']);
 
         $this->assertDatabaseHas('geo_inclusion_check_results', [
             'run_id' => (int) $run->id,
@@ -303,18 +369,20 @@ class AdminGeoInclusionCheckPhaseTwoTest extends TestCase
         ]);
 
         $this->app->bind(AiSearchPlatformChecker::class, static fn () => new class implements AiSearchPlatformChecker {
-            public function check(string $platform, string $question, KeywordLibrary $library, Keyword $keyword): AiSearchCheckResponse
+            public function check(string $platform, string $question, KeywordLibrary $library, Keyword $keyword, ?int $aiOwnerAdminId = null): AiSearchCheckResponse
             {
                 throw new \RuntimeException('Checker should not run for paused inclusion checks.');
             }
         });
 
-        (new ProcessGeoInclusionCheckJob(
+        $job = new ProcessGeoInclusionCheckJob(
             runId: (int) $run->id,
             keywordId: (int) $keyword->id,
             questionVariantId: (int) $question->id,
             platform: 'doubao'
-        ))->handle($this->app->make(AiSearchPlatformChecker::class));
+        );
+
+        app()->call([$job, 'handle']);
 
         $this->assertSame('paused', $run->fresh()->status);
         $this->assertSame(0, GeoInclusionCheckResult::query()->where('run_id', (int) $run->id)->count());
@@ -532,7 +600,7 @@ class AdminGeoInclusionCheckPhaseTwoTest extends TestCase
         ]);
 
         $this->app->bind(AiSearchPlatformChecker::class, static fn () => new class implements AiSearchPlatformChecker {
-            public function check(string $platform, string $question, KeywordLibrary $library, Keyword $keyword): AiSearchCheckResponse
+            public function check(string $platform, string $question, KeywordLibrary $library, Keyword $keyword, ?int $aiOwnerAdminId = null): AiSearchCheckResponse
             {
                 return new AiSearchCheckResponse(
                     platform: $platform,
@@ -547,12 +615,14 @@ class AdminGeoInclusionCheckPhaseTwoTest extends TestCase
             }
         });
 
-        (new ProcessGeoInclusionCheckJob(
+        $job = new ProcessGeoInclusionCheckJob(
             runId: (int) $run->id,
             keywordId: (int) $keyword->id,
             questionVariantId: (int) $question->id,
             platform: 'doubao'
-        ))->handle($this->app->make(AiSearchPlatformChecker::class));
+        );
+
+        app()->call([$job, 'handle']);
 
         Event::assertDispatched(KeywordLibraryInclusionUpdated::class, function (KeywordLibraryInclusionUpdated $event) use ($library, $run): bool {
             return $event->libraryId === (int) $library->id
@@ -615,6 +685,25 @@ class AdminGeoInclusionCheckPhaseTwoTest extends TestCase
         $this->openTestingPlanForSite($site, $admin);
 
         return $site;
+    }
+
+    private function createRuntimeChatModel(string $name, string $modelId, ?int $ownerAdminId, int $priority): AiModel
+    {
+        return AiModel::withoutEvents(fn (): AiModel => AiModel::query()->withoutGlobalScope('current_site')->create([
+            'site_id' => null,
+            'owner_admin_id' => $ownerAdminId,
+            'name' => $name,
+            'version' => 'test',
+            'api_key' => app(ApiKeyCrypto::class)->encrypt($modelId.'-api-key'),
+            'model_id' => $modelId,
+            'model_type' => 'chat',
+            'api_url' => 'https://ai.test',
+            'failover_priority' => $priority,
+            'daily_limit' => 0,
+            'used_today' => 0,
+            'total_used' => 0,
+            'status' => 'active',
+        ]));
     }
 
     private function createAdmin(string $username = 'geo_phase_two_admin'): Admin
