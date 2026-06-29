@@ -1943,7 +1943,9 @@
 
   <script>
     window.__MONITORING_REPORT__ = {!! json_encode($reportData ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) !!};
+    window.__MONITORING_SEARCH_REPORT_USE_VIRTUAL__ = @json((bool) ($useVirtualSearchReportData ?? false));
     const dynamicReport = window.__MONITORING_REPORT__ || {};
+    const useVirtualSearchReportData = window.__MONITORING_SEARCH_REPORT_USE_VIRTUAL__ === true;
     let activeSnapshotRow = null;
     const iconStyles = {
       "DeepSeek": "linear-gradient(135deg,#5e7cff,#8368ff)",
@@ -2036,11 +2038,11 @@
     function applyDynamicEnterpriseData() {
       if (!dynamicReport || !Object.keys(dynamicReport).length) return;
 
-      if (Array.isArray(dynamicReport.model_collection) && dynamicReport.model_collection.length) {
+      if (Array.isArray(dynamicReport.model_collection)) {
         modelCollection = dynamicReport.model_collection.map(item => [item.name, Number(item.value || 0)]);
       }
 
-      if (Array.isArray(dynamicReport.metrics) && dynamicReport.metrics.length) {
+      if (Array.isArray(dynamicReport.metrics)) {
         const metricAssets = [
           ["is-single", "assets/image-to-code/metric-card-backgrounds/card-ai-total.png", "381 / 168", "#f08b35"],
           ["is-search", "assets/image-to-code/metric-card-backgrounds/card-search-terms.png", "372 / 168", "#0aa8ff"],
@@ -2068,7 +2070,7 @@
         });
       }
 
-      if (Array.isArray(dynamicReport.distillation_words) && dynamicReport.distillation_words.length) {
+      if (Array.isArray(dynamicReport.distillation_words)) {
         cloudWords = dynamicReport.distillation_words.map((item, index) => ({
           word: item.word,
           size: Number(item.size || (13 + (index % 4))),
@@ -2082,12 +2084,12 @@
         }));
       }
 
-      if (Array.isArray(dynamicReport.platform_filters) && dynamicReport.platform_filters.length) {
+      if (!useVirtualSearchReportData && Array.isArray(dynamicReport.platform_filters) && dynamicReport.platform_filters.length) {
         platformFilters = dynamicReport.platform_filters.map(item => [item.name, item.terminal, Number(item.total || 0)]);
         state.platform = platformFilters[0]?.[0] || state.platform;
       }
 
-      if (Array.isArray(dynamicReport.search_rows)) {
+      if (!useVirtualSearchReportData && Array.isArray(dynamicReport.search_rows)) {
         rows = dynamicReport.search_rows.map((row, index) => ({
           id: row.id || index + 1,
           question: row.question || "",

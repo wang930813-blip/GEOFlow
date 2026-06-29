@@ -458,7 +458,7 @@
                                     >
                                         @foreach ($availableSites as $site)
                                             @php
-                                                $siteOwnerName = trim((string) ($site->owner?->username ?? $site->owner?->display_name ?? ''));
+                                                $siteOwnerName = trim((string) ($site->owner?->display_name ?: $site->owner?->username ?: ''));
                                                 $siteOptionLabel = $siteOwnerName !== '' ? $siteOwnerName.' - '.$site->name : $site->name;
                                             @endphp
                                             <option value="{{ $site->id }}" title="{{ $siteOptionLabel }}" @selected((int) $currentSite->id === (int) $site->id)>

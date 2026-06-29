@@ -51,6 +51,8 @@ class AdminMonitoringCenterPageTest extends TestCase
 
     public function test_monitoring_center_injects_current_site_report_data_into_enterprise_page(): void
     {
+        config(['geoflow.monitoring_search_report_virtual_data_enabled' => false]);
+
         [$admin, $site] = $this->createAdminWithSite('monitoring_dynamic_enterprise_admin');
 
         KnowledgeBase::query()->create([
@@ -67,12 +69,49 @@ class AdminMonitoringCenterPageTest extends TestCase
             ->assertOk()
             ->assertSee('星河智能科技有限公司')
             ->assertSee('window.__MONITORING_REPORT__', false)
+            ->assertSee('window.__MONITORING_SEARCH_REPORT_USE_VIRTUAL__ = false;', false)
             ->assertSee('/assets/monitoring-center/ceying-ai-logo1.png', false)
             ->assertDontSee('data-monitoring-dynamic-summary', false)
             ->getContent();
 
         $headerMeta = $this->headerCompanyMeta($html);
         $this->assertStringNotContainsString('026-06-17', $headerMeta);
+    }
+
+    public function test_monitoring_center_virtual_switch_only_keeps_search_report_static(): void
+    {
+        config(['geoflow.monitoring_search_report_virtual_data_enabled' => true]);
+
+        [$admin, $site] = $this->createAdminWithSite('monitoring_virtual_static_admin');
+
+        KnowledgeBase::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'virtual knowledge',
+            'content' => '公司名称：虚拟搜索报表科技有限公司',
+            'created_at' => now(),
+        ]);
+
+        $response = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.monitoring-center.index'));
+
+        $response
+            ->assertOk()
+            ->assertSee('虚拟搜索报表科技有限公司')
+            ->assertSee('window.__MONITORING_SEARCH_REPORT_USE_VIRTUAL__ = true;', false)
+            ->assertSee('window.__MONITORING_REPORT__', false)
+            ->assertDontSee('window.__MONITORING_REPORT__ = [];', false);
+
+        $html = $response->getContent();
+        $this->assertStringContainsString('if (Array.isArray(dynamicReport.model_collection))', $html);
+        $this->assertStringContainsString('if (Array.isArray(dynamicReport.metrics))', $html);
+        $this->assertStringContainsString('if (Array.isArray(dynamicReport.distillation_words))', $html);
+        $this->assertStringContainsString('if (!useVirtualSearchReportData && Array.isArray(dynamicReport.platform_filters)', $html);
+        $this->assertStringContainsString('if (!useVirtualSearchReportData && Array.isArray(dynamicReport.search_rows))', $html);
+        $this->assertStringNotContainsString('Array.isArray(dynamicReport.model_collection) && dynamicReport.model_collection.length', $html);
+        $this->assertStringNotContainsString('Array.isArray(dynamicReport.metrics) && dynamicReport.metrics.length', $html);
+        $this->assertStringNotContainsString('Array.isArray(dynamicReport.distillation_words) && dynamicReport.distillation_words.length', $html);
     }
 
     public function test_enterprise_trend_axis_labels_are_rendered_from_current_trend_dates(): void
@@ -95,6 +134,8 @@ class AdminMonitoringCenterPageTest extends TestCase
 
     public function test_enterprise_report_replaces_static_search_rows_even_when_dynamic_rows_are_empty(): void
     {
+        config(['geoflow.monitoring_search_report_virtual_data_enabled' => false]);
+
         $admin = $this->createAdmin('monitoring_empty_search_rows_admin');
 
         $html = $this->actingAs($admin, 'admin')
@@ -102,7 +143,7 @@ class AdminMonitoringCenterPageTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        $this->assertStringContainsString('if (Array.isArray(dynamicReport.search_rows))', $html);
+        $this->assertStringContainsString('if (!useVirtualSearchReportData && Array.isArray(dynamicReport.search_rows))', $html);
         $this->assertStringNotContainsString('Array.isArray(dynamicReport.search_rows) && dynamicReport.search_rows.length', $html);
         $this->assertStringContainsString('officialLink(row)', $html);
         $this->assertStringContainsString('platformLink(row)', $html);

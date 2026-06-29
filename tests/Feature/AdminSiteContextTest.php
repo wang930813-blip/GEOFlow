@@ -125,7 +125,7 @@ class AdminSiteContextTest extends TestCase
         $this->assertSame($site->id, app(CurrentSite::class)->id());
     }
 
-    public function test_site_switcher_combines_owner_username_and_site_name(): void
+    public function test_site_switcher_combines_owner_display_name_and_site_name(): void
     {
         $superAdmin = Admin::query()->create([
             'username' => 'site_switcher_root',
@@ -166,8 +166,10 @@ class AdminSiteContextTest extends TestCase
         $this->actingAs($superAdmin, 'admin')
             ->get(route('admin.dashboard'))
             ->assertOk()
-            ->assertSee('alpha_user - 默认站点')
-            ->assertSee('beta_user - 默认站点');
+            ->assertSee('Alpha User - 默认站点')
+            ->assertSee('Beta User - 默认站点')
+            ->assertDontSee('alpha_user - 默认站点')
+            ->assertDontSee('beta_user - 默认站点');
     }
 
     public function test_site_admin_can_create_only_current_site_api_tokens(): void

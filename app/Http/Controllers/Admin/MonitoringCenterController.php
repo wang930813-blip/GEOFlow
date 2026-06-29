@@ -22,6 +22,7 @@ class MonitoringCenterController extends Controller
         $admin = $request->user('admin');
         abort_unless($admin instanceof \App\Models\Admin, 403);
 
+        $useVirtualSearchReportData = (bool) config('geoflow.monitoring_search_report_virtual_data_enabled', false);
         $reportData = $report === 'industry'
             ? $reports->industryReport($admin, $currentSite->get())
             : $reports->enterpriseReport($admin, $currentSite->get());
@@ -29,6 +30,7 @@ class MonitoringCenterController extends Controller
         return response($this->renderReport((string) view($view, [
             'reportData' => $reportData,
             'report' => $report,
+            'useVirtualSearchReportData' => $useVirtualSearchReportData,
         ])->render()), 200, [
             'Content-Type' => 'text/html; charset=UTF-8',
         ]);
