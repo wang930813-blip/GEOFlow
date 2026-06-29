@@ -16,7 +16,6 @@ use App\Models\Site;
 use App\Support\CurrentSite;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Str;
 
 class MonitoringReportDataService
 {
@@ -26,6 +25,19 @@ class MonitoringReportDataService
         'deepseek',
         'yuanbao',
         'wenxin',
+    ];
+
+    private const DEFAULT_SEARCH_REPORT_PLATFORMS = [
+        'deepseek',
+        'doubao',
+        'yuanbao',
+        'wenxin',
+        'qianwen',
+    ];
+
+    private const SEARCH_REPORT_TERMINALS = [
+        'PC',
+        '移动',
     ];
 
     /**
@@ -55,7 +67,7 @@ class MonitoringReportDataService
             'model_collection' => $modelCollection,
             'metrics' => $this->hasActualSummaryData($summary) ? $this->enterpriseMetrics($context, $modelCollection, $platformCount) : [],
             'distillation_words' => $distillationWords,
-            'platform_filters' => $searchRows !== [] ? $this->platformFilters($searchRows) : [],
+            'platform_filters' => $this->platformFilters($searchRows),
             'trend' => $articleTrend,
             'search_rows' => $searchRows,
         ];
@@ -381,37 +393,33 @@ class MonitoringReportDataService
 
     /**
      * @param  list<array<string,mixed>>  $searchRows
-     * @return list<array{name:string,terminal:string,total:int,key:string}>
+     * @return list<array{name:string,terminal:string,total:int,key:string,platform_key:string}>
      */
     private function platformFilters(array $searchRows): array
     {
+        $counts = collect($searchRows)
+            ->groupBy(fn (array $row): string => $this->normalizePlatformKey((string) ($row['platform_key'] ?? $row['platform'] ?? '')).'|'.(string) ($row['terminal'] ?? 'PC'))
+            ->map(fn (Collection $group): int => $group->count());
+
         $items = [[
-            'key' => '全部',
+            'key' => 'all',
+            'platform_key' => 'all',
             'name' => '全部',
             'terminal' => '全部',
             'total' => count($searchRows),
         ]];
 
-        foreach (collect($searchRows)
-            ->groupBy(fn (array $row): string => (string) ($row['platform'] ?? '').'|'.(string) ($row['terminal'] ?? 'PC'))
-            ->sortKeys() as $group) {
-            $row = $group->first();
-            if (! is_array($row)) {
-                continue;
+        foreach (self::DEFAULT_SEARCH_REPORT_PLATFORMS as $platform) {
+            foreach (self::SEARCH_REPORT_TERMINALS as $terminal) {
+                $name = $this->platformLabel($platform);
+                $items[] = [
+                    'key' => $name.'-'.$terminal,
+                    'platform_key' => $platform,
+                    'name' => $name,
+                    'terminal' => $terminal,
+                    'total' => (int) ($counts[$platform.'|'.$terminal] ?? 0),
+                ];
             }
-
-            $name = (string) ($row['platform'] ?? '');
-            $terminal = (string) ($row['terminal'] ?? 'PC');
-            if ($name === '') {
-                continue;
-            }
-
-            $items[] = [
-                'key' => $name.'-'.$terminal,
-                'name' => $name,
-                'terminal' => $terminal,
-                'total' => $group->count(),
-            ];
         }
 
         return $items;
@@ -470,10 +478,14 @@ class MonitoringReportDataService
             ->where('status', 'published')
             ->orderByDesc('published_at')
             ->limit(30)
-            ->get(['id', 'title', 'content', 'keywords', 'published_at']);
+            ->get(['id', 'title', 'slug', 'content', 'keywords', 'published_at']);
 
         return $this->scope(BrandDiagnosisResult::query(), $context)
-            ->with(['question:id,question', 'sources:id,result_id,title,url,domain,platform'])
+            ->with([
+                'brandMentions' => fn ($query) => $query->where('is_target_brand', true)->orderBy('mention_rank'),
+                'question:id,question',
+                'sources:id,result_id,title,url,domain,platform',
+            ])
             ->where('status', 'success')
             ->orderByDesc('checked_at')
             ->orderByDesc('id')
@@ -481,23 +493,28 @@ class MonitoringReportDataService
             ->get()
             ->map(function (BrandDiagnosisResult $result) use ($articles, $companyName): array {
                 $question = (string) ($result->question?->question ?? '');
+                $relatedArticles = $this->relatedArticles($articles, $question, $companyName);
+                $target = $this->targetBrandName($result);
+                $createdAt = $result->created_at ?? $result->checked_at;
 
                 return [
                     'id' => (int) $result->id,
                     'question' => $question,
                     'platform_key' => (string) $result->platform,
                     'platform' => $this->platformLabel((string) $result->platform),
+                    'platform_url' => $this->platformUrl((string) $result->platform),
                     'terminal' => 'PC',
-                    'date' => ($result->checked_at ?? $result->created_at)?->format('Y-m-d') ?? '',
-                    'time' => ($result->checked_at ?? $result->created_at)?->format('Y-m-d H:i:s') ?? '',
-                    'target' => $companyName,
-                    'answer' => Str::limit(strip_tags((string) $result->answer), 220),
+                    'date' => $createdAt?->format('Y-m-d') ?? '',
+                    'time' => $createdAt?->format('Y-m-d H:i:s') ?? '',
+                    'target' => $target,
+                    'answer' => strip_tags((string) $result->answer),
                     'sources' => $result->sources->map(fn ($source): array => [
                         'title' => (string) $source->title,
                         'url' => (string) $source->url,
                         'domain' => (string) $source->domain,
                     ])->values()->all(),
-                    'related_articles' => $this->relatedArticles($articles, $question, $companyName),
+                    'related_articles' => $relatedArticles,
+                    'official_url' => (string) ($relatedArticles[0]['url'] ?? ''),
                 ];
             })
             ->values()
@@ -506,7 +523,7 @@ class MonitoringReportDataService
 
     /**
      * @param  Collection<int,Article>  $articles
-     * @return list<array{id:int,title:string,published_at:string}>
+     * @return list<array{id:int,title:string,published_at:string,url:string}>
      */
     private function relatedArticles(Collection $articles, string $question, string $companyName): array
     {
@@ -526,9 +543,42 @@ class MonitoringReportDataService
                 'id' => (int) $article->id,
                 'title' => (string) $article->title,
                 'published_at' => $article->published_at?->format('Y-m-d') ?? '',
+                'url' => $this->articlePublicUrl($article),
             ])
             ->values()
             ->all();
+    }
+
+    private function targetBrandName(BrandDiagnosisResult $result): string
+    {
+        $mention = $result->brandMentions->first();
+
+        if ($mention instanceof BrandDiagnosisBrandMention && trim((string) $mention->brand_name) !== '') {
+            return (string) $mention->brand_name;
+        }
+
+        return '-';
+    }
+
+    private function articlePublicUrl(Article $article): string
+    {
+        if (trim((string) $article->slug) === '') {
+            return '';
+        }
+
+        return route('site.article', ['slug' => $article->slug]);
+    }
+
+    private function platformUrl(string $platform): string
+    {
+        return match ($this->normalizePlatformKey($platform)) {
+            'deepseek' => 'https://chat.deepseek.com/',
+            'doubao' => 'https://www.doubao.com/',
+            'yuanbao' => 'https://yuanbao.tencent.com/',
+            'wenxin' => 'https://yiyan.baidu.com/',
+            'qianwen' => 'https://tongyi.aliyun.com/qianwen/',
+            default => '',
+        };
     }
 
     /**
@@ -782,6 +832,16 @@ class MonitoringReportDataService
             'xinghuo', 'spark' => '讯飞星火',
             'baidu_ai' => '百度AI',
             default => $platform,
+        };
+    }
+
+    private function normalizePlatformKey(string $platform): string
+    {
+        return match (strtolower(trim($platform))) {
+            'tencent_yuanbao' => 'yuanbao',
+            'ernie' => 'wenxin',
+            'tongyi' => 'qianwen',
+            default => strtolower(trim($platform)),
         };
     }
 }

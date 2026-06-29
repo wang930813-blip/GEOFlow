@@ -100,8 +100,14 @@ class MonitoringReportDataServiceTest extends TestCase
         $this->assertSame($current['question']->question, $report['distillation_words'][0]['word']);
         $this->assertSame($current['question']->question, $report['search_rows'][0]['question']);
         $this->assertSame('豆包', $report['search_rows'][0]['platform']);
+        $this->assertSame('星河智能科技有限公司', $report['search_rows'][0]['target']);
+        $this->assertSame(now()->toDateString(), $report['search_rows'][0]['date']);
+        $this->assertSame('星河智能科技有限公司在回答中被提及，并引用了行业资料。', $report['search_rows'][0]['answer']);
+        $this->assertSame('https://www.doubao.com/', $report['search_rows'][0]['platform_url']);
+        $this->assertStringEndsWith('/article/'.rawurlencode((string) $current['article']->slug), $report['search_rows'][0]['official_url']);
         $this->assertSame('星河智能案例报道', $report['search_rows'][0]['sources'][0]['title']);
         $this->assertSame('星河智能 AI 搜索优化实践', $report['search_rows'][0]['related_articles'][0]['title']);
+        $this->assertStringEndsWith('/article/'.rawurlencode((string) $current['article']->slug), $report['search_rows'][0]['related_articles'][0]['url']);
 
         $flatJson = json_encode($report, JSON_UNESCAPED_UNICODE);
         $this->assertStringNotContainsString('其他公司问题不应出现', $flatJson);
@@ -182,7 +188,8 @@ class MonitoringReportDataServiceTest extends TestCase
         $this->assertSame('星河智能科技有限公司', $report['context']['company_name']);
         $this->assertSame([], $report['model_collection']);
         $this->assertSame([], $report['metrics']);
-        $this->assertSame([], $report['platform_filters']);
+        $this->assertCount(11, $report['platform_filters']);
+        $this->assertSame(0, $report['platform_filters'][0]['total']);
         $this->assertSame([], $report['search_rows']);
         $this->assertSame([], $report['distillation_words']);
         $this->assertCount(30, $report['trend']['last_30']);
@@ -193,6 +200,135 @@ class MonitoringReportDataServiceTest extends TestCase
         $this->assertSame(now()->toDateString(), $report['trend']['last_7'][6]['date']);
         $this->assertSame(0, $report['trend']['last_30'][29]['created']);
         $this->assertSame(0, $report['trend']['last_30'][29]['published']);
+    }
+
+    public function test_enterprise_search_report_platform_filters_include_default_platform_terminals_with_zero_counts(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('monitoring_search_platform_filters', 'site_user', 'search report site');
+
+        app(CurrentSite::class)->set($site);
+
+        $diagnosisRun = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => 'Search Report Brand',
+            'platforms' => ['doubao', 'deepseek', 'tencent_yuanbao'],
+            'status' => 'completed',
+            'total_questions' => 1,
+            'completed_questions' => 1,
+            'failed_questions' => 0,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+            'completed_at' => now(),
+        ]);
+
+        $diagnosisQuestion = BrandDiagnosisQuestion::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'run_id' => (int) $diagnosisRun->id,
+            'question' => 'How should a GEO service provider be selected?',
+            'question_type' => 'choice',
+            'sort_order' => 1,
+            'status' => 'completed',
+        ]);
+
+        foreach (['doubao', 'deepseek', 'tencent_yuanbao'] as $platform) {
+            BrandDiagnosisResult::query()->create([
+                'site_id' => (int) $site->id,
+                'owner_admin_id' => (int) $admin->id,
+                'run_id' => (int) $diagnosisRun->id,
+                'question_id' => (int) $diagnosisQuestion->id,
+                'platform' => $platform,
+                'answer' => 'Search result mentions Search Report Brand.',
+                'brand_mentioned' => true,
+                'mention_count' => 1,
+                'mention_rank' => 1,
+                'sentiment' => 'positive',
+                'status' => 'success',
+                'checked_at' => now(),
+            ]);
+        }
+
+        $report = app(MonitoringReportDataService::class)->enterpriseReport($admin, $site);
+
+        $this->assertCount(11, $report['platform_filters']);
+        $this->assertSame([
+            'key' => 'all',
+            'platform_key' => 'all',
+            'name' => '全部',
+            'terminal' => '全部',
+            'total' => 3,
+        ], $report['platform_filters'][0]);
+
+        $totals = collect($report['platform_filters'])->mapWithKeys(
+            fn (array $filter): array => [$filter['platform_key'].'|'.$filter['terminal'] => $filter['total']]
+        );
+
+        $this->assertSame(1, $totals['doubao|PC']);
+        $this->assertSame(1, $totals['deepseek|PC']);
+        $this->assertSame(1, $totals['yuanbao|PC']);
+        $this->assertSame(0, $totals['doubao|移动']);
+        $this->assertSame(0, $totals['qianwen|PC']);
+        $this->assertSame(0, $totals['qianwen|移动']);
+        $this->assertSame(0, $totals['yuanbao|移动']);
+        $this->assertSame(0, $totals['wenxin|PC']);
+        $this->assertSame(0, $totals['wenxin|移动']);
+    }
+
+    public function test_enterprise_search_report_uses_result_created_time_and_dash_when_target_brand_is_not_mentioned(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('monitoring_search_no_brand_target', 'site_user', 'search no brand site');
+
+        app(CurrentSite::class)->set($site);
+        $createdAt = now()->subDays(10)->setTime(8, 30, 15);
+
+        $diagnosisRun = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => 'Search Report Brand',
+            'platforms' => ['deepseek'],
+            'status' => 'completed',
+            'total_questions' => 1,
+            'completed_questions' => 1,
+            'failed_questions' => 0,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+            'completed_at' => now()->subDays(10),
+        ]);
+
+        $diagnosisQuestion = BrandDiagnosisQuestion::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'run_id' => (int) $diagnosisRun->id,
+            'question' => 'Which providers are mentioned?',
+            'question_type' => 'choice',
+            'sort_order' => 1,
+            'status' => 'completed',
+        ]);
+
+        $result = BrandDiagnosisResult::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'run_id' => (int) $diagnosisRun->id,
+            'question_id' => (int) $diagnosisQuestion->id,
+            'platform' => 'deepseek',
+            'answer' => 'Search result does not mention the target brand.',
+            'brand_mentioned' => false,
+            'mention_count' => 0,
+            'mention_rank' => 0,
+            'sentiment' => 'neutral',
+            'status' => 'success',
+            'checked_at' => now(),
+        ]);
+        $result->forceFill(['created_at' => $createdAt])->save();
+
+        $report = app(MonitoringReportDataService::class)->enterpriseReport($admin, $site);
+
+        $this->assertSame('-', $report['search_rows'][0]['target']);
+        $this->assertSame($createdAt->toDateString(), $report['search_rows'][0]['date']);
+        $this->assertSame($createdAt->format('Y-m-d H:i:s'), $report['search_rows'][0]['time']);
     }
 
     public function test_enterprise_report_lists_all_default_platforms_even_when_not_collected(): void
@@ -303,7 +439,7 @@ class MonitoringReportDataServiceTest extends TestCase
 
     /**
      * @param  array{company:string,question:string,keyword:string,competitor:string,platform:string,sourceTitle:string,articleTitle:string}  $data
-     * @return array{question:KeywordQuestionVariant}
+     * @return array{question:KeywordQuestionVariant,article:Article}
      */
     private function seedSearchData(Admin $admin, Site $site, array $data): array
     {
@@ -461,7 +597,7 @@ class MonitoringReportDataServiceTest extends TestCase
             'owner_admin_id' => (int) $admin->id,
             'name' => '作者 '.$site->id,
         ]);
-        Article::query()->create([
+        $article = Article::query()->create([
             'site_id' => (int) $site->id,
             'owner_admin_id' => (int) $admin->id,
             'title' => $data['articleTitle'],
@@ -476,6 +612,6 @@ class MonitoringReportDataServiceTest extends TestCase
             'published_at' => now()->subMinutes(10),
         ]);
 
-        return ['question' => $question];
+        return ['question' => $question, 'article' => $article];
     }
 }

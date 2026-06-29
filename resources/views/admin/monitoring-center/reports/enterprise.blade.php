@@ -1267,14 +1267,65 @@
     tbody tr { color: #d7e9f7; }
     tbody tr:hover { background: rgba(26, 105, 210, .16); }
     .question {
-      display: inline-flex;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
       align-items: center;
-      gap: 6px;
+      column-gap: 8px;
       font-weight: 750;
+      line-height: 1.5;
+    }
+    .question-hot {
+      width: 5px;
+      height: 18px;
+      border-radius: 999px;
+      background: linear-gradient(180deg, #ff9f43, #ff4d6d);
+      box-shadow: 0 0 10px rgba(255, 121, 72, .38);
+    }
+    .question-text {
+      min-width: 0;
+      color: #e4f3ff;
     }
     .copy-icon {
-      color: #5f83a7;
-      font-size: 12px;
+      position: relative;
+      display: inline-grid;
+      place-items: center;
+      width: 26px;
+      height: 26px;
+      border: 1px solid rgba(90, 177, 255, .2);
+      border-radius: 6px;
+      padding: 0;
+      color: #8bcaff;
+      background: rgba(37, 123, 220, .06);
+      opacity: .62;
+      transition: color .18s ease, border-color .18s ease, background .18s ease, opacity .18s ease, box-shadow .18s ease;
+    }
+    tbody tr:hover .copy-icon { opacity: .92; }
+    .copy-icon:hover {
+      color: #e9f8ff;
+      border-color: rgba(87, 186, 255, .62);
+      background: rgba(55, 151, 255, .16);
+      box-shadow: 0 0 0 3px rgba(55, 151, 255, .08);
+    }
+    .copy-icon:focus-visible {
+      outline: 2px solid rgba(96, 196, 255, .9);
+      outline-offset: 2px;
+    }
+    .copy-icon::before,
+    .copy-icon::after {
+      content: "";
+      position: absolute;
+      width: 9px;
+      height: 10px;
+      border: 1.5px solid currentColor;
+      border-radius: 2px;
+    }
+    .copy-icon::before {
+      transform: translate(-2px, -2px);
+      opacity: .55;
+    }
+    .copy-icon::after {
+      transform: translate(2px, 2px);
+      background: rgba(4, 20, 48, .96);
     }
     .platform-cell {
       display: inline-flex;
@@ -1338,10 +1389,22 @@
       width: min(820px, 100%);
       max-height: 88vh;
       overflow: auto;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(81, 174, 255, .68) rgba(6, 25, 56, .82);
       background: rgba(4, 20, 48, .98);
       border-radius: 8px;
       border: 1px solid rgba(48, 178, 255, .42);
       box-shadow: 0 28px 80px rgba(0, 4, 20, .72), 0 0 26px rgba(0, 156, 255, .2);
+    }
+    .voucher::-webkit-scrollbar { width: 8px; }
+    .voucher::-webkit-scrollbar-track {
+      background: rgba(6, 25, 56, .82);
+      border-radius: 999px;
+    }
+    .voucher::-webkit-scrollbar-thumb {
+      background: linear-gradient(180deg, rgba(86, 186, 255, .95), rgba(92, 107, 255, .82));
+      border: 2px solid rgba(6, 25, 56, .82);
+      border-radius: 999px;
     }
     .voucher-head {
       display: flex;
@@ -1872,7 +1935,7 @@
         <div class="ai-content" id="voucherContent"></div>
         <h3>参考资料</h3>
         <div class="refs" id="voucherRefs"></div>
-        <button class="primary-btn" onclick="showToast('已模拟跳转到对应 AI 平台')">继续聊</button>
+        <button class="primary-btn" onclick="continueChat()">继续聊</button>
       </div>
     </div>
   </div>
@@ -1881,6 +1944,7 @@
   <script>
     window.__MONITORING_REPORT__ = {!! json_encode($reportData ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) !!};
     const dynamicReport = window.__MONITORING_REPORT__ || {};
+    let activeSnapshotRow = null;
     const iconStyles = {
       "DeepSeek": "linear-gradient(135deg,#5e7cff,#8368ff)",
       "豆包": "linear-gradient(135deg,#f4b0b9,#7f89ff)",
@@ -2023,17 +2087,20 @@
         state.platform = platformFilters[0]?.[0] || state.platform;
       }
 
-      if (Array.isArray(dynamicReport.search_rows) && dynamicReport.search_rows.length) {
+      if (Array.isArray(dynamicReport.search_rows)) {
         rows = dynamicReport.search_rows.map((row, index) => ({
           id: row.id || index + 1,
           question: row.question || "",
           platform: row.platform || row.platform_key || "",
           terminal: row.terminal || "PC",
           date: row.date || "",
+          time: row.time || row.date || "",
           target: row.target || dynamicReport.context?.company_name || "",
           answer: row.answer || "",
           refs: (row.sources || []).map(source => source.title || source.domain || source.url).filter(Boolean),
           sourceUrls: (row.sources || []).map(source => source.url).filter(Boolean),
+          officialUrl: row.official_url || row.related_articles?.[0]?.url || "",
+          platformUrl: row.platform_url || "",
           relatedArticles: row.related_articles || []
         }));
       }
@@ -2263,13 +2330,44 @@
       return rows.filter(row => {
         const platformKey = `${row.platform}-${row.terminal}`;
         const okPlatform = state.platform === "全部" || state.platform === platformKey;
-        const okQuery = !state.query || row.question.includes(state.query) || row.target.includes(state.query);
+        const question = String(row.question || "");
+        const target = String(row.target || "");
+        const okQuery = !state.query || question.includes(state.query) || target.includes(state.query);
         const start = document.getElementById("startDate").value;
         const end = document.getElementById("endDate").value;
         const okStart = !start || row.date >= start;
         const okEnd = !end || row.date <= end;
         return okPlatform && okQuery && okStart && okEnd;
       });
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "").replace(/[&<>"']/g, char => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        "\"": "&quot;",
+        "'": "&#39;"
+      }[char]));
+    }
+
+    function safeUrl(value) {
+      const url = String(value || "").trim();
+      return /^https?:\/\//i.test(url) || url.startsWith("/") ? url : "";
+    }
+
+    function officialLink(row) {
+      const url = safeUrl(row.officialUrl);
+      return url
+        ? `<a class="link-btn" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">官方链接</a>`
+        : `<button class="link-btn" type="button" onclick="showToast('暂无可跳转的官方文章')">官方链接</button>`;
+    }
+
+    function platformLink(row) {
+      const url = safeUrl(row.platformUrl);
+      return url
+        ? `<a class="link-btn" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">转到平台</a>`
+        : `<button class="link-btn" type="button" onclick="showToast('暂无平台链接')">转到平台</button>`;
     }
 
     function renderTable() {
@@ -2281,14 +2379,20 @@
       document.getElementById("tableBody").innerHTML = slice.map((row, idx) => `
         <tr style="--load-delay:${idx * .035}s">
           <td>${start + idx + 1}</td>
-          <td><span class="question">🔥 ${row.question} <span class="copy-icon">⧉</span></span></td>
+          <td>
+            <span class="question">
+              <span class="question-hot" aria-hidden="true"></span>
+              <span class="question-text">${escapeHtml(row.question)}</span>
+              <button class="copy-icon" type="button" aria-label="复制问题" title="复制问题" onclick="copyQuestion(${row.id})"></button>
+            </span>
+          </td>
           <td><span class="platform-cell">${icon(row.platform)} ${row.platform} (${row.terminal})</span></td>
           <td>${row.date}</td>
           <td>${row.target}</td>
           <td><div class="actions">
-            <button class="link-btn" onclick="showToast('已模拟打开官方链接')">官方链接</button>
+            ${officialLink(row)}
             <button class="link-btn" onclick="openSnapshot(${row.id})">快照凭证</button>
-            <button class="link-btn" onclick="showToast('已模拟转到平台')">转到平台</button>
+            ${platformLink(row)}
           </div></td>
         </tr>
       `).join("") || `<tr><td colspan="6" style="text-align:center;color:#7b879b;padding:34px">暂无数据</td></tr>`;
@@ -2347,18 +2451,54 @@
       startDataLoadingEffects(document.getElementById("report-table"));
     }
 
+    async function copyQuestion(id) {
+      const row = rows.find(item => item.id === id);
+      if (!row) return;
+      const text = row.question || "";
+      try {
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(text);
+        } else {
+          const textarea = document.createElement("textarea");
+          textarea.value = text;
+          textarea.style.position = "fixed";
+          textarea.style.opacity = "0";
+          document.body.appendChild(textarea);
+          textarea.select();
+          document.execCommand("copy");
+          textarea.remove();
+        }
+        showToast("问题已复制");
+      } catch (error) {
+        showToast("复制失败，请手动复制");
+      }
+    }
+
     function openSnapshot(id) {
       const row = rows.find(item => item.id === id);
       if (!row) return;
+      activeSnapshotRow = row;
       document.getElementById("voucherPlatform").innerHTML = `${icon(row.platform)}<span>${row.platform} (${row.terminal})</span>`;
       document.getElementById("voucherTitle").textContent = row.question;
-      document.getElementById("voucherTime").textContent = `${row.date} 09:30:00　内容由 Ai 生成，不能完全保障真实`;
-      document.getElementById("voucherContent").innerHTML = `根据公开信息与搜索结果，<mark>${row.target}</mark> 与“${row.question}”高度相关。页面可展示企业介绍、官网链接、联系电话、产品能力和行业关键词命中情况，用于佐证 AI 搜索曝光与转化路径。`;
-      document.getElementById("voucherRefs").innerHTML = row.refs.map(ref => `<div class="ref-item">${ref}<br><small>https://example.com/${encodeURIComponent(ref)}</small></div>`).join("");
+      document.getElementById("voucherTime").textContent = `${row.time || row.date}　内容由 AI 生成，不能完全保障真实`;
+      document.getElementById("voucherContent").innerHTML = `<mark>${escapeHtml(row.target)}</mark><br>${escapeHtml(row.answer || "暂无 AI 对话详情")}`;
+      document.getElementById("voucherRefs").innerHTML = row.refs.map((ref, index) => {
+        const url = row.sourceUrls[index] || row.relatedArticles[index]?.url || "";
+        return `<div class="ref-item">${escapeHtml(ref)}${url ? `<br><small>${escapeHtml(url)}</small>` : ""}</div>`;
+      }).join("") || `<div class="ref-item">暂无参考资料</div>`;
       document.getElementById("snapshot-modal").classList.add("open");
     }
     function closeSnapshot() {
       document.getElementById("snapshot-modal").classList.remove("open");
+    }
+    function continueChat() {
+      if (!activeSnapshotRow) return;
+      const url = safeUrl(activeSnapshotRow.platformUrl);
+      if (!url) {
+        showToast("暂无平台链接");
+        return;
+      }
+      window.open(url, "_blank", "noopener,noreferrer");
     }
     function showToast(text) {
       const toast = document.getElementById("toast");

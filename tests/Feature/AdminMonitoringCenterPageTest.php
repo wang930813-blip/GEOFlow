@@ -93,6 +93,30 @@ class AdminMonitoringCenterPageTest extends TestCase
         $this->assertStringContainsString('trendAxisLabelsForPeriod(dates, days)', $html);
     }
 
+    public function test_enterprise_report_replaces_static_search_rows_even_when_dynamic_rows_are_empty(): void
+    {
+        $admin = $this->createAdmin('monitoring_empty_search_rows_admin');
+
+        $html = $this->actingAs($admin, 'admin')
+            ->get(route('admin.monitoring-center.index'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('if (Array.isArray(dynamicReport.search_rows))', $html);
+        $this->assertStringNotContainsString('Array.isArray(dynamicReport.search_rows) && dynamicReport.search_rows.length', $html);
+        $this->assertStringContainsString('officialLink(row)', $html);
+        $this->assertStringContainsString('platformLink(row)', $html);
+        $this->assertStringContainsString('copyQuestion(', $html);
+        $this->assertStringContainsString('continueChat()', $html);
+        $this->assertStringContainsString('document.getElementById("startDate").addEventListener("change", applyFilters)', $html);
+        $this->assertStringContainsString('document.getElementById("endDate").addEventListener("change", applyFilters)', $html);
+        $this->assertStringContainsString('const question = String(row.question || "")', $html);
+        $this->assertStringContainsString('const okStart = !start || row.date >= start', $html);
+        $this->assertStringNotContainsString("showToast('已模拟打开官方链接')", $html);
+        $this->assertStringNotContainsString("showToast('已模拟转到平台')", $html);
+        $this->assertStringNotContainsString("showToast('已模拟跳转到对应 AI 平台')", $html);
+    }
+
     public function test_monitoring_center_injects_current_site_report_data_into_industry_page(): void
     {
         [$admin, $site] = $this->createAdminWithSite('monitoring_dynamic_industry_admin');
