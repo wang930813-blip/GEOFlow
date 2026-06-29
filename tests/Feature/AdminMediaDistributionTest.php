@@ -1994,6 +1994,56 @@ class AdminMediaDistributionTest extends TestCase
             ->assertSee('value="'.(int) $package->id.'"', false);
     }
 
+    public function test_media_resources_page_highlights_b2b_package_resource(): void
+    {
+        [$admin] = $this->createAdminWithSite('media_b2b_package_admin', 'admin');
+
+        MediaResource::query()->create([
+            'platform_id' => MediaPlatform::CEYING_MEDIA_2,
+            'source_type' => MediaResource::SOURCE_WEBSITE,
+            'external_resource_id' => '100-package',
+            'title' => '100家特价媒体套餐',
+            'remarks' => '一次投稿覆盖100家媒体，发布链接为 docs 文档链接。',
+            'status' => 'active',
+            'cost_price' => '100.00',
+            'sale_price' => '150.00',
+            'raw_payload' => [
+                'package_size' => 100,
+                'publish_url_type' => 'docs',
+            ],
+        ]);
+
+        $b2bPackage = MediaResource::query()->create([
+            'platform_id' => MediaPlatform::CEYING_MEDIA_1,
+            'source_type' => MediaResource::SOURCE_WEBSITE,
+            'external_resource_id' => '200-b2b-package',
+            'title' => '200家B2B网站套餐',
+            'remarks' => 'B2B网站套餐按现有套餐发布规则投稿。',
+            'status' => 'active',
+            'cost_price' => '120.00',
+            'sale_price' => '180.00',
+            'raw_payload' => [
+                'package_size' => 200,
+                'publish_url_type' => 'docs',
+            ],
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.media-distribution.resources.index'))
+            ->assertOk()
+            ->assertSee('媒体套餐发布')
+            ->assertSee('B2B网站套餐发布')
+            ->assertSee('200家B2B网站套餐')
+            ->assertSee('策影媒体1')
+            ->assertSee('200家媒体')
+            ->assertSee('200家B2B网站套餐媒体名单')
+            ->assertSee('排名不分先后')
+            ->assertSee('康保信息港')
+            ->assertDontSee('http://www.dcek.com.cn/20240731/17495230.html', false)
+            ->assertSee(route('admin.media-distribution.submissions.index', ['media_resource_id' => (int) $b2bPackage->id]), false)
+            ->assertSee('value="'.(int) $b2bPackage->id.'"', false);
+    }
+
     public function test_media_package_submission_uses_media_two_flow_and_stores_docs_url(): void
     {
         $this->withoutMiddleware(ValidateCsrfToken::class);

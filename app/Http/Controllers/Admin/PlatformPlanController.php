@@ -231,6 +231,16 @@ class PlatformPlanController extends Controller
      */
     private function syncEntitlements(PlatformPlan $plan, array $resources): void
     {
+        $plan->entitlements()
+            ->where('resource_key', PlatformPlan::RESOURCE_B2B_WEBSITE_PUBLISHES)
+            ->update([
+                'enabled' => false,
+                'quota_value' => 0,
+                'quota_period' => 'cycle',
+                'unit' => 'times',
+                'meta' => [],
+            ]);
+
         foreach ($resources as $key => $resource) {
             $plan->entitlements()->updateOrCreate(
                 ['resource_key' => $key],

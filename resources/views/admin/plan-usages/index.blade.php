@@ -90,8 +90,19 @@
                                 </div>
                             </div>
 
-                            <div class="rounded-md bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                                <div class="font-medium text-slate-900">积分</div>
+                            <div class="rounded-md border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-indigo-50 px-4 py-3 text-sm text-slate-700 shadow-sm">
+                                <div class="flex items-center gap-2 font-medium text-slate-900">
+                                    <span class="inline-flex h-7 w-7 items-center justify-center rounded-md bg-amber-100 text-amber-700">
+                                        <i data-lucide="sparkles" class="h-4 w-4"></i>
+                                    </span>
+                                    <span>积分权益包</span>
+                                </div>
+                                @if (($creditDescription ?? '') !== '')
+                                    <div class="mt-2 flex max-w-full items-center gap-1 rounded-md border border-amber-200 bg-white/80 px-2.5 py-1 text-xs font-medium leading-5 text-amber-800">
+                                        <i data-lucide="badge-check" class="h-3.5 w-3.5 shrink-0"></i>
+                                        <span class="break-words">{{ $creditDescription }}</span>
+                                    </div>
+                                @endif
                                 @if ($hasUnlimitedCredits)
                                     <div class="mt-1">额度不限</div>
                                 @elseif ($creditAccount)
@@ -105,17 +116,46 @@
                         <div class="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                             @forelse ($row['resources'] as $resource)
                                 @php($isUnlimited = (bool) ($resource['is_unlimited'] ?? false))
+                                @php($isStatOnly = (bool) ($resource['is_stat_only'] ?? false))
                                 @php($barStyle = 'width: '.$resource['percent'].'%'.(! $isUnlimited && (float) $resource['used'] > 0 && (float) $resource['percent'] < 1 ? '; min-width: 6px' : ''))
-                                <div class="rounded-md border p-4 {{ $isUnlimited ? 'border-emerald-100 bg-emerald-50/30' : 'border-slate-200 bg-white' }}" data-resource-key="{{ $resource['key'] }}">
-                                    <div class="flex items-start justify-between gap-3">
-                                        <div class="text-sm font-medium text-gray-900">{{ $resource['label'] }}</div>
-                                        <div class="shrink-0 text-xs {{ $isUnlimited ? 'font-medium text-emerald-700' : 'text-slate-500' }}">剩余 {{ $isUnlimited ? '不限' : $resource['remaining'] }}</div>
+                                @if ($isStatOnly)
+                                    <div class="relative overflow-hidden rounded-md border border-orange-200 bg-gradient-to-br from-orange-50 via-white to-emerald-50 p-4 shadow-sm" data-resource-key="{{ $resource['key'] }}">
+                                        <div class="flex items-start justify-between gap-3">
+                                            <div>
+                                                <div class="text-sm font-semibold text-gray-900">{{ $resource['label'] }}</div>
+                                                @if (($resource['description'] ?? '') !== '')
+                                                    <div class="mt-1 text-xs leading-5 text-orange-700">{{ $resource['description'] }}</div>
+                                                @endif
+                                            </div>
+                                            <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-orange-100 text-orange-700">
+                                                <i data-lucide="{{ $resource['icon'] ?? 'megaphone' }}" class="h-4 w-4"></i>
+                                            </span>
+                                        </div>
+                                        <div class="mt-4 text-3xl font-bold tracking-normal text-slate-950">{{ $resource['used'] }} 条</div>
+                                        <div class="mt-2 text-xs text-slate-500">累计投放成果，随媒体发布自动增长</div>
                                     </div>
-                                    <div class="mt-2 text-sm text-slate-600">已用 {{ $resource['used'] }} / {{ $isUnlimited ? '不限' : $resource['quota'] }}</div>
-                                    <div class="mt-3 h-2 overflow-hidden rounded-full {{ $isUnlimited ? 'bg-emerald-100' : 'bg-slate-100' }}">
-                                        <div class="h-full rounded-full {{ $isUnlimited ? 'bg-emerald-400' : 'bg-indigo-500' }}" style="{{ $barStyle }}"></div>
+                                @else
+                                    <div class="rounded-md border p-4 shadow-sm {{ $isUnlimited ? 'border-emerald-200 bg-gradient-to-br from-emerald-50 via-white to-sky-50' : 'border-slate-200 bg-gradient-to-br from-white via-white to-slate-50' }}" data-resource-key="{{ $resource['key'] }}">
+                                        <div class="flex items-start justify-between gap-3">
+                                            <div>
+                                                <div class="text-sm font-semibold text-gray-900">{{ $resource['label'] }}</div>
+                                                @if (($resource['description'] ?? '') !== '')
+                                                    <div class="mt-1 text-xs leading-5 text-slate-500">{{ $resource['description'] }}</div>
+                                                @endif
+                                            </div>
+                                            <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md {{ $isUnlimited ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600' }}">
+                                                <i data-lucide="activity" class="h-4 w-4"></i>
+                                            </span>
+                                        </div>
+                                        <div class="mt-4 flex items-end justify-between gap-3">
+                                            <div class="text-sm font-medium text-slate-700">已用 {{ $resource['used'] }} / {{ $isUnlimited ? '不限' : $resource['quota'] }}</div>
+                                            <div class="shrink-0 text-xs {{ $isUnlimited ? 'font-medium text-emerald-700' : 'text-slate-500' }}">剩余 {{ $isUnlimited ? '不限' : $resource['remaining'] }}</div>
+                                        </div>
+                                        <div class="mt-3 h-2 overflow-hidden rounded-full {{ $isUnlimited ? 'bg-emerald-100' : 'bg-slate-100' }}">
+                                            <div class="h-full rounded-full {{ $isUnlimited ? 'bg-emerald-400' : 'bg-indigo-500' }}" style="{{ $barStyle }}"></div>
+                                        </div>
                                     </div>
-                                </div>
+                                @endif
                             @empty
                                 <div class="rounded-md border border-dashed border-slate-200 px-4 py-6 text-center text-sm text-slate-500 md:col-span-2 xl:col-span-3">暂无启用资源</div>
                             @endforelse

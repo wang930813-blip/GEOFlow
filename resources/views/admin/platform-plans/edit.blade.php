@@ -72,6 +72,9 @@
                                 <input type="checkbox" name="resources[{{ $key }}][enabled]" value="1" @checked((bool) $enabled) class="h-4 w-4 rounded border-slate-300 text-indigo-600">
                                 <span>{{ $resource['label'] }}</span>
                             </label>
+                            @if (($resource['description'] ?? '') !== '')
+                                <p class="mt-1 text-xs leading-5 text-slate-500">{{ $resource['description'] }}</p>
+                            @endif
                             <input name="resources[{{ $key }}][quota_value]" type="number" min="0" value="{{ $quotaValue }}" class="mt-3 block h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" placeholder="数量">
                             @error("resources.$key.quota_value")
                                 <p class="mt-2 text-xs text-red-600">{{ $message }}</p>

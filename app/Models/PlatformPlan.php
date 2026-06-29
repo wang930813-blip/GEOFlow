@@ -23,14 +23,19 @@ class PlatformPlan extends Model
     public const RESOURCE_API_TOKENS = 'api_tokens';
     public const RESOURCE_VIDEO_GENERATIONS = 'video_generations';
     public const RESOURCE_CREBEE_PUBLISHES = 'crebee_publishes';
+    public const RESOURCE_B2B_WEBSITE_PUBLISHES = 'b2b_website_publishes';
 
     /**
-     * @return array<string,array{label:string,unit:string}>
+     * @return array<string,array{label:string,unit:string,description?:string}>
      */
     public static function resourceCatalog(): array
     {
         return [
-            self::RESOURCE_CREDITS => ['label' => '积分', 'unit' => 'points'],
+            self::RESOURCE_CREDITS => [
+                'label' => '积分',
+                'unit' => 'points',
+                'description' => '8000条官媒投放,600条b2b行业网站投放',
+            ],
             self::RESOURCE_ARTICLE_GENERATIONS => ['label' => 'AI 文章生成次数', 'unit' => 'times'],
             self::RESOURCE_BRAND_DIAGNOSES => ['label' => '品牌诊断次数', 'unit' => 'times'],
             self::RESOURCE_AI_TITLE_GENERATIONS => ['label' => 'AI 爆款标题生成次数', 'unit' => 'times'],
@@ -42,16 +47,18 @@ class PlatformPlan extends Model
             self::RESOURCE_API_TOKENS => ['label' => 'API Token 数量', 'unit' => 'tokens'],
             self::RESOURCE_VIDEO_GENERATIONS => ['label' => '生成视频次数', 'unit' => 'times'],
             self::RESOURCE_CREBEE_PUBLISHES => ['label' => '自媒体发布次数', 'unit' => 'times'],
+            self::RESOURCE_B2B_WEBSITE_PUBLISHES => ['label' => 'B2B网站发布次数', 'unit' => 'times'],
         ];
     }
 
     /**
-     * @return array<string,array{label:string,unit:string}>
+     * @return array<string,array{label:string,unit:string,description?:string}>
      */
     public static function visibleResourceCatalog(): array
     {
         return array_diff_key(self::resourceCatalog(), [
             self::RESOURCE_API_TOKENS => true,
+            self::RESOURCE_B2B_WEBSITE_PUBLISHES => true,
         ]);
     }
 

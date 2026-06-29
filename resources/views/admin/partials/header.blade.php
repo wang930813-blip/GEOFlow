@@ -327,7 +327,9 @@
                 <div class="flex w-full min-w-0 items-center gap-1 lg:gap-2 overflow-visible py-2 -my-2">
                     @foreach ($primaryMenu as $item)
                         @if (($item['type'] ?? 'link') === 'group')
-                            @php($isGroupActive = $groupIsActive($item))
+                            @php
+                                $isGroupActive = $groupIsActive($item);
+                            @endphp
                             <div class="admin-nav-group relative" data-admin-nav-group>
                                 <button type="button" class="admin-nav-link @if($isGroupActive) is-active font-medium @endif inline-flex shrink-0 items-center gap-1 whitespace-nowrap px-2 lg:px-3 py-2 text-sm transition-colors duration-200" aria-haspopup="true">
                                     <span>{{ $item['name'] }}</span>
@@ -455,8 +457,12 @@
                                         onchange="this.form.submit()"
                                     >
                                         @foreach ($availableSites as $site)
-                                            <option value="{{ $site->id }}" @selected((int) $currentSite->id === (int) $site->id)>
-                                                {{ $site->name }}
+                                            @php
+                                                $siteOwnerName = trim((string) ($site->owner?->username ?? $site->owner?->display_name ?? ''));
+                                                $siteOptionLabel = $siteOwnerName !== '' ? $siteOwnerName.' - '.$site->name : $site->name;
+                                            @endphp
+                                            <option value="{{ $site->id }}" title="{{ $siteOptionLabel }}" @selected((int) $currentSite->id === (int) $site->id)>
+                                                {{ $siteOptionLabel }}
                                             </option>
                                         @endforeach
                                     </select>

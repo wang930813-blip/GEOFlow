@@ -78,8 +78,7 @@ class ResourceController extends Controller
             'activeMenu' => 'media_distribution',
             'adminSiteName' => AdminWeb::siteName(),
             'resources' => $query->paginate(20)->withQueryString(),
-            'packageResource' => $this->packageResource(),
-            'packageMediaNames' => $this->packageMediaNames(),
+            'packageCards' => $this->packageCards(),
             'sites' => (bool) auth('admin')->user()?->isSuperAdmin()
                 ? Site::query()->orderBy('id')->get(['id', 'name'])
                 : collect(),
@@ -270,34 +269,139 @@ class ResourceController extends Controller
         return $sql;
     }
 
-    private function packageResource(): ?MediaResource
+    /**
+     * @return list<array{
+     *     key:string,
+     *     heading:string,
+     *     resource:MediaResource,
+     *     size:int,
+     *     published_url_type:string,
+     *     media_entries:list<array{name:string,url:string}>
+     * }>
+     */
+    private function packageCards(): array
     {
-        $packageTitle = trim((string) config('media_distribution.package.title', '100家特价媒体套餐'));
-        if ($packageTitle === '') {
-            return null;
+        $cards = [];
+        foreach ($this->packageConfigs() as $key => $packageConfig) {
+            $packageTitle = trim((string) ($packageConfig['title'] ?? ''));
+            if ($packageTitle === '') {
+                continue;
+            }
+
+            $resource = MediaResource::query()
+                ->where('platform_id', (int) ($packageConfig['platform_id'] ?? MediaPlatform::CEYING_MEDIA_1))
+                ->where('title', $packageTitle)
+                ->where('status', 'active')
+                ->orderByDesc('id')
+                ->first();
+
+            if (! $resource) {
+                continue;
+            }
+
+            $cards[] = [
+                'key' => $key,
+                'heading' => trim((string) ($packageConfig['heading'] ?? '媒体套餐发布')) ?: '媒体套餐发布',
+                'resource' => $resource,
+                'size' => $this->packageSize($resource, $packageConfig),
+                'published_url_type' => $this->packagePublishedUrlType($resource, $packageConfig),
+                'media_entries' => $this->packageMediaEntries($packageConfig),
+            ];
         }
 
-        return MediaResource::query()
-            ->where('platform_id', (int) config('media_distribution.package.platform_id', MediaPlatform::CEYING_MEDIA_2))
-            ->where('title', $packageTitle)
-            ->where('status', 'active')
-            ->orderByDesc('id')
-            ->first();
+        return $cards;
     }
 
     /**
-     * @return list<string>
+     * @param  array<string,mixed>  $packageConfig
      */
-    private function packageMediaNames(): array
+    private function packageSize(MediaResource $resource, array $packageConfig): int
     {
-        $names = config('media_distribution.package.media_names', []);
-        if (! is_array($names)) {
-            return [];
+        $payloadSize = (int) $resource->apiField(['package_size', 'media_count', 'resource_count'], '0');
+
+        return $payloadSize > 0 ? $payloadSize : (int) ($packageConfig['size'] ?? 100);
+    }
+
+    /**
+     * @param  array<string,mixed>  $packageConfig
+     */
+    private function packagePublishedUrlType(MediaResource $resource, array $packageConfig): string
+    {
+        $payloadType = trim($resource->apiField(['publish_url_type', 'published_url_type', 'result_url_type'], ''));
+
+        return $payloadType !== '' ? $payloadType : (string) ($packageConfig['published_url_type'] ?? 'docs 文档链接');
+    }
+
+    /**
+     * @return array<string,array<string,mixed>>
+     */
+    private function packageConfigs(): array
+    {
+        $configs = [
+            'default' => (array) config('media_distribution.package', []),
+            'b2b' => (array) config('media_distribution.b2b_package', []),
+        ];
+
+        return array_filter($configs, static fn (array $config): bool => trim((string) ($config['title'] ?? '')) !== '');
+    }
+
+    /**
+     * @param  array<string,mixed>  $packageConfig
+     * @return list<array{name:string,url:string}>
+     */
+    private function packageMediaEntries(array $packageConfig): array
+    {
+        $entries = [];
+
+        $configuredEntries = $packageConfig['media_entries'] ?? [];
+        if (is_array($configuredEntries)) {
+            foreach ($configuredEntries as $entry) {
+                if (! is_array($entry)) {
+                    continue;
+                }
+
+                $name = trim((string) ($entry['name'] ?? ''));
+                if ($name === '') {
+                    continue;
+                }
+
+                $entries[] = [
+                    'name' => $name,
+                    'url' => trim((string) ($entry['url'] ?? '')),
+                ];
+            }
         }
 
-        return array_values(array_filter(array_map(
-            static fn ($name): string => trim((string) $name),
-            $names
-        )));
+        $names = $packageConfig['media_names'] ?? [];
+        if (is_array($names)) {
+            foreach ($names as $name) {
+                $name = trim((string) $name);
+                if ($name !== '') {
+                    $entries[] = ['name' => $name, 'url' => ''];
+                }
+            }
+        }
+
+        $mediaList = trim((string) ($packageConfig['media_list'] ?? ''));
+        if ($mediaList !== '') {
+            foreach (preg_split('/\R/u', $mediaList) ?: [] as $line) {
+                $line = trim((string) $line);
+                if ($line === '') {
+                    continue;
+                }
+
+                if (preg_match('/^(.*?)\s+(https?:\/\/\S+)$/u', $line, $matches) === 1) {
+                    $entries[] = [
+                        'name' => trim((string) $matches[1]),
+                        'url' => trim((string) $matches[2]),
+                    ];
+                    continue;
+                }
+
+                $entries[] = ['name' => $line, 'url' => ''];
+            }
+        }
+
+        return $entries;
     }
 }

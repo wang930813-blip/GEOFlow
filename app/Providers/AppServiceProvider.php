@@ -62,16 +62,18 @@ class AppServiceProvider extends ServiceProvider
 
     private function availableSitesForAdmin(Admin $admin)
     {
-        $columns = ['sites.id', 'sites.name', 'sites.status'];
+        $columns = ['sites.id', 'sites.name', 'sites.status', 'sites.owner_admin_id'];
 
         return $admin->isSuperAdmin()
             ? Site::query()
                 ->select($columns)
+                ->with('owner:id,username,display_name')
                 ->where('status', 'active')
                 ->orderBy('id')
                 ->get()
             : $admin->sites()
                 ->select($columns)
+                ->with('owner:id,username,display_name')
                 ->where('sites.status', 'active')
                 ->orderBy('sites.id')
                 ->get();

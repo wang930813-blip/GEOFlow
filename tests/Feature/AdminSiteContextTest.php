@@ -125,6 +125,51 @@ class AdminSiteContextTest extends TestCase
         $this->assertSame($site->id, app(CurrentSite::class)->id());
     }
 
+    public function test_site_switcher_combines_owner_username_and_site_name(): void
+    {
+        $superAdmin = Admin::query()->create([
+            'username' => 'site_switcher_root',
+            'password' => 'secret-123',
+            'email' => 'site-switcher-root@example.com',
+            'display_name' => 'Site Switcher Root',
+            'role' => 'super_admin',
+            'status' => 'active',
+        ]);
+        $firstOwner = Admin::query()->create([
+            'username' => 'alpha_user',
+            'password' => 'secret-123',
+            'email' => 'alpha-user@example.com',
+            'display_name' => 'Alpha User',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $secondOwner = Admin::query()->create([
+            'username' => 'beta_user',
+            'password' => 'secret-123',
+            'email' => 'beta-user@example.com',
+            'display_name' => 'Beta User',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        Site::query()->create([
+            'owner_admin_id' => $firstOwner->id,
+            'name' => '默认站点',
+            'status' => 'active',
+        ]);
+        Site::query()->create([
+            'owner_admin_id' => $secondOwner->id,
+            'name' => '默认站点',
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.dashboard'))
+            ->assertOk()
+            ->assertSee('alpha_user - 默认站点')
+            ->assertSee('beta_user - 默认站点');
+    }
+
     public function test_site_admin_can_create_only_current_site_api_tokens(): void
     {
         $admin = Admin::query()->create([

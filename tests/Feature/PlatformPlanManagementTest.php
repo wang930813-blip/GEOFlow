@@ -6,17 +6,25 @@ use App\Models\Admin;
 use App\Models\AdminCreditAccount;
 use App\Models\AdminPlanSubscription;
 use App\Models\AdminResourceUsage;
+use App\Models\Article;
+use App\Models\Category;
+use App\Models\Author;
+use App\Models\MediaResource;
+use App\Models\MediaSubmission;
 use App\Models\PlatformPlan;
 use App\Models\Site;
 use App\Models\SitePlanSubscription;
 use App\Services\Billing\AdminPlanSubscriptionService;
 use App\Services\Billing\AdminResourceQuotaService;
+use App\Support\MediaDistribution\MediaPlatform;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class PlatformPlanManagementTest extends TestCase
 {
     use RefreshDatabase;
+
+    private const CREDIT_DESCRIPTION = '8000条官媒投放,600条b2b行业网站投放';
 
     public function test_super_admin_can_view_platform_plan_detail_and_edit_page(): void
     {
@@ -35,6 +43,8 @@ class PlatformPlanManagementTest extends TestCase
             ->assertSee('8')
             ->assertSee('生成视频次数')
             ->assertSee('自媒体发布次数')
+            ->assertSee(self::CREDIT_DESCRIPTION)
+            ->assertDontSee('B2B网站发布次数')
             ->assertDontSee('API Token 数量')
             ->assertDontSee('CreBee 发布次数');
 
@@ -45,6 +55,8 @@ class PlatformPlanManagementTest extends TestCase
             ->assertSee('详情测试规格')
             ->assertSee('生成视频次数')
             ->assertSee('自媒体发布次数')
+            ->assertSee(self::CREDIT_DESCRIPTION)
+            ->assertDontSee('B2B网站发布次数')
             ->assertDontSee('API Token 数量')
             ->assertDontSee('CreBee 发布次数');
     }
@@ -58,6 +70,8 @@ class PlatformPlanManagementTest extends TestCase
             ->assertOk()
             ->assertSee('生成视频次数')
             ->assertSee('自媒体发布次数')
+            ->assertSee(self::CREDIT_DESCRIPTION)
+            ->assertDontSee('B2B网站发布次数')
             ->assertDontSee('API Token 数量')
             ->assertDontSee('CreBee 发布次数');
     }
@@ -170,6 +184,10 @@ class PlatformPlanManagementTest extends TestCase
             'plan_id' => (int) $plan->id,
             'resource_key' => PlatformPlan::RESOURCE_CREBEE_PUBLISHES,
             'quota_value' => 5,
+        ]);
+        $this->assertDatabaseMissing('platform_plan_entitlements', [
+            'plan_id' => (int) $plan->id,
+            'resource_key' => PlatformPlan::RESOURCE_B2B_WEBSITE_PUBLISHES,
         ]);
     }
 
@@ -497,6 +515,10 @@ class PlatformPlanManagementTest extends TestCase
         $subscriptionService = app(AdminPlanSubscriptionService::class);
         $subscriptionService->openAgentOwner($agent, $plan, $superAdmin, now()->subMinute(), now()->addDays(30));
         $subscriptionService->inheritForAgentUserFromAccount($agent, $activeUser, $activeSite, $superAdmin);
+        $activeSubscription = AdminPlanSubscription::query()
+            ->where('admin_id', (int) $activeUser->id)
+            ->where('site_id', (int) $activeSite->id)
+            ->firstOrFail();
 
         AdminPlanSubscription::query()->create([
             'admin_id' => (int) $deletedUser->id,
@@ -527,6 +549,17 @@ class PlatformPlanManagementTest extends TestCase
         app(AdminResourceQuotaService::class)->consume((int) $activeUser->id, (int) $activeSite->id, PlatformPlan::RESOURCE_ARTICLE_GENERATIONS, 2, [
             'idempotency_key' => 'profile-usage-article-unlimited',
         ]);
+        $officialResource = $this->officialPackageResource();
+        $this->mediaSubmission($activeUser, $activeSite, $officialResource, 'published');
+        $this->mediaSubmission($activeUser, $activeSite, $officialResource, 'submitted');
+        $this->mediaSubmission($activeUser, $activeSite, $officialResource, 'failed');
+        $normalOfficialResource = $this->normalOfficialResource();
+        $this->mediaSubmission($activeUser, $activeSite, $normalOfficialResource, 'published');
+        $this->mediaSubmission($activeUser, $activeSite, $normalOfficialResource, 'cancelled');
+        $b2bResource = $this->b2bPackageResource();
+        $this->mediaSubmission($activeUser, $activeSite, $b2bResource, 'published');
+        $this->mediaSubmission($activeUser, $activeSite, $b2bResource, 'publishing');
+        $this->mediaSubmission($activeUser, $activeSite, $b2bResource, 'cancelled');
         AdminCreditAccount::query()->updateOrCreate([
             'admin_id' => (int) $activeUser->id,
             'site_id' => (int) $activeSite->id,
@@ -550,6 +583,13 @@ class PlatformPlanManagementTest extends TestCase
             ->assertSee('已用 6.00 / 1600')
             ->assertSee('已用 3 / 10')
             ->assertSee('已用 2 / 不限')
+            ->assertSee('官媒累计投放')
+            ->assertSee('201 条')
+            ->assertSee('官媒套餐按 100 条计入，单篇官媒按 1 条计入')
+            ->assertSee('B2B行业网站累计投放')
+            ->assertSee('400 条')
+            ->assertSee('发布 1 次 B2B 网站套餐计入 200 条行业网站投放')
+            ->assertSee(self::CREDIT_DESCRIPTION)
             ->assertDontSee(PlatformPlan::resourceCatalog()[PlatformPlan::RESOURCE_TEAM_MEMBERS]['label'])
             ->assertDontSee('Profile Deleted User Plan')
             ->assertDontSee('Profile Deleted Site Plan');
@@ -558,6 +598,17 @@ class PlatformPlanManagementTest extends TestCase
         $this->assertStringContainsString('style="width: 0%; min-width: 6px"', $html);
         $this->assertStringContainsString('style="width: 30%"', $html);
         $this->assertStringContainsString('data-resource-key="'.PlatformPlan::RESOURCE_ARTICLE_GENERATIONS.'"', $html);
+        $this->assertStringContainsString('data-resource-key="official_media_publishes"', $html);
+        $this->assertStringContainsString('data-resource-key="'.PlatformPlan::RESOURCE_B2B_WEBSITE_PUBLISHES.'"', $html);
+        $this->assertLessThan(
+            strpos($html, 'data-resource-key="'.PlatformPlan::RESOURCE_CREDITS.'"'),
+            strpos($html, 'data-resource-key="official_media_publishes"')
+        );
+        $this->assertLessThan(
+            strpos($html, 'data-resource-key="'.PlatformPlan::RESOURCE_CREDITS.'"'),
+            strpos($html, 'data-resource-key="'.PlatformPlan::RESOURCE_B2B_WEBSITE_PUBLISHES.'"')
+        );
+        $this->assertStringNotContainsString('已用 400 /', $html);
 
         $usageResponse = $this->actingAs($agent, 'admin')
             ->get(route('admin.plan-usages.index'));
@@ -569,6 +620,13 @@ class PlatformPlanManagementTest extends TestCase
             ->assertSee('已用 6.00 / 1600')
             ->assertSee('已用 3 / 10')
             ->assertSee('已用 2 / 不限')
+            ->assertSee('官媒累计投放')
+            ->assertSee('201 条')
+            ->assertSee('官媒套餐按 100 条计入，单篇官媒按 1 条计入')
+            ->assertSee('B2B行业网站累计投放')
+            ->assertSee('400 条')
+            ->assertSee('发布 1 次 B2B 网站套餐计入 200 条行业网站投放')
+            ->assertSee(self::CREDIT_DESCRIPTION)
             ->assertDontSee(PlatformPlan::resourceCatalog()[PlatformPlan::RESOURCE_TEAM_MEMBERS]['label'])
             ->assertDontSee('Profile Deleted User Plan')
             ->assertDontSee('Profile Deleted Site Plan');
@@ -577,6 +635,17 @@ class PlatformPlanManagementTest extends TestCase
         $this->assertStringContainsString('style="width: 0%; min-width: 6px"', $usageHtml);
         $this->assertStringContainsString('style="width: 30%"', $usageHtml);
         $this->assertStringContainsString('data-resource-key="'.PlatformPlan::RESOURCE_ARTICLE_GENERATIONS.'"', $usageHtml);
+        $this->assertStringContainsString('data-resource-key="official_media_publishes"', $usageHtml);
+        $this->assertStringContainsString('data-resource-key="'.PlatformPlan::RESOURCE_B2B_WEBSITE_PUBLISHES.'"', $usageHtml);
+        $this->assertLessThan(
+            strpos($usageHtml, 'data-resource-key="'.PlatformPlan::RESOURCE_CREDITS.'"'),
+            strpos($usageHtml, 'data-resource-key="official_media_publishes"')
+        );
+        $this->assertLessThan(
+            strpos($usageHtml, 'data-resource-key="'.PlatformPlan::RESOURCE_CREDITS.'"'),
+            strpos($usageHtml, 'data-resource-key="'.PlatformPlan::RESOURCE_B2B_WEBSITE_PUBLISHES.'"')
+        );
+        $this->assertStringNotContainsString('已用 400 /', $usageHtml);
     }
 
     public function test_plan_usage_hides_team_member_resource_for_direct_owner_and_agent_user_rows(): void
@@ -611,9 +680,9 @@ class PlatformPlanManagementTest extends TestCase
         $response = $this->actingAs($superAdmin, 'admin')->get(route('admin.plan-usages.index'));
 
         $response->assertOk();
-        $html = $response->getContent();
-        $agentRow = $this->rowSection($html, 'usage_team_owner', 'usage_team_member');
-        $agentUserRow = $this->rowSection($html, 'usage_team_member', 'usage_team_direct');
+        $html = $this->usageListSection($response->getContent());
+        $agentRow = $this->rowSection($html, 'usage_team_owner', 'data-plan-usage-row');
+        $agentUserRow = $this->rowSection($html, 'usage_team_member', 'data-plan-usage-row');
         $directRow = $this->rowSection($html, 'usage_team_direct');
 
         $this->assertStringContainsString(PlatformPlan::RESOURCE_TEAM_MEMBERS, $agentRow);
@@ -687,6 +756,130 @@ class PlatformPlanManagementTest extends TestCase
         return $site;
     }
 
+    private function b2bPackageResource(): MediaResource
+    {
+        return MediaResource::query()->create([
+            'platform_id' => (int) config('media_distribution.b2b_package.platform_id', MediaPlatform::CEYING_MEDIA_1),
+            'source_type' => MediaResource::SOURCE_WEBSITE,
+            'external_resource_id' => 'b2b-package-test',
+            'title' => (string) config('media_distribution.b2b_package.title', '200家B2B网站套餐'),
+            'category' => 'B2B网站套餐',
+            'remarks' => 'B2B网站套餐',
+            'case_link' => '',
+            'status' => 'active',
+            'cost_price' => '0.00',
+            'sale_price' => '0.00',
+            'raw_payload' => [
+                'package_size' => (int) config('media_distribution.b2b_package.size', 200),
+            ],
+            'last_synced_at' => now(),
+        ]);
+    }
+
+    private function officialPackageResource(): MediaResource
+    {
+        return MediaResource::query()->create([
+            'platform_id' => (int) config('media_distribution.package.platform_id', MediaPlatform::CEYING_MEDIA_2),
+            'source_type' => MediaResource::SOURCE_WEBSITE,
+            'external_resource_id' => 'official-package-test',
+            'title' => (string) config('media_distribution.package.title', '100家特价媒体套餐'),
+            'category' => '官媒套餐',
+            'remarks' => '官媒套餐',
+            'case_link' => '',
+            'status' => 'active',
+            'cost_price' => '0.00',
+            'sale_price' => '0.00',
+            'raw_payload' => [
+                'package_size' => (int) config('media_distribution.package.size', 100),
+            ],
+            'last_synced_at' => now(),
+        ]);
+    }
+
+    private function normalOfficialResource(): MediaResource
+    {
+        return MediaResource::query()->create([
+            'platform_id' => MediaPlatform::CEYING_MEDIA_1,
+            'source_type' => MediaResource::SOURCE_WEBSITE,
+            'external_resource_id' => 'normal-official-test',
+            'title' => '普通官媒资源',
+            'category' => '官媒',
+            'remarks' => '普通官媒',
+            'case_link' => '',
+            'status' => 'active',
+            'cost_price' => '0.00',
+            'sale_price' => '0.00',
+            'raw_payload' => [],
+            'last_synced_at' => now(),
+        ]);
+    }
+
+    private function mediaSubmission(Admin $admin, Site $site, MediaResource $resource, string $status): MediaSubmission
+    {
+        $article = $this->article($admin, $site, 'B2B Test Article '.str()->random(8));
+
+        return MediaSubmission::withoutGlobalScope('current_site')->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'article_id' => (int) $article->id,
+            'media_resource_id' => (int) $resource->id,
+            'platform_id' => (int) $resource->platform_id,
+            'source_type' => (string) $resource->source_type,
+            'external_order_nid' => 'b2b-order-'.str()->random(8),
+            'agent_order_sn' => 'b2b-agent-'.str()->random(8),
+            'preview_token' => str()->random(48),
+            'title_snapshot' => (string) $article->title,
+            'content_snapshot' => (string) $article->content,
+            'cost_price_snapshot' => '0.00',
+            'sale_price_snapshot' => '0.00',
+            'points_amount' => '0.00',
+            'status' => $status,
+            'submitted_by_admin_id' => (int) $admin->id,
+            'submitted_at' => now(),
+        ]);
+    }
+
+    private function article(Admin $admin, Site $site, string $title): Article
+    {
+        $category = Category::query()->firstOrCreate([
+            'site_id' => (int) $site->id,
+            'slug' => 'test-category',
+        ], [
+            'name' => '测试分类',
+            'description' => '',
+            'sort_order' => 0,
+        ]);
+        $author = Author::query()->firstOrCreate([
+            'site_id' => (int) $site->id,
+            'email' => 'author-'.$site->id.'@example.com',
+        ], [
+            'name' => '测试作者',
+            'bio' => '',
+            'avatar' => '',
+            'status' => 'active',
+        ]);
+
+        return Article::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'title' => $title,
+            'slug' => str()->slug($title).'-'.str()->random(8),
+            'excerpt' => '',
+            'cover_image' => '',
+            'content' => 'B2B test content',
+            'category_id' => (int) $category->id,
+            'author_id' => (int) $author->id,
+            'original_keyword' => '',
+            'keywords' => '',
+            'meta_description' => '',
+            'status' => 'published',
+            'review_status' => 'auto_approved',
+            'view_count' => 0,
+            'is_ai_generated' => 0,
+            'published_at' => now(),
+        ]);
+    }
+
     /**
      * @param  array<string,int>  $resources
      */
@@ -731,5 +924,13 @@ class PlatformPlanManagementTest extends TestCase
         $this->assertNotFalse($end, 'Expected next row marker missing: '.$endNeedle);
 
         return substr($html, (int) $start, (int) $end - (int) $start);
+    }
+
+    private function usageListSection(string $html): string
+    {
+        $start = strpos($html, 'data-plan-usage-row');
+        $this->assertNotFalse($start, 'Expected first plan usage row marker missing.');
+
+        return substr($html, (int) $start);
     }
 }

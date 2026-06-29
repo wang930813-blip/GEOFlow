@@ -102,68 +102,77 @@
             @endif
         @endif
 
-        @if ($packageResource)
-            <section class="rounded-lg border border-orange-200 bg-orange-50/70 p-5 shadow-sm">
-                <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                    <div class="min-w-0">
-                        <div class="flex flex-wrap items-center gap-2">
-                            <h2 class="text-base font-semibold text-slate-950">媒体套餐发布</h2>
-                            <span class="inline-flex rounded-full bg-white px-2.5 py-1 text-xs font-medium text-orange-700 ring-1 ring-orange-200">
-                                {{ $packageResource->platformLabel() }}
-                            </span>
-                            <span class="inline-flex rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200">
-                                {{ $packageResource->packageSize() }}家媒体
-                            </span>
-                        </div>
-                        <div class="mt-2 text-sm font-medium text-slate-900">{{ $packageResource->title }}</div>
-                        <p class="mt-1 max-w-3xl text-sm text-slate-600">
-                            套餐媒体按普通媒体投稿流程提交，发布成功后的媒体发布链接为{{ $packageResource->packagePublishedUrlType() }}。
-                            @if($packageResource->remarks)
-                                {{ $packageResource->remarks }}
-                            @endif
-                        </p>
-                        @if (! empty($packageMediaNames))
-                            <button type="button" class="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-orange-700 hover:text-orange-800" data-open-media-package-modal="media-package-list-modal">
-                                <i data-lucide="list-checks" class="h-4 w-4"></i>
-                                查看媒体名单
-                            </button>
-                        @endif
-                    </div>
-                    <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
-                        <div class="rounded-md bg-white px-4 py-2 text-sm text-slate-600 ring-1 ring-orange-100">
-                            积分价 <span class="font-semibold text-slate-950">{{ $packageResource->sale_price }}</span>
-                        </div>
-                        <a href="{{ route('admin.media-distribution.submissions.index', ['media_resource_id' => (int) $packageResource->id]) }}" class="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-orange-600 px-4 text-sm font-medium text-white hover:bg-orange-700">
-                            <i data-lucide="send" class="h-4 w-4"></i>
-                            套餐投稿
-                        </a>
-                    </div>
-                </div>
-            </section>
-            @if (! empty($packageMediaNames))
-                <div id="media-package-list-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 px-4 py-6" data-media-package-modal>
-                    <div class="flex max-h-[85vh] w-full max-w-5xl flex-col overflow-hidden rounded-lg bg-white text-left shadow-xl">
-                        <div class="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
-                            <div>
-                                <h2 class="text-lg font-semibold text-gray-900">100家特价媒体套餐媒体名单</h2>
-                                <p class="mt-1 text-sm text-gray-500">以下媒体排名不分先后，发布成功后的媒体发布链接为{{ $packageResource->packagePublishedUrlType() }}。</p>
+        @if (! empty($packageCards))
+            <div class="space-y-3">
+                @foreach ($packageCards as $packageCard)
+                    @php
+                        /** @var \App\Models\MediaResource $packageResource */
+                        $packageResource = $packageCard['resource'];
+                        $packageModalId = 'media-package-list-modal-'.$packageCard['key'];
+                    @endphp
+                    <section class="rounded-lg border border-orange-200 bg-orange-50/70 p-5 shadow-sm">
+                        <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                            <div class="min-w-0">
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <h2 class="text-base font-semibold text-slate-950">{{ $packageCard['heading'] }}</h2>
+                                    <span class="inline-flex rounded-full bg-white px-2.5 py-1 text-xs font-medium text-orange-700 ring-1 ring-orange-200">
+                                        {{ $packageResource->platformLabel() }}
+                                    </span>
+                                    <span class="inline-flex rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200">
+                                        {{ $packageCard['size'] }}家媒体
+                                    </span>
+                                </div>
+                                <div class="mt-2 text-sm font-medium text-slate-900">{{ $packageResource->title }}</div>
+                                <p class="mt-1 max-w-3xl text-sm text-slate-600">
+                                    套餐媒体按普通媒体投稿流程提交，发布成功后的媒体发布链接为{{ $packageCard['published_url_type'] }}。
+                                    @if($packageResource->remarks)
+                                        {{ $packageResource->remarks }}
+                                    @endif
+                                </p>
+                                @if (! empty($packageCard['media_entries']))
+                                    <button type="button" class="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-orange-700 hover:text-orange-800" data-open-media-package-modal="{{ $packageModalId }}">
+                                        <i data-lucide="list-checks" class="h-4 w-4"></i>
+                                        查看媒体名单
+                                    </button>
+                                @endif
                             </div>
-                            <button type="button" class="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600" data-close-media-package-modal>
-                                <i data-lucide="x" class="h-5 w-5"></i>
-                            </button>
+                            <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+                                <div class="rounded-md bg-white px-4 py-2 text-sm text-slate-600 ring-1 ring-orange-100">
+                                    积分价 <span class="font-semibold text-slate-950">{{ $packageResource->sale_price }}</span>
+                                </div>
+                                <a href="{{ route('admin.media-distribution.submissions.index', ['media_resource_id' => (int) $packageResource->id]) }}" class="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-orange-600 px-4 text-sm font-medium text-white hover:bg-orange-700">
+                                    <i data-lucide="send" class="h-4 w-4"></i>
+                                    套餐投稿
+                                </a>
+                            </div>
                         </div>
-                        <div class="overflow-y-auto px-6 py-5">
-                            <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-                                @foreach ($packageMediaNames as $mediaName)
-                                    <div class="truncate rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700" title="{{ $mediaName }}">
-                                        {{ $mediaName }}
+                    </section>
+                    @if (! empty($packageCard['media_entries']))
+                        <div id="{{ $packageModalId }}" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 px-4 py-6" data-media-package-modal>
+                            <div class="flex max-h-[85vh] w-full max-w-5xl flex-col overflow-hidden rounded-lg bg-white text-left shadow-xl">
+                                <div class="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
+                                    <div>
+                                        <h2 class="text-lg font-semibold text-gray-900">{{ $packageResource->title }}媒体名单</h2>
+                                        <p class="mt-1 text-sm text-gray-500">以下媒体排名不分先后，发布成功后的媒体发布链接为{{ $packageCard['published_url_type'] }}。</p>
                                     </div>
-                                @endforeach
+                                    <button type="button" class="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600" data-close-media-package-modal>
+                                        <i data-lucide="x" class="h-5 w-5"></i>
+                                    </button>
+                                </div>
+                                <div class="overflow-y-auto px-6 py-5">
+                                    <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                                        @foreach ($packageCard['media_entries'] as $mediaEntry)
+                                            <div class="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                                                <div class="truncate font-medium text-slate-800" title="{{ $mediaEntry['name'] }}">{{ $mediaEntry['name'] }}</div>
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                </div>
-            @endif
+                    @endif
+                @endforeach
+            </div>
         @endif
 
         <form method="GET" action="{{ route('admin.media-distribution.resources.index') }}" class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">

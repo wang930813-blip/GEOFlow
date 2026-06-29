@@ -26,7 +26,7 @@
                 </div>
                 <div>
                     <h2 class="text-lg font-semibold text-gray-900">新增规格</h2>
-                    <p class="text-sm text-gray-500">媒体发布不单独设置次数，统一按积分余额扣费。</p>
+                    <p class="text-sm text-gray-500">按套餐资源配置积分、媒体发布等权益额度。</p>
                 </div>
             </div>
 
@@ -77,6 +77,9 @@
                                 <input type="checkbox" name="resources[{{ $key }}][enabled]" value="1" @checked((bool) $enabled) class="h-4 w-4 rounded border-slate-300 text-indigo-600">
                                 <span>{{ $resource['label'] }}</span>
                             </label>
+                            @if (($resource['description'] ?? '') !== '')
+                                <p class="mt-1 text-xs leading-5 text-slate-500">{{ $resource['description'] }}</p>
+                            @endif
                             <input name="resources[{{ $key }}][quota_value]" type="number" min="0" value="{{ $quotaValue }}" class="mt-3 block h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" placeholder="数量">
                             @error("resources.$key.quota_value")
                                 <p class="mt-2 text-xs text-red-600">{{ $message }}</p>
@@ -133,8 +136,15 @@
                                 <td class="px-5 py-4 align-top">
                                     <div class="flex max-w-xl flex-wrap gap-2">
                                         @foreach ($plan->entitlements->where('enabled', true) as $entitlement)
-                                            <span class="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-700">
-                                                {{ $resourceCatalog[$entitlement->resource_key]['label'] ?? $entitlement->resource_key }}：{{ (int) $entitlement->quota_value <= 0 ? '不限' : $entitlement->quota_value }}
+                                            @php
+                                                $resource = $resourceCatalog[$entitlement->resource_key] ?? null;
+                                            @endphp
+                                            @continue(! $resource)
+                                            <span class="inline-flex flex-col rounded-md bg-slate-100 px-2.5 py-1 text-xs text-slate-700">
+                                                <span>{{ $resource['label'] }}：{{ (int) $entitlement->quota_value <= 0 ? '不限' : $entitlement->quota_value }}</span>
+                                                @if (($resource['description'] ?? '') !== '')
+                                                    <span class="mt-0.5 text-[11px] leading-4 text-slate-500">{{ $resource['description'] }}</span>
+                                                @endif
                                             </span>
                                         @endforeach
                                     </div>
