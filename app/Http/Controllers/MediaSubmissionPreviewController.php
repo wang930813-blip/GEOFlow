@@ -34,7 +34,7 @@ class MediaSubmissionPreviewController extends Controller
         }
 
         $decoded = $this->decodeHtmlEntities($content);
-        if ($this->looksLikeRenderedHtml($decoded) && ! $this->looksLikeMarkdown($decoded)) {
+        if ($this->looksLikeRenderedHtml($decoded)) {
             return $decoded;
         }
 

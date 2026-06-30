@@ -1227,6 +1227,50 @@ class AdminMediaDistributionTest extends TestCase
             ->assertDontSee('&lt;h2&gt;', false);
     }
 
+    public function test_media_submission_preview_keeps_html_snapshot_with_list_markup(): void
+    {
+        [$submission] = $this->createPreviewSubmissionWithSnapshot(
+            '<p><a href="https://example.com"><img src="https://example.com/image.png" alt="image"></a></p>'
+                .'<h2>Section Heading</h2>'
+                .'<p>Rendered content should remain visible.</p>'
+                .'<ol><li>First rendered item</li><li>Second rendered item</li></ol>',
+            'html-list-preview-token'
+        );
+
+        $response = $this->get(route('media-submission-preview.show', [
+            'submission' => (int) $submission->id,
+            'token' => 'html-list-preview-token',
+        ]));
+
+        $response
+            ->assertOk()
+            ->assertSee('<h2>Section Heading</h2>', false)
+            ->assertSee('<p>Rendered content should remain visible.</p>', false)
+            ->assertSee('<ol><li>First rendered item</li><li>Second rendered item</li></ol>', false)
+            ->assertSee('<img src="https://example.com/image.png" alt="image">', false);
+    }
+
+    public function test_media_submission_preview_keeps_html_snapshot_with_markdown_like_text(): void
+    {
+        [$submission] = $this->createPreviewSubmissionWithSnapshot(
+            '<h2>Section Heading</h2>'
+                .'<p>1. This rendered paragraph should stay visible.</p>'
+                .'<p>This **marker** should not make the HTML snapshot disappear.</p>',
+            'html-markdown-like-preview-token'
+        );
+
+        $response = $this->get(route('media-submission-preview.show', [
+            'submission' => (int) $submission->id,
+            'token' => 'html-markdown-like-preview-token',
+        ]));
+
+        $response
+            ->assertOk()
+            ->assertSee('<h2>Section Heading</h2>', false)
+            ->assertSee('<p>1. This rendered paragraph should stay visible.</p>', false)
+            ->assertSee('<p>This **marker** should not make the HTML snapshot disappear.</p>', false);
+    }
+
     private function createPreviewSubmissionWithSnapshot(string $contentSnapshot, string $token): array
     {
         $site = Site::query()->create(['name' => 'Preview Site '.Str::random(6), 'domain' => Str::random(8).'.test', 'status' => 'active']);
