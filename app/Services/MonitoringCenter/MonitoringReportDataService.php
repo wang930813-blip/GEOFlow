@@ -575,7 +575,7 @@ class MonitoringReportDataService
             'deepseek' => 'https://chat.deepseek.com/',
             'doubao' => 'https://www.doubao.com/',
             'yuanbao' => 'https://yuanbao.tencent.com/',
-            'wenxin' => 'https://yiyan.baidu.com/',
+            'wenxin' => 'https://chat.baidu.com/',
             'qianwen' => 'https://tongyi.aliyun.com/qianwen/',
             default => '',
         };

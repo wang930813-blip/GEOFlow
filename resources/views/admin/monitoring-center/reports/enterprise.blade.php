@@ -2477,6 +2477,11 @@
     }
 
     function openSnapshot(id) {
+      const voucherId = Number(id || 0);
+      if (voucherId > 0) {
+        window.open(`{{ route('admin.snapshot-voucher.show') }}?id=${encodeURIComponent(voucherId)}`, "_blank", "noopener,noreferrer");
+        return;
+      }
       const row = rows.find(item => item.id === id);
       if (!row) return;
       activeSnapshotRow = row;

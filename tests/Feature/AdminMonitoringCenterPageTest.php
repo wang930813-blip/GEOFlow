@@ -3,6 +3,11 @@
 namespace Tests\Feature;
 
 use App\Models\Admin;
+use App\Models\BrandDiagnosisBrandMention;
+use App\Models\BrandDiagnosisQuestion;
+use App\Models\BrandDiagnosisResult;
+use App\Models\BrandDiagnosisRun;
+use App\Models\BrandDiagnosisSource;
 use App\Models\KnowledgeBase;
 use App\Models\Site;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -158,6 +163,53 @@ class AdminMonitoringCenterPageTest extends TestCase
         $this->assertStringNotContainsString("showToast('已模拟跳转到对应 AI 平台')", $html);
     }
 
+    public function test_snapshot_voucher_renders_result_by_id_without_user_scope(): void
+    {
+        [$owner, $site] = $this->createAdminWithSite('snapshot_owner_admin');
+        $viewer = $this->createAdmin('snapshot_other_viewer');
+        $result = $this->createBrandDiagnosisSnapshot($owner, $site);
+
+        $response = $this->actingAs($viewer, 'admin')
+            ->get(route('admin.snapshot-voucher.show', ['id' => (int) $result->id]));
+
+        $response
+            ->assertOk()
+            ->assertSee('DeepSeek', false)
+            ->assertSee('GEO内容优化服务商怎么选？')
+            ->assertSee('内容由 Ai 生成，不能完全保障真实')
+            ->assertSee('策影GEO')
+            ->assertSee('引用资料标题')
+            ->assertSee('和DeepSeek继续聊')
+            ->assertSee('<table', false)
+            ->assertDontSee('收录词不存在');
+    }
+
+    public function test_snapshot_voucher_can_be_viewed_without_admin_login(): void
+    {
+        [$owner, $site] = $this->createAdminWithSite('snapshot_public_owner_admin');
+        $result = $this->createBrandDiagnosisSnapshot($owner, $site);
+
+        $response = $this->get(route('admin.snapshot-voucher.show', ['id' => (int) $result->id]));
+
+        $response
+            ->assertOk()
+            ->assertSee('GEO内容优化服务商怎么选？')
+            ->assertSee('和DeepSeek继续聊');
+    }
+
+    public function test_snapshot_voucher_shows_missing_message_when_id_does_not_exist(): void
+    {
+        $admin = $this->createAdmin('snapshot_missing_viewer');
+
+        $response = $this->actingAs($admin, 'admin')
+            ->get(route('admin.snapshot-voucher.show', ['id' => 999999]));
+
+        $response
+            ->assertOk()
+            ->assertSee('收录词不存在')
+            ->assertDontSee('和DeepSeek继续聊');
+    }
+
     public function test_monitoring_center_injects_current_site_report_data_into_industry_page(): void
     {
         [$admin, $site] = $this->createAdminWithSite('monitoring_dynamic_industry_admin');
@@ -233,5 +285,78 @@ class AdminMonitoringCenterPageTest extends TestCase
         $site->members()->attach((int) $admin->id, ['role' => 'owner']);
 
         return [$admin, $site];
+    }
+
+    private function createBrandDiagnosisSnapshot(Admin $admin, Site $site): BrandDiagnosisResult
+    {
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => '策影GEO',
+            'platforms' => ['deepseek'],
+            'status' => 'completed',
+            'total_questions' => 1,
+            'completed_questions' => 1,
+            'failed_questions' => 0,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+            'completed_at' => now(),
+        ]);
+
+        $question = BrandDiagnosisQuestion::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'run_id' => (int) $run->id,
+            'question' => 'GEO内容优化服务商怎么选？',
+            'question_type' => 'brand',
+            'sort_order' => 1,
+            'status' => 'completed',
+        ]);
+
+        $result = BrandDiagnosisResult::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'run_id' => (int) $run->id,
+            'question_id' => (int) $question->id,
+            'platform' => 'deepseek',
+            'answer' => "| 厂商 | 说明 |\n| --- | --- |\n| 策影GEO | 这里放AI对话详情，用于快照凭证页面展示。 |",
+            'brand_mentioned' => true,
+            'mention_count' => 1,
+            'mention_rank' => 1,
+            'sentiment' => 'positive',
+            'status' => 'success',
+            'checked_at' => now(),
+        ]);
+
+        BrandDiagnosisBrandMention::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'run_id' => (int) $run->id,
+            'question_id' => (int) $question->id,
+            'result_id' => (int) $result->id,
+            'platform' => 'deepseek',
+            'brand_name' => '策影GEO',
+            'mention_count' => 1,
+            'mention_rank' => 1,
+            'sentiment' => 'positive',
+            'source_count' => 1,
+            'is_target_brand' => true,
+        ]);
+
+        BrandDiagnosisSource::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'run_id' => (int) $run->id,
+            'question_id' => (int) $question->id,
+            'result_id' => (int) $result->id,
+            'platform' => 'deepseek',
+            'title' => '引用资料标题',
+            'url' => 'https://example.com/source',
+            'domain' => 'example.com',
+            'source_type' => 'url_citation',
+        ]);
+
+        return $result;
     }
 }

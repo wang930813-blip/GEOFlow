@@ -43,6 +43,7 @@ use App\Http\Controllers\Admin\SecuritySettingsController;
 use App\Http\Controllers\Admin\SiteContextController;
 use App\Http\Controllers\Admin\SiteManagementController;
 use App\Http\Controllers\Admin\SiteSettingsController;
+use App\Http\Controllers\Admin\SnapshotVoucherController;
 use App\Http\Controllers\Admin\TaskController;
 use App\Http\Controllers\Admin\TitleLibraryController;
 use App\Http\Controllers\Admin\UrlImportController;
@@ -75,6 +76,7 @@ $adminPrefix = trim((string) config('geoflow.admin_base_path', '/geo_admin'), '/
 Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group(function () {
     // 通用入口与语言切换
     Route::get('locale/{locale}', [AdminAuthController::class, 'switchLocale'])->name('locale.switch');
+    Route::get('snapshot-voucher', [SnapshotVoucherController::class, 'show'])->name('snapshot-voucher.show');
 
     Route::get('/', function () {
         return Auth::guard('admin')->check()

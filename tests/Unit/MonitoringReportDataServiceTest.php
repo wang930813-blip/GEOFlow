@@ -331,6 +331,27 @@ class MonitoringReportDataServiceTest extends TestCase
         $this->assertSame($createdAt->format('Y-m-d H:i:s'), $report['search_rows'][0]['time']);
     }
 
+    public function test_enterprise_search_report_uses_chat_baidu_for_wenxin_platform_link(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('monitoring_wenxin_platform_url', 'site_user', 'wenxin platform site');
+
+        app(CurrentSite::class)->set($site);
+
+        $this->seedSearchData($admin, $site, [
+            'company' => 'Wenxin Platform Brand',
+            'question' => 'Which AI search platform should be used?',
+            'keyword' => 'AI search',
+            'competitor' => 'Other Brand',
+            'platform' => 'wenxin',
+            'sourceTitle' => 'Wenxin Source',
+            'articleTitle' => 'Wenxin Article',
+        ]);
+
+        $report = app(MonitoringReportDataService::class)->enterpriseReport($admin, $site);
+
+        $this->assertSame('https://chat.baidu.com/', $report['search_rows'][0]['platform_url']);
+    }
+
     public function test_enterprise_report_lists_all_default_platforms_even_when_not_collected(): void
     {
         [$admin, $site] = $this->createAdminWithSite('monitoring_zero_collection_platforms', 'site_user', '零收录站点');
