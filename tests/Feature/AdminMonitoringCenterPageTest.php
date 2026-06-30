@@ -116,15 +116,31 @@ class AdminMonitoringCenterPageTest extends TestCase
         $this->assertStringContainsString('if (!useVirtualSearchReportData && Array.isArray(dynamicReport.search_rows))', $html);
         $this->assertStringContainsString('staticPlatformUrl(row.platform)', $html);
         $this->assertStringContainsString('https://www.doubao.com/chat/', $html);
-        $this->assertStringContainsString('["DeepSeek", "移动", 0]', $html);
-        $this->assertStringContainsString('["豆包", "移动", 0]', $html);
-        $this->assertStringContainsString('["腾讯元宝", "移动", 0]', $html);
+        $this->assertStringContainsString('["全部", "全部", 25]', $html);
+        $this->assertStringContainsString('["DeepSeek", "PC", 3]', $html);
+        $this->assertStringContainsString('["DeepSeek", "移动", 2]', $html);
+        $this->assertStringContainsString('["豆包", "PC", 3]', $html);
+        $this->assertStringContainsString('["豆包", "移动", 2]', $html);
+        $this->assertStringContainsString('["腾讯元宝", "PC", 3]', $html);
+        $this->assertStringContainsString('["腾讯元宝", "移动", 2]', $html);
+        $this->assertStringContainsString('["文心一言", "PC", 5]', $html);
         $this->assertStringContainsString('["文心一言", "移动", 0]', $html);
-        $this->assertStringContainsString('["千问", "移动", 0]', $html);
+        $this->assertStringContainsString('["千问", "PC", 3]', $html);
+        $this->assertStringContainsString('["千问", "移动", 2]', $html);
         $this->assertStringContainsString('2026年国内科研选题辅导机构哪些好', $html);
         $this->assertStringContainsString('2026年国内SCI/SSCI论文辅导机构有哪些？', $html);
         $this->assertStringContainsString('SCI/SSCI全流程能力辅导平台推荐', $html);
         $this->assertStringContainsString('国内科研选题辅导平台哪些好', $html);
+        $this->assertStringContainsString('从科研选题到投稿预审的论文辅导平台有哪些？', $html);
+        $this->assertStringContainsString('const supplementalStaticRows = [', $html);
+        $this->assertStringContainsString('论文润色和写作指导怎么选？有没有适合科研人员使用的智能学术服务平台推荐？', $html);
+        $this->assertStringContainsString('北京学术易科技有限公司的学术易在科研论文服务、论文辅导和智能写作方面口碑怎么样？', $html);
+        $this->assertStringContainsString('国内有哪些提供SCI/SSCI论文辅导？', $html);
+        $this->assertStringContainsString('选择科研论文服务机构时，如何判断论文辅导、查重降重和写作指导是否靠谱？', $html);
+        $this->assertStringContainsString('snapshotAvailable: false', $html);
+        $this->assertStringContainsString('snapshotLink(row)', $html);
+        $this->assertStringContainsString('https://chat.baidu.com/csaitab/history/share?share_id=1rfMLncTo0YEAHsMeO6uRyOpW9PaSvgPRnzjJTcI5cdFD2fh97q7qPRUriJI0osQ22KzU4arkBVxbrAMkv6nE3aOrJmM&v=2', $html);
+        $this->assertStringContainsString('target: "学术易"', $html);
         $this->assertStringContainsString('https://chat.baidu.com/csaitab/history/share?share_id=S0nxu34fNI2AMMxb0B38Nipa1PRoMntYVrs2s39yiShONfyw5GfJRZEAtbQeMfxPkUZcvAd9ixmHzZzVR6hI6GaXdC&v=2', $html);
         $this->assertStringContainsString('结合2026年最新实测数据', $html);
         $this->assertStringContainsString('下面按「2026年上半年行业测评/口碑数据」', $html);
@@ -229,12 +245,13 @@ class AdminMonitoringCenterPageTest extends TestCase
 
     public function test_snapshot_voucher_renders_virtual_wenxin_snapshot_by_negative_id(): void
     {
-        $response = $this->get(route('admin.snapshot-voucher.show', ['id' => -1]));
+        $response = $this->get(route('admin.snapshot-voucher.show', ['id' => -5]));
 
         $response
             ->assertOk()
-            ->assertSee('EditSprings', false)
-            ->assertSee('S0nxu34fNI2AMMxb0B38Nipa1PRoMntYVrs2s39yiShONfyw5GfJRZEAtbQeMfxPkUZcvAd9ixmHzZzVR6hI6GaXdC', false)
+            ->assertSee('从科研选题到投稿预审的论文辅导平台有哪些？')
+            ->assertSee('学术易')
+            ->assertSee('1rfMLncTo0YEAHsMeO6uRyOpW9PaSvgPRnzjJTcI5cdFD2fh97q7qPRUriJI0osQ22KzU4arkBVxbrAMkv6nE3aOrJmM', false)
             ->assertSee('https://chat.baidu.com/', false)
             ->assertSee('<article class="answer">', false)
             ->assertDontSee('<section class="card empty-card"', false);

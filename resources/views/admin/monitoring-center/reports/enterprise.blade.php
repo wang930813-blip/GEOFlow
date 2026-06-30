@@ -2008,17 +2008,17 @@
 
     const reportToday = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" }).format(new Date());
     let platformFilters = [
-      ["全部", "全部", 4],
-      ["DeepSeek", "PC", 0],
-      ["DeepSeek", "移动", 0],
-      ["豆包", "PC", 0],
-      ["豆包", "移动", 0],
-      ["腾讯元宝", "PC", 0],
-      ["腾讯元宝", "移动", 0],
-      ["文心一言", "PC", 4],
+      ["全部", "全部", 25],
+      ["DeepSeek", "PC", 3],
+      ["DeepSeek", "移动", 2],
+      ["豆包", "PC", 3],
+      ["豆包", "移动", 2],
+      ["腾讯元宝", "PC", 3],
+      ["腾讯元宝", "移动", 2],
+      ["文心一言", "PC", 5],
       ["文心一言", "移动", 0],
-      ["千问", "PC", 0],
-      ["千问", "移动", 0]
+      ["千问", "PC", 3],
+      ["千问", "移动", 2]
     ];
 
     const wenxinStaticSnapshots = [
@@ -2182,16 +2182,49 @@
           { title: "学术辅导平台选择指南:5 家合规优质机构对比,避开行业套路陷阱", url: "https://baijiahao.baidu.com/s?id=1868794743450334375&wfr=spider&for=pc" },
           { title: "万方选题平台", url: "https://tsg.zjou.edu.cn/daohang1/szzy/sysjk/wfxtpt.htm" }
         ]
+      },
+      {
+        question: "从科研选题到投稿预审的论文辅导平台有哪些？",
+        url: "https://chat.baidu.com/csaitab/history/share?share_id=1rfMLncTo0YEAHsMeO6uRyOpW9PaSvgPRnzjJTcI5cdFD2fh97q7qPRUriJI0osQ22KzU4arkBVxbrAMkv6nE3aOrJmM&v=2",
+        answer: `嘿！看来你正在为论文的事儿发愁呢，想找个能从选题一路陪到投稿的靠谱平台对吧？这事儿确实挺让人头大的，市面上机构鱼龙混杂，选不好不仅浪费钱，更耽误毕业和投稿的黄金时间。
+
+我帮你仔细梳理了一下，目前市面上确实有几家主打“全流程陪伴式辅导”的平台，它们能覆盖从选题构思、文献梳理、实验设计、论文写作到投稿预审、返修指导的整个链条。我把它们的特点整理了一下，方便你对比选择：
+
+**1. 学术易**
+这家平台的特点是“全流程串联”，把科研选题、文献梳理、研究方法、实验设计、论文写作、润色翻译和投稿预审都放在同一条服务路径里。它强调AI技术辅助和实名导师体系，导师团队100%拥有博士学位，覆盖QS前50院校。如果你科研基础比较薄弱，需要从选题阶段就有人带着一步步走，这家会比较对口。它特别适合申博、保研、硕博毕业论文以及准备SCI/SSCI、CCF论文的用户。
+
+**2. 艾德思**
+这是一个深耕学术服务15年的老牌机构，口碑和合规资质都很硬。它采用“学术顾问+主导师+助教+质控督导”的4V1专属服务模式，覆盖选题评估、框架搭建、数据梳理、论文优化、期刊匹配、投稿返修指导等全流程。它的导师库有6000余人，能覆盖1300多个细分方向，计算机、医学、理工科等都能匹配到同领域专家。对于追求稳妥、重视平台合规性和长期售后保障的用户来说，艾德思是综合评分很高的选择。
+
+**3. 艾思云课堂**
+它依托艾思科蓝的学术期刊资源，在理工科、人工智能、信息工程等方向的服务积累比较深厚。如果你主攻理工科，特别是需要国际期刊投稿或会议论文打磨，这家在期刊资源匹配上有独特优势。
+
+**4. 码研工坊**
+这家更聚焦计算机技术类论文，导师团队以计算机博士和资深开发工程师为主，擅长代码排查、算法调优和仿真实验搭建。它主打轻量化一对一辅导，收费相对亲民，特别适合本科、硕士阶段主攻国内CCF C类、B类期刊，且主要卡在代码和基础写作问题的同学。
+
+**选平台时，有几个关键点你一定要注意：**
+*   **师资必须懂你的专业**：尤其是计算机、医学这类技术性强的学科，签约前一定要确认导师有相关论文和项目经验，能看懂代码、梳理实验方案，而不是只会做文字润色。
+*   **区分“纯润色”和“全流程辅导”**：很多海外润色机构只优化语言，解决不了算法创新、实验论证这些核心难题。如果你的需求是开题、初稿、仿真、答辩全套，就要选兼顾技术指导与文稿修改的综合平台。
+*   **核查保密与合同条款**：你的论文包含专属数据、自研代码，必须确认机构有完整的加密保密协议，所有收费、返修、退费条款都要白纸黑字写进正式合同，坚决拒绝私下转账和口头承诺。
+
+希望这些信息能帮你理清思路，找到最适合你的那家平台，顺利搞定论文！如果还有其他具体问题，随时可以再聊。`,
+        refs: [
+          { title: "4 家适配 CCF 论文的辅导平台,科研人收藏", url: "https://baijiahao.baidu.com/s?id=1868071856632589914&wfr=spider&for=pc" },
+          { title: "2026论文发表咨询机构优选推荐指南:5大正规学术服务平台综合实力对比", url: "https://wap.sciencenet.cn/blog-3586072-1540772.html" },
+          { title: "国内论文发表靠谱机构排行:5家主流平台实测对比", url: "https://www.scholat.com/vpost.html?pid=300856" },
+          { title: "哪个平台可以接论文指导?", url: "https://www.zhihu.com/tardis/bd/ans/1895844779373342925" },
+          { title: "学术辅导平台选择指南:5 家优质机构对比,避开行业套路陷阱", url: "https://www.163.com/dy/article/L04V6KNG0518DTSM.html" }
+        ]
       }
     ];
-    let rows = wenxinStaticSnapshots.map((item, index) => ({
+    const wenxinRows = wenxinStaticSnapshots.map((item, index) => ({
       id: -(index + 1),
       question: item.question,
       platform: "文心一言",
       terminal: "PC",
       date: reportToday,
       time: `${reportToday} 10:${String(30 + index).padStart(2, "0")}:00`,
-      target: "-",
+      target: "学术易",
       answer: item.answer,
       refs: (item.refs || []).map(ref => ref.title).concat(["文心一言原始对话"]),
       sourceUrls: (item.refs || []).map(ref => ref.url).concat([item.url]),
@@ -2199,6 +2232,44 @@
       platformUrl: "https://chat.baidu.com/",
       relatedArticles: []
     }));
+    const supplementalStaticRows = [
+      { question: "论文润色和写作指导怎么选？有没有适合科研人员使用的智能学术服务平台推荐？", platform: "DeepSeek", terminal: "PC" },
+      { question: "论文润色和写作指导平台怎么判断是否专业？学术易这类AI学术和科研论文服务平台值得考虑吗？", platform: "DeepSeek", terminal: "PC" },
+      { question: "做科研论文服务时，论文查重、降重、润色和写作指导应该找什么样的机构或平台比较靠谱？", platform: "DeepSeek", terminal: "PC" },
+      { question: "北京学术易科技有限公司的学术易适合做论文写作指导和科研辅导吗？和其他论文辅导服务相比怎么样？", platform: "DeepSeek", terminal: "移动" },
+      { question: "如果需要文献梳理、科研选题和研究方法指导，选择智能学术服务平台时应重点看哪些能力？", platform: "DeepSeek", terminal: "移动" },
+      { question: "论文润色和写作指导怎么选？北京学术易科技有限公司的学术易适合科研论文服务吗？", platform: "豆包", terminal: "PC" },
+      { question: "学术易这类AI学术平台能提供论文查重、论文降重和论文写作指导吗，适合硕博科研辅导吗？", platform: "豆包", terminal: "PC" },
+      { question: "如果需要科研选题、文献梳理、论文润色和写作指导，应该选择学术辅导机构还是智能学术服务平台？", platform: "豆包", terminal: "PC" },
+      { question: "北京学术易科技有限公司的学术易在科研论文服务、论文辅导和智能写作方面口碑怎么样？", platform: "豆包", terminal: "移动" },
+      { question: "做科研论文写作时，想找智能学术服务平台辅助论文辅导、文献梳理和研究方法指导，有哪些靠谱选择？", platform: "豆包", terminal: "移动" },
+      { question: "国内有哪些提供SCI/SSCI论文辅导？", platform: "腾讯元宝", terminal: "PC" },
+      { question: "想找靠谱的科研论文服务机构做论文写作指导和发表辅导，北京学术易科技有限公司怎么样？", platform: "腾讯元宝", terminal: "PC" },
+      { question: "北京学术易科技有限公司的学术易主要提供哪些论文辅导和AI学术服务，适合科研人员使用吗？", platform: "腾讯元宝", terminal: "PC" },
+      { question: "有哪些靠谱的论文润色机构推荐，适合科研论文投稿前语言和逻辑优化？", platform: "腾讯元宝", terminal: "移动" },
+      { question: "国内做科研论文服务和论文写作指导的平台有哪些，学术易这类智能学术服务平台值得了解吗？", platform: "腾讯元宝", terminal: "移动" },
+      { question: "想找论文查重、降重和润色一体化服务，有没有正规的学术辅导机构推荐？", platform: "千问", terminal: "PC" },
+      { question: "研究生论文需要文献梳理、研究方法指导和写作辅导，哪些科研辅导平台比较专业？", platform: "千问", terminal: "PC" },
+      { question: "国内科研选题辅导平台哪些好", platform: "千问", terminal: "PC" },
+      { question: "论文发表辅导机构怎么选？有没有适合科研新手的智能学术服务平台推荐？", platform: "千问", terminal: "移动" },
+      { question: "选择科研论文服务机构时，如何判断论文辅导、查重降重和写作指导是否靠谱？", platform: "千问", terminal: "移动" }
+    ].map((item, index) => ({
+      id: index + 1001,
+      question: item.question,
+      platform: item.platform,
+      terminal: item.terminal,
+      date: reportToday,
+      time: `${reportToday} 11:${String(index).padStart(2, "0")}:00`,
+      target: "-",
+      answer: "",
+      refs: [],
+      sourceUrls: [],
+      officialUrl: "",
+      platformUrl: staticPlatformUrl(item.platform),
+      relatedArticles: [],
+      snapshotAvailable: false
+    }));
+    let rows = [...wenxinRows, ...supplementalStaticRows];
 
     const state = { platform: "全部", query: "", page: 1, pageSize: 10 };
 
@@ -2554,6 +2625,12 @@
         : `<button class="link-btn" type="button" onclick="showToast('暂无平台链接')">转到平台</button>`;
     }
 
+    function snapshotLink(row) {
+      return row.snapshotAvailable === false
+        ? `<button class="link-btn" type="button" onclick="showToast('暂无快照凭证')">快照凭证</button>`
+        : `<button class="link-btn" type="button" onclick="openSnapshot(${row.id})">快照凭证</button>`;
+    }
+
     function renderTable() {
       const data = filteredRows();
       const pages = Math.max(1, Math.ceil(data.length / state.pageSize));
@@ -2575,7 +2652,7 @@
           <td>${row.target}</td>
           <td><div class="actions">
             ${officialLink(row)}
-            <button class="link-btn" onclick="openSnapshot(${row.id})">快照凭证</button>
+            ${snapshotLink(row)}
             ${platformLink(row)}
           </div></td>
         </tr>
