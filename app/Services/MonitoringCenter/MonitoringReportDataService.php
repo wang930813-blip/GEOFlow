@@ -573,7 +573,7 @@ class MonitoringReportDataService
     {
         return match ($this->normalizePlatformKey($platform)) {
             'deepseek' => 'https://chat.deepseek.com/',
-            'doubao' => 'https://www.doubao.com/',
+            'doubao' => 'https://www.doubao.com/chat/',
             'yuanbao' => 'https://yuanbao.tencent.com/',
             'wenxin' => 'https://chat.baidu.com/',
             'qianwen' => 'https://tongyi.aliyun.com/qianwen/',

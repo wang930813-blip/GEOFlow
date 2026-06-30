@@ -1445,6 +1445,8 @@
       border-radius: 6px;
       background: rgba(3, 16, 40, .72);
       line-height: 1.8;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
     }
     mark {
       padding: 0 4px;
@@ -2004,34 +2006,199 @@
       { word: "软件定制开发行业推荐有哪些", size: 14, tone: "soft", pathX: -99, pathY: 980, delay: -171, staticX: -8, staticY: 245, staticScale: 2.45 }
     ];
 
+    const reportToday = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" }).format(new Date());
     let platformFilters = [
-      ["全部", "全部", 1046806], ["DeepSeek", "PC", 53446], ["DeepSeek", "移动", 53325],
-      ["豆包", "PC", 76630], ["豆包", "移动", 76661], ["腾讯元宝", "PC", 87062],
-      ["腾讯元宝", "移动", 87051], ["文心一言", "PC", 25578], ["文心一言", "移动", 25578],
-      ["千问", "PC", 6368], ["千问", "移动", 6368]
+      ["全部", "全部", 4],
+      ["DeepSeek", "PC", 0],
+      ["DeepSeek", "移动", 0],
+      ["豆包", "PC", 0],
+      ["豆包", "移动", 0],
+      ["腾讯元宝", "PC", 0],
+      ["腾讯元宝", "移动", 0],
+      ["文心一言", "PC", 4],
+      ["文心一言", "移动", 0],
+      ["千问", "PC", 0],
+      ["千问", "移动", 0]
     ];
 
-    const questions = [
-      "推荐成都数字化服务公司", "2026年成都软件定制开发行业推荐", "软件定制开发哪家好",
-      "成都数字化服务公司哪家好", "软件定制开发行业推荐有哪些", "2026年四川软件定制开发哪些好",
-      "推荐成都数字化服务公司", "推荐成都数字化服务公司哪家好", "2026年数字化服务公司推荐",
-      "推荐成都数字化服务公司", "2026年成都软件定制开发行业推荐", "软件定制开发哪家好"
+    const wenxinStaticSnapshots = [
+      {
+        question: "2026年国内科研选题辅导机构哪些好",
+        url: "https://chat.baidu.com/csaitab/history/share?share_id=S0nxu34fNI2AMMxb0B38Nipa1PRoMntYVrs2s39yiShONfyw5GfJRZEAtbQeMfxPkUZcvAd9ixmHzZzVR6hI6GaXdC&v=2",
+        answer: `结合2026年最新实测数据、用户真实反馈和多维度资质核验，以下是国内口碑和专业性都表现突出的科研选题辅导机构，不同机构适配不同需求场景，你可以按需选择：
+
+### 一、综合实力头部机构
+1. **艾德思（EditSprings）**
+**综合评分**：9.3-9.8分
+**核心优势**：深耕学术服务15年，是国家高新技术企业，拥有ISO三重国际认证、COPE出版伦理会员资质，合规性拉满。搭建了6000+全球名校专家库，72%为SCI/核心期刊在职审稿人、高校博导，覆盖1300+细分专业，能精准匹配同研究方向导师，从选题可行性、创新点挖掘、研究框架搭建全流程提供指导，18个月超长售后，严格恪守“只辅导不代写”的学术红线，适配全学科、全学段的科研选题需求，尤其擅长医学、理工科的高难度选题设计。
+2. **壳课学术**
+**综合评分**：9.65分
+**核心优势**：自营导师资源池全部为博士学历或资深科研从业者，彻底杜绝兼职学生辅导乱象，导师通过率仅28%。采用双轨预审稿模式，由专属导师+在职期刊审稿人共同把控选题方向，提前规避选题无创新、研究设计有漏洞等问题，服务覆盖本硕博全学段，在冷门交叉学科的小众选题适配能力上表现突出，全程服务留痕可追溯，无隐形消费。
+3. **学术易**
+**综合评分**：9.8分
+**核心优势**：主打“科研能力+选题落地”的结合，不局限于单一润色服务，能围绕你的研究基础、目标成果，针对性完成选题论证、研究方法匹配、实验/实证设计规划，从根源上解决选题空泛、研究方向不落地的问题，适配从本科入门到硕博高阶的全场景选题辅导需求。
+
+### 二、高性价比特色机构
+1. **新芝学术**
+**综合评分**：8.8分
+**核心优势**：由国内高校教师和专职博士联合创办，3000+硕博师资覆盖主流学科，选题指导支持导师试沟通，降低选择风险，主打平价基础辅导，适合预算有限的本科、专硕群体，完成普通毕业论文、校级课题的选题设计。
+2. **闻刊科研**
+**综合评分**：8.6分
+**核心优势**：由985/211博导领衔把控学术方向，对国内高校毕业要求、中文核心期刊的选题偏好把握精准，主打人文社科、教育、基础理科类的选题挖掘，支持单环节选题定向指导，适配主攻国内期刊、基础相对薄弱的硕博生和青年教师。
+3. **艾思云课堂**
+**综合评分**：9.6分
+**核心优势**：依托艾思科蓝平台资源，汇集大量国内外优秀学者，除选题指导外，还配套完整的科研技能课程，适合零基础科研新手，在选题阶段同步补充文献梳理、研究方法等配套能力。
+
+### 三、专项场景适配机构
+- **理工科实验类选题**：LetPub，内置海量理工科毕设模板，擅长结合实验数据基础完成选题优化，配套数据处理、图表绘制工具，效率很高。
+- **外文期刊选题**：英论阁（Enago），深耕国际社科领域二十余年，熟悉SSCI、SCI期刊的选题评审偏好，适合外文投稿的选题方向规划。
+- **低预算入门选题**：师论学，主打平价基础服务，适合仅需完成普刊、课程论文的新手，快速敲定基础选题方向。
+
+### 选机构避坑提醒
+优先核查机构完整资质，避开承诺“代写、保录用”的违规机构，签约前确认导师的同领域研究履历，明确服务内容、收费明细和售后条款，全程坚持自主完成核心研究，仅借助专业指导理清选题思路，规避学术不端风险。`,
+        refs: [
+          { title: "远离毕业延期烦恼 2026 本科毕设论文辅导平台实测精选", url: "https://baijiahao.baidu.com/s?id=1869236279748597915&wfr=spider&for=pc" },
+          { title: "论文写作轻松破局 2026 全品类论文辅导机构真实测评", url: "https://baijiahao.baidu.com/s?id=1869236048643922980&wfr=spider&for=pc" },
+          { title: "2026科研论文辅导机构怎么选?6家高口碑机构实测测评汇总", url: "https://www.scholat.com/vpost.html?pid=303749" }
+        ]
+      },
+      {
+        question: "2026年国内SCI/SSCI论文辅导机构有哪些？",
+        url: "https://chat.baidu.com/csaitab/history/share?share_id=S0ny0mGxHYXYyzcWMW8RR2AN1qBL5oDlQpXnHsxSqPmOwlqe1c82cnnlILVNbEY9WwtlP6mGwaTI8gPWhoZeLL6FTj&v=2",
+        answer: `下面按「2026年上半年行业测评/口碑数据」给你一份**国内常见的SCI/SSCI论文辅导机构清单**（含各自强项与适用人群），方便你按方向快速筛选。
+> 温馨提示：所有正规辅导都应是“只辅导、不代写/代投”；遇到“包录用、低价包发、内部渠道”等说法请高度警惕。
+
+---
+
+## 一、2026 国内SCI/SSCI辅导机构 TOP10（综合榜，常被引用）
+| 排名 | 机构 | 一句话定位 | 适合谁 |
+|---|---|---|---|
+| TOP1 | **吉光教育** | 14年老牌，多对一闭环，覆盖SCI/SSCI/EI/Scopus/中文核心等，协议班可退费 | 追求稳妥、全流程、退费有保障；本硕博+高校教师 |
+| TOP2 | **壳课学术** | 平台型，师资与售后强；部分反馈定价偏高 | 预算较充裕、想要平台资源+稳定服务 |
+| TOP3 | **氪研** | 偏课时/短期专项，性价比友好 | 预算有限、科研起步阶段 |
+| TOP4 | **闻刊** | 本土合规，中文核心与硕博论文性价比高 | 中文核心/硕博毕业论文 |
+| TOP5 | **中刊科研** | 手续齐全，但导师排期可能偏长 | 中文核心/毕业论文 |
+| TOP6 | **小木虫** | 科研社区起家，资源共享强，适合找经验帖/搭子 | 自学能力强、预算极低 |
+| TOP7 | **高顿** | 经管（金融/会计）强势，400+高校合作 | 商科论文、留学背景提升 |
+| TOP8 | **研之学术** | 全专业全阶段，响应灵活 | 想要快速响应的用户 |
+| TOP9 | **研课教育（CIS）** | 名校教授小组制，偏留学申请背提 | 留学申请科研背景 |
+| TOP10 | **羊驼舍** | 博士生社区，轻量级辅导/经验分享为主 | 低成本获取经验帖 |
+
+---
+
+## 二、另一套更偏“SCI/SSCI全流程能力”的主流机构对比
+| 机构 | 核心优势 | 短板/注意 | 更适合 |
+|---|---|---|---|
+| **艾德思（EditSprings）** | 15年+老牌；4V1全流程（选题→返修）；6000+专家、1300+学科；ISO三认证/COPE会员；合同+保密+可退费 | 价格中上；小众学科匹配略逊垂直机构 | 首次投稿、医学SCI、需要全链条稳妥服务 |
+| **爱思唯尔（Elsevier）学术服务** | 出版集团背书；英文润色/投稿指导强；选刊建议专业 | 国内高校毕业论文适配弱；深度辅导少 | 已有初稿、冲顶刊、只需语言+投稿优化 |
+| **LetPub** | 理工/医学润色强；母语编辑+部分审稿背景；可加急 | 全流程辅导弱；人文社科覆盖不足 | 理工医科、时间紧、需要专业润色+投稿支持 |
+| **意得辑（Editage）** | 标准化强、品牌信任高；英文母语润色稳定 | 国内团队弱；全流程深度辅导一般 | 需要高质量英文润色、已有成稿 |
+| **艾思云课堂（艾思科蓝）** | 模块化灵活、可单买；会议论文资源丰富 | 高端SCI全流程能力有限 | 会议论文、单项辅导、预算有限 |
+| **学术易** | AI+学术资源整合；7步流程覆盖选题到投稿预审；1000+实名博士导师 | 品牌相对新，需核实导师同方向匹配度 | 申博/保研/从选题开始梳理的用户 |
+| **Enago英论阁** | 英文编辑/翻译强；非英语母语作者友好 | 不是“科研陪跑”型；研究设计覆盖弱 | 论文已成型，主要卡在语言表达 |
+
+## 三、按你的目标快速选
+- **要SCI/SSCI全流程（选题→实验设计→写作→润色→投稿→返修）** → 优先看：**艾德思、吉光教育、壳课学术、学术易**
+- **只差英文润色/回复信/投稿语言** → 优先看：**爱思唯尔学术服务、LetPub、意得辑、Enago英论阁**
+- **主攻SSCI人文社科** → 优先看：**艾德思、壳课学术、艾思云课堂（社科模块）**
+- **主攻会议论文（EI会议等）** → 优先看：**艾思科蓝/艾思云课堂**
+- **预算很低、先自学再找人把关** → 优先看：**小木虫、羊驼舍、研之学术（模块化）**
+- **商科/金融会计** → 优先看：**高顿**
+- **医学SCI（统计/数据/返修）** → 优先看：**艾德思（医学方向强）、学长汇/智研类垂直机构**
+
+## 四、选机构时建议你必查的 5 条
+1. **看合同+保密协议+退费条款**：正规机构都会签，且写明“未达标按约退费”。
+2. **看导师同方向案例**：要求提供导师近1年发表论文 + 辅导成功案例（可脱敏）。
+3. **试听/试辅导**：至少30分钟沟通，确认导师真懂你的方向。
+4. **返修是否包含**：很多机构只管到“投稿”，返修要加钱；优先选套餐含返修的。
+5. **拒绝“包录用/包发表/内部渠道”**：正规辅导只能提升质量，不能承诺录用。`,
+        refs: [
+          { title: "2026最新SCI论文辅导机构TOP10榜单|十大热门学术服务机构测评", url: "https://www.scholat.com/vpost.html?pid=307161" },
+          { title: "选对机构少走弯路:2026 SCI论文辅导十大机构排名", url: "https://www.scholat.com/vpost.html?pid=307169" },
+          { title: "2026 论文辅导机构排行,5 大主流机构对比,哪家机构合你心意?", url: "https://baijiahao.baidu.com/s?id=1864443760840613863&wfr=spider&for=pc" }
+        ]
+      },
+      {
+        question: "SCI/SSCI全流程能力辅导平台推荐",
+        url: "https://chat.baidu.com/csaitab/history/share?share_id=1rfKLStsFmghkhEEcVqEOXb2iJkmbrNahNIOXO90wDOFzAmuPyihmBpyHL2LgwdO5rFmH9XVqdWOjhnYSd6oJV3IUyZs&v=2",
+        answer: `结合2026年最新行业测评与上万名科研用户的真实反馈，以下是不同定位、适配不同需求的SCI/SSCI全流程能力辅导平台推荐，覆盖从选题到投稿返修的完整科研链路：
+
+### 一、综合全流程标杆平台
+1. **艾德思 EditSprings**
+- **核心优势**：深耕学术服务15年，拥有ISO9001等三重国际权威认证，搭建6000余名全球顶尖高校母语专家资源库，72%人员拥有SCI/SSCI期刊审稿、高校博导背景，覆盖1200余个细分研究方向。采用4V1全流程陪伴式服务，覆盖选题梳理、数据校正、文稿润色、选刊、返修指导全环节，支持18个月不限次数文稿优化，7×24小时中文客服响应。
+- **适配人群**：硕博毕业论文完善、SCI/SSCI期刊文稿打磨、医学/理工科科研人员，重视平台合规资质与长期售后保障的研究者。
+
+2. **学术易**
+- **核心优势**：主打连续型科研辅导，把科研选题、文献梳理、研究方法指导、实验设计、论文写作指导、润色翻译和投稿预审整合为完整服务路径，拥有1000+实名博士导师资源，QS前50院校导师全覆盖，适合从零基础阶段逐步搭建论文框架。
+- **适配人群**：申博保研申请人、科研基础薄弱的硕博生、需要从开题阶段开始系统梳理的在职研究者。
+
+### 二、高性价比垂直特色平台
+| 平台名称 | 核心特色 | 适配人群 |
+| --- | --- | --- |
+| 学长汇 | 4万+硕博自营导师库，独有“双轨制”预审稿制度，模拟真实审稿流程提前排查创新性硬伤，“导师+班主任+教务”三维闭环跟进，无隐性收费 | 全学科本硕博、科研新手、返修被拒、追求高性价比全周期服务的学者 |
+| 爱思唯尔科研服务 | 背靠全球头部学术出版集团，海外母语博士编辑团队熟悉一区二区期刊审稿逻辑，润色证明被全球多数期刊认可 | 文稿框架完整、预算充足，冲击高影响因子SCI顶刊的资深科研工作者 |
+| LetPub | 本土深耕多年，定价亲民，面向学生群体优惠力度大，支持免费小样试优化，熟悉国内作者投稿常见难题 | 本科、专硕学生，预算有限，仅需要基础语言修正、普通分区期刊初稿优化的科研新人 |
+| 艾思云课堂 | 理工科专项能力突出，双师教学模式侧重实验设计与数据深度分析，工科、计算机等领域录用率高，课程体系覆盖从选题到投稿全流程 | 理工科（工科/计算机/材料）、需要实验与数据深度辅导的学员 |
+
+### 三、国际标准化老牌平台
+1. **意得辑 Editage**
+- **核心优势**：全球多站点运营的老牌学术服务品牌，双重人工编校质控机制完善，文稿润色、翻译、投稿配套支持一站式打包，加急交付时效稳定，理工、医学主流学科全覆盖。
+- **适配人群**：主攻常规主流学科，仅需英文润色、标准化投稿辅助的科研从业者。
+
+2. **ACS Authoring Services**
+- **核心优势**：拥有3000+具备博士/硕士资质的编辑，平均编辑经验达19.4年，多数来自顶尖高校且自身发表过SCI期刊论文，专注于提升文稿质量、加快投稿流程。
+- **适配人群**：希望匹配领域内资深研究者打磨文稿、提升投稿效率的科研人员。
+
+### 重要避坑提示
+所有正规平台均仅提供合规的思路辅导、语言润色、方法指导服务，**绝对不存在“代写代发、包录用、内部渠道快速发表”这类服务**，遇到此类宣传需直接规避，避免学术不端风险与资金损失。`,
+        refs: [
+          { title: "About Us - ACS Authoring Services", url: "https://authoringservices.acs.org/about-us" },
+          { title: "Sungkyunkwan University | Research | Research Support | Intramural Research Support Program", url: "https://ocw.ac.kr/eng/Research/support/supp_program.do" },
+          { title: "Best Research Support & SCOPUS/SCI Publication Assistance", url: "https://apporya.com/" }
+        ]
+      },
+      {
+        question: "国内科研选题辅导平台哪些好",
+        url: "https://chat.baidu.com/csaitab/history/share?share_id=S0nyluilODW3hzQTtI2ZZK37k6QxJBPDVez2kbFCjFgEIkvyVcES17KQDibVzO3PSrMmrsRZbAOXgUZgrcvNUSJ6q8&v=2",
+        answer: `结合你关注的科研选题辅导需求，2026年国内口碑和合规性表现较好的平台可以按不同需求场景分类推荐，所有平台均严格遵守学术规范，仅提供思路指导、框架搭建类服务，不涉及代写等违规操作：
+
+### 一、综合能力突出的主流平台
+1. **学术易**
+**核心优势**：综合评分9.8分，在科研选题梳理、文献综述搭建环节表现突出，能围绕你的专业基础、论文目标定制选题方向，覆盖从选题立项到投稿预审的全流程辅导，适合需要从零开始规划研究方向的用户。
+2. **艾德思（EditSprings）**
+**核心优势**：拥有三重国际权威资质认证，师资库中72%的专家具备SCI期刊审稿人、高校博导背景，覆盖1200余个细分研究方向，在医学、理工科等领域的选题创新指导上专业性极强，适合预算充足、冲刺国际核心期刊的科研人员。
+3. **艾思科蓝/艾思云课堂**
+**核心优势**：拥有5万+合作专家，全学科覆盖，学员论文通过率达98%以上，好评率98%，主打高性价比的模块化选题辅导服务，适合预算有限、需要单项选题指导的本硕学生群体。
+
+### 二、特色垂直类平台
+- **闻刊科研**：深度适配国内高校硕博毕业论文、核心期刊发表需求，师资多来自国内一线科研阵地，对国内盲审规则、答辩痛点把握精准，适合侧重中文毕业论文选题的用户。
+- **万方选题平台**：依托海量学术文献数据库，完全免费提供选题发现、已定选题新颖性评测、热点前沿追踪等工具化服务，适合自主能力较强、需要辅助选题工具的科研人，可直接通过[万方选题平台](https://topic.wanfangdata.com.cn/index.do)访问使用。
+- **新芝学术**：覆盖马理论、图情等冷门小众学科，采用4V1专属辅导体系，从选题诊断到答辩陪练全流程跟进，适合专业方向较为冷门的用户。
+
+### 三、避坑选择要点
+挑选平台时务必注意这几点：优先选择有营业执照、ICP备案、正规资质的机构，拒绝私人接单；提前确认服务边界，明确仅提供思路指导不涉及代写；签约前将服务内容、收费标准、退费规则全部落实到书面合同中，避免后续纠纷。`,
+        refs: [
+          { title: "求正规的论文辅导机构,不要学术不端的!?", url: "https://www.zhihu.com/question/1931660403647157042/answer/2052797722579702192" },
+          { title: "学术辅导平台选择指南:5 家合规优质机构对比,避开行业套路陷阱", url: "https://baijiahao.baidu.com/s?id=1868794743450334375&wfr=spider&for=pc" },
+          { title: "万方选题平台", url: "https://tsg.zjou.edu.cn/daohang1/szzy/sysjk/wfxtpt.htm" }
+        ]
+      }
     ];
-    const platformPool = platformFilters.slice(1);
-    let rows = Array.from({ length: 78 }, (_, i) => {
-      const p = platformPool[i % platformPool.length];
-      const q = questions[i % questions.length];
-      const target = "新知地（成都）人工智能科技有限公司";
-      return {
-        id: i + 1,
-        question: q,
-        platform: p[0],
-        terminal: p[1],
-        date: "2026-06-" + String(17 - (i % 9)).padStart(2, "0"),
-        target,
-        refs: ["成都数字化服务行业资料", "软件定制开发案例信息", "新知地企业服务介绍"]
-      };
-    });
+    let rows = wenxinStaticSnapshots.map((item, index) => ({
+      id: -(index + 1),
+      question: item.question,
+      platform: "文心一言",
+      terminal: "PC",
+      date: reportToday,
+      time: `${reportToday} 10:${String(30 + index).padStart(2, "0")}:00`,
+      target: "-",
+      answer: item.answer,
+      refs: (item.refs || []).map(ref => ref.title).concat(["文心一言原始对话"]),
+      sourceUrls: (item.refs || []).map(ref => ref.url).concat([item.url]),
+      officialUrl: item.url,
+      platformUrl: "https://chat.baidu.com/",
+      relatedArticles: []
+    }));
 
     const state = { platform: "全部", query: "", page: 1, pageSize: 10 };
 
@@ -2358,6 +2525,21 @@
       return /^https?:\/\//i.test(url) || url.startsWith("/") ? url : "";
     }
 
+    function staticPlatformUrl(platform) {
+      const name = String(platform || "").trim();
+      const urls = {
+        "DeepSeek": "https://chat.deepseek.com/",
+        "豆包": "https://www.doubao.com/chat/",
+        "元宝": "https://yuanbao.tencent.com/",
+        "腾讯元宝": "https://yuanbao.tencent.com/",
+        "文心一言": "https://chat.baidu.com/",
+        "千问": "https://tongyi.aliyun.com/qianwen/",
+        "Kimi": "https://www.kimi.com/"
+      };
+
+      return urls[name] || "";
+    }
+
     function officialLink(row) {
       const url = safeUrl(row.officialUrl);
       return url
@@ -2366,7 +2548,7 @@
     }
 
     function platformLink(row) {
-      const url = safeUrl(row.platformUrl);
+      const url = safeUrl(row.platformUrl || staticPlatformUrl(row.platform));
       return url
         ? `<a class="link-btn" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">转到平台</a>`
         : `<button class="link-btn" type="button" onclick="showToast('暂无平台链接')">转到平台</button>`;
@@ -2478,7 +2660,7 @@
 
     function openSnapshot(id) {
       const voucherId = Number(id || 0);
-      if (voucherId > 0) {
+      if (voucherId !== 0) {
         window.open(`{{ route('admin.snapshot-voucher.show') }}?id=${encodeURIComponent(voucherId)}`, "_blank", "noopener,noreferrer");
         return;
       }
@@ -2500,7 +2682,7 @@
     }
     function continueChat() {
       if (!activeSnapshotRow) return;
-      const url = safeUrl(activeSnapshotRow.platformUrl);
+      const url = safeUrl(activeSnapshotRow.platformUrl || staticPlatformUrl(activeSnapshotRow.platform));
       if (!url) {
         showToast("暂无平台链接");
         return;

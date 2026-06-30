@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\BrandDiagnosisBrandMention;
 use App\Models\BrandDiagnosisResult;
 use App\Models\BrandDiagnosisSource;
+use App\Support\MonitoringCenter\VirtualSearchReportSnapshots;
 use App\Support\Site\ArticleHtmlPresenter;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -26,9 +27,10 @@ class SnapshotVoucherController extends Controller
                 ->whereKey($id)
                 ->first()
             : null;
+        $virtualVoucher = $id < 0 ? $this->virtualVoucher($id) : null;
 
         return response()->view('admin.snapshot-voucher.show', [
-            'voucher' => $result instanceof BrandDiagnosisResult ? $this->voucher($result) : null,
+            'voucher' => $virtualVoucher ?? ($result instanceof BrandDiagnosisResult ? $this->voucher($result) : null),
         ]);
     }
 
@@ -61,6 +63,42 @@ class SnapshotVoucherController extends Controller
                     'title' => (string) $source->title,
                     'url' => (string) $source->url,
                     'domain' => (string) $source->domain,
+                ])
+                ->values()
+                ->all(),
+        ];
+    }
+
+    /**
+     * @return array<string,mixed>|null
+     */
+    private function virtualVoucher(int $id): ?array
+    {
+        $snapshot = VirtualSearchReportSnapshots::find($id);
+        if ($snapshot === null) {
+            return null;
+        }
+
+        return [
+            'id' => (int) $snapshot['id'],
+            'platform_key' => 'wenxin',
+            'platform' => $this->platformLabel('wenxin'),
+            'platform_icon' => $this->platformIcon('wenxin'),
+            'platform_url' => $this->platformUrl('wenxin'),
+            'question' => (string) $snapshot['question'],
+            'time' => now()->format('Y-m-d H:i:s'),
+            'target' => '-',
+            'answer_html' => ArticleHtmlPresenter::markdownToHtml((string) $snapshot['answer']),
+            'sources' => collect($snapshot['sources'] ?? [])
+                ->map(fn (array $source): array => [
+                    'title' => (string) ($source['title'] ?? ''),
+                    'url' => (string) ($source['url'] ?? ''),
+                    'domain' => parse_url((string) ($source['url'] ?? ''), PHP_URL_HOST) ?: '',
+                ])
+                ->push([
+                    'title' => '文心一言原始对话',
+                    'url' => (string) $snapshot['url'],
+                    'domain' => 'chat.baidu.com',
                 ])
                 ->values()
                 ->all(),
@@ -103,7 +141,7 @@ class SnapshotVoucherController extends Controller
     {
         return match ($this->normalizePlatformKey($platform)) {
             'deepseek' => 'https://chat.deepseek.com/',
-            'doubao' => 'https://www.doubao.com/',
+            'doubao' => 'https://www.doubao.com/chat/',
             'yuanbao' => 'https://yuanbao.tencent.com/',
             'wenxin' => 'https://chat.baidu.com/',
             'qianwen' => 'https://tongyi.aliyun.com/qianwen/',

@@ -114,6 +114,23 @@ class AdminMonitoringCenterPageTest extends TestCase
         $this->assertStringContainsString('if (Array.isArray(dynamicReport.distillation_words))', $html);
         $this->assertStringContainsString('if (!useVirtualSearchReportData && Array.isArray(dynamicReport.platform_filters)', $html);
         $this->assertStringContainsString('if (!useVirtualSearchReportData && Array.isArray(dynamicReport.search_rows))', $html);
+        $this->assertStringContainsString('staticPlatformUrl(row.platform)', $html);
+        $this->assertStringContainsString('https://www.doubao.com/chat/', $html);
+        $this->assertStringContainsString('["DeepSeek", "移动", 0]', $html);
+        $this->assertStringContainsString('["豆包", "移动", 0]', $html);
+        $this->assertStringContainsString('["腾讯元宝", "移动", 0]', $html);
+        $this->assertStringContainsString('["文心一言", "移动", 0]', $html);
+        $this->assertStringContainsString('["千问", "移动", 0]', $html);
+        $this->assertStringContainsString('2026年国内科研选题辅导机构哪些好', $html);
+        $this->assertStringContainsString('2026年国内SCI/SSCI论文辅导机构有哪些？', $html);
+        $this->assertStringContainsString('SCI/SSCI全流程能力辅导平台推荐', $html);
+        $this->assertStringContainsString('国内科研选题辅导平台哪些好', $html);
+        $this->assertStringContainsString('https://chat.baidu.com/csaitab/history/share?share_id=S0nxu34fNI2AMMxb0B38Nipa1PRoMntYVrs2s39yiShONfyw5GfJRZEAtbQeMfxPkUZcvAd9ixmHzZzVR6hI6GaXdC&v=2', $html);
+        $this->assertStringContainsString('结合2026年最新实测数据', $html);
+        $this->assertStringContainsString('下面按「2026年上半年行业测评/口碑数据」', $html);
+        $this->assertStringContainsString('远离毕业延期烦恼 2026 本科毕设论文辅导平台实测精选', $html);
+        $this->assertStringContainsString('id: -(index + 1)', $html);
+        $this->assertStringContainsString('if (voucherId !== 0)', $html);
         $this->assertStringNotContainsString('Array.isArray(dynamicReport.model_collection) && dynamicReport.model_collection.length', $html);
         $this->assertStringNotContainsString('Array.isArray(dynamicReport.metrics) && dynamicReport.metrics.length', $html);
         $this->assertStringNotContainsString('Array.isArray(dynamicReport.distillation_words) && dynamicReport.distillation_words.length', $html);
@@ -208,6 +225,19 @@ class AdminMonitoringCenterPageTest extends TestCase
             ->assertOk()
             ->assertSee('收录词不存在')
             ->assertDontSee('和DeepSeek继续聊');
+    }
+
+    public function test_snapshot_voucher_renders_virtual_wenxin_snapshot_by_negative_id(): void
+    {
+        $response = $this->get(route('admin.snapshot-voucher.show', ['id' => -1]));
+
+        $response
+            ->assertOk()
+            ->assertSee('EditSprings', false)
+            ->assertSee('S0nxu34fNI2AMMxb0B38Nipa1PRoMntYVrs2s39yiShONfyw5GfJRZEAtbQeMfxPkUZcvAd9ixmHzZzVR6hI6GaXdC', false)
+            ->assertSee('https://chat.baidu.com/', false)
+            ->assertSee('<article class="answer">', false)
+            ->assertDontSee('<section class="card empty-card"', false);
     }
 
     public function test_monitoring_center_injects_current_site_report_data_into_industry_page(): void

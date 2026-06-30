@@ -103,7 +103,7 @@ class MonitoringReportDataServiceTest extends TestCase
         $this->assertSame('星河智能科技有限公司', $report['search_rows'][0]['target']);
         $this->assertSame(now()->toDateString(), $report['search_rows'][0]['date']);
         $this->assertSame('星河智能科技有限公司在回答中被提及，并引用了行业资料。', $report['search_rows'][0]['answer']);
-        $this->assertSame('https://www.doubao.com/', $report['search_rows'][0]['platform_url']);
+        $this->assertSame('https://www.doubao.com/chat/', $report['search_rows'][0]['platform_url']);
         $this->assertStringEndsWith('/article/'.rawurlencode((string) $current['article']->slug), $report['search_rows'][0]['official_url']);
         $this->assertSame('星河智能案例报道', $report['search_rows'][0]['sources'][0]['title']);
         $this->assertSame('星河智能 AI 搜索优化实践', $report['search_rows'][0]['related_articles'][0]['title']);
