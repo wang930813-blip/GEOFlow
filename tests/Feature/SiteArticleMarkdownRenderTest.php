@@ -184,6 +184,57 @@ MD);
             ->assertSee('NetEase Banner');
     }
 
+    public function test_netease_homepage_article_cards_use_cover_image_before_category_initial(): void
+    {
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'active_theme'],
+            ['setting_value' => 'netease-news-20260507']
+        );
+        SiteSettingsBag::forget();
+
+        $category = Category::query()->create([
+            'name' => '品牌资讯',
+            'slug' => 'brand-news',
+        ]);
+        $author = Author::query()->create([
+            'name' => 'GEOFlow',
+        ]);
+
+        Article::query()->create([
+            'title' => '有封面文章',
+            'slug' => 'homepage-cover-card',
+            'excerpt' => '有封面摘要',
+            'content' => '有封面正文',
+            'cover_image' => 'uploads/images/2026/07/cover.jpg',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+            'is_featured' => true,
+            'published_at' => now(),
+        ]);
+        Article::query()->create([
+            'title' => '无封面文章',
+            'slug' => 'homepage-initial-card',
+            'excerpt' => '无封面摘要',
+            'content' => '无封面正文',
+            'cover_image' => '',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+            'is_featured' => true,
+            'published_at' => now()->subMinute(),
+        ]);
+
+        $this->get(route('site.home'))
+            ->assertOk()
+            ->assertSee('class="ne-thumb has-image"', false)
+            ->assertSee('src="/storage/uploads/images/2026/07/cover.jpg"', false)
+            ->assertSee('href="'.route('site.article', 'homepage-initial-card').'" class="ne-thumb"', false)
+            ->assertSee('品');
+    }
+
     public function test_english_netease_theme_renders_configured_homepage_carousel(): void
     {
         SiteSetting::query()->updateOrCreate(

@@ -10,6 +10,7 @@
     $pub = $article->published_at ?? $article->created_at;
     $categoryName = $article->category?->name ?? __('front.nav.all_articles');
     $initial = mb_substr($categoryName, 0, 1);
+    $coverImage = \App\Support\GeoFlow\ImageUrlNormalizer::toPublicUrl((string) ($article->cover_image ?? ''));
 @endphp
 <article class="ne-article-card">
     <div>
@@ -33,7 +34,11 @@
             <i data-lucide="arrow-right" class="w-4 h-4"></i>
         </a>
     </div>
-    <a href="{{ route('site.article', $article->slug) }}" class="ne-thumb" aria-hidden="true">
-        {{ $initial }}
+    <a href="{{ route('site.article', $article->slug) }}" class="ne-thumb{{ $coverImage !== '' ? ' has-image' : '' }}" aria-hidden="true">
+        @if($coverImage !== '')
+            <img src="{{ $coverImage }}" alt="" loading="lazy" referrerpolicy="no-referrer">
+        @else
+            {{ $initial }}
+        @endif
     </a>
 </article>
