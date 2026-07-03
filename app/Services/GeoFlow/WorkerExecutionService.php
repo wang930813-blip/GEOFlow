@@ -478,17 +478,28 @@ class WorkerExecutionService
             }
         }
 
-        $query = Title::query()->where('library_id', $libraryId);
-        if ((int) ($task->is_loop ?? 0) !== 1) {
-            $query->where(function ($builder): void {
-                $builder->whereNull('used_count')->orWhere('used_count', '<=', 0);
-            });
+        $titleCount = Title::query()
+            ->where('library_id', $libraryId)
+            ->count();
+        if ($titleCount <= 0) {
+            throw new RuntimeException((int) ($task->is_loop ?? 0) === 1 ? 'No available title' : 'Title library exhausted');
         }
 
+        $createdCount = max(0, (int) ($task->created_count ?? 0));
+        $isLoop = (int) ($task->is_loop ?? 0) === 1;
+        if (! $isLoop && $createdCount >= $titleCount) {
+            throw new RuntimeException('Title library exhausted');
+        }
+
+        // Auto mode follows this task's own generation order; used_count is only global statistics.
+        $offset = $isLoop ? ($createdCount % $titleCount) : $createdCount;
+
         /** @var Title|null $title */
-        $title = $query
-            ->orderBy('used_count')
+        $title = Title::query()
+            ->where('library_id', $libraryId)
             ->orderBy('id')
+            ->offset($offset)
+            ->limit(1)
             ->first();
 
         if (! $title) {

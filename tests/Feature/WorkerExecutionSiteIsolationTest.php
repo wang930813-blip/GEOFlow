@@ -67,6 +67,111 @@ class WorkerExecutionSiteIsolationTest extends TestCase
         $this->assertSame((int) $fixedTitle->id, (int) $pickedTitle->id);
     }
 
+    public function test_worker_generates_articles_with_titles_in_library_order_when_fixed_title_is_blank(): void
+    {
+        config(['geoflow.api_key_crypto_roots' => ['worker-title-order-test-key']]);
+
+        $site = $this->createSite([
+            'name' => 'Title Order Site',
+            'status' => 'active',
+        ]);
+        $titleLibrary = TitleLibrary::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Title Order Library',
+        ]);
+        Title::query()->create([
+            'site_id' => (int) $site->id,
+            'library_id' => (int) $titleLibrary->id,
+            'title' => 'First Library Title',
+            'keyword' => 'first',
+            'used_count' => 0,
+            'usage_count' => 0,
+        ]);
+        Title::query()->create([
+            'site_id' => (int) $site->id,
+            'library_id' => (int) $titleLibrary->id,
+            'title' => 'Second Library Title',
+            'keyword' => 'second',
+            'used_count' => 10,
+            'usage_count' => 10,
+        ]);
+        Title::query()->create([
+            'site_id' => (int) $site->id,
+            'library_id' => (int) $titleLibrary->id,
+            'title' => 'Third Library Title',
+            'keyword' => 'third',
+            'used_count' => 10,
+            'usage_count' => 10,
+        ]);
+        $prompt = Prompt::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Title Order Prompt',
+            'type' => 'content',
+            'content' => 'Write about {{title}}.',
+        ]);
+        $author = Author::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Title Order Author',
+        ]);
+        Category::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Title Order Category',
+            'slug' => 'title-order-category',
+        ]);
+        $aiModel = AiModel::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Title Order Chat',
+            'model_id' => 'deepseek-chat',
+            'model_type' => 'chat',
+            'api_url' => 'https://ai.example.test',
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('test-api-key'),
+            'status' => 'active',
+        ]);
+        $task = Task::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Title order task',
+            'title_library_id' => (int) $titleLibrary->id,
+            'fixed_title_id' => null,
+            'prompt_id' => (int) $prompt->id,
+            'ai_model_id' => (int) $aiModel->id,
+            'author_id' => (int) $author->id,
+            'image_mode' => 'none',
+            'auto_keywords' => 0,
+            'auto_description' => 0,
+            'need_review' => 1,
+            'status' => 'active',
+            'schedule_enabled' => 1,
+            'draft_limit' => 5,
+            'article_limit' => 5,
+            'is_loop' => 1,
+        ]);
+
+        app(CurrentSite::class)->set(null);
+
+        Http::fake([
+            'https://ai.example.test/v1/chat/completions' => Http::sequence()
+                ->push($this->chatCompletion("# First Library Title\n\nGenerated body."))
+                ->push($this->chatCompletion("# Second Library Title\n\nGenerated body."))
+                ->push($this->chatCompletion("# Third Library Title\n\nGenerated body.")),
+        ]);
+
+        app(WorkerExecutionService::class)->executeTask((int) $task->id);
+        app(WorkerExecutionService::class)->executeTask((int) $task->id);
+        app(WorkerExecutionService::class)->executeTask((int) $task->id);
+
+        $titles = Article::withoutGlobalScope('current_site')
+            ->where('task_id', (int) $task->id)
+            ->orderBy('id')
+            ->pluck('title')
+            ->all();
+
+        $this->assertSame([
+            'First Library Title',
+            'Second Library Title',
+            'Third Library Title',
+        ], $titles);
+    }
+
     public function test_worker_pauses_task_after_reaching_article_limit(): void
     {
         config(['geoflow.api_key_crypto_roots' => ['worker-limit-pause-test-key']]);
