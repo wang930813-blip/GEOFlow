@@ -99,7 +99,7 @@ class GeoFlowScheduleTasksCommand extends Command
             $canGenerate = $createdCount < $articleLimit && $draftCount < $draftLimit;
             $canPublishNow = $publishableDrafts > 0 && ($nextPublishAt === null || ! $nextPublishAt->greaterThan($now));
 
-            if ($createdCount >= $articleLimit) {
+            if ($createdCount >= $articleLimit && $draftCount <= 0) {
                 Task::query()->whereKey($taskId)->update([
                     'status' => 'completed',
                     'schedule_enabled' => 0,
@@ -115,6 +115,11 @@ class GeoFlowScheduleTasksCommand extends Command
                 if ($publishableDrafts > 0 && $nextPublishAt instanceof Carbon) {
                     Task::query()->whereKey($taskId)->update([
                         'next_run_at' => $nextPublishAt,
+                        'updated_at' => now(),
+                    ]);
+                } elseif ($createdCount >= $articleLimit && $draftCount > 0) {
+                    Task::query()->whereKey($taskId)->update([
+                        'next_run_at' => $now->copy()->addSeconds(60),
                         'updated_at' => now(),
                     ]);
                 }

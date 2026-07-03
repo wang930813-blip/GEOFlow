@@ -162,19 +162,13 @@ class WorkerExecutionService
             // 淇濇寔涓庢棫閫昏緫涓€鑷达細姣忔浠诲姟鎵ц浼氭秷鑰楁爣棰樺苟绱姞浠诲姟璁℃暟銆?            Title::query()->whereKey($titleRow->id)->increment('used_count');
             Title::query()->whereKey($titleRow->id)->increment('usage_count');
 
-            $articleLimit = max(1, (int) ($freshTask->article_limit ?? $freshTask->draft_limit ?? 10));
-            $nextCreatedCount = (int) ($freshTask->created_count ?? 0) + 1;
             $taskUpdate = [
                 'created_count' => DB::raw('COALESCE(created_count,0)+1'),
                 'loop_count' => DB::raw('COALESCE(loop_count,0)+1'),
                 'updated_at' => now(),
             ];
 
-            if ($nextCreatedCount >= $articleLimit) {
-                $taskUpdate['status'] = 'paused';
-                $taskUpdate['schedule_enabled'] = 0;
-                $taskUpdate['next_run_at'] = null;
-            } elseif ($freshTask->next_publish_at === null || ! $freshTask->next_publish_at->greaterThan(now())) {
+            if ($freshTask->next_publish_at === null) {
                 $taskUpdate['next_publish_at'] = now()->addSeconds($this->normalizePublishInterval($freshTask));
             }
             Task::query()->whereKey($task->id)->update($taskUpdate);

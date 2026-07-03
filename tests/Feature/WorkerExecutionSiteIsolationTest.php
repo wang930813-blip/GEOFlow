@@ -172,7 +172,7 @@ class WorkerExecutionSiteIsolationTest extends TestCase
         ], $titles);
     }
 
-    public function test_worker_pauses_task_after_reaching_article_limit(): void
+    public function test_worker_keeps_task_active_after_reaching_article_limit_until_drafts_are_published(): void
     {
         config(['geoflow.api_key_crypto_roots' => ['worker-limit-pause-test-key']]);
 
@@ -238,9 +238,8 @@ class WorkerExecutionSiteIsolationTest extends TestCase
 
         $task->refresh();
         $this->assertSame(1, (int) $task->created_count);
-        $this->assertSame('paused', (string) $task->status);
-        $this->assertSame(0, (int) $task->schedule_enabled);
-        $this->assertNull($task->next_run_at);
+        $this->assertSame('active', (string) $task->status);
+        $this->assertSame(1, (int) $task->schedule_enabled);
     }
 
     public function test_worker_generated_article_inherits_task_site_without_request_context(): void
@@ -696,6 +695,106 @@ class WorkerExecutionSiteIsolationTest extends TestCase
         $this->assertSame(1, (int) $task->published_count);
         $this->assertTrue($task->next_publish_at->equalTo(Carbon::parse('2026-06-16 11:00:00')));
         $this->assertSame(0, ArticleDistribution::query()->where('article_id', (int) $article->id)->count());
+
+        Carbon::setTestNow();
+    }
+
+    public function test_worker_keeps_final_generated_draft_ready_for_missed_scheduled_publish_time(): void
+    {
+        config(['geoflow.api_key_crypto_roots' => ['worker-missed-publish-test-key']]);
+        Carbon::setTestNow(Carbon::parse('2026-06-16 10:00:00'));
+
+        $site = $this->createSite([
+            'name' => 'Missed Publish Site',
+            'status' => 'active',
+        ]);
+        $titleLibrary = TitleLibrary::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Missed Publish Titles',
+        ]);
+        Title::query()->create([
+            'site_id' => (int) $site->id,
+            'library_id' => (int) $titleLibrary->id,
+            'title' => 'Missed Publish Article',
+            'keyword' => 'missed publish',
+        ]);
+        $prompt = Prompt::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Missed Publish Prompt',
+            'type' => 'content',
+            'content' => 'Write about {{title}}.',
+        ]);
+        $author = Author::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Missed Publish Author',
+        ]);
+        Category::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Missed Publish Category',
+            'slug' => 'missed-publish-category',
+        ]);
+        $aiModel = AiModel::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Missed Publish Chat',
+            'model_id' => 'deepseek-chat',
+            'model_type' => 'chat',
+            'api_url' => 'https://ai.example.test',
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('test-api-key'),
+            'status' => 'active',
+        ]);
+        $firstPublishAt = Carbon::parse('2026-06-16 10:01:00');
+        $task = Task::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Missed publish task',
+            'title_library_id' => (int) $titleLibrary->id,
+            'prompt_id' => (int) $prompt->id,
+            'ai_model_id' => (int) $aiModel->id,
+            'author_id' => (int) $author->id,
+            'image_mode' => 'none',
+            'auto_keywords' => 0,
+            'auto_description' => 0,
+            'need_review' => 0,
+            'status' => 'active',
+            'schedule_enabled' => 1,
+            'publish_scope' => 'local_only',
+            'publish_interval' => 120,
+            'draft_limit' => 5,
+            'article_limit' => 1,
+            'next_publish_at' => $firstPublishAt,
+        ]);
+
+        app(CurrentSite::class)->set(null);
+
+        Http::fake([
+            'https://ai.example.test/v1/chat/completions' => function () {
+                Carbon::setTestNow(Carbon::parse('2026-06-16 10:02:00'));
+
+                return Http::response($this->chatCompletion("# Missed Publish Article\n\nGenerated body."));
+            },
+        ]);
+
+        app(WorkerExecutionService::class)->executeTask((int) $task->id);
+
+        $task->refresh();
+        $this->assertSame('active', (string) $task->status);
+        $this->assertSame(1, (int) $task->schedule_enabled);
+        $this->assertTrue($task->next_publish_at->equalTo($firstPublishAt));
+
+        $article = Article::withoutGlobalScope('current_site')
+            ->where('task_id', (int) $task->id)
+            ->firstOrFail();
+        $this->assertSame('draft', (string) $article->status);
+        $this->assertSame('approved', (string) $article->review_status);
+
+        $result = app(WorkerExecutionService::class)->executeTask((int) $task->id);
+
+        $article->refresh();
+        $task->refresh();
+        $this->assertSame((int) $article->id, (int) $result['article_id']);
+        $this->assertSame('published', (string) $article->status);
+        $this->assertTrue($article->published_at->equalTo(Carbon::parse('2026-06-16 10:02:00')));
+        $this->assertSame(1, (int) $task->published_count);
+        $this->assertTrue($task->next_publish_at->equalTo(Carbon::parse('2026-06-16 10:04:00')));
 
         Carbon::setTestNow();
     }
