@@ -133,6 +133,37 @@ class AdminTasksPageTest extends TestCase
             ->assertSee('name="scheduled_publish_at"', false);
     }
 
+    public function test_task_create_page_marks_review_and_scheduled_publish_as_mutually_exclusive(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'tasks_admin_publish_exclusion',
+            'password' => 'secret-123',
+            'email' => 'tasks-admin-publish-exclusion@example.com',
+            'display_name' => 'Tasks Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'Publish Exclusion Site',
+            'status' => 'active',
+        ]);
+        $site->members()->attach((int) $admin->id, ['role' => 'owner']);
+        Category::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Publish Exclusion Category',
+            'slug' => 'publish-exclusion-category',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.tasks.create'))
+            ->assertOk()
+            ->assertSee('id="need-review-option"', false)
+            ->assertSee('id="scheduled-publish-option"', false)
+            ->assertSee('syncReviewPublishExclusion', false);
+    }
+
     public function test_task_creation_uses_scheduled_first_publish_time_for_local_only_scope(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-06-16 09:00:00'));
@@ -162,6 +193,41 @@ class AdminTasksPageTest extends TestCase
 
         $task = Task::query()->where('name', 'Local Scheduled Publish Task')->firstOrFail();
         $this->assertSame('local_only', (string) $task->publish_scope);
+        $this->assertTrue($task->next_publish_at->equalTo($scheduledAt));
+
+        Carbon::setTestNow();
+    }
+
+    public function test_task_creation_does_not_keep_review_enabled_when_scheduled_publish_is_enabled(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-06-16 09:00:00'));
+
+        $admin = Admin::query()->create([
+            'username' => 'tasks_admin_review_schedule_conflict',
+            'password' => 'secret-123',
+            'email' => 'tasks-admin-review-schedule-conflict@example.com',
+            'display_name' => 'Tasks Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        [$site, $fixtures] = $this->createTaskFormFixtures($admin);
+        $scheduledAt = Carbon::parse('2026-06-16 18:30:00');
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.tasks.store'), array_merge($fixtures, [
+                'task_name' => 'Review Scheduled Conflict Task',
+                'status' => 'paused',
+                'publish_scope' => 'local_only',
+                'publish_interval' => 30,
+                'need_review' => '1',
+                'scheduled_publish_enabled' => '1',
+                'scheduled_publish_at' => $scheduledAt->format('Y-m-d\TH:i'),
+            ]))
+            ->assertRedirect(route('admin.tasks.index'));
+
+        $task = Task::query()->where('name', 'Review Scheduled Conflict Task')->firstOrFail();
+        $this->assertSame(0, (int) $task->need_review);
         $this->assertTrue($task->next_publish_at->equalTo($scheduledAt));
 
         Carbon::setTestNow();
@@ -212,11 +278,19 @@ class AdminTasksPageTest extends TestCase
             'role' => 'admin',
             'status' => 'active',
         ]);
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'Prefill Title Site',
+            'status' => 'active',
+        ]);
+        $site->members()->attach((int) $admin->id, ['role' => 'owner']);
         Category::query()->create([
+            'site_id' => (int) $site->id,
             'name' => 'Prefill Category',
             'slug' => 'prefill-category',
         ]);
         $titleLibrary = TitleLibrary::query()->create([
+            'site_id' => (int) $site->id,
             'name' => 'Prefill Title Library',
             'description' => 'desc',
             'title_count' => 1,
@@ -226,6 +300,7 @@ class AdminTasksPageTest extends TestCase
         ]);
 
         $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
             ->get(route('admin.tasks.create', ['title_library_id' => (int) $titleLibrary->id]))
             ->assertOk()
             ->assertSee('value="'.(int) $titleLibrary->id.'" selected', false);
@@ -318,7 +393,7 @@ class AdminTasksPageTest extends TestCase
             'usage_count' => 0,
         ]);
         $prompt = Prompt::query()->create([
-            'site_id' => (int) $site->id,
+            'site_id' => null,
             'name' => 'Task Prompt',
             'type' => 'content',
             'content' => 'Write {{title}}',
@@ -652,7 +727,7 @@ class AdminTasksPageTest extends TestCase
             'is_ai_generated' => 0,
         ]);
         $prompt = Prompt::query()->create([
-            'site_id' => (int) $site->id,
+            'site_id' => null,
             'name' => 'Scheduled Publish Prompt',
             'type' => 'content',
             'content' => 'Write {{title}}',

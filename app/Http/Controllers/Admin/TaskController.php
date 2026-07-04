@@ -704,14 +704,14 @@ class TaskController extends Controller
             $categoryMode = 'smart';
         }
         $publishScope = (string) ($payload['publish_scope'] ?? 'local_and_distribution');
-        $nextPublishAt = null;
-        if (
-            $publishScope === 'local_only'
+        $scheduledPublishEnabled = $publishScope === 'local_only'
             && $request->boolean('scheduled_publish_enabled')
-            && trim((string) ($payload['scheduled_publish_at'] ?? '')) !== ''
-        ) {
+            && trim((string) ($payload['scheduled_publish_at'] ?? '')) !== '';
+        $nextPublishAt = null;
+        if ($scheduledPublishEnabled) {
             $nextPublishAt = Carbon::parse((string) $payload['scheduled_publish_at'])->toDateTimeString();
         }
+        $needReview = $scheduledPublishEnabled ? 0 : ($request->boolean('need_review') ? 1 : 0);
 
         return [
             'name' => (string) $payload['task_name'],
@@ -732,7 +732,7 @@ class TaskController extends Controller
             'article_limit' => (int) ($payload['article_limit'] ?? 10),
             'draft_limit' => (int) ($payload['draft_limit'] ?? 10),
             'publish_interval' => max(1, (int) ($payload['publish_interval'] ?? 60)) * 60,
-            'need_review' => $request->boolean('need_review') ? 1 : 0,
+            'need_review' => $needReview,
             'is_loop' => $request->boolean('is_loop') ? 1 : 0,
             'category_mode' => $categoryMode,
             'model_selection_mode' => (string) ($payload['model_selection_mode'] ?? 'fixed'),

@@ -210,7 +210,7 @@
                     </div>
                     <div class="px-6 py-4">
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div>
+                            <div id="need-review-option">
                                 <div class="flex items-center">
                                     <input type="checkbox" name="need_review" id="need_review" @checked((bool) old('need_review', (bool) ($taskForm['need_review'] ?? false)))
                                            class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
@@ -226,7 +226,7 @@
                             </div>
                             <div id="scheduled-publish-section" class="md:col-span-2 rounded-md border border-blue-100 bg-blue-50/60 px-4 py-3">
                                 <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                    <div>
+                                    <div id="scheduled-publish-option">
                                         <div class="flex items-center">
                                             <input type="checkbox" name="scheduled_publish_enabled" id="scheduled_publish_enabled" value="1" @checked((string) $scheduledPublishEnabled === '1')
                                                    class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
@@ -452,9 +452,11 @@
             const imageModeSelect = document.getElementById('image_mode');
             const aiImageModelSelect = document.getElementById('ai_image_model_id');
             const imageCountSelect = document.getElementById('image_count');
+            const needReviewOption = document.getElementById('need-review-option');
             const needReviewCheckbox = document.getElementById('need_review');
             const publishIntervalInput = document.getElementById('publish_interval');
             const scheduledPublishSection = document.getElementById('scheduled-publish-section');
+            const scheduledPublishOption = document.getElementById('scheduled-publish-option');
             const scheduledPublishCheckbox = document.getElementById('scheduled_publish_enabled');
             const scheduledPublishAtInput = document.getElementById('scheduled_publish_at');
             const publishScopeRadios = document.querySelectorAll('input[name="publish_scope"]');
@@ -525,18 +527,50 @@
                 return selected ? selected.value : 'local_and_distribution';
             }
 
-            function toggleScheduledPublishControls() {
+            function setOptionDisabledState(element, disabled) {
+                if (!element) {
+                    return;
+                }
+
+                element.style.opacity = disabled ? '0.5' : '1';
+                element.classList.toggle('cursor-not-allowed', disabled);
+            }
+
+            function syncReviewPublishExclusion(changedBy = null) {
                 const enabledForScope = selectedPublishScope() === 'local_only';
-                scheduledPublishSection.classList.toggle('hidden', !enabledForScope);
-                scheduledPublishSection.style.opacity = enabledForScope ? '1' : '0.55';
-                scheduledPublishCheckbox.disabled = !enabledForScope;
-                scheduledPublishAtInput.disabled = !enabledForScope || !scheduledPublishCheckbox.checked;
-                scheduledPublishAtInput.required = enabledForScope && scheduledPublishCheckbox.checked;
 
                 if (!enabledForScope) {
                     scheduledPublishCheckbox.checked = false;
+                } else if (changedBy === 'need_review' && needReviewCheckbox.checked) {
+                    scheduledPublishCheckbox.checked = false;
+                } else if (changedBy === 'scheduled_publish' && scheduledPublishCheckbox.checked) {
+                    needReviewCheckbox.checked = false;
+                } else if (changedBy === null && scheduledPublishCheckbox.checked && needReviewCheckbox.checked) {
+                    needReviewCheckbox.checked = false;
+                }
+
+                const reviewDisabled = enabledForScope && scheduledPublishCheckbox.checked;
+                const scheduledDisabled = !enabledForScope || needReviewCheckbox.checked;
+
+                needReviewCheckbox.disabled = reviewDisabled;
+                scheduledPublishCheckbox.disabled = scheduledDisabled;
+
+                scheduledPublishSection.classList.toggle('hidden', !enabledForScope);
+                scheduledPublishSection.style.opacity = enabledForScope ? '1' : '0.55';
+                scheduledPublishAtInput.disabled = scheduledDisabled || !scheduledPublishCheckbox.checked;
+                scheduledPublishAtInput.required = !scheduledDisabled && scheduledPublishCheckbox.checked;
+                setOptionDisabledState(needReviewOption, reviewDisabled);
+                setOptionDisabledState(scheduledPublishOption, scheduledDisabled);
+
+                if (scheduledDisabled) {
                     scheduledPublishAtInput.required = false;
                 }
+
+                togglePublishInterval();
+            }
+
+            function toggleScheduledPublishControls() {
+                syncReviewPublishExclusion();
             }
 
             function handleCategoryModeChange() {
@@ -593,9 +627,9 @@
             fixedTitleSelect.addEventListener('change', () => {
                 fixedTitleSelect.dataset.selectedTitleId = fixedTitleSelect.value;
             });
-            needReviewCheckbox.addEventListener('change', togglePublishInterval);
-            scheduledPublishCheckbox.addEventListener('change', toggleScheduledPublishControls);
-            publishScopeRadios.forEach((radio) => radio.addEventListener('change', toggleScheduledPublishControls));
+            needReviewCheckbox.addEventListener('change', () => syncReviewPublishExclusion('need_review'));
+            scheduledPublishCheckbox.addEventListener('change', () => syncReviewPublishExclusion('scheduled_publish'));
+            publishScopeRadios.forEach((radio) => radio.addEventListener('change', () => syncReviewPublishExclusion('publish_scope')));
             articleLimitInput.addEventListener('input', syncDraftLimitMax);
             categoryModeRadios.forEach((radio) => radio.addEventListener('change', handleCategoryModeChange));
 
@@ -643,8 +677,7 @@
 
             toggleImageControls();
             syncFixedTitleOptions();
-            togglePublishInterval();
-            toggleScheduledPublishControls();
+            syncReviewPublishExclusion();
             handleCategoryModeChange();
             syncDraftLimitMax();
         });
