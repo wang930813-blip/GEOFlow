@@ -1942,9 +1942,13 @@ class AdminMediaDistributionTest extends TestCase
                 'media_resource_ids' => [$resourceA->id, $resourceB->id],
             ]))
             ->assertOk()
+            ->assertSee('data-media-submission-picker', false)
+            ->assertSee('data-article-search', false)
+            ->assertSee('data-media-search', false)
+            ->assertSee('data-order-count', false)
             ->assertSee('name="media_resource_ids[]"', false)
-            ->assertSee('value="'.(int) $resourceA->id.'" selected', false)
-            ->assertSee('value="'.(int) $resourceB->id.'" selected', false);
+            ->assertSee('value="'.(int) $resourceA->id.'" checked', false)
+            ->assertSee('value="'.(int) $resourceB->id.'" checked', false);
 
         $this->actingAs($admin, 'admin')
             ->withSession(['current_site_id' => $site->id])
@@ -1979,7 +1983,7 @@ class AdminMediaDistributionTest extends TestCase
             ->assertOk()
             ->assertSee('name="article_ids[]"', false)
             ->assertSee('name="media_resource_ids[]"', false)
-            ->assertSee('value="'.(int) $resource->id.'" selected', false)
+            ->assertSee('value="'.(int) $resource->id.'" checked', false)
             ->assertSee('value="'.(int) $article->id.'"', false)
             ->assertDontSee('name="article_id"', false)
             ->assertDontSee('name="media_resource_id"', false);
@@ -1994,12 +1998,99 @@ class AdminMediaDistributionTest extends TestCase
             ->withSession(['current_site_id' => $site->id])
             ->get(route('admin.media-distribution.submissions.index'))
             ->assertOk()
+            ->assertSee('data-media-submission-picker', false)
+            ->assertSee('data-article-search', false)
+            ->assertSee('data-media-search', false)
+            ->assertSee('data-order-count', false)
+            ->assertSee('data-media-hidden-inputs', false)
+            ->assertSee('flex flex-col xl:h-[42rem]', false)
+            ->assertSee('max-h-96 overflow-y-auto p-3 xl:min-h-0 xl:flex-1 xl:max-h-none', false)
+            ->assertDontSee('pointer-events-none absolute left-3 top-2.5', false)
             ->assertSee('name="article_ids[]"', false)
-            ->assertSee('name="media_resource_ids[]"', false)
             ->assertSee('value="'.(int) $article->id.'"', false)
             ->assertSee('value="'.(int) $resource->id.'"', false)
             ->assertDontSee('name="article_id"', false)
             ->assertDontSee('name="media_resource_id"', false);
+    }
+
+    public function test_media_submission_page_shows_active_media_total_and_remote_search_picker(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('media_remote_picker_admin', 'admin');
+        $this->createArticleAndResource($site, 'remote-picker-seed');
+        for ($i = 1; $i <= 55; $i++) {
+            MediaResource::query()->create([
+                'source_type' => MediaResource::SOURCE_WEBSITE,
+                'external_resource_id' => 'remote-picker-'.$i,
+                'title' => '远程媒体 '.$i,
+                'status' => 'active',
+                'cost_price' => '10.00',
+                'sale_price' => '20.00',
+            ]);
+        }
+        MediaResource::query()->create([
+            'source_type' => MediaResource::SOURCE_WEBSITE,
+            'external_resource_id' => 'remote-picker-inactive',
+            'title' => '不可投稿媒体',
+            'status' => 'inactive',
+            'cost_price' => '10.00',
+            'sale_price' => '20.00',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => $site->id])
+            ->get(route('admin.media-distribution.submissions.index'))
+            ->assertOk()
+            ->assertSee('可投稿媒体')
+            ->assertSee('56')
+            ->assertSee('data-media-search-url', false)
+            ->assertSee('data-selected-media-list', false)
+            ->assertSee('data-media-hidden-inputs', false)
+            ->assertDontSee('可选媒体', false);
+    }
+
+    public function test_media_submission_media_search_searches_all_active_media_resources(): void
+    {
+        [$admin] = $this->createAdminWithSite('media_search_all_admin', 'admin');
+        for ($i = 1; $i <= 60; $i++) {
+            MediaResource::query()->create([
+                'source_type' => MediaResource::SOURCE_WEBSITE,
+                'external_resource_id' => 'ordinary-'.$i,
+                'title' => '普通媒体 '.$i,
+                'status' => 'active',
+                'cost_price' => '10.00',
+                'sale_price' => '20.00',
+            ]);
+        }
+        $matched = MediaResource::query()->create([
+            'source_type' => MediaResource::SOURCE_ZI_MEDIA,
+            'external_resource_id' => 'full-search-target',
+            'title' => '全量检索目标媒体',
+            'status' => 'active',
+            'cost_price' => '30.00',
+            'sale_price' => '40.00',
+        ]);
+        MediaResource::query()->create([
+            'source_type' => MediaResource::SOURCE_ZI_MEDIA,
+            'external_resource_id' => 'full-search-inactive',
+            'title' => '全量检索目标媒体 不可投稿',
+            'status' => 'inactive',
+            'cost_price' => '30.00',
+            'sale_price' => '40.00',
+        ]);
+
+        $response = $this->actingAs($admin, 'admin')
+            ->getJson(route('admin.media-distribution.submissions.media-resources.search', [
+                'q' => '全量检索目标',
+                'per_page' => 20,
+            ]));
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('total', 1)
+            ->assertJsonPath('items.0.id', (int) $matched->id)
+            ->assertJsonPath('items.0.title', '全量检索目标媒体')
+            ->assertJsonPath('items.0.source_type', '第三方自媒体')
+            ->assertJsonMissing(['title' => '全量检索目标媒体 不可投稿']);
     }
 
     public function test_media_resources_page_highlights_media_package_resource(): void

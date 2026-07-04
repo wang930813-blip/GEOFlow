@@ -46,7 +46,7 @@
             <form method="POST" action="{{ route('admin.media-distribution.submissions.bulk-store') }}" class="space-y-5 p-5" data-bulk-submission-form>
                 @csrf
                 <div class="grid grid-cols-1 gap-5 xl:grid-cols-2">
-                    <div class="rounded-lg border border-slate-200 bg-slate-50/60">
+                    <div class="flex flex-col xl:h-[42rem] rounded-lg border border-slate-200 bg-slate-50/60">
                         <div class="border-b border-slate-200 p-4">
                             <div class="flex items-center justify-between gap-3">
                                 <div>
@@ -62,7 +62,7 @@
                                 <input id="media-submission-article-search" type="search" data-article-search class="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" placeholder="搜索文章标题或ID">
                             </div>
                         </div>
-                        <div class="max-h-96 overflow-y-auto p-3" data-article-list>
+                        <div class="max-h-96 overflow-y-auto p-3 xl:min-h-0 xl:flex-1 xl:max-h-none" data-article-list>
                             @forelse ($articles as $article)
                                 <label class="flex cursor-pointer gap-3 rounded-md border border-transparent px-3 py-3 hover:border-indigo-100 hover:bg-white" data-article-item data-search="{{ $article->title }} #{{ $article->id }} {{ $article->status }} {{ $article->review_status }}">
                                     <input type="checkbox" name="article_ids[]" value="{{ $article->id }}" class="mt-1 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
@@ -83,7 +83,7 @@
                         </div>
                     </div>
 
-                    <div class="rounded-lg border border-slate-200 bg-slate-50/60">
+                    <div class="flex flex-col xl:h-[42rem] rounded-lg border border-slate-200 bg-slate-50/60">
                         <div class="border-b border-slate-200 p-4">
                             <div class="flex items-center justify-between gap-3">
                                 <div>
@@ -116,7 +116,7 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="max-h-96 overflow-y-auto p-3" data-media-list>
+                        <div class="max-h-96 overflow-y-auto p-3 xl:min-h-0 xl:flex-1 xl:max-h-none" data-media-list>
                             @forelse ($resources as $resource)
                                 <label class="flex cursor-pointer gap-3 rounded-md border border-transparent px-3 py-3 hover:border-indigo-100 hover:bg-white" data-media-item data-search="{{ $resource->title }} {{ $resource->platformLabel() }} {{ $resource->sourceLabel() }} {{ $resource->sale_price }} #{{ $resource->id }}">
                                     <input type="checkbox" value="{{ $resource->id }}" @checked(in_array((int) $resource->id, $selectedResourceIds ?? [], true)) data-media-option data-media-title="{{ $resource->title }}" data-media-platform="{{ $resource->platformLabel() }}" data-media-source="{{ $resource->sourceLabel() }}" data-media-price="{{ $resource->sale_price }}" class="mt-1 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
