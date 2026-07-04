@@ -120,6 +120,7 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
         Route::prefix('media-distribution')->name('media-distribution.')->group(function () {
             Route::get('resources', [MediaDistributionResourceController::class, 'index'])->name('resources.index');
             Route::get('submissions', [MediaDistributionSubmissionController::class, 'index'])->name('submissions.index');
+            Route::get('submissions/media-resources/search', [MediaDistributionSubmissionController::class, 'searchResources'])->name('submissions.media-resources.search');
             Route::get('submissions/export', [MediaDistributionSubmissionController::class, 'export'])->name('submissions.export');
             Route::post('submissions/bulk', [MediaDistributionSubmissionController::class, 'bulkStore'])->name('submissions.bulk-store');
             Route::post('submissions', [MediaDistributionSubmissionController::class, 'store'])->name('submissions.store');

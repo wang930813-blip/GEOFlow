@@ -10,6 +10,8 @@ use App\Services\MediaDistribution\MediaSubmissionService;
 use App\Services\MediaDistribution\AdminCreditService;
 use App\Support\AdminWeb;
 use App\Support\CurrentSite;
+use App\Support\MediaDistribution\MediaPlatform;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -42,15 +44,18 @@ class SubmissionController extends Controller
             ->unique()
             ->values()
             ->all();
+        $activeResourceCount = MediaResource::query()->active()->count();
         $resources = MediaResource::query()
+            ->select(['id', 'title', 'platform_id', 'source_type', 'sale_price'])
             ->active()
             ->when($selectedResourceIds !== [], fn ($query) => $query->orderByRaw('CASE WHEN id IN ('.implode(',', array_fill(0, count($selectedResourceIds), '?')).') THEN 0 ELSE 1 END', $selectedResourceIds))
-            ->orderBy('sale_price')
-            ->limit(200)
+            ->orderByDesc('id')
+            ->limit(50)
             ->get();
 
         if ($selectedResourceIds !== []) {
             $missingSelectedResources = MediaResource::query()
+                ->select(['id', 'title', 'platform_id', 'source_type', 'sale_price'])
                 ->active()
                 ->whereIn('id', array_diff($selectedResourceIds, $resources->pluck('id')->map(static fn ($id): int => (int) $id)->all()))
                 ->get();
@@ -62,13 +67,94 @@ class SubmissionController extends Controller
             'activeMenu' => 'media_distribution',
             'adminSiteName' => AdminWeb::siteName(),
             'submissions' => $submissions,
-            'articles' => Article::query()->select(['id', 'title'])->whereNull('deleted_at')->orderByDesc('id')->limit(100)->get(),
+            'articles' => Article::query()
+                ->select(['id', 'title', 'slug', 'status', 'review_status', 'created_at'])
+                ->whereNull('deleted_at')
+                ->orderByDesc('id')
+                ->limit(300)
+                ->get(),
             'resources' => $resources,
             'selectedResourceId' => $selectedResourceIds[0] ?? 0,
             'selectedResourceIds' => $selectedResourceIds,
             'hasSelectedResources' => $selectedResourceIds !== [],
+            'activeResourceCount' => $activeResourceCount,
             'account' => $account,
             'isSuperAdmin' => $isSuperAdmin,
+        ]);
+    }
+
+    public function searchResources(Request $request): JsonResponse
+    {
+        $payload = $request->validate([
+            'q' => ['nullable', 'string', 'max:120'],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+
+        $search = trim((string) ($payload['q'] ?? ''));
+        $perPage = min(50, max(10, (int) ($payload['per_page'] ?? 30)));
+        $page = max(1, (int) ($payload['page'] ?? 1));
+        $query = MediaResource::query()
+            ->select(['id', 'title', 'platform_id', 'source_type', 'external_resource_id', 'category', 'remarks', 'case_link', 'sale_price'])
+            ->active()
+            ->orderByDesc('id');
+
+        if ($search !== '') {
+            $like = '%'.$this->escapeLike(mb_strtolower($search)).'%';
+            $rawPayloadSearchSqls = $this->rawPayloadSearchSqls($query->getModel()->getConnection()->getDriverName());
+            $matchedPlatformIds = collect(MediaPlatform::labels())
+                ->filter(static fn (string $label): bool => str_contains(mb_strtolower($label), mb_strtolower($search)))
+                ->keys()
+                ->map(static fn ($id): int => (int) $id)
+                ->values()
+                ->all();
+            $matchedSourceTypes = [];
+            if (str_contains($search, '网站') || str_contains($search, '官媒')) {
+                $matchedSourceTypes[] = MediaResource::SOURCE_WEBSITE;
+            }
+            if (str_contains($search, '自媒体')) {
+                $matchedSourceTypes[] = MediaResource::SOURCE_ZI_MEDIA;
+            }
+
+            $query->where(function ($builder) use ($like, $rawPayloadSearchSqls, $matchedPlatformIds, $matchedSourceTypes, $search): void {
+                $builder
+                    ->whereRaw('LOWER(title) LIKE ?', [$like])
+                    ->orWhereRaw('LOWER(external_resource_id) LIKE ?', [$like])
+                    ->orWhereRaw('LOWER(COALESCE(category, \'\')) LIKE ?', [$like])
+                    ->orWhereRaw('LOWER(COALESCE(remarks, \'\')) LIKE ?', [$like])
+                    ->orWhereRaw('LOWER(COALESCE(case_link, \'\')) LIKE ?', [$like]);
+
+                if (is_numeric($search)) {
+                    $builder->orWhere('sale_price', (float) $search);
+                }
+                if ($matchedPlatformIds !== []) {
+                    $builder->orWhereIn('platform_id', $matchedPlatformIds);
+                }
+                if ($matchedSourceTypes !== []) {
+                    $builder->orWhereIn('source_type', array_values(array_unique($matchedSourceTypes)));
+                }
+
+                foreach ($rawPayloadSearchSqls as $rawPayloadSearchSql) {
+                    $builder->orWhereRaw($rawPayloadSearchSql, [$like]);
+                }
+            });
+        }
+
+        $paginator = $query->paginate($perPage, ['*'], 'page', $page);
+
+        return response()->json([
+            'items' => $paginator->getCollection()
+                ->map(static fn (MediaResource $resource): array => [
+                    'id' => (int) $resource->id,
+                    'title' => (string) $resource->title,
+                    'platform' => $resource->platformLabel(),
+                    'source_type' => $resource->sourceLabel(),
+                    'sale_price' => (string) $resource->sale_price,
+                ])
+                ->values()
+                ->all(),
+            'total' => $paginator->total(),
+            'has_more' => $paginator->hasMorePages(),
         ]);
     }
 
@@ -117,12 +203,21 @@ class SubmissionController extends Controller
             ->whereIn('id', $resourceIds->all())
             ->get()
             ->keyBy('id');
+        $articleIds = array_unique(array_map('intval', $payload['article_ids']));
+        $articles = Article::query()
+            ->whereIn('id', $articleIds)
+            ->get()
+            ->keyBy('id');
         $created = 0;
         $errors = [];
-        foreach (array_unique(array_map('intval', $payload['article_ids'])) as $articleId) {
+        foreach ($articleIds as $articleId) {
             foreach ($resourceIds as $resourceId) {
                 try {
-                    $article = Article::query()->whereKey($articleId)->firstOrFail();
+                    $article = $articles->get($articleId);
+                    if (! $article instanceof Article) {
+                        throw new \RuntimeException('文章不存在: #'.$articleId);
+                    }
+
                     $resource = $resources->get($resourceId);
                     if (! $resource instanceof MediaResource) {
                         throw new \RuntimeException('媒体不存在: #'.$resourceId);
@@ -326,5 +421,33 @@ class SubmissionController extends Controller
                 ])->save();
             }
         }
+    }
+
+    private function escapeLike(string $value): string
+    {
+        return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $value);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function rawPayloadSearchSqls(string $driver): array
+    {
+        $keys = ['title', 'media_name', 'name', 'site_name', 'account_name', 'category', 'field', 'remarks', 'remark'];
+
+        $sql = [];
+        foreach ($keys as $key) {
+            $sql[] = match ($driver) {
+                'mysql' => "LOWER(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(raw_payload, '$.".$key."')), '')) LIKE ?",
+                'pgsql' => "LOWER(COALESCE(raw_payload->>'".$key."', '')) LIKE ?",
+                default => "LOWER(COALESCE(json_extract(raw_payload, '$.".$key."'), '')) LIKE ?",
+            };
+        }
+
+        $sql[] = $driver === 'mysql'
+            ? "LOWER(COALESCE(JSON_UNQUOTE(raw_payload), '')) LIKE ?"
+            : "LOWER(COALESCE(CAST(raw_payload AS TEXT), '')) LIKE ?";
+
+        return $sql;
     }
 }
