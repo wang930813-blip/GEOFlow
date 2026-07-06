@@ -573,12 +573,10 @@ class BrandDiagnosisController extends Controller
         }
 
         return [
-            // 展示层基础数值叠加：仅影响页面显示，不写入数据库（brand_score 等原值保持不变）。
-            // 规则：得分+60、提及率+50（均封顶100）；排名取 min(原值,9)、无数据显示9名；提及次数+10。
-            'score' => (int) min(100, $score + 60),
-            'mention_rate' => (int) min(100, $mentionRate + 50),
-            'average_rank' => $this->formatAverageRank($averageRank > 0 ? min($averageRank, 9.0) : 9.0),
-            'mention_count' => $mentionCount + 10,
+            'score' => $score,
+            'mention_rate' => $mentionRate,
+            'average_rank' => $this->formatAverageRank($averageRank),
+            'mention_count' => $mentionCount,
             'sentiment_rate' => $sentimentRate,
         ];
     }

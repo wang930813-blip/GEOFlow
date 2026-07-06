@@ -12,6 +12,20 @@ class AdminBrandDiagnosisPageTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config(['brand_diagnosis.display_baseline.enabled' => false]);
+    }
+
+    protected function tearDown(): void
+    {
+        config(['brand_diagnosis.display_baseline.enabled' => false]);
+
+        parent::tearDown();
+    }
+
     public function test_authenticated_admin_can_view_brand_diagnosis_page(): void
     {
         $admin = Admin::query()->create([
@@ -349,6 +363,47 @@ class AdminBrandDiagnosisPageTest extends TestCase
 
         $this->assertStringContainsString(route('admin.brand-diagnosis.report', ['run' => $completedRun->id]), $html);
         $this->assertStringNotContainsString(route('admin.brand-diagnosis.report', ['run' => $pendingRun->id]), $html);
+    }
+
+    public function test_brand_diagnosis_pending_record_does_not_show_display_baseline_metrics(): void
+    {
+        config([
+            'brand_diagnosis.display_baseline.enabled' => true,
+            'brand_diagnosis.display_baseline.score' => 60,
+            'brand_diagnosis.display_baseline.mention_rate' => 50,
+            'brand_diagnosis.display_baseline.mention_count' => 10,
+            'brand_diagnosis.display_baseline.rank_cap' => 9,
+        ]);
+
+        [$admin, $site] = $this->createAdminWithSite('brand_pending_baseline_admin');
+        BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => '待诊断品牌',
+            'platforms' => ['doubao'],
+            'status' => 'questions_generating',
+            'total_questions' => 0,
+            'completed_questions' => 0,
+            'failed_questions' => 0,
+            'billing_mode' => 'pending_confirmation',
+            'usage_date' => null,
+        ]);
+
+        $html = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.brand-diagnosis.index'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('data-metric-card="0">0', $html);
+        $this->assertStringContainsString('data-metric-card="1">0%', $html);
+        $this->assertStringContainsString('data-metric-card="2">0', $html);
+        $this->assertStringContainsString('data-metric-card="3">0', $html);
+        $this->assertStringContainsString('data-metric-card="4">0%', $html);
+        $this->assertStringNotContainsString('data-metric-card="0">60', $html);
+        $this->assertStringNotContainsString('data-metric-card="1">50%', $html);
+        $this->assertStringNotContainsString('data-metric-card="2">9', $html);
+        $this->assertStringNotContainsString('data-metric-card="3">10', $html);
     }
 
     public function test_site_user_can_open_own_completed_brand_diagnosis_report(): void
