@@ -106,6 +106,8 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
         Route::get('monitoring-center', [MonitoringCenterController::class, 'index'])->name('monitoring-center.index');
         Route::get('brand-diagnosis', [BrandDiagnosisController::class, 'index'])->name('brand-diagnosis.index');
         Route::post('brand-diagnosis', [BrandDiagnosisController::class, 'store'])->name('brand-diagnosis.store');
+        Route::get('brand-diagnosis/reusable-questions', [BrandDiagnosisController::class, 'reusableQuestions'])
+            ->name('brand-diagnosis.reusable-questions');
         Route::post('brand-diagnosis/{run}/confirm', [BrandDiagnosisController::class, 'confirm'])
             ->name('brand-diagnosis.confirm')
             ->whereNumber('run');

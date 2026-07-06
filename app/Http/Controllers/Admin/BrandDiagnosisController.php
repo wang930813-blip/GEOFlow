@@ -7,11 +7,13 @@ use App\Models\Admin;
 use App\Models\BrandDiagnosisRun;
 use App\Services\BrandDiagnosis\BrandDiagnosisLimitExceededException;
 use App\Services\BrandDiagnosis\BrandDiagnosisPdfService;
+use App\Services\BrandDiagnosis\BrandDiagnosisPlatform;
 use App\Services\BrandDiagnosis\BrandDiagnosisRunService;
 use App\Services\BrandDiagnosis\BrandEntityResolver;
 use App\Support\AdminWeb;
 use App\Support\CurrentSite;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -73,10 +75,11 @@ class BrandDiagnosisController extends Controller
         $payload = $request->validate([
             'brand_name' => ['required', 'string', 'max:120'],
             'platforms' => ['nullable', 'array'],
-            'platforms.*' => ['string', 'in:doubao,deepseek'],
+            'platforms.*' => ['string', BrandDiagnosisPlatform::validationRule()],
+            'reuse_questions' => ['nullable', 'boolean'],
         ], [
             'brand_name.required' => '请输入品牌名称',
-            'platforms.*.in' => '当前版本先支持豆包和 DeepSeek 诊断',
+            'platforms.*.in' => '当前版本支持豆包、DeepSeek、千问和文心一言诊断',
         ]);
 
         $admin = auth('admin')->user();
@@ -88,7 +91,8 @@ class BrandDiagnosisController extends Controller
             $this->runService->create(
                 $admin,
                 (string) $payload['brand_name'],
-                (array) ($payload['platforms'] ?? ['doubao'])
+                (array) ($payload['platforms'] ?? ['doubao']),
+                $request->boolean('reuse_questions')
             );
         } catch (BrandDiagnosisLimitExceededException $exception) {
             return back()->withErrors(['brand_name' => $exception->getMessage()])->withInput();
@@ -99,6 +103,25 @@ class BrandDiagnosisController extends Controller
         return redirect()
             ->route('admin.brand-diagnosis.index')
             ->with('message', 'AI 问题生成任务已创建，问题生成后请确认诊断。');
+    }
+
+    public function reusableQuestions(Request $request): JsonResponse
+    {
+        $payload = $request->validate([
+            'brand_name' => ['required', 'string', 'max:120'],
+        ]);
+
+        $admin = auth('admin')->user();
+        if (! $admin instanceof Admin) {
+            abort(403);
+        }
+
+        $preview = $this->runService->reusableQuestionPreview($admin, (string) $payload['brand_name']);
+
+        return response()->json([
+            'available' => $preview !== null && count($preview['questions']) > 0,
+            'preview' => $preview,
+        ]);
     }
 
     public function confirm(int $run, Request $request): RedirectResponse
@@ -155,15 +178,15 @@ class BrandDiagnosisController extends Controller
     }
 
     /**
-     * @return list<array{name:string,key:string,initial:string,color:string,desc:string,deep:bool,available:bool}>
+     * @return list<array{name:string,key:string,initial:string,color:string,logo:string,desc:string,deep:bool,available:bool}>
      */
     private function models(): array
     {
         return [
-            ['name' => '豆包', 'key' => 'doubao', 'initial' => '豆', 'color' => 'bg-blue-600', 'desc' => '网页问答', 'deep' => true, 'available' => true],
-            ['name' => 'DeepSeek', 'key' => 'deepseek', 'initial' => 'DS', 'color' => 'bg-indigo-600', 'desc' => '深度推理', 'deep' => true, 'available' => true],
-            ['name' => '千问', 'key' => 'qianwen', 'initial' => '千', 'color' => 'bg-violet-600', 'desc' => '通义问答', 'deep' => true, 'available' => false],
-            ['name' => '文心一言', 'key' => 'wenxin', 'initial' => '文', 'color' => 'bg-emerald-600', 'desc' => '千帆搜索', 'deep' => false, 'available' => false],
+            ['name' => '豆包', 'key' => 'doubao', 'initial' => '豆', 'color' => 'bg-blue-600', 'logo' => BrandDiagnosisPlatform::logoUrl('doubao'), 'desc' => '网页问答', 'deep' => true, 'available' => true],
+            ['name' => 'DeepSeek', 'key' => 'deepseek', 'initial' => 'DS', 'color' => 'bg-indigo-600', 'logo' => BrandDiagnosisPlatform::logoUrl('deepseek'), 'desc' => '深度推理', 'deep' => true, 'available' => true],
+            ['name' => '千问', 'key' => 'qianwen', 'initial' => '千', 'color' => 'bg-violet-600', 'logo' => BrandDiagnosisPlatform::logoUrl('qianwen'), 'desc' => '通义问答', 'deep' => true, 'available' => true],
+            ['name' => '文心一言', 'key' => 'wenxin', 'initial' => '文', 'color' => 'bg-emerald-600', 'logo' => BrandDiagnosisPlatform::logoUrl('wenxin'), 'desc' => '千帆搜索', 'deep' => false, 'available' => true],
         ];
     }
 
@@ -469,7 +492,7 @@ class BrandDiagnosisController extends Controller
     {
         $platforms = collect((array) $run->platforms)
             ->map(static fn (mixed $platform): string => strtolower(trim((string) $platform)))
-            ->filter(static fn (string $platform): bool => in_array($platform, ['doubao', 'deepseek'], true))
+            ->filter(static fn (string $platform): bool => BrandDiagnosisPlatform::isSupported($platform))
             ->unique()
             ->values()
             ->all();
@@ -496,22 +519,22 @@ class BrandDiagnosisController extends Controller
     }
 
     /**
-     * @return list<array{value:string,label:string}>
+     * @return list<array{value:string,label:string,logo:string}>
      */
     private function recordPlatformOptions(BrandDiagnosisRun $run): array
     {
         $options = [
-            ['value' => 'all', 'label' => '全部平台'],
+            ['value' => 'all', 'label' => '全部平台', 'logo' => ''],
         ];
 
         $platforms = collect((array) $run->platforms)
             ->map(static fn (mixed $platform): string => strtolower(trim((string) $platform)))
-            ->filter(static fn (string $platform): bool => in_array($platform, ['doubao', 'deepseek'], true))
+            ->filter(static fn (string $platform): bool => BrandDiagnosisPlatform::isSupported($platform))
             ->unique()
             ->values();
 
         foreach ($platforms as $platform) {
-            $options[] = ['value' => $platform, 'label' => $this->platformLabel($platform)];
+            $options[] = ['value' => $platform, 'label' => $this->platformLabel($platform), 'logo' => $this->platformLogo($platform)];
         }
 
         return $options;
@@ -582,7 +605,7 @@ class BrandDiagnosisController extends Controller
     }
 
     /**
-     * @return list<array{platform:string,platform_key:string,category:string,title:string,questions:int,models:string,icon:string,url:string}>
+     * @return list<array{platform:string,platform_key:string,category:string,title:string,questions:int,models:string,icon:string,logo:string,url:string}>
      */
     private function sourceRows(BrandDiagnosisRun $run, ?string $platform = null): array
     {
@@ -606,6 +629,7 @@ class BrandDiagnosisController extends Controller
                     'questions' => $group->pluck('question_id')->unique()->count(),
                     'models' => $platformKeys->map(fn (string $platform): string => $this->platformLabel($platform))->implode('、'),
                     'icon' => $this->platformIcon((string) ($source?->platform ?? '')),
+                    'logo' => $this->platformLogo((string) ($source?->platform ?? '')),
                     'url' => (string) ($source?->url ?? ''),
                 ];
             })
@@ -614,7 +638,7 @@ class BrandDiagnosisController extends Controller
     }
 
     /**
-     * @return list<array{question:string,platform:string,platform_key:string,brands:list<string>,visible_brands:list<string>,hidden_brand_count:int,answer:string,status:string,sources:list<array{title:string,url:string,domain:string,type:string}>}>
+     * @return list<array{question:string,platform:string,platform_key:string,platform_logo:string,brands:list<string>,visible_brands:list<string>,hidden_brand_count:int,answer:string,status:string,sources:list<array{title:string,url:string,domain:string,type:string}>}>
      */
     private function conversationRows(BrandDiagnosisRun $run, ?string $platform = null): array
     {
@@ -644,6 +668,7 @@ class BrandDiagnosisController extends Controller
                             'question' => (string) $question->question,
                             'platform' => $this->platformLabel((string) $result->platform),
                             'platform_key' => (string) $result->platform,
+                            'platform_logo' => $this->platformLogo((string) $result->platform),
                             'brands' => $brands,
                             'visible_brands' => array_slice($brands, 0, 4),
                             'hidden_brand_count' => max(0, count($brands) - 4),
@@ -812,19 +837,16 @@ class BrandDiagnosisController extends Controller
 
     private function platformLabel(string $platform): string
     {
-        return match ($platform) {
-            'deepseek' => 'DeepSeek',
-            'doubao' => '豆包',
-            default => $platform,
-        };
+        return BrandDiagnosisPlatform::label($platform);
     }
 
     private function platformIcon(string $platform): string
     {
-        return match ($platform) {
-            'deepseek' => 'DS',
-            'doubao' => 'DB',
-            default => mb_strtoupper(mb_substr($platform, 0, 2, 'UTF-8'), 'UTF-8'),
-        };
+        return BrandDiagnosisPlatform::icon($platform);
+    }
+
+    private function platformLogo(string $platform): string
+    {
+        return BrandDiagnosisPlatform::logoUrl($platform);
     }
 }

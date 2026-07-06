@@ -59,8 +59,24 @@ class BrandDiagnosisPdfService
     {
         $metrics = (array) ($record['metrics'] ?? []);
         $rankings = (array) ($record['rankings'] ?? []);
-        $sources = array_slice((array) ($record['sources'] ?? []), 0, 8);
-        $conversations = array_slice((array) ($record['conversations'] ?? []), 0, 6);
+        $sources = collect(array_slice((array) ($record['sources'] ?? []), 0, 8))
+            ->map(function ($source): array {
+                $source = (array) $source;
+                $source['logo_path'] = BrandDiagnosisPlatform::logoAbsolutePath((string) ($source['platform_key'] ?? ''));
+
+                return $source;
+            })
+            ->values()
+            ->all();
+        $conversations = collect(array_slice((array) ($record['conversations'] ?? []), 0, 6))
+            ->map(function ($conversation): array {
+                $conversation = (array) $conversation;
+                $conversation['platform_logo_path'] = BrandDiagnosisPlatform::logoAbsolutePath((string) ($conversation['platform_key'] ?? ''));
+
+                return $conversation;
+            })
+            ->values()
+            ->all();
         $platformData = (array) ($record['platform_data'] ?? []);
         $platformOptions = collect((array) ($record['platform_options'] ?? []))
             ->reject(static fn (array $option): bool => ($option['value'] ?? '') === 'all')
@@ -68,9 +84,12 @@ class BrandDiagnosisPdfService
 
         $platforms = $platformOptions
             ->map(function (array $option) use ($platformData): array {
+                $value = (string) ($option['value'] ?? '');
+
                 return [
                     'label' => (string) ($option['label'] ?? $option['value'] ?? '平台'),
-                    'metrics' => (array) ($platformData[(string) ($option['value'] ?? '')]['metrics'] ?? []),
+                    'logo_path' => BrandDiagnosisPlatform::logoAbsolutePath($value),
+                    'metrics' => (array) ($platformData[$value]['metrics'] ?? []),
                 ];
             })
             ->values()
@@ -195,19 +214,27 @@ class BrandDiagnosisPdfService
             return $y;
         }
 
-        $cardW = 52.0;
-        foreach (array_slice($platforms, 0, 3) as $index => $platform) {
-            $x = self::LEFT + (($cardW + 4) * $index);
+        $gap = 3.0;
+        $cardW = (self::WIDTH - ($gap * 3)) / 4;
+        foreach (array_slice($platforms, 0, 4) as $index => $platform) {
+            $x = self::LEFT + (($cardW + $gap) * $index);
             $metrics = $platform['metrics'];
             $this->card($x, $y, $cardW, 20);
-            $this->text($platform['label'], $x + 4, $y + 4, 24, 4, 8.5, [15, 23, 42], 'B');
-            $this->pill('平台维度', $x + 34, $y + 3.5, 14);
-            $this->text(((int) ($metrics['mention_rate'] ?? 0)).'%', $x + 4, $y + 11, 12, 4, 9, [234, 88, 12], 'B', 'C');
-            $this->text((string) ((int) ($metrics['mention_count'] ?? 0)), $x + 20, $y + 11, 12, 4, 9, [15, 23, 42], 'B', 'C');
-            $this->text((string) ($metrics['average_rank'] ?? '0'), $x + 36, $y + 11, 12, 4, 9, [15, 23, 42], 'B', 'C');
-            $this->text('提及率', $x + 4, $y + 15.2, 12, 3.2, 5.8, [71, 85, 105], '', 'C');
-            $this->text('提及次数', $x + 20, $y + 15.2, 12, 3.2, 5.8, [71, 85, 105], '', 'C');
-            $this->text('平均排名', $x + 36, $y + 15.2, 12, 3.2, 5.8, [71, 85, 105], '', 'C');
+            $labelX = $x + 3;
+            $labelWidth = $cardW - 21;
+            if ($this->drawLogo((string) ($platform['logo_path'] ?? ''), $x + 3, $y + 3.1, 5.4)) {
+                $labelX = $x + 10;
+                $labelWidth = $cardW - 28;
+            }
+            $this->text($this->short((string) $platform['label'], 8), $labelX, $y + 4, $labelWidth, 4, 8, [15, 23, 42], 'B');
+            $this->pill('平台', $x + $cardW - 16, $y + 3.5, 12);
+            $metricW = ($cardW - 6) / 3;
+            $this->text(((int) ($metrics['mention_rate'] ?? 0)).'%', $x + 3, $y + 11, $metricW, 4, 8.2, [234, 88, 12], 'B', 'C');
+            $this->text((string) ((int) ($metrics['mention_count'] ?? 0)), $x + 3 + $metricW, $y + 11, $metricW, 4, 8.2, [15, 23, 42], 'B', 'C');
+            $this->text((string) ($metrics['average_rank'] ?? '0'), $x + 3 + ($metricW * 2), $y + 11, $metricW, 4, 8.2, [15, 23, 42], 'B', 'C');
+            $this->text('提及率', $x + 3, $y + 15.2, $metricW, 3.2, 5.6, [71, 85, 105], '', 'C');
+            $this->text('次数', $x + 3 + $metricW, $y + 15.2, $metricW, 3.2, 5.6, [71, 85, 105], '', 'C');
+            $this->text('排名', $x + 3 + ($metricW * 2), $y + 15.2, $metricW, 3.2, 5.6, [71, 85, 105], '', 'C');
         }
 
         return $y + 20;
@@ -302,8 +329,13 @@ class BrandDiagnosisPdfService
             $this->ensureSpace(28, $y);
             $h = 24.0;
             $this->card(self::LEFT, $y, self::WIDTH, $h);
-            $this->pill((string) ($conversation['platform'] ?? 'AI'), self::LEFT + 5, $y + 4, 18, [255, 247, 237], [194, 65, 12]);
-            $this->text($this->short((string) ($conversation['question'] ?? '-'), 42), self::LEFT + 26, $y + 4, self::WIDTH - 31, 4, 8, [15, 23, 42], 'B');
+            $platformPillX = self::LEFT + 5;
+            if ($this->drawLogo((string) ($conversation['platform_logo_path'] ?? ''), self::LEFT + 5, $y + 3.7, 5.2)) {
+                $platformPillX = self::LEFT + 12;
+            }
+            $this->pill((string) ($conversation['platform'] ?? 'AI'), $platformPillX, $y + 4, 18, [255, 247, 237], [194, 65, 12]);
+            $questionX = $platformPillX + 21;
+            $this->text($this->short((string) ($conversation['question'] ?? '-'), 42), $questionX, $y + 4, self::LEFT + self::WIDTH - $questionX - 5, 4, 8, [15, 23, 42], 'B');
             $this->multiText($this->short((string) ($conversation['answer'] ?: '暂无回答内容。'), 118), self::LEFT + 5, $y + 10, self::WIDTH - 10, 8, 7.2, [51, 65, 85]);
             $brands = implode('、', array_slice((array) ($conversation['brands'] ?? []), 0, 8));
             $this->text('提及品牌：'.($brands !== '' ? $brands : '未提及品牌'), self::LEFT + 5, $y + 19, self::WIDTH - 10, 3.5, 6.5, [100, 116, 139]);
@@ -369,6 +401,17 @@ class BrandDiagnosisPdfService
             $this->text($value, $cursor + 2, $y + 1.5, $w - 4, 3.4, 6.6, [51, 65, 85]);
             $cursor += $w;
         }
+    }
+
+    private function drawLogo(string $path, float $x, float $y, float $size): bool
+    {
+        if ($path === '' || ! is_file($path)) {
+            return false;
+        }
+
+        $this->pdf->Image($path, $x, $y, $size, $size);
+
+        return true;
     }
 
     private function pill(string $text, float $x, float $y, float $w, array $fill = [241, 245, 249], array $color = [71, 85, 105]): void

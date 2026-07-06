@@ -197,7 +197,14 @@
                         @if ($platformMetrics)
                             <div class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
                                 <div class="flex items-center justify-between gap-3">
-                                    <div class="font-semibold text-slate-900">{{ $option['label'] }}</div>
+                                    <div class="flex min-w-0 items-center gap-2 font-semibold text-slate-900">
+                                        @if (! empty($option['logo']))
+                                            <span class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-slate-200">
+                                                <img src="{{ $option['logo'] }}" alt="{{ $option['label'] }} logo" class="h-5 w-5 rounded-full object-contain">
+                                            </span>
+                                        @endif
+                                        <span class="truncate">{{ $option['label'] }}</span>
+                                    </div>
                                     <span class="rounded-md bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">平台维度</span>
                                 </div>
                                 <div class="mt-4 grid grid-cols-3 gap-3 text-center">
@@ -318,7 +325,13 @@
                     @forelse ($sources as $source)
                         <article class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
                             <div class="mb-3 flex items-center justify-between gap-3">
-                                <span class="inline-flex h-8 w-8 items-center justify-center rounded-md bg-slate-900 text-xs font-bold text-white">{{ $source['icon'] ?? 'AI' }}</span>
+                                @if (! empty($source['logo']))
+                                    <span class="inline-flex h-8 w-8 items-center justify-center rounded-md bg-white shadow-sm ring-1 ring-slate-200">
+                                        <img src="{{ $source['logo'] }}" alt="{{ $source['platform'] ?? 'AI' }} logo" class="h-6 w-6 rounded-full object-contain">
+                                    </span>
+                                @else
+                                    <span class="inline-flex h-8 w-8 items-center justify-center rounded-md bg-slate-900 text-xs font-bold text-white">{{ $source['icon'] ?? 'AI' }}</span>
+                                @endif
                                 <span class="rounded-md bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">{{ $source['models'] ?? $source['platform'] }}</span>
                             </div>
                             @if (! empty($source['url']))
@@ -359,7 +372,12 @@
                             <div class="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                                 <div class="min-w-0">
                                     <div class="mb-2 flex flex-wrap items-center gap-2">
-                                        <span class="rounded-md bg-orange-50 px-2 py-1 text-xs font-semibold text-orange-700">{{ $conversation['platform'] ?? 'AI' }}</span>
+                                        <span class="inline-flex items-center gap-1.5 rounded-md bg-orange-50 px-2 py-1 text-xs font-semibold text-orange-700">
+                                            @if (! empty($conversation['platform_logo']))
+                                                <img src="{{ $conversation['platform_logo'] }}" alt="{{ $conversation['platform'] ?? 'AI' }} logo" class="h-4 w-4 rounded-full object-contain">
+                                            @endif
+                                            <span>{{ $conversation['platform'] ?? 'AI' }}</span>
+                                        </span>
                                         <span class="rounded-md bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">{{ $conversation['status'] ?? '' }}</span>
                                     </div>
                                     <h3 class="text-base font-semibold leading-6 text-slate-950">{{ $conversation['question'] }}</h3>

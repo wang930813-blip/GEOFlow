@@ -38,4 +38,24 @@ return [
         'connect_timeout' => (int) env('BRAND_DIAGNOSIS_DEEPSEEK_CONNECT_TIMEOUT', env('BRAND_DIAGNOSIS_DOUBAO_CONNECT_TIMEOUT', 10)),
         'max_keywords' => (int) env('BRAND_DIAGNOSIS_DEEPSEEK_WEB_SEARCH_MAX_KEYWORDS', env('BRAND_DIAGNOSIS_DOUBAO_WEB_SEARCH_MAX_KEYWORDS', 5)),
     ],
+
+    'qianwen' => [
+        'enabled' => filter_var(env('BRAND_DIAGNOSIS_QIANWEN_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        'base_url' => rtrim((string) env('BRAND_DIAGNOSIS_QIANWEN_BASE_URL', ''), '/'),
+        'api_key' => (string) env('BRAND_DIAGNOSIS_QIANWEN_API_KEY', ''),
+        'model' => (string) env('BRAND_DIAGNOSIS_QIANWEN_MODEL', ''),
+        'timeout' => (int) env('BRAND_DIAGNOSIS_QIANWEN_TIMEOUT', 60),
+        'connect_timeout' => (int) env('BRAND_DIAGNOSIS_QIANWEN_CONNECT_TIMEOUT', 10),
+        'max_keywords' => (int) env('BRAND_DIAGNOSIS_QIANWEN_WEB_SEARCH_MAX_KEYWORDS', 5),
+    ],
+
+    'wenxin' => [
+        'enabled' => filter_var(env('BRAND_DIAGNOSIS_WENXIN_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        'base_url' => rtrim((string) env('BRAND_DIAGNOSIS_WENXIN_BASE_URL', ''), '/'),
+        'api_key' => (string) env('BRAND_DIAGNOSIS_WENXIN_API_KEY', ''),
+        'model' => (string) env('BRAND_DIAGNOSIS_WENXIN_MODEL', ''),
+        'timeout' => (int) env('BRAND_DIAGNOSIS_WENXIN_TIMEOUT', 60),
+        'connect_timeout' => (int) env('BRAND_DIAGNOSIS_WENXIN_CONNECT_TIMEOUT', 10),
+        'max_keywords' => (int) env('BRAND_DIAGNOSIS_WENXIN_WEB_SEARCH_MAX_KEYWORDS', 5),
+    ],
 ];

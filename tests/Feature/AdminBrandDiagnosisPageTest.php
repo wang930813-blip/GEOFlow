@@ -80,6 +80,27 @@ class AdminBrandDiagnosisPageTest extends TestCase
             ->assertSee('is-active font-medium', false);
     }
 
+    public function test_brand_diagnosis_page_exposes_four_selectable_platform_models(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'brand_four_platform_admin',
+            'password' => 'secret-123',
+            'email' => 'brand-four-platform-admin@example.com',
+            'display_name' => 'Brand Four Platform Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        $html = $this->actingAs($admin, 'admin')
+            ->get(route('admin.brand-diagnosis.index'))
+            ->assertOk()
+            ->getContent();
+
+        foreach (['doubao', 'deepseek', 'qianwen', 'wenxin'] as $platform) {
+            $this->assertStringContainsString('value="'.$platform.'" type="checkbox"', $html);
+        }
+    }
+
     public function test_brand_diagnosis_questions_are_editable_before_confirming_diagnosis(): void
     {
         [$admin, $site] = $this->createAdminWithSite('brand_question_confirm_page_admin');
@@ -1230,6 +1251,73 @@ class AdminBrandDiagnosisPageTest extends TestCase
         $this->assertStringContainsString('data-conversation-detail', $html);
         $this->assertStringContainsString('data-conversation-modal', $html);
         $this->assertStringContainsString('"sources"', $html);
+    }
+
+    public function test_brand_diagnosis_record_exposes_qianwen_and_wenxin_platform_filters(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('brand_qianwen_wenxin_page_admin');
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => 'Acme AI',
+            'platforms' => ['qianwen', 'wenxin'],
+            'status' => 'completed',
+            'total_questions' => 1,
+            'completed_questions' => 1,
+            'failed_questions' => 0,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+        ]);
+        $question = $run->questions()->create([
+            'site_id' => (int) $site->id,
+            'question' => 'Which AI brand service is reliable?',
+            'question_type' => 'choice',
+            'sort_order' => 1,
+            'status' => 'completed',
+        ]);
+
+        foreach (['qianwen' => 'Qianwen answer for Acme AI.', 'wenxin' => 'Wenxin answer for Acme AI.'] as $platform => $answer) {
+            $result = $question->results()->create([
+                'site_id' => (int) $site->id,
+                'run_id' => (int) $run->id,
+                'platform' => $platform,
+                'answer' => $answer,
+                'brand_mentioned' => true,
+                'mention_count' => 1,
+                'mention_rank' => 1,
+                'sentiment' => 'positive',
+                'status' => 'success',
+                'checked_at' => now(),
+            ]);
+            $result->brandMentions()->create([
+                'site_id' => (int) $site->id,
+                'run_id' => (int) $run->id,
+                'question_id' => (int) $question->id,
+                'platform' => $platform,
+                'brand_name' => 'Acme AI',
+                'mention_count' => 1,
+                'mention_rank' => 1,
+                'sentiment' => 'positive',
+                'source_count' => 0,
+                'is_target_brand' => true,
+                'evidence' => $answer,
+            ]);
+        }
+
+        $html = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.brand-diagnosis.index'))
+            ->assertOk()
+            ->assertSee('value="qianwen"', false)
+            ->assertSee('value="wenxin"', false)
+            ->assertSee('Qianwen answer for Acme AI.')
+            ->assertSee('Wenxin answer for Acme AI.')
+            ->getContent();
+
+        $this->assertStringContainsString('"qianwen"', $html);
+        $this->assertStringContainsString('"wenxin"', $html);
+        $this->assertStringContainsString('"platform_key":"qianwen"', $html);
+        $this->assertStringContainsString('"platform_key":"wenxin"', $html);
     }
 
     /**

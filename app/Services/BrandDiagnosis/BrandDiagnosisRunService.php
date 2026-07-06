@@ -21,7 +21,7 @@ class BrandDiagnosisRunService
     /**
      * @param  list<string>  $platforms
      */
-    public function create(Admin $admin, string $brandName, array $platforms): BrandDiagnosisRun
+    public function create(Admin $admin, string $brandName, array $platforms, bool $reuseQuestions = false): BrandDiagnosisRun
     {
         $brandName = trim($brandName);
         if ($brandName === '') {
@@ -32,6 +32,43 @@ class BrandDiagnosisRunService
         $siteId = (int) ($this->currentSite->id() ?? 0);
         if ($siteId <= 0) {
             throw new RuntimeException('当前站点未初始化，请刷新后台后重试。');
+        }
+
+        if ($reuseQuestions) {
+            $reusableQuestions = $this->latestReusableQuestions($admin, $brandName, $siteId);
+            if ($reusableQuestions->isNotEmpty()) {
+                return DB::transaction(function () use ($admin, $brandName, $platforms, $siteId, $reusableQuestions): BrandDiagnosisRun {
+                    $run = BrandDiagnosisRun::query()->create([
+                        'site_id' => $siteId,
+                        'owner_admin_id' => (int) $admin->id,
+                        'admin_id' => (int) $admin->id,
+                        'brand_name' => $brandName,
+                        'platforms' => $platforms,
+                        'status' => 'questions_ready',
+                        'total_questions' => $reusableQuestions->count(),
+                        'completed_questions' => 0,
+                        'failed_questions' => 0,
+                        'brand_score' => 0,
+                        'mention_rate' => 0,
+                        'average_rank' => 0,
+                        'mention_count' => 0,
+                        'sentiment_rate' => 0,
+                        'billing_mode' => 'pending_confirmation',
+                        'points_cost' => 0,
+                        'points_transaction_id' => null,
+                        'limit_bypassed' => false,
+                        'limit_bypass_reason' => '',
+                        'usage_date' => null,
+                        'started_at' => null,
+                        'completed_at' => null,
+                        'error_message' => null,
+                    ]);
+
+                    $this->createQuestionsForRun($run, $reusableQuestions);
+
+                    return $run->refresh();
+                });
+            }
         }
 
         $run = DB::transaction(function () use ($admin, $brandName, $platforms, $siteId): BrandDiagnosisRun {
@@ -57,6 +94,28 @@ class BrandDiagnosisRunService
         GenerateBrandDiagnosisQuestionsJob::dispatch((int) $run->id)->onQueue('geoflow');
 
         return $run;
+    }
+
+    /**
+     * @return array{run_id:int,created_at:string,questions:list<array{question:string,type:string,sort_order:int}>}|null
+     */
+    public function reusableQuestionPreview(Admin $admin, string $brandName): ?array
+    {
+        $siteId = (int) ($this->currentSite->id() ?? 0);
+        if ($siteId <= 0) {
+            return null;
+        }
+
+        $run = $this->latestReusableQuestionRun($admin, trim($brandName), $siteId);
+        if (! $run instanceof BrandDiagnosisRun) {
+            return null;
+        }
+
+        return [
+            'run_id' => (int) $run->id,
+            'created_at' => $run->created_at?->format('Y-m-d H:i:s') ?? '',
+            'questions' => $this->questionsFromRun($run)->values()->all(),
+        ];
     }
 
     /**
@@ -159,15 +218,66 @@ class BrandDiagnosisRunService
      */
     private function normalizePlatforms(array $platforms): array
     {
-        $allowed = ['doubao', 'deepseek'];
         $normalized = collect($platforms)
             ->map(static fn (mixed $platform): string => strtolower(trim((string) $platform)))
-            ->filter(static fn (string $platform): bool => in_array($platform, $allowed, true))
+            ->filter(static fn (string $platform): bool => BrandDiagnosisPlatform::isSupported($platform))
             ->unique()
             ->values()
             ->all();
 
         return $normalized !== [] ? $normalized : ['doubao'];
+    }
+
+    /**
+     * @return Collection<int,array{question:string,type:string,sort_order:int}>
+     */
+    private function latestReusableQuestions(Admin $admin, string $brandName, int $siteId): Collection
+    {
+        $run = $this->latestReusableQuestionRun($admin, $brandName, $siteId);
+
+        return $run instanceof BrandDiagnosisRun
+            ? $this->questionsFromRun($run)
+            : collect();
+    }
+
+    private function latestReusableQuestionRun(Admin $admin, string $brandName, int $siteId): ?BrandDiagnosisRun
+    {
+        if ($brandName === '') {
+            return null;
+        }
+
+        return BrandDiagnosisRun::query()
+            ->withoutGlobalScope('current_site')
+            ->with(['questions' => fn ($query) => $query->orderBy('sort_order')])
+            ->where('site_id', $siteId)
+            ->where('brand_name', $brandName)
+            ->whereIn('status', ['questions_ready', 'awaiting_confirmation', 'running', 'completed', 'failed'])
+            ->where(function ($query) use ($admin): void {
+                $query->where('owner_admin_id', (int) $admin->id)
+                    ->orWhere(function ($legacyQuery) use ($admin): void {
+                        $legacyQuery->whereNull('owner_admin_id')
+                            ->where('admin_id', (int) $admin->id);
+                    });
+            })
+            ->whereHas('questions')
+            ->latest('id')
+            ->first();
+    }
+
+    /**
+     * @return Collection<int,array{question:string,type:string,sort_order:int}>
+     */
+    private function questionsFromRun(BrandDiagnosisRun $run): Collection
+    {
+        return $run->questions
+            ->sortBy('sort_order')
+            ->map(static fn ($question): array => [
+                'question' => mb_strimwidth(trim((string) $question->question), 0, 240, '', 'UTF-8'),
+                'type' => (string) $question->question_type,
+                'sort_order' => (int) $question->sort_order,
+            ])
+            ->filter(static fn (array $question): bool => $question['question'] !== '')
+            ->values();
     }
 
     /**

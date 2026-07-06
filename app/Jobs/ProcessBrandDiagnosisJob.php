@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\BrandDiagnosisRun;
 use App\Models\BrandDiagnosisResult;
 use App\Services\BrandDiagnosis\BrandDiagnosisMetricsCalculator;
+use App\Services\BrandDiagnosis\BrandDiagnosisPlatform;
 use App\Services\BrandDiagnosis\DoubaoBrandDiagnosisClient;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -69,7 +70,7 @@ class ProcessBrandDiagnosisJob implements ShouldQueue
         foreach ($run->questions as $question) {
             foreach ((array) $run->platforms as $platform) {
                 $platform = strtolower(trim((string) $platform));
-                if (! in_array($platform, ['doubao', 'deepseek'], true)) {
+                if (! BrandDiagnosisPlatform::isSupported($platform)) {
                     continue;
                 }
 

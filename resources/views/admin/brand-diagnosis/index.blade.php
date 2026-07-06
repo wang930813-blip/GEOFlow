@@ -69,8 +69,9 @@
         </div>
 
         <section class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5" aria-labelledby="brand-diagnosis-form-title">
-            <form method="POST" action="{{ route('admin.brand-diagnosis.store') }}" class="flex flex-col gap-4 lg:flex-row lg:items-start">
+            <form method="POST" action="{{ route('admin.brand-diagnosis.store') }}" class="flex flex-col gap-4 lg:flex-row lg:items-start" data-brand-diagnosis-form data-reuse-check-url="{{ route('admin.brand-diagnosis.reusable-questions') }}">
                 @csrf
+                <input type="hidden" name="reuse_questions" value="0" data-reuse-questions-field>
                 <div class="min-w-0 flex-1">
                     <label id="brand-diagnosis-form-title" for="brand-name" class="mb-2 block text-sm font-semibold text-gray-900">品牌名称</label>
                     <div class="flex flex-col gap-3 sm:flex-row">
@@ -89,7 +90,13 @@
                     @foreach ($models as $model)
                         <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
                             <div class="flex items-center gap-2">
-                                <span class="{{ $model['color'] }} inline-flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold text-white">{{ $model['initial'] }}</span>
+                                @if (! empty($model['logo']))
+                                    <span class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white shadow-sm">
+                                        <img src="{{ $model['logo'] }}" alt="{{ $model['name'] }} logo" class="h-7 w-7 rounded-full object-contain">
+                                    </span>
+                                @else
+                                    <span class="{{ $model['color'] }} inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white">{{ $model['initial'] }}</span>
+                                @endif
                                 <div class="min-w-0">
                                     <div class="truncate text-sm font-semibold text-gray-900">{{ $model['name'] }}</div>
                                     <div class="text-xs text-gray-500">{{ $model['desc'] }}</div>
@@ -120,7 +127,7 @@
                 <div class="flex flex-wrap items-center gap-4 text-sm text-gray-600">
                     <span class="inline-flex min-h-9 items-center gap-2">
                         <span class="inline-flex h-2 w-2 rounded-full bg-orange-500"></span>
-                        数据来源：<span data-selected-platforms>豆包、DeepSeek</span>
+                        数据来源：<span data-selected-platforms>豆包、DeepSeek、千问、文心一言</span>
                     </span>
                 </div>
                 <div class="text-xs text-gray-500">模型限定：豆包、千问、文心一言、DeepSeek</div>
@@ -392,7 +399,13 @@
                             <div class="flex-1 space-y-3" data-source-list>
                                 @forelse ($recordSources as $sourceIndex => $source)
                                     <div @class(['hidden' => $sourceIndex >= $sourceMinPageSize, 'flex gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3']) data-source-item data-platform-key="{{ $source['platform_key'] ?? '' }}">
-                                        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-white text-xs font-bold text-orange-700 shadow-sm">{{ $source['icon'] }}</div>
+                                        @if (! empty($source['logo']))
+                                            <span class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-white shadow-sm ring-1 ring-slate-100">
+                                                <img src="{{ $source['logo'] }}" alt="{{ $source['platform'] ?? 'AI' }} logo" class="h-7 w-7 rounded-full object-contain">
+                                            </span>
+                                        @else
+                                            <span class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-white text-xs font-bold text-orange-700 shadow-sm">{{ $source['icon'] ?? 'AI' }}</span>
+                                        @endif
                                         <div class="min-w-0 flex-1">
                                             <div class="mb-1 flex flex-wrap items-center gap-2">
                                                 <span class="rounded bg-orange-50 px-2 py-0.5 text-xs font-medium text-orange-700">{{ $source['category'] }}</span>
@@ -437,7 +450,12 @@
                                     <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                         <div class="min-w-0">
                                             <div class="flex flex-wrap items-center gap-2">
-                                                <span class="rounded bg-orange-50 px-2 py-0.5 text-xs font-medium text-orange-700">{{ $conversation['platform'] ?? 'AI' }}</span>
+                                                <span class="inline-flex items-center gap-1.5 rounded bg-white px-2 py-0.5 text-xs font-medium text-gray-700 ring-1 ring-slate-200">
+                                                    @if (! empty($conversation['platform_logo']))
+                                                        <img src="{{ $conversation['platform_logo'] }}" alt="{{ $conversation['platform'] ?? 'AI' }} logo" class="h-4 w-4 rounded-full object-contain">
+                                                    @endif
+                                                    <span>{{ $conversation['platform'] ?? 'AI' }}</span>
+                                                </span>
                                                 <div class="truncate text-sm font-semibold text-gray-900">{{ $conversation['question'] }}</div>
                                             </div>
                                             <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500" data-visible-brand-list title="{{ implode('、', $conversation['brands'] ?? []) }}">
@@ -603,7 +621,10 @@
                 <div class="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
                     <div class="min-w-0">
                         <div class="mb-2 flex flex-wrap items-center gap-2">
-                            <span class="rounded bg-orange-50 px-2 py-0.5 text-xs font-medium text-orange-700" data-conversation-modal-platform>AI</span>
+                            <span class="inline-flex items-center gap-1.5 rounded bg-orange-50 px-2 py-0.5 text-xs font-medium text-orange-700">
+                                <img src="" alt="" class="hidden h-4 w-4 rounded-full object-contain" data-conversation-modal-platform-logo>
+                                <span data-conversation-modal-platform>AI</span>
+                            </span>
                             <span class="text-xs text-gray-500" data-conversation-modal-status></span>
                         </div>
                         <h2 id="conversation-modal-title" class="text-base font-semibold text-gray-900">AI对话详情</h2>
@@ -751,6 +772,45 @@
 
             renderReportPage();
 
+            const brandDiagnosisForm = document.querySelector('[data-brand-diagnosis-form]');
+            let brandDiagnosisReuseChecked = false;
+            brandDiagnosisForm?.addEventListener('submit', async (event) => {
+                if (brandDiagnosisReuseChecked) {
+                    return;
+                }
+
+                const brandInput = brandDiagnosisForm.querySelector('[name="brand_name"]');
+                const reuseField = brandDiagnosisForm.querySelector('[data-reuse-questions-field]');
+                const brandName = (brandInput?.value || '').trim();
+                if (!brandName || !reuseField || !brandDiagnosisForm.dataset.reuseCheckUrl) {
+                    return;
+                }
+
+                event.preventDefault();
+                reuseField.value = '0';
+
+                try {
+                    const url = new URL(brandDiagnosisForm.dataset.reuseCheckUrl, window.location.origin);
+                    url.searchParams.set('brand_name', brandName);
+                    const response = await fetch(url.toString(), {
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                    });
+                    const payload = response.ok ? await response.json() : null;
+                    if (payload?.available) {
+                        const createdAt = payload?.preview?.created_at ? `\n最近一次：${payload.preview.created_at}` : '';
+                        reuseField.value = window.confirm(`检测到该品牌最近一次生成的 AI 问题，是否复用并回填到问题框？${createdAt}`) ? '1' : '0';
+                    }
+                } catch (error) {
+                    reuseField.value = '0';
+                }
+
+                brandDiagnosisReuseChecked = true;
+                brandDiagnosisForm.requestSubmit();
+            });
+
             reportModal?.querySelectorAll('[data-report-link-action]').forEach((link) => {
                 link.addEventListener('click', () => {
                     closeReportModal();
@@ -769,6 +829,7 @@
 
             const conversationModal = document.querySelector('[data-conversation-modal]');
             const conversationPlatform = conversationModal?.querySelector('[data-conversation-modal-platform]');
+            const conversationPlatformLogo = conversationModal?.querySelector('[data-conversation-modal-platform-logo]');
             const conversationStatus = conversationModal?.querySelector('[data-conversation-modal-status]');
             const conversationQuestion = conversationModal?.querySelector('[data-conversation-modal-question]');
             const conversationAnswer = conversationModal?.querySelector('[data-conversation-modal-answer]');
@@ -803,6 +864,18 @@
             const openConversationModal = (conversation) => {
                 if (!conversationModal) return;
                 if (conversationPlatform) conversationPlatform.textContent = conversation?.platform || 'AI';
+                if (conversationPlatformLogo) {
+                    const logo = conversation?.platform_logo || '';
+                    if (logo) {
+                        conversationPlatformLogo.src = logo;
+                        conversationPlatformLogo.alt = `${conversation?.platform || 'AI'} logo`;
+                        conversationPlatformLogo.classList.remove('hidden');
+                    } else {
+                        conversationPlatformLogo.removeAttribute('src');
+                        conversationPlatformLogo.alt = '';
+                        conversationPlatformLogo.classList.add('hidden');
+                    }
+                }
                 if (conversationStatus) conversationStatus.textContent = conversation?.status || '';
                 if (conversationQuestion) conversationQuestion.textContent = conversation?.question || '';
                 if (conversationAnswer) conversationAnswer.textContent = conversation?.answer || '暂无回答内容。';

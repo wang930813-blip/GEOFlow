@@ -39,6 +39,16 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         config()->set('brand_diagnosis.deepseek.api_key', '');
         config()->set('brand_diagnosis.deepseek.model', 'deepseek-v4-flash-260425');
         config()->set('brand_diagnosis.deepseek.timeout', 10);
+        config()->set('brand_diagnosis.qianwen.enabled', true);
+        config()->set('brand_diagnosis.qianwen.base_url', 'https://ark.cn-beijing.volces.com/api/v3');
+        config()->set('brand_diagnosis.qianwen.api_key', 'test-qianwen-key');
+        config()->set('brand_diagnosis.qianwen.model', 'qwen-test-model');
+        config()->set('brand_diagnosis.qianwen.timeout', 10);
+        config()->set('brand_diagnosis.wenxin.enabled', true);
+        config()->set('brand_diagnosis.wenxin.base_url', 'https://ark.cn-beijing.volces.com/api/v3');
+        config()->set('brand_diagnosis.wenxin.api_key', 'test-wenxin-key');
+        config()->set('brand_diagnosis.wenxin.model', 'wenxin-test-model');
+        config()->set('brand_diagnosis.wenxin.timeout', 10);
     }
 
     public function test_brand_diagnosis_workflow_status_values_fit_database_column_length(): void
@@ -83,6 +93,87 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
             return $job->runId === (int) $run->id;
         });
         Queue::assertNotPushed(ProcessBrandDiagnosisJob::class);
+    }
+
+    public function test_admin_can_reuse_latest_brand_questions_without_generating_again(): void
+    {
+        Queue::fake();
+        [$admin, $site] = $this->createAdminWithSite('brand_diagnosis_reuse_admin');
+
+        $oldRun = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'owner_admin_id' => (int) $admin->id,
+            'brand_name' => 'Acme AI',
+            'platforms' => ['doubao'],
+            'status' => 'completed',
+            'total_questions' => 2,
+            'completed_questions' => 2,
+            'failed_questions' => 0,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+        ]);
+        $oldRun->questions()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'question' => 'Which Acme AI service is reliable?',
+            'question_type' => 'choice',
+            'sort_order' => 1,
+            'status' => 'completed',
+        ]);
+        $oldRun->questions()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'question' => 'How does Acme AI compare with competitors?',
+            'question_type' => 'compare',
+            'sort_order' => 2,
+            'status' => 'completed',
+        ]);
+
+        $response = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.brand-diagnosis.store'), [
+                'brand_name' => 'Acme AI',
+                'platforms' => ['doubao', 'qianwen'],
+                'reuse_questions' => '1',
+            ]);
+
+        $response->assertRedirect(route('admin.brand-diagnosis.index'));
+
+        $this->assertSame(2, BrandDiagnosisRun::query()->count());
+        $newRun = BrandDiagnosisRun::query()
+            ->whereKeyNot((int) $oldRun->id)
+            ->firstOrFail();
+        $this->assertSame('questions_ready', $newRun->status);
+        $this->assertSame(['doubao', 'qianwen'], $newRun->platforms);
+        $this->assertSame([
+            'Which Acme AI service is reliable?',
+            'How does Acme AI compare with competitors?',
+        ], $newRun->questions()->orderBy('sort_order')->pluck('question')->all());
+
+        Queue::assertNotPushed(GenerateBrandDiagnosisQuestionsJob::class);
+        Queue::assertNotPushed(ProcessBrandDiagnosisJob::class);
+    }
+
+    public function test_admin_can_create_brand_diagnosis_run_with_four_platforms(): void
+    {
+        Queue::fake();
+        [$admin, $site] = $this->createAdminWithSite('brand_diagnosis_four_platform_admin');
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.brand-diagnosis.store'), [
+                'brand_name' => 'Acme AI',
+                'platforms' => ['doubao', 'deepseek', 'qianwen', 'wenxin'],
+            ])
+            ->assertRedirect(route('admin.brand-diagnosis.index'));
+
+        $run = BrandDiagnosisRun::query()->firstOrFail();
+        $this->assertSame(['doubao', 'deepseek', 'qianwen', 'wenxin'], $run->platforms);
+
+        Queue::assertPushedOn('geoflow', GenerateBrandDiagnosisQuestionsJob::class, function (GenerateBrandDiagnosisQuestionsJob $job) use ($run): bool {
+            return $job->runId === (int) $run->id;
+        });
     }
 
     public function test_doubao_job_generates_industry_question_variants_before_collecting_answers(): void
@@ -1030,6 +1121,166 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         $this->assertSame(2, (int) $run->mention_count);
         $this->assertSame(100, (int) $run->sentiment_rate);
         $this->assertGreaterThanOrEqual(80, (int) $run->brand_score);
+    }
+
+    public function test_job_collects_qianwen_and_wenxin_platform_results(): void
+    {
+        config()->set('brand_diagnosis.qianwen.base_url', 'https://qianwen.example.com/compatible-mode/v1');
+        config()->set('brand_diagnosis.wenxin.base_url', 'https://qianfan.baidubce.com/v2/chat/completions');
+
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://qianwen.example.com/compatible-mode/v1/chat/completions' => Http::response($this->chatCompletionBrandMentionAnswerResponse('qianwen-answer', 'Qianwen answer mentions Acme AI.'), 200),
+            'https://qianfan.baidubce.com/v2/chat/completions' => Http::response($this->chatCompletionBrandMentionAnswerResponse('wenxin-answer', 'Wenxin answer mentions Acme AI.'), 200),
+        ]);
+
+        [$admin, $site] = $this->createAdminWithSite('brand_diagnosis_qianwen_wenxin_job_admin');
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => 'Acme AI',
+            'platforms' => ['qianwen', 'wenxin'],
+            'status' => 'pending',
+            'total_questions' => 1,
+            'completed_questions' => 0,
+            'failed_questions' => 0,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+        ]);
+        $question = $run->questions()->create([
+            'site_id' => (int) $site->id,
+            'question' => 'Which AI brand service is reliable?',
+            'question_type' => 'choice',
+            'sort_order' => 1,
+            'status' => 'pending',
+        ]);
+
+        (new ProcessBrandDiagnosisJob((int) $run->id))->handle();
+
+        $this->assertSame(['qianwen', 'wenxin'], BrandDiagnosisResult::query()
+            ->where('question_id', (int) $question->id)
+            ->pluck('platform')
+            ->sort()
+            ->values()
+            ->all());
+
+        Http::assertSent(function ($request): bool {
+            $payload = $request->data();
+
+            return $request->url() === 'https://qianwen.example.com/compatible-mode/v1/chat/completions'
+                && ($payload['model'] ?? null) === 'qwen-test-model'
+                && isset($payload['messages'][0]['content'])
+                && ($payload['enable_search'] ?? null) === true
+                && ! isset($payload['input'])
+                && ! isset($payload['tools'])
+                && $request->hasHeader('Authorization', 'Bearer test-qianwen-key');
+        });
+        Http::assertSent(function ($request): bool {
+            $payload = $request->data();
+
+            return $request->url() === 'https://qianfan.baidubce.com/v2/chat/completions'
+                && ($payload['model'] ?? null) === 'wenxin-test-model'
+                && isset($payload['messages'][0]['content'])
+                && ($payload['web_search']['enable'] ?? null) === true
+                && ! isset($payload['input'])
+                && ! isset($payload['tools'])
+                && $request->hasHeader('Authorization', 'Bearer test-wenxin-key');
+        });
+    }
+
+    public function test_chat_completion_reference_titles_are_persisted_as_sources_without_urls(): void
+    {
+        config()->set('brand_diagnosis.qianwen.base_url', 'https://qianwen.example.com/compatible-mode/v1');
+
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://qianwen.example.com/compatible-mode/v1/chat/completions' => Http::response([
+                'id' => 'chatcmpl-qianwen-title-sources',
+                'choices' => [
+                    [
+                        'message' => [
+                            'role' => 'assistant',
+                            'content' => json_encode([
+                                'answer' => "Qianwen answer mentions Acme AI.\n\n参考来源：\n- 《Acme AI service guide》\n- 《Acme AI comparison report》",
+                                'brand_mentions' => [
+                                    [
+                                        'brand' => 'Acme AI',
+                                        'mention_count' => 1,
+                                        'mention_rank' => 1,
+                                        'sentiment' => 'positive',
+                                        'evidence' => 'Qianwen answer mentions Acme AI.',
+                                    ],
+                                ],
+                            ], JSON_UNESCAPED_UNICODE),
+                        ],
+                    ],
+                ],
+                'usage' => ['prompt_tokens' => 10, 'completion_tokens' => 20],
+            ], 200),
+        ]);
+
+        [$admin, $site] = $this->createAdminWithSite('brand_diagnosis_qianwen_source_admin');
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'owner_admin_id' => (int) $admin->id,
+            'brand_name' => 'Acme AI',
+            'platforms' => ['qianwen'],
+            'status' => 'pending',
+            'total_questions' => 1,
+            'completed_questions' => 0,
+            'failed_questions' => 0,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+        ]);
+        $run->questions()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'question' => 'Which AI brand service is reliable?',
+            'question_type' => 'choice',
+            'sort_order' => 1,
+            'status' => 'pending',
+        ]);
+
+        (new ProcessBrandDiagnosisJob((int) $run->id))->handle();
+
+        $this->assertSame([
+            'Acme AI service guide',
+            'Acme AI comparison report',
+        ], BrandDiagnosisSource::query()
+            ->where('run_id', (int) $run->id)
+            ->where('platform', 'qianwen')
+            ->orderBy('id')
+            ->pluck('title')
+            ->all());
+        $this->assertSame('', (string) BrandDiagnosisSource::query()
+            ->where('run_id', (int) $run->id)
+            ->value('url'));
+    }
+
+    public function test_qianwen_uses_its_own_chat_completions_endpoint(): void
+    {
+        config()->set('brand_diagnosis.qianwen.base_url', 'https://qianwen.example.com/compatible-mode/v1');
+
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://qianwen.example.com/compatible-mode/v1/chat/completions' => Http::response($this->chatCompletionBrandMentionAnswerResponse('qianwen-direct', 'Qianwen answer mentions Acme AI.'), 200),
+        ]);
+
+        $response = app(\App\Services\BrandDiagnosis\DoubaoBrandDiagnosisClient::class)
+            ->ask('Acme AI', 'Which AI brand service is reliable?', 'qianwen');
+
+        $this->assertSame('Qianwen answer mentions Acme AI.', $response->answer);
+        Http::assertSent(function ($request): bool {
+            $payload = $request->data();
+
+            return $request->url() === 'https://qianwen.example.com/compatible-mode/v1/chat/completions'
+                && ($payload['model'] ?? null) === 'qwen-test-model'
+                && ($payload['enable_search'] ?? null) === true
+                && isset($payload['messages'][0]['content'])
+                && ! isset($payload['input'])
+                && ! isset($payload['tools']);
+        });
     }
 
     public function test_job_persists_competing_brand_mentions_and_recalculates_target_metrics(): void
@@ -2311,6 +2562,59 @@ JSON,
                 ],
             ],
             'usage' => ['input_tokens' => 10, 'output_tokens' => 20],
+        ];
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function brandMentionAnswerResponse(string $id, string $answer): array
+    {
+        return [
+            'id' => 'resp-'.$id,
+            'output_text' => json_encode([
+                'answer' => $answer,
+                'brand_mentions' => [
+                    [
+                        'brand' => 'Acme AI',
+                        'mention_count' => 1,
+                        'mention_rank' => 1,
+                        'sentiment' => 'positive',
+                        'evidence' => $answer,
+                    ],
+                ],
+            ], JSON_UNESCAPED_UNICODE),
+            'usage' => ['input_tokens' => 10, 'output_tokens' => 20],
+        ];
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function chatCompletionBrandMentionAnswerResponse(string $id, string $answer): array
+    {
+        return [
+            'id' => 'chatcmpl-'.$id,
+            'choices' => [
+                [
+                    'message' => [
+                        'role' => 'assistant',
+                        'content' => json_encode([
+                            'answer' => $answer,
+                            'brand_mentions' => [
+                                [
+                                    'brand' => 'Acme AI',
+                                    'mention_count' => 1,
+                                    'mention_rank' => 1,
+                                    'sentiment' => 'positive',
+                                    'evidence' => $answer,
+                                ],
+                            ],
+                        ], JSON_UNESCAPED_UNICODE),
+                    ],
+                ],
+            ],
+            'usage' => ['prompt_tokens' => 10, 'completion_tokens' => 20],
         ];
     }
 }

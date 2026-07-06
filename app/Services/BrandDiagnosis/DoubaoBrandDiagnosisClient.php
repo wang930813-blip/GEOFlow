@@ -190,11 +190,24 @@ class DoubaoBrandDiagnosisClient
     private function postResponses(string $prompt, string $platform, bool $withWebSearch = true): array
     {
         $platform = $this->normalizePlatform($platform);
+        if ($this->usesChatCompletions($platform)) {
+            return $this->postChatCompletions($prompt, $platform, $withWebSearch);
+        }
+
+        return $this->postArkResponses($prompt, $platform, $withWebSearch);
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function postArkResponses(string $prompt, string $platform, bool $withWebSearch = true): array
+    {
+        $platform = $this->normalizePlatform($platform);
         $label = $this->platformLabel($platform);
         $baseUrl = (string) config('brand_diagnosis.'.$platform.'.base_url', '');
         $apiKey = (string) config('brand_diagnosis.'.$platform.'.api_key', '');
         $model = (string) config('brand_diagnosis.'.$platform.'.model', '');
-        if ($platform === 'deepseek') {
+        if ($platform !== BrandDiagnosisPlatform::DOUBAO) {
             $baseUrl = $baseUrl !== '' ? $baseUrl : (string) config('brand_diagnosis.doubao.base_url', '');
             $apiKey = $apiKey !== '' ? $apiKey : (string) config('brand_diagnosis.doubao.api_key', '');
         }
@@ -246,6 +259,102 @@ class DoubaoBrandDiagnosisClient
         $data = $response->json() ?: [];
 
         return $data;
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function postChatCompletions(string $prompt, string $platform, bool $withWebSearch = true): array
+    {
+        $platform = $this->normalizePlatform($platform);
+        $label = $this->platformLabel($platform);
+        $baseUrl = (string) config('brand_diagnosis.'.$platform.'.base_url', '');
+        $apiKey = (string) config('brand_diagnosis.'.$platform.'.api_key', '');
+        $model = (string) config('brand_diagnosis.'.$platform.'.model', '');
+
+        if (! (bool) config('brand_diagnosis.'.$platform.'.enabled', false)) {
+            throw new RuntimeException($label.' brand diagnosis is disabled.');
+        }
+        if ($baseUrl === '' || $apiKey === '' || $model === '') {
+            throw new RuntimeException($label.' brand diagnosis API config is incomplete.');
+        }
+
+        $payload = [
+            'model' => $model,
+            'messages' => [
+                [
+                    'role' => 'user',
+                    'content' => $prompt,
+                ],
+            ],
+        ];
+
+        if ($withWebSearch) {
+            $payload = $this->withChatCompletionsWebSearchPayload($payload, $platform);
+        }
+
+        $response = Http::withToken($apiKey)
+            ->acceptJson()
+            ->asJson()
+            ->connectTimeout(max(1, (int) config('brand_diagnosis.'.$platform.'.connect_timeout', 10)))
+            ->timeout(max(10, (int) config('brand_diagnosis.'.$platform.'.timeout', 60)))
+            ->retry(2, 500)
+            ->post($this->chatCompletionsUrl($baseUrl, $platform), $payload);
+
+        if ($response->failed()) {
+            throw new RuntimeException($label.' brand diagnosis request failed: HTTP '.$response->status().' '.$response->body());
+        }
+
+        /** @var array<string,mixed> $data */
+        $data = $response->json() ?: [];
+
+        return $data;
+    }
+
+    private function usesChatCompletions(string $platform): bool
+    {
+        return in_array($this->normalizePlatform($platform), [
+            BrandDiagnosisPlatform::QIANWEN,
+            BrandDiagnosisPlatform::WENXIN,
+        ], true);
+    }
+
+    /**
+     * @param  array<string,mixed>  $payload
+     * @return array<string,mixed>
+     */
+    private function withChatCompletionsWebSearchPayload(array $payload, string $platform): array
+    {
+        $platform = $this->normalizePlatform($platform);
+
+        if ($platform === BrandDiagnosisPlatform::QIANWEN) {
+            $payload['enable_search'] = true;
+            $payload['search_options'] = [
+                'forced_search' => true,
+            ];
+        }
+
+        if ($platform === BrandDiagnosisPlatform::WENXIN) {
+            $payload['web_search'] = [
+                'enable' => true,
+                'enable_trace' => true,
+            ];
+        }
+
+        return $payload;
+    }
+
+    private function chatCompletionsUrl(string $baseUrl, string $platform): string
+    {
+        $baseUrl = rtrim($baseUrl, '/');
+        $platform = $this->normalizePlatform($platform);
+        if ($platform === BrandDiagnosisPlatform::QIANWEN && str_ends_with($baseUrl, '/api/v1')) {
+            $baseUrl = substr($baseUrl, 0, -strlen('/api/v1')).'/compatible-mode/v1';
+        }
+
+        return str_ends_with($baseUrl, '/chat/completions')
+            ? $baseUrl
+            : $baseUrl.'/chat/completions';
     }
 
     private function buildQuestionPrompt(string $brandName, int $candidateCount, int $finalCount): string
@@ -658,6 +767,30 @@ class DoubaoBrandDiagnosisClient
      */
     private function extractText(array $data): string
     {
+        $chatContent = Arr::get($data, 'choices.0.message.content');
+        if (is_string($chatContent) && trim($chatContent) !== '') {
+            return trim($chatContent);
+        }
+        if (is_array($chatContent)) {
+            $texts = collect($chatContent)
+                ->map(static function (mixed $item): string {
+                    if (is_string($item)) {
+                        return $item;
+                    }
+                    if (is_array($item)) {
+                        return trim((string) ($item['text'] ?? ''));
+                    }
+
+                    return '';
+                })
+                ->filter(static fn (string $text): bool => trim($text) !== '')
+                ->values()
+                ->all();
+            if ($texts !== []) {
+                return trim(implode("\n\n", $texts));
+            }
+        }
+
         $preferredTexts = [];
         $fallbackTexts = [];
 
@@ -698,14 +831,12 @@ class DoubaoBrandDiagnosisClient
 
     private function normalizePlatform(string $platform): string
     {
-        $platform = strtolower(trim($platform));
-
-        return in_array($platform, ['doubao', 'deepseek'], true) ? $platform : 'doubao';
+        return BrandDiagnosisPlatform::normalize($platform);
     }
 
     private function platformLabel(string $platform): string
     {
-        return $platform === 'deepseek' ? 'DeepSeek' : '豆包';
+        return BrandDiagnosisPlatform::label($platform);
     }
 
     private function normalizeSentiment(string $sentiment): string
@@ -753,9 +884,23 @@ class DoubaoBrandDiagnosisClient
             $this->collectSourcesFromArray($output, $sources);
         }
 
+        foreach ((array) ($data['choices'] ?? []) as $choice) {
+            if (! is_array($choice)) {
+                continue;
+            }
+
+            $this->collectSourcesFromArray($choice, $sources);
+        }
+
+        foreach ($this->extractReferenceTitleSources($this->extractText($data)) as $source) {
+            $sources[] = $source;
+        }
+
         return collect($sources)
-            ->filter(static fn (array $source): bool => trim((string) $source['url']) !== '')
-            ->unique(static fn (array $source): string => (string) $source['url'])
+            ->filter(static fn (array $source): bool => trim((string) $source['url']) !== '' || trim((string) $source['title']) !== '')
+            ->unique(static fn (array $source): string => trim((string) $source['url']) !== ''
+                ? (string) $source['url']
+                : (string) $source['type'].'|'.mb_strtolower(trim((string) $source['title']), 'UTF-8'))
             ->values()
             ->all();
     }
@@ -766,13 +911,14 @@ class DoubaoBrandDiagnosisClient
      */
     private function collectSourcesFromArray(array $node, array &$sources): void
     {
-        $type = (string) ($node['type'] ?? '');
-        $url = trim((string) ($node['url'] ?? ''));
-        if ($url !== '' && in_array($type, ['url_citation', 'web_search_result', 'citation'], true)) {
+        $type = (string) ($node['type'] ?? $node['source_type'] ?? '');
+        $url = trim((string) ($node['url'] ?? $node['link'] ?? ''));
+        $isKnownSource = in_array($type, ['url_citation', 'web_search_result', 'citation', 'search_result'], true);
+        if ($url !== '' && ($isKnownSource || isset($node['title']) || isset($node['snippet']))) {
             $sources[] = [
                 'title' => trim((string) ($node['title'] ?? $url)),
                 'url' => $url,
-                'type' => $type,
+                'type' => $type !== '' ? $type : 'web_search_result',
                 'meta' => $node,
             ];
         }
@@ -790,5 +936,63 @@ class DoubaoBrandDiagnosisClient
                 }
             }
         }
+    }
+
+    /**
+     * @return list<array{title:string,url:string,type:string,meta:array<string,mixed>}>
+     */
+    private function extractReferenceTitleSources(string $text): array
+    {
+        $payload = $this->parseAnswerPayload($text);
+        $answer = trim((string) ($payload['answer'] ?? ''));
+        $text = $answer !== '' ? $answer : trim($text);
+        if ($text === '') {
+            return [];
+        }
+
+        $block = null;
+        if (preg_match('/(?:参考|引用|资料)?来源\s*[：:]\s*(.+)$/us', $text, $matches)) {
+            $block = (string) $matches[1];
+        } elseif (preg_match('/参考资料\s*[：:]\s*(.+)$/us', $text, $matches)) {
+            $block = (string) $matches[1];
+        }
+        if ($block === null) {
+            return [];
+        }
+
+        $titles = [];
+        foreach (preg_split('/\R/u', $block) ?: [] as $line) {
+            $line = trim((string) $line);
+            if ($line === '') {
+                continue;
+            }
+
+            $line = trim((string) preg_replace('/^\s*(?:[-*•]|[0-9]+[.、)]|[（(]?[一二三四五六七八九十]+[）).、])\s*/u', '', $line));
+            if ($line === '' || str_contains($line, 'http://') || str_contains($line, 'https://')) {
+                continue;
+            }
+
+            if (preg_match('/《([^》]+)》/u', $line, $match)) {
+                $line = trim((string) $match[1]);
+            }
+            $line = trim($line, " \t\n\r\0\x0B\"'“”‘’《》");
+            if ($line === '' || mb_strlen($line, 'UTF-8') > 180) {
+                continue;
+            }
+
+            $titles[] = $line;
+        }
+
+        return collect($titles)
+            ->unique(static fn (string $title): string => mb_strtolower($title, 'UTF-8'))
+            ->take(10)
+            ->map(static fn (string $title): array => [
+                'title' => $title,
+                'url' => '',
+                'type' => 'reference_title',
+                'meta' => ['source' => 'answer_reference_title'],
+            ])
+            ->values()
+            ->all();
     }
 }
