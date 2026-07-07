@@ -18,6 +18,7 @@ use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use RuntimeException;
 use Tests\TestCase;
 
 class BrandDiagnosisDoubaoFlowTest extends TestCase
@@ -58,6 +59,30 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         foreach (['questions_generating', 'questions_ready', 'running', 'completed', 'failed'] as $status) {
             $this->assertLessThanOrEqual($statusColumnLength, strlen($status), $status.' exceeds status column length.');
         }
+    }
+
+    public function test_job_failed_callback_sanitizes_external_exception_message(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('brand_diagnosis_failed_message_admin');
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'owner_admin_id' => (int) $admin->id,
+            'brand_name' => 'Acme AI',
+            'platforms' => ['qianwen'],
+            'status' => 'running',
+            'total_questions' => 1,
+            'completed_questions' => 0,
+            'failed_questions' => 0,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+        ]);
+
+        (new ProcessBrandDiagnosisJob((int) $run->id))->failed(new RuntimeException("bad\xE4\xBE, message"));
+
+        $run->refresh();
+        $this->assertSame('failed', (string) $run->status);
+        $this->assertSame('bad, message', (string) $run->error_message);
     }
 
     public function test_admin_can_create_brand_diagnosis_question_generation_run_without_using_quota(): void
@@ -1125,13 +1150,24 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
 
     public function test_job_collects_qianwen_and_wenxin_platform_results(): void
     {
-        config()->set('brand_diagnosis.qianwen.base_url', 'https://qianwen.example.com/compatible-mode/v1');
+        config()->set('brand_diagnosis.qianwen.base_url', 'https://qianwen.example.com/api/v1');
         config()->set('brand_diagnosis.wenxin.base_url', 'https://qianfan.baidubce.com/v2/chat/completions');
 
         Http::preventStrayRequests();
         Http::fake([
-            'https://qianwen.example.com/compatible-mode/v1/chat/completions' => Http::response($this->chatCompletionBrandMentionAnswerResponse('qianwen-answer', 'Qianwen answer mentions Acme AI.'), 200),
-            'https://qianfan.baidubce.com/v2/chat/completions' => Http::response($this->chatCompletionBrandMentionAnswerResponse('wenxin-answer', 'Wenxin answer mentions Acme AI.'), 200),
+            'https://qianwen.example.com/api/v1/services/aigc/text-generation/generation' => Http::response($this->dashScopeBrandMentionAnswerResponse('qianwen-answer', 'Qianwen answer mentions Acme AI.'), 200),
+            'https://qianfan.baidubce.com/v2/chat/completions' => Http::response(array_merge(
+                $this->chatCompletionBrandMentionAnswerResponse('wenxin-answer', 'Wenxin answer mentions Acme AI.'),
+                [
+                    'search_results' => [
+                        [
+                            'title' => 'Wenxin source article',
+                            'url' => 'https://wenxin.example.com/source',
+                            'snippet' => 'Wenxin answer source.',
+                        ],
+                    ],
+                ]
+            ), 200),
         ]);
 
         [$admin, $site] = $this->createAdminWithSite('brand_diagnosis_qianwen_wenxin_job_admin');
@@ -1167,11 +1203,15 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         Http::assertSent(function ($request): bool {
             $payload = $request->data();
 
-            return $request->url() === 'https://qianwen.example.com/compatible-mode/v1/chat/completions'
+            return $request->url() === 'https://qianwen.example.com/api/v1/services/aigc/text-generation/generation'
                 && ($payload['model'] ?? null) === 'qwen-test-model'
-                && isset($payload['messages'][0]['content'])
-                && ($payload['enable_search'] ?? null) === true
-                && ! isset($payload['input'])
+                && isset($payload['input']['messages'][0]['content'])
+                && ($payload['parameters']['enable_search'] ?? null) === true
+                && ($payload['parameters']['enable_thinking'] ?? null) === false
+                && ($payload['parameters']['search_options']['forced_search'] ?? null) === true
+                && ($payload['parameters']['search_options']['enable_source'] ?? null) === true
+                && ($payload['parameters']['search_options']['enable_citation'] ?? null) === true
+                && ! isset($payload['messages'])
                 && ! isset($payload['tools'])
                 && $request->hasHeader('Authorization', 'Bearer test-qianwen-key');
         });
@@ -1181,21 +1221,35 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
             return $request->url() === 'https://qianfan.baidubce.com/v2/chat/completions'
                 && ($payload['model'] ?? null) === 'wenxin-test-model'
                 && isset($payload['messages'][0]['content'])
+                && ($payload['stream'] ?? null) === true
                 && ($payload['web_search']['enable'] ?? null) === true
+                && ($payload['web_search']['enable_trace'] ?? null) === true
+                && ($payload['web_search']['enable_status'] ?? null) === true
+                && ($payload['web_search']['enable_citation'] ?? null) === true
+                && ($payload['web_search']['search_mode'] ?? null) === 'auto'
                 && ! isset($payload['input'])
                 && ! isset($payload['tools'])
                 && $request->hasHeader('Authorization', 'Bearer test-wenxin-key');
         });
+
+        $this->assertSame([
+            'Qianwen source article',
+            'Wenxin source article',
+        ], BrandDiagnosisSource::query()
+            ->where('run_id', (int) $run->id)
+            ->orderBy('platform')
+            ->pluck('title')
+            ->all());
     }
 
-    public function test_chat_completion_reference_titles_are_persisted_as_sources_without_urls(): void
+    public function test_answer_reference_titles_without_urls_are_not_persisted_as_sources(): void
     {
-        config()->set('brand_diagnosis.qianwen.base_url', 'https://qianwen.example.com/compatible-mode/v1');
+        config()->set('brand_diagnosis.wenxin.base_url', 'https://qianfan.baidubce.com/v2/chat/completions');
 
         Http::preventStrayRequests();
         Http::fake([
-            'https://qianwen.example.com/compatible-mode/v1/chat/completions' => Http::response([
-                'id' => 'chatcmpl-qianwen-title-sources',
+            'https://qianfan.baidubce.com/v2/chat/completions' => Http::response([
+                'id' => 'chatcmpl-wenxin-title-sources',
                 'choices' => [
                     [
                         'message' => [
@@ -1219,7 +1273,162 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
             ], 200),
         ]);
 
-        [$admin, $site] = $this->createAdminWithSite('brand_diagnosis_qianwen_source_admin');
+        [$admin, $site] = $this->createAdminWithSite('brand_diagnosis_wenxin_source_admin');
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'owner_admin_id' => (int) $admin->id,
+            'brand_name' => 'Acme AI',
+            'platforms' => ['wenxin'],
+            'status' => 'pending',
+            'total_questions' => 1,
+            'completed_questions' => 0,
+            'failed_questions' => 0,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+        ]);
+        $run->questions()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'question' => 'Which AI brand service is reliable?',
+            'question_type' => 'choice',
+            'sort_order' => 1,
+            'status' => 'pending',
+        ]);
+
+        (new ProcessBrandDiagnosisJob((int) $run->id))->handle();
+
+        $this->assertSame(0, BrandDiagnosisSource::query()
+            ->where('run_id', (int) $run->id)
+            ->where('platform', 'wenxin')
+            ->count());
+    }
+
+    public function test_qianwen_uses_dashscope_generation_endpoint_with_search_sources(): void
+    {
+        config()->set('brand_diagnosis.qianwen.base_url', 'https://qianwen.example.com/compatible-mode/v1');
+
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://qianwen.example.com/api/v1/services/aigc/text-generation/generation' => Http::response($this->dashScopeBrandMentionAnswerResponse('qianwen-direct', 'Qianwen answer mentions Acme AI.'), 200),
+        ]);
+
+        $response = app(\App\Services\BrandDiagnosis\DoubaoBrandDiagnosisClient::class)
+            ->ask('Acme AI', 'Which AI brand service is reliable?', 'qianwen');
+
+        $this->assertSame('Qianwen answer mentions Acme AI.', $response->answer);
+        Http::assertSent(function ($request): bool {
+            $payload = $request->data();
+
+            return $request->url() === 'https://qianwen.example.com/api/v1/services/aigc/text-generation/generation'
+                && ($payload['model'] ?? null) === 'qwen-test-model'
+                && ($payload['parameters']['enable_search'] ?? null) === true
+                && ($payload['parameters']['search_options']['forced_search'] ?? null) === true
+                && ($payload['parameters']['search_options']['enable_source'] ?? null) === true
+                && isset($payload['input']['messages'][0]['content'])
+                && ! isset($payload['messages'])
+                && ! isset($payload['tools']);
+        });
+
+        $this->assertSame('https://qianwen.example.com/source', $response->sources[0]['url'] ?? '');
+    }
+
+    public function test_qianwen_multimodal_models_use_dashscope_multimodal_generation_endpoint_with_search_sources(): void
+    {
+        config()->set('brand_diagnosis.qianwen.base_url', 'https://qianwen.example.com/api/v1');
+        config()->set('brand_diagnosis.qianwen.model', 'qwen3.7-plus');
+
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://qianwen.example.com/api/v1/services/aigc/multimodal-generation/generation' => Http::response($this->dashScopeBrandMentionAnswerResponse('qianwen-multimodal', 'Qianwen multimodal answer mentions Acme AI.'), 200),
+        ]);
+
+        $response = app(\App\Services\BrandDiagnosis\DoubaoBrandDiagnosisClient::class)
+            ->ask('Acme AI', 'Which AI brand service is reliable?', 'qianwen');
+
+        $this->assertSame('Qianwen multimodal answer mentions Acme AI.', $response->answer);
+        Http::assertSent(function ($request): bool {
+            $payload = $request->data();
+            $prompt = (string) ($payload['input']['messages'][0]['content'][0]['text'] ?? '');
+
+            return $request->url() === 'https://qianwen.example.com/api/v1/services/aigc/multimodal-generation/generation'
+                && ($payload['model'] ?? null) === 'qwen3.7-plus'
+                && ($payload['input']['messages'][0]['role'] ?? null) === 'user'
+                && str_contains($prompt, 'Which AI brand service is reliable?')
+                && ($payload['parameters']['enable_search'] ?? null) === true
+                && ($payload['parameters']['enable_thinking'] ?? null) === false
+                && ($payload['parameters']['search_options']['enable_source'] ?? null) === true
+                && ! isset($payload['messages'])
+                && ! isset($payload['tools']);
+        });
+
+        $this->assertSame('https://qianwen.example.com/source', $response->sources[0]['url'] ?? '');
+    }
+
+    public function test_wenxin_streaming_web_search_response_is_normalized_with_sources(): void
+    {
+        config()->set('brand_diagnosis.wenxin.base_url', 'https://qianfan.baidubce.com/v2/chat/completions');
+
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://qianfan.baidubce.com/v2/chat/completions' => Http::response(
+                $this->wenxinStreamBrandMentionAnswerResponse('Wenxin streamed answer mentions Acme AI.'),
+                200,
+                ['Content-Type' => 'text/event-stream']
+            ),
+        ]);
+
+        $response = app(\App\Services\BrandDiagnosis\DoubaoBrandDiagnosisClient::class)
+            ->ask('Acme AI', 'Which AI brand service is reliable?', 'wenxin');
+
+        $this->assertSame('Wenxin streamed answer mentions Acme AI.', $response->answer);
+        $this->assertSame('https://wenxin.example.com/source', $response->sources[0]['url'] ?? '');
+
+        Http::assertSent(function ($request): bool {
+            $payload = $request->data();
+
+            return $request->url() === 'https://qianfan.baidubce.com/v2/chat/completions'
+                && ($payload['stream'] ?? null) === true
+                && ($payload['web_search']['enable'] ?? null) === true
+                && ($payload['web_search']['enable_status'] ?? null) === true
+                && ($payload['web_search']['search_mode'] ?? null) === 'auto';
+        });
+    }
+
+    public function test_brand_diagnosis_external_request_timeout_is_not_retried(): void
+    {
+        config()->set('brand_diagnosis.qianwen.base_url', 'https://qianwen.example.com/api/v1');
+        config()->set('brand_diagnosis.qianwen.model', 'qwen3.7-plus');
+
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://qianwen.example.com/api/v1/services/aigc/multimodal-generation/generation' => Http::failedConnection(),
+        ]);
+
+        try {
+            app(\App\Services\BrandDiagnosis\DoubaoBrandDiagnosisClient::class)
+                ->ask('Acme AI', 'Which AI brand service is reliable?', 'qianwen');
+        } catch (\Throwable $exception) {
+            $this->assertStringContainsString('Connection', class_basename($exception));
+        }
+
+        Http::assertSentCount(1);
+    }
+
+    public function test_external_source_titles_are_sanitized_before_persisting(): void
+    {
+        config()->set('brand_diagnosis.qianwen.base_url', 'https://qianwen.example.com/api/v1');
+
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://qianwen.example.com/api/v1/services/aigc/text-generation/generation' => Http::response($this->dashScopeBrandMentionAnswerResponse(
+                'qianwen-invalid-source-title',
+                'Qianwen answer mentions Acme AI.',
+                "Acme\0 source article"
+            ), 200),
+        ]);
+
+        [$admin, $site] = $this->createAdminWithSite('brand_diagnosis_invalid_utf8_source_admin');
         $run = BrandDiagnosisRun::query()->create([
             'site_id' => (int) $site->id,
             'admin_id' => (int) $admin->id,
@@ -1244,43 +1453,16 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
 
         (new ProcessBrandDiagnosisJob((int) $run->id))->handle();
 
-        $this->assertSame([
-            'Acme AI service guide',
-            'Acme AI comparison report',
-        ], BrandDiagnosisSource::query()
+        $freshRun = $run->fresh();
+        $resultError = (string) BrandDiagnosisResult::query()
             ->where('run_id', (int) $run->id)
             ->where('platform', 'qianwen')
-            ->orderBy('id')
-            ->pluck('title')
-            ->all());
-        $this->assertSame('', (string) BrandDiagnosisSource::query()
+            ->value('error_message');
+        $this->assertSame('completed', (string) $freshRun->status, trim((string) $freshRun->error_message."\n".$resultError));
+        $this->assertSame('Acme source article', (string) BrandDiagnosisSource::query()
             ->where('run_id', (int) $run->id)
-            ->value('url'));
-    }
-
-    public function test_qianwen_uses_its_own_chat_completions_endpoint(): void
-    {
-        config()->set('brand_diagnosis.qianwen.base_url', 'https://qianwen.example.com/compatible-mode/v1');
-
-        Http::preventStrayRequests();
-        Http::fake([
-            'https://qianwen.example.com/compatible-mode/v1/chat/completions' => Http::response($this->chatCompletionBrandMentionAnswerResponse('qianwen-direct', 'Qianwen answer mentions Acme AI.'), 200),
-        ]);
-
-        $response = app(\App\Services\BrandDiagnosis\DoubaoBrandDiagnosisClient::class)
-            ->ask('Acme AI', 'Which AI brand service is reliable?', 'qianwen');
-
-        $this->assertSame('Qianwen answer mentions Acme AI.', $response->answer);
-        Http::assertSent(function ($request): bool {
-            $payload = $request->data();
-
-            return $request->url() === 'https://qianwen.example.com/compatible-mode/v1/chat/completions'
-                && ($payload['model'] ?? null) === 'qwen-test-model'
-                && ($payload['enable_search'] ?? null) === true
-                && isset($payload['messages'][0]['content'])
-                && ! isset($payload['input'])
-                && ! isset($payload['tools']);
-        });
+            ->where('platform', 'qianwen')
+            ->value('title'));
     }
 
     public function test_job_persists_competing_brand_mentions_and_recalculates_target_metrics(): void
@@ -2616,5 +2798,141 @@ JSON,
             ],
             'usage' => ['prompt_tokens' => 10, 'completion_tokens' => 20],
         ];
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function dashScopeBrandMentionAnswerResponse(string $id, string $answer, string $sourceTitle = 'Qianwen source article'): array
+    {
+        return [
+            'request_id' => 'dashscope-'.$id,
+            'output' => [
+                'choices' => [
+                    [
+                        'message' => [
+                            'role' => 'assistant',
+                            'content' => json_encode([
+                                'answer' => $answer,
+                                'brand_mentions' => [
+                                    [
+                                        'brand' => 'Acme AI',
+                                        'mention_count' => 1,
+                                        'mention_rank' => 1,
+                                        'sentiment' => 'positive',
+                                        'evidence' => $answer,
+                                    ],
+                                ],
+                            ], JSON_UNESCAPED_UNICODE),
+                        ],
+                    ],
+                ],
+                'search_info' => [
+                    'search_results' => [
+                        [
+                            'title' => $sourceTitle,
+                            'url' => 'https://qianwen.example.com/source',
+                            'snippet' => 'Qianwen answer source.',
+                        ],
+                    ],
+                ],
+            ],
+            'usage' => ['input_tokens' => 10, 'output_tokens' => 20],
+        ];
+    }
+
+    private function wenxinStreamBrandMentionAnswerResponse(string $answer): string
+    {
+        $content = json_encode([
+            'answer' => $answer,
+            'brand_mentions' => [
+                [
+                    'brand' => 'Acme AI',
+                    'mention_count' => 1,
+                    'mention_rank' => 1,
+                    'sentiment' => 'positive',
+                    'evidence' => $answer,
+                ],
+            ],
+        ], JSON_UNESCAPED_UNICODE);
+
+        $chunks = [
+            [
+                'id' => 'chatcmpl-wenxin-stream',
+                'object' => 'chat.completion.chunk',
+                'model' => 'wenxin-test-model',
+                'choices' => [
+                    [
+                        'index' => 0,
+                        'delta' => [
+                            'role' => 'assistant',
+                            'content' => '正在搜索',
+                        ],
+                    ],
+                ],
+                'delta_tag' => 'search_status',
+            ],
+            [
+                'id' => 'chatcmpl-wenxin-stream',
+                'object' => 'chat.completion.chunk',
+                'model' => 'wenxin-test-model',
+                'choices' => [
+                    [
+                        'index' => 0,
+                        'delta' => [
+                            'role' => 'assistant',
+                            'content' => substr((string) $content, 0, 40),
+                        ],
+                    ],
+                ],
+            ],
+            [
+                'id' => 'chatcmpl-wenxin-stream',
+                'object' => 'chat.completion.chunk',
+                'model' => 'wenxin-test-model',
+                'choices' => [
+                    [
+                        'index' => 0,
+                        'delta' => [
+                            'content' => substr((string) $content, 40),
+                        ],
+                    ],
+                ],
+                'search_results' => [
+                    [
+                        'index' => 1,
+                        'title' => 'Wenxin source article',
+                        'url' => 'https://wenxin.example.com/source',
+                    ],
+                ],
+            ],
+            [
+                'id' => 'chatcmpl-wenxin-stream',
+                'object' => 'chat.completion.chunk',
+                'model' => 'wenxin-test-model',
+                'choices' => [
+                    [
+                        'index' => 0,
+                        'delta' => [
+                            'content' => '',
+                        ],
+                        'finish_reason' => 'stop',
+                    ],
+                ],
+                'usage' => ['prompt_tokens' => 10, 'completion_tokens' => 20],
+                'search_results' => [
+                    [
+                        'index' => 1,
+                        'title' => 'Wenxin source article',
+                        'url' => 'https://wenxin.example.com/source',
+                    ],
+                ],
+            ],
+        ];
+
+        return collect($chunks)
+            ->map(static fn (array $chunk): string => 'data: '.json_encode($chunk, JSON_UNESCAPED_UNICODE))
+            ->push('data: [DONE]')
+            ->implode("\n\n");
     }
 }

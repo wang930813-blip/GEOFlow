@@ -868,6 +868,72 @@ class AdminBrandDiagnosisPageTest extends TestCase
         $this->assertSame(1, substr_count($html, 'data-source-item data-platform-key='));
     }
 
+    public function test_brand_diagnosis_page_hides_historical_sources_without_urls(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('brand_source_without_url_admin');
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => 'Acme AI',
+            'platforms' => ['wenxin'],
+            'status' => 'completed',
+            'total_questions' => 1,
+            'completed_questions' => 1,
+            'failed_questions' => 0,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+        ]);
+        $question = $run->questions()->create([
+            'site_id' => (int) $site->id,
+            'question' => 'Which AI brand service is reliable?',
+            'question_type' => 'choice',
+            'sort_order' => 1,
+            'status' => 'completed',
+        ]);
+        $result = $question->results()->create([
+            'site_id' => (int) $site->id,
+            'run_id' => (int) $run->id,
+            'platform' => 'wenxin',
+            'answer' => 'Wenxin answer mentions Acme AI.',
+            'brand_mentioned' => true,
+            'mention_count' => 1,
+            'mention_rank' => 1,
+            'sentiment' => 'positive',
+            'status' => 'success',
+            'checked_at' => now(),
+        ]);
+        $result->sources()->create([
+            'site_id' => (int) $site->id,
+            'run_id' => (int) $run->id,
+            'question_id' => (int) $question->id,
+            'platform' => 'wenxin',
+            'title' => 'Fake Reference Title',
+            'url' => '',
+            'domain' => '',
+            'source_type' => 'reference_title',
+        ]);
+        $result->sources()->create([
+            'site_id' => (int) $site->id,
+            'run_id' => (int) $run->id,
+            'question_id' => (int) $question->id,
+            'platform' => 'wenxin',
+            'title' => 'Clickable Source',
+            'url' => 'https://example.com/clickable-source',
+            'domain' => 'example.com',
+            'source_type' => 'url_citation',
+        ]);
+
+        $html = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.brand-diagnosis.index'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Clickable Source', $html);
+        $this->assertStringNotContainsString('Fake Reference Title', $html);
+        $this->assertSame(1, substr_count($html, 'data-source-item data-platform-key='));
+    }
+
     public function test_brand_diagnosis_conversation_brand_tags_show_first_four_with_full_title(): void
     {
         [$admin, $site] = $this->createAdminWithSite('brand_conversation_tags_admin');

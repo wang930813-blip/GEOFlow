@@ -106,15 +106,15 @@ class ProcessBrandDiagnosisJob implements ShouldQueue
                             'site_id' => (int) $run->site_id,
                             'owner_admin_id' => (int) ($run->owner_admin_id ?? 0) ?: null,
                             'run_id' => (int) $run->id,
-                            'answer' => $clientResponse->answer,
+                            'answer' => $this->cleanExternalText($clientResponse->answer),
                             'brand_mentioned' => $mentionCount > 0,
                             'mention_count' => $mentionCount,
                             'mention_rank' => $mentionRank,
                             'sentiment' => $sentiment,
                             'status' => 'success',
                             'error_message' => null,
-                            'raw_response' => $clientResponse->rawResponse,
-                            'meta' => $clientResponse->meta,
+                            'raw_response' => $this->cleanExternalValue($clientResponse->rawResponse),
+                            'meta' => $this->cleanExternalValue($clientResponse->meta),
                             'checked_at' => now(),
                         ]
                     );
@@ -128,11 +128,11 @@ class ProcessBrandDiagnosisJob implements ShouldQueue
                             'question_id' => (int) $question->id,
                             'result_id' => (int) $result->id,
                             'platform' => $platform,
-                            'title' => (string) $source['title'],
-                            'url' => (string) $source['url'],
-                            'domain' => $this->domainFromUrl((string) $source['url']),
-                            'source_type' => (string) $source['type'],
-                            'meta' => (array) ($source['meta'] ?? []),
+                            'title' => $this->cleanExternalText((string) $source['title']),
+                            'url' => $this->cleanExternalText((string) $source['url']),
+                            'domain' => $this->domainFromUrl($this->cleanExternalText((string) $source['url'])),
+                            'source_type' => $this->cleanExternalText((string) $source['type']),
+                            'meta' => $this->cleanExternalValue((array) ($source['meta'] ?? [])),
                         ]);
                     }
                     $this->replaceBrandMentions($result, $brandMentions, (string) $run->brand_name, count($clientResponse->sources));
@@ -151,7 +151,7 @@ class ProcessBrandDiagnosisJob implements ShouldQueue
                             'mention_rank' => 0,
                             'sentiment' => 'neutral',
                             'status' => 'failed',
-                            'error_message' => $exception->getMessage(),
+                            'error_message' => $this->cleanExternalText($exception->getMessage()),
                             'raw_response' => null,
                             'meta' => ['client' => $platform],
                             'checked_at' => now(),
@@ -186,14 +186,14 @@ class ProcessBrandDiagnosisJob implements ShouldQueue
             return;
         }
 
-        $message = $exception?->getMessage();
+        $message = $this->cleanExternalText((string) $exception?->getMessage());
         if (! is_string($message) || trim($message) === '') {
             $message = $exception ? class_basename($exception) : '品牌诊断任务执行失败';
         }
 
         $run->update([
             'status' => 'failed',
-            'error_message' => mb_strimwidth($message, 0, 1000, '...', 'UTF-8'),
+            'error_message' => mb_strimwidth($this->cleanExternalText($message), 0, 1000, '...', 'UTF-8'),
             'completed_at' => now(),
         ]);
     }
@@ -225,6 +225,41 @@ class ProcessBrandDiagnosisJob implements ShouldQueue
             ->implode(BrandDiagnosisMetricsCalculator::SOURCE_UNIT_SEPARATOR);
     }
 
+    private function cleanExternalText(string $value): string
+    {
+        if ($value === '') {
+            return '';
+        }
+
+        if (! mb_check_encoding($value, 'UTF-8')) {
+            $cleaned = @iconv('UTF-8', 'UTF-8//IGNORE', $value);
+            $value = $cleaned !== false ? $cleaned : mb_convert_encoding($value, 'UTF-8', 'UTF-8');
+        }
+
+        $withoutControls = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', '', $value);
+
+        return trim($withoutControls ?? $value);
+    }
+
+    private function cleanExternalValue(mixed $value): mixed
+    {
+        if (is_string($value)) {
+            return $this->cleanExternalText($value);
+        }
+
+        if (! is_array($value)) {
+            return $value;
+        }
+
+        $cleaned = [];
+        foreach ($value as $key => $item) {
+            $cleanKey = is_string($key) ? $this->cleanExternalText($key) : $key;
+            $cleaned[$cleanKey] = $this->cleanExternalValue($item);
+        }
+
+        return $cleaned;
+    }
+
     /**
      * @param  list<array{brand:string,mention_count:int,mention_rank:int,sentiment:string,evidence:string,source_count?:int,meta?:array<string,mixed>}>  $brandMentions
      */
@@ -239,14 +274,14 @@ class ProcessBrandDiagnosisJob implements ShouldQueue
                 'run_id' => (int) $result->run_id,
                 'question_id' => (int) $result->question_id,
                 'platform' => (string) $result->platform,
-                'brand_name' => (string) $mention['brand'],
+                'brand_name' => $this->cleanExternalText((string) $mention['brand']),
                 'mention_count' => max(1, (int) $mention['mention_count']),
                 'mention_rank' => max(0, (int) $mention['mention_rank']),
-                'sentiment' => (string) $mention['sentiment'],
+                'sentiment' => $this->cleanExternalText((string) $mention['sentiment']),
                 'source_count' => max((int) ($mention['source_count'] ?? 0), $sourceCount),
                 'is_target_brand' => app(BrandDiagnosisMetricsCalculator::class)->isSameBrand((string) $mention['brand'], $targetBrandName),
-                'evidence' => (string) ($mention['evidence'] ?? ''),
-                'meta' => (array) ($mention['meta'] ?? []),
+                'evidence' => $this->cleanExternalText((string) ($mention['evidence'] ?? '')),
+                'meta' => $this->cleanExternalValue((array) ($mention['meta'] ?? [])),
             ]);
         }
     }

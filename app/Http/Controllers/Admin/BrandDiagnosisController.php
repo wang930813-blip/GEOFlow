@@ -611,6 +611,7 @@ class BrandDiagnosisController extends Controller
     {
         return $run->sources
             ->when($platform !== null, fn (Collection $sources): Collection => $sources->where('platform', $platform))
+            ->filter(static fn ($source): bool => trim((string) $source->url) !== '')
             ->groupBy(fn ($source): string => $this->sourceGroupKey((string) $source->platform, (string) $source->url, (string) ($source->title ?: $source->id)))
             ->map(function (Collection $group): array {
                 $source = $group->first();
@@ -654,6 +655,7 @@ class BrandDiagnosisController extends Controller
                             ->values()
                             ->all();
                         $sources = $result->sources
+                            ->filter(static fn ($source): bool => trim((string) $source->url) !== '')
                             ->unique(fn ($source): string => $this->sourceGroupKey((string) $source->platform, (string) $source->url, (string) ($source->title ?: $source->id)))
                             ->map(static fn ($source): array => [
                                 'title' => (string) ($source->title ?: $source->url),
