@@ -360,12 +360,16 @@ class DoubaoBrandDiagnosisClient
         }
         $expectsStream = $withWebSearch && $platform === BrandDiagnosisPlatform::WENXIN;
 
-        $response = Http::withToken($apiKey)
-            ->acceptJson()
+        $request = Http::withToken($apiKey)
             ->asJson()
             ->connectTimeout(max(1, (int) config('brand_diagnosis.'.$platform.'.connect_timeout', 10)))
-            ->timeout(max(10, (int) config('brand_diagnosis.'.$platform.'.timeout', 60)))
-            ->post($this->chatCompletionsUrl($baseUrl, $platform), $payload);
+            ->timeout(max(10, (int) config('brand_diagnosis.'.$platform.'.timeout', 60)));
+
+        $request = $expectsStream
+            ? $request->accept('text/event-stream')->withOptions(['stream' => true])
+            : $request->acceptJson();
+
+        $response = $request->post($this->chatCompletionsUrl($baseUrl, $platform), $payload);
 
         if ($response->failed()) {
             throw new RuntimeException($label.' brand diagnosis request failed: HTTP '.$response->status().' '.$response->body());
@@ -417,35 +421,134 @@ class DoubaoBrandDiagnosisClient
      */
     private function decodeChatCompletionsResponse(Response $response, bool $expectsStream): array
     {
-        /** @var array<string,mixed>|null $json */
-        $json = $response->json();
-        if (! $expectsStream || is_array($json)) {
-            return $json ?: [];
+        if ($expectsStream) {
+            return $this->decodeChatCompletionsStreamResponse($response);
         }
 
+        /** @var array<string,mixed>|null $json */
+        $json = $response->json();
+
+        return $json ?: [];
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function decodeChatCompletionsStreamResponse(Response $response): array
+    {
         $chunks = [];
-        foreach (preg_split('/\R/u', $response->body()) ?: [] as $line) {
-            $line = trim((string) $line);
-            if (! str_starts_with($line, 'data:')) {
-                continue;
+        $buffer = '';
+        $raw = '';
+        $body = $response->toPsrResponse()->getBody();
+
+        try {
+            if ($body->isSeekable()) {
+                $body->rewind();
             }
 
-            $payload = trim(substr($line, 5));
-            if ($payload === '' || $payload === '[DONE]') {
-                continue;
+            while (! $body->eof()) {
+                $piece = $body->read(8192);
+                if ($piece === '') {
+                    if ($body->eof()) {
+                        break;
+                    }
+                    usleep(10_000);
+
+                    continue;
+                }
+
+                $raw .= $piece;
+                $buffer .= $piece;
+                if ($this->consumeChatCompletionsStreamBuffer($buffer, $chunks)) {
+                    break;
+                }
             }
 
-            $decoded = json_decode($payload, true);
-            if (is_array($decoded)) {
-                $chunks[] = $decoded;
+            if (trim($buffer) !== '') {
+                $this->consumeChatCompletionsStreamBuffer($buffer, $chunks, true);
             }
+        } finally {
+            $response->close();
         }
 
         if ($chunks === []) {
-            return [];
+            $decoded = json_decode(trim($raw), true);
+
+            return is_array($decoded) ? $decoded : [];
         }
 
         return $this->normalizeChatCompletionsStreamChunks($chunks);
+    }
+
+    /**
+     * @param  list<array<string,mixed>>  $chunks
+     */
+    private function consumeChatCompletionsStreamBuffer(string &$buffer, array &$chunks, bool $flush = false): bool
+    {
+        while (($position = strpos($buffer, "\n")) !== false) {
+            $line = substr($buffer, 0, $position);
+            $buffer = substr($buffer, $position + 1);
+
+            if ($this->consumeChatCompletionsStreamLine($line, $chunks)) {
+                return true;
+            }
+        }
+
+        if ($flush && trim($buffer) !== '') {
+            $line = $buffer;
+            $buffer = '';
+
+            return $this->consumeChatCompletionsStreamLine($line, $chunks);
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  list<array<string,mixed>>  $chunks
+     */
+    private function consumeChatCompletionsStreamLine(string $line, array &$chunks): bool
+    {
+        $line = trim($line);
+        if (! str_starts_with($line, 'data:')) {
+            return false;
+        }
+
+        $payload = trim(substr($line, 5));
+        if ($payload === '') {
+            return false;
+        }
+        if ($payload === '[DONE]') {
+            return true;
+        }
+
+        $decoded = json_decode($payload, true);
+        if (! is_array($decoded)) {
+            return false;
+        }
+
+        $chunks[] = $decoded;
+
+        return $this->chatCompletionsStreamChunkIsFinished($decoded);
+    }
+
+    /**
+     * @param  array<string,mixed>  $chunk
+     */
+    private function chatCompletionsStreamChunkIsFinished(array $chunk): bool
+    {
+        foreach ((array) ($chunk['choices'] ?? []) as $choice) {
+            if (! is_array($choice) || ! array_key_exists('finish_reason', $choice)) {
+                continue;
+            }
+
+            $finishReason = $choice['finish_reason'];
+            if ($finishReason !== null && trim((string) $finishReason) !== '') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

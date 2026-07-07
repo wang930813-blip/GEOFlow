@@ -1369,13 +1369,18 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
     {
         config()->set('brand_diagnosis.wenxin.base_url', 'https://qianfan.baidubce.com/v2/chat/completions');
 
+        $streamOption = null;
         Http::preventStrayRequests();
         Http::fake([
-            'https://qianfan.baidubce.com/v2/chat/completions' => Http::response(
-                $this->wenxinStreamBrandMentionAnswerResponse('Wenxin streamed answer mentions Acme AI.'),
-                200,
-                ['Content-Type' => 'text/event-stream']
-            ),
+            'https://qianfan.baidubce.com/v2/chat/completions' => function ($request, array $options) use (&$streamOption) {
+                $streamOption = $options['stream'] ?? null;
+
+                return Http::response(
+                    $this->wenxinStreamBrandMentionAnswerResponse('Wenxin streamed answer mentions Acme AI.'),
+                    200,
+                    ['Content-Type' => 'text/event-stream']
+                );
+            },
         ]);
 
         $response = app(\App\Services\BrandDiagnosis\DoubaoBrandDiagnosisClient::class)
@@ -1383,6 +1388,7 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
 
         $this->assertSame('Wenxin streamed answer mentions Acme AI.', $response->answer);
         $this->assertSame('https://wenxin.example.com/source', $response->sources[0]['url'] ?? '');
+        $this->assertTrue($streamOption);
 
         Http::assertSent(function ($request): bool {
             $payload = $request->data();
@@ -1393,6 +1399,30 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
                 && ($payload['web_search']['enable_status'] ?? null) === true
                 && ($payload['web_search']['search_mode'] ?? null) === 'auto';
         });
+    }
+
+    public function test_wenxin_streaming_response_stops_at_finish_reason_even_without_done_event(): void
+    {
+        config()->set('brand_diagnosis.wenxin.base_url', 'https://qianfan.baidubce.com/v2/chat/completions');
+
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://qianfan.baidubce.com/v2/chat/completions' => Http::response(
+                $this->wenxinStreamBrandMentionAnswerResponse(
+                    'Wenxin finished answer mentions Acme AI.',
+                    appendAfterStop: true,
+                    includeDone: false
+                ),
+                200,
+                ['Content-Type' => 'text/event-stream']
+            ),
+        ]);
+
+        $response = app(\App\Services\BrandDiagnosis\DoubaoBrandDiagnosisClient::class)
+            ->ask('Acme AI', 'Which AI brand service is reliable?', 'wenxin');
+
+        $this->assertSame('Wenxin finished answer mentions Acme AI.', $response->answer);
+        $this->assertStringNotContainsString('SHOULD_NOT_BE_READ', $response->answer);
     }
 
     public function test_brand_diagnosis_external_request_timeout_is_not_retried(): void
@@ -2841,7 +2871,7 @@ JSON,
         ];
     }
 
-    private function wenxinStreamBrandMentionAnswerResponse(string $answer): string
+    private function wenxinStreamBrandMentionAnswerResponse(string $answer, bool $appendAfterStop = false, bool $includeDone = true): string
     {
         $content = json_encode([
             'answer' => $answer,
@@ -2930,9 +2960,29 @@ JSON,
             ],
         ];
 
-        return collect($chunks)
-            ->map(static fn (array $chunk): string => 'data: '.json_encode($chunk, JSON_UNESCAPED_UNICODE))
-            ->push('data: [DONE]')
-            ->implode("\n\n");
+        if ($appendAfterStop) {
+            $chunks[] = [
+                'id' => 'chatcmpl-wenxin-stream',
+                'object' => 'chat.completion.chunk',
+                'model' => 'wenxin-test-model',
+                'choices' => [
+                    [
+                        'index' => 0,
+                        'delta' => [
+                            'content' => 'SHOULD_NOT_BE_READ',
+                        ],
+                    ],
+                ],
+            ];
+        }
+
+        $lines = collect($chunks)
+            ->map(static fn (array $chunk): string => 'data: '.json_encode($chunk, JSON_UNESCAPED_UNICODE));
+
+        if ($includeDone) {
+            $lines->push('data: [DONE]');
+        }
+
+        return $lines->implode("\n\n");
     }
 }
