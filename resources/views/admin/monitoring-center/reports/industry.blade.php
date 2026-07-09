@@ -4244,7 +4244,7 @@
     </main>
   </div>
   <script>
-    window.__MONITORING_REPORT__ = {!! json_encode($reportData ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) !!};
+    window.__MONITORING_REPORT__ = {!! json_encode($reportData ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) !!};
     window.__MONITORING_SEARCH_REPORT_USE_VIRTUAL__ = @json((bool) ($useVirtualSearchReportData ?? false));
 
     const industryReportData = window.__MONITORING_REPORT__ || {};

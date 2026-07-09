@@ -286,6 +286,45 @@ class AdminMonitoringCenterPageTest extends TestCase
         $this->assertStringNotContainsString('026-06-17', $headerMeta);
     }
 
+    public function test_monitoring_report_json_payload_substitutes_invalid_utf8_instead_of_rendering_empty_assignment(): void
+    {
+        $payload = [
+            'context' => [
+                'company_name' => "Broken\xB1Company",
+                'site_name' => 'Broken Site',
+                'date' => now()->toDateString(),
+                'updated_at' => now()->format('Y-m-d H:i'),
+            ],
+            'summary' => [
+                ['label' => 'Broken Metric', 'display' => 1, 'actual' => 1],
+            ],
+            'platforms' => [
+                [
+                    'platform_key' => 'doubao',
+                    'platform' => "Broken\xB1Platform",
+                    'analysis_count' => 1,
+                    'top_rank_rates' => ['top1' => 100],
+                    'positive_sentiment_rate' => 100,
+                    'source_count' => 1,
+                ],
+            ],
+            'sentiment' => [
+                'overall' => ['positive_rate' => 100, 'neutral_rate' => 0, 'negative_rate' => 0],
+                'platforms' => [],
+            ],
+        ];
+
+        foreach (['enterprise', 'industry'] as $report) {
+            $html = view("admin.monitoring-center.reports.{$report}", [
+                'reportData' => $payload,
+                'useVirtualSearchReportData' => false,
+            ])->render();
+
+            $this->assertStringContainsString('window.__MONITORING_REPORT__ = {', $html);
+            $this->assertStringNotContainsString('window.__MONITORING_REPORT__ = ;', $html);
+        }
+    }
+
     private function createAdmin(string $username = 'monitoring_center_admin'): Admin
     {
         return Admin::query()->create([
