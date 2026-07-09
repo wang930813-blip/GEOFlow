@@ -189,7 +189,7 @@ class MonitoringReportDataServiceTest extends TestCase
             'name' => '编码关键词库',
             'company_name' => '重庆异荣竞业电竞科技有限公司',
             'domain_keyword' => "线上陪玩服务�",
-            'industry' => "游戏陪练\xB1服务",
+            'industry' => "游戏陪练\xB1服务 - 综合电竞服务品? - 专业陪玩",
             'brand_description' => "电竞服务�说明",
             'status' => 'active',
             'keyword_count' => 1,
@@ -204,6 +204,7 @@ class MonitoringReportDataServiceTest extends TestCase
 
         $this->assertTrue(mb_check_encoding($profileText, 'UTF-8'));
         $this->assertStringNotContainsString('�', $profileText);
+        $this->assertStringNotContainsString('?', $profileText);
     }
 
     public function test_industry_report_removes_replacement_characters_from_entire_payload(): void
