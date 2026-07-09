@@ -61,7 +61,7 @@ class MonitoringReportDataService
             'source_count' => $this->metric((int) $this->scope(BrandDiagnosisSource::query(), $context)->count(), 10),
         ];
 
-        return [
+        $report = [
             'context' => $this->reportContext($context, $companyName),
             'summary' => $summary,
             'model_collection' => $modelCollection,
@@ -71,6 +71,8 @@ class MonitoringReportDataService
             'trend' => $articleTrend,
             'search_rows' => $searchRows,
         ];
+
+        return $this->sanitizeReportPayload($report);
     }
 
     /**
@@ -85,7 +87,7 @@ class MonitoringReportDataService
         $sentiment = $this->sentiment($context);
         $sourceCount = $this->distinctSourceCount($context);
 
-        return [
+        $report = [
             'context' => $this->reportContext($context, $companyName),
             'summary' => [
                 $this->metric((int) $this->scope(KeywordQuestionVariant::query(), $context)->count(), 20) + ['label' => '蒸馏词数量(个)'],
@@ -99,6 +101,8 @@ class MonitoringReportDataService
             'competitors' => $competitors,
             'sentiment' => $sentiment,
         ];
+
+        return $this->sanitizeReportPayload($report);
     }
 
     /**
@@ -240,6 +244,30 @@ class MonitoringReportDataService
         }
 
         return mb_convert_encoding($value, 'UTF-8', 'UTF-8');
+    }
+
+    /**
+     * @param  mixed  $value
+     * @return mixed
+     */
+    private function sanitizeReportPayload(mixed $value): mixed
+    {
+        if (is_string($value)) {
+            $value = $this->normalizeUtf8Text($value);
+
+            return preg_replace('/\x{FFFD}+/u', '', $value) ?? $value;
+        }
+
+        if (! is_array($value)) {
+            return $value;
+        }
+
+        $sanitized = [];
+        foreach ($value as $key => $item) {
+            $sanitized[$key] = $this->sanitizeReportPayload($item);
+        }
+
+        return $sanitized;
     }
 
     /**

@@ -206,6 +206,29 @@ class MonitoringReportDataServiceTest extends TestCase
         $this->assertStringNotContainsString('�', $profileText);
     }
 
+    public function test_industry_report_removes_replacement_characters_from_entire_payload(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('monitoring_industry_payload_encoding_user', 'site_user', '编码站点');
+
+        app(CurrentSite::class)->set($site);
+
+        $this->seedSearchData($admin, $site, [
+            'company' => '重庆异荣竞业电竞科技有限公司',
+            'question' => '电竞服务怎么选？',
+            'keyword' => "电竞服务�",
+            'competitor' => "综合电竞服务品�",
+            'platform' => 'doubao',
+            'sourceTitle' => "引用资料�标题",
+            'articleTitle' => "行业文章�标题",
+        ]);
+
+        $report = app(MonitoringReportDataService::class)->industryReport($admin, $site);
+        $payload = json_encode($report, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+
+        $this->assertIsString($payload);
+        $this->assertStringNotContainsString('�', $payload);
+    }
+
     public function test_enterprise_report_keeps_static_widget_fallbacks_when_only_company_context_exists(): void
     {
         [$admin, $site] = $this->createAdminWithSite('monitoring_empty_enterprise_user', 'site_user', '空数据站点');
