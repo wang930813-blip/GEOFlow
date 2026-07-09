@@ -4,7 +4,7 @@
     <div class="mx-auto max-w-4xl space-y-6">
         <div>
             <h1 class="text-2xl font-bold text-gray-900">分发媒体接口配置</h1>
-            <p class="mt-1 text-sm text-gray-600">分别配置策影媒体1和策影媒体2，用于同步媒体资源和提交投稿订单。</p>
+            <p class="mt-1 text-sm text-gray-600">分别配置策影权威媒体和策影优质媒体，用于同步媒体资源和提交投稿订单。</p>
         </div>
 
         @foreach ($platforms as $platformId => $platformLabel)

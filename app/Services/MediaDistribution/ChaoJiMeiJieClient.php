@@ -41,7 +41,7 @@ class ChaoJiMeiJieClient implements MediaPlatformClient
                     'size' => $pageSize,
                 ]);
             } catch (ConnectionException $exception) {
-                throw new MediaDistributionException('策影媒体2资源同步第 '.$page.' 页请求失败：'.$exception->getMessage(), previous: $exception);
+                throw new MediaDistributionException('策影优质媒体资源同步第 '.$page.' 页请求失败：'.$exception->getMessage(), previous: $exception);
             }
 
             $items = $this->extractItems($response);
@@ -98,7 +98,7 @@ class ChaoJiMeiJieClient implements MediaPlatformClient
     public function orderInfo(MediaSubmission|string $submission, ?string $orderNid = null): array
     {
         if (! $submission instanceof MediaSubmission) {
-            throw new RuntimeException('策影媒体2查单需要媒体投稿记录');
+            throw new RuntimeException('策影优质媒体查单需要媒体投稿记录');
         }
 
         return $this->get($this->path((string) $submission->source_type, 'order/query'), [
@@ -112,7 +112,7 @@ class ChaoJiMeiJieClient implements MediaPlatformClient
     public function cancelOrder(MediaSubmission|string $submission, ?string $orderNid = null, ?string $reason = null): array
     {
         if (! $submission instanceof MediaSubmission) {
-            throw new RuntimeException('策影媒体2取消订单需要媒体投稿记录');
+            throw new RuntimeException('策影优质媒体取消订单需要媒体投稿记录');
         }
 
         return $this->post($this->path((string) $submission->source_type, 'order/cancel'), [
@@ -176,16 +176,16 @@ class ChaoJiMeiJieClient implements MediaPlatformClient
             : $request->asForm()->post($baseUrl.$path, $signedPayload);
 
         if (! $response->successful()) {
-            throw new MediaDistributionException('策影媒体2接口请求失败：HTTP '.$response->status());
+            throw new MediaDistributionException('策影优质媒体接口请求失败：HTTP '.$response->status());
         }
 
         $json = $response->json();
         if (! is_array($json)) {
-            throw new MediaDistributionException('策影媒体2接口返回格式不正确');
+            throw new MediaDistributionException('策影优质媒体接口返回格式不正确');
         }
 
         if ((string) ($json['code'] ?? '') !== '200') {
-            throw new MediaDistributionException((string) ($json['message'] ?? $json['msg'] ?? '策影媒体2接口返回失败'));
+            throw new MediaDistributionException((string) ($json['message'] ?? $json['msg'] ?? '策影优质媒体接口返回失败'));
         }
 
         return $json;
@@ -207,7 +207,7 @@ class ChaoJiMeiJieClient implements MediaPlatformClient
             : '';
 
         if ($baseUrl === '' || $appId === '' || $secret === '') {
-            throw new RuntimeException('策影媒体2接口配置不完整');
+            throw new RuntimeException('策影优质媒体接口配置不完整');
         }
 
         return [$baseUrl, $appId, $secret];

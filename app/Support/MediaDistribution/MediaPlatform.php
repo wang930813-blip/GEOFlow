@@ -13,8 +13,8 @@ final class MediaPlatform
     public static function labels(): array
     {
         return [
-            self::CEYING_MEDIA_1 => '策影媒体1',
-            self::CEYING_MEDIA_2 => '策影媒体2',
+            self::CEYING_MEDIA_1 => '策影权威媒体',
+            self::CEYING_MEDIA_2 => '策影优质媒体',
         ];
     }
 

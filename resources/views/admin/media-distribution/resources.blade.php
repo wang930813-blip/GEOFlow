@@ -137,9 +137,6 @@
                                 @endif
                             </div>
                             <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
-                                <div class="rounded-md bg-white px-4 py-2 text-sm text-slate-600 ring-1 ring-orange-100">
-                                    积分价 <span class="font-semibold text-slate-950">{{ $packageResource->sale_price }}</span>
-                                </div>
                                 <a href="{{ route('admin.media-distribution.submissions.index', ['media_resource_id' => (int) $packageResource->id]) }}" class="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-orange-600 px-4 text-sm font-medium text-white hover:bg-orange-700">
                                     <i data-lucide="send" class="h-4 w-4"></i>
                                     套餐投稿

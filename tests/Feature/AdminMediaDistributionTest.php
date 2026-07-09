@@ -2169,7 +2169,7 @@ class AdminMediaDistributionTest extends TestCase
             ->assertSee('媒体套餐发布')
             ->assertSee('B2B网站套餐发布')
             ->assertSee('200家B2B网站套餐')
-            ->assertSee('策影媒体1')
+            ->assertSee('策影权威媒体')
             ->assertSee('200家媒体')
             ->assertSee('200家B2B网站套餐媒体名单')
             ->assertSee('排名不分先后')
