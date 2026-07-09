@@ -207,6 +207,8 @@ class MonitoringReportDataService
 
     private function cleanText(string $value): string
     {
+        $value = $this->normalizeUtf8Text($value);
+        $value = preg_replace('/\x{FFFD}+/u', '', $value) ?? $value;
         $value = trim(preg_replace('/\s+/u', ' ', $value) ?? $value);
 
         return trim($value, " \t\n\r\0\x0B：:，,。；;");
@@ -224,6 +226,20 @@ class MonitoringReportDataService
             'date' => now()->format('Y-m-d'),
             'updated_at' => now()->format('Y-m-d H:i'),
         ];
+    }
+
+    private function normalizeUtf8Text(string $value): string
+    {
+        if (mb_check_encoding($value, 'UTF-8')) {
+            return $value;
+        }
+
+        $converted = @iconv('UTF-8', 'UTF-8//IGNORE', $value);
+        if (is_string($converted)) {
+            return $converted;
+        }
+
+        return mb_convert_encoding($value, 'UTF-8', 'UTF-8');
     }
 
     /**
@@ -632,7 +648,7 @@ class MonitoringReportDataService
                 ->values()
                 ->all(),
             'core_services' => $services,
-            'description' => $library instanceof KeywordLibrary ? (string) $library->brand_description : '',
+            'description' => $library instanceof KeywordLibrary ? $this->cleanText((string) $library->brand_description) : '',
         ];
     }
 

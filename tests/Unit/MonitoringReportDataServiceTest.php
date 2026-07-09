@@ -177,6 +177,35 @@ class MonitoringReportDataServiceTest extends TestCase
         $this->assertStringNotContainsString('其他行业问题', $flatJson);
     }
 
+    public function test_industry_report_cleans_invalid_encoding_from_brand_profile_text(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('monitoring_industry_encoding_user', 'site_user', '编码站点');
+
+        app(CurrentSite::class)->set($site);
+
+        KeywordLibrary::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'name' => '编码关键词库',
+            'company_name' => '重庆异荣竞业电竞科技有限公司',
+            'domain_keyword' => "线上陪玩服务�",
+            'industry' => "游戏陪练\xB1服务",
+            'brand_description' => "电竞服务�说明",
+            'status' => 'active',
+            'keyword_count' => 1,
+        ]);
+
+        $report = app(MonitoringReportDataService::class)->industryReport($admin, $site);
+        $profileText = implode(' ', array_merge(
+            $report['brand_profile']['brand_names'],
+            $report['brand_profile']['core_services'],
+            [$report['brand_profile']['description']]
+        ));
+
+        $this->assertTrue(mb_check_encoding($profileText, 'UTF-8'));
+        $this->assertStringNotContainsString('�', $profileText);
+    }
+
     public function test_enterprise_report_keeps_static_widget_fallbacks_when_only_company_context_exists(): void
     {
         [$admin, $site] = $this->createAdminWithSite('monitoring_empty_enterprise_user', 'site_user', '空数据站点');
