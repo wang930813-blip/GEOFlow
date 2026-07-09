@@ -276,7 +276,10 @@ class AdminMonitoringCenterPageTest extends TestCase
             ->assertSee('星河智能科技有限公司')
             ->assertSee('window.__MONITORING_REPORT__', false)
             ->assertSee('/assets/monitoring-center/ceying-ai-logo1.png', false)
-            ->assertDontSee('data-monitoring-dynamic-summary', false)
+            ->assertSee('id="industrySummaryRow"', false)
+            ->assertSee('id="industryPlatformTable"', false)
+            ->assertSee('function applyDynamicIndustryData', false)
+            ->assertSee('renderIndustryPlatforms', false)
             ->getContent();
 
         $headerMeta = $this->headerCompanyMeta($html);

@@ -161,7 +161,15 @@ class MonitoringReportDataServiceTest extends TestCase
         $this->assertSame('蓝海智能科技有限公司', $report['competitors'][0]['brand_name']);
         $this->assertSame('豆包', $report['platforms'][0]['platform']);
         $this->assertSame(100.0, $report['platforms'][0]['top_rank_rates']['top2']);
+        $this->assertSame(['doubao', 'deepseek', 'yuanbao', 'wenxin', 'qianwen'], array_column($report['platforms'], 'platform_key'));
+        $this->assertSame(0, $report['platforms'][1]['analysis_count']);
+        $this->assertSame(0.0, $report['platforms'][1]['top_rank_rates']['top1']);
         $this->assertSame(100.0, $report['sentiment']['overall']['positive_rate']);
+        $this->assertSame(['doubao', 'deepseek', 'yuanbao', 'wenxin', 'qianwen'], array_column($report['sentiment']['platforms'], 'platform_key'));
+        $this->assertSame(0.0, $report['sentiment']['platforms'][1]['positive_rate']);
+        $this->assertArrayHasKey('platform_rates', $report['competitors'][0]);
+        $this->assertSame(100.0, $report['competitors'][0]['platform_rates']['doubao']);
+        $this->assertSame(0.0, $report['competitors'][0]['platform_rates']['deepseek']);
         $this->assertSame('豆包', $report['sentiment']['platforms'][0]['platform']);
 
         $flatJson = json_encode($report, JSON_UNESCAPED_UNICODE);

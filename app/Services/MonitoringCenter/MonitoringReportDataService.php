@@ -665,18 +665,32 @@ class MonitoringReportDataService
     {
         $results = $this->scope(BrandDiagnosisResult::query(), $context)
             ->where('status', 'success')
-            ->get(['id', 'platform', 'sentiment']);
+            ->get(['id', 'platform', 'sentiment'])
+            ->map(fn (BrandDiagnosisResult $result): array => [
+                'platform_key' => $this->normalizePlatformKey((string) $result->platform),
+                'sentiment' => (string) $result->sentiment,
+            ]);
         $mentions = $this->scope(BrandDiagnosisBrandMention::query(), $context)
             ->where('is_target_brand', true)
-            ->get(['platform', 'mention_rank']);
-        $sources = $this->scope(BrandDiagnosisSource::query(), $context)->get(['platform', 'domain', 'url']);
+            ->get(['platform', 'mention_rank'])
+            ->map(fn (BrandDiagnosisBrandMention $mention): array => [
+                'platform_key' => $this->normalizePlatformKey((string) $mention->platform),
+                'mention_rank' => (int) $mention->mention_rank,
+            ]);
+        $sources = $this->scope(BrandDiagnosisSource::query(), $context)
+            ->get(['platform', 'domain', 'url'])
+            ->map(fn (BrandDiagnosisSource $source): array => [
+                'platform_key' => $this->normalizePlatformKey((string) $source->platform),
+                'domain' => (string) $source->domain,
+                'url' => (string) $source->url,
+            ]);
 
-        return $results
-            ->groupBy('platform')
-            ->map(function (Collection $platformResults, string $platform) use ($mentions, $sources): array {
+        return $this->industryPlatformKeys($results)
+            ->map(function (string $platform) use ($results, $mentions, $sources): array {
+                $platformResults = $results->where('platform_key', $platform);
                 $total = $platformResults->count();
-                $platformMentions = $mentions->where('platform', $platform);
-                $platformSources = $sources->where('platform', $platform);
+                $platformMentions = $mentions->where('platform_key', $platform);
+                $platformSources = $sources->where('platform_key', $platform);
 
                 return [
                     'platform_key' => $platform,
@@ -685,13 +699,12 @@ class MonitoringReportDataService
                     'top_rank_rates' => $this->rankRatesForMentions($platformMentions, $total),
                     'positive_sentiment_rate' => $this->rate($platformResults->where('sentiment', 'positive')->count(), $total),
                     'source_count' => $platformSources
-                        ->map(fn ($source): string => (string) ($source->domain ?: $source->url))
+                        ->map(fn (array $source): string => (string) ($source['domain'] ?: $source['url']))
                         ->filter()
                         ->unique()
                         ->count(),
                 ];
             })
-            ->sortByDesc('analysis_count')
             ->values()
             ->all();
     }
@@ -702,24 +715,53 @@ class MonitoringReportDataService
      */
     private function competitors(array $context): array
     {
+        $resultTotals = $this->scope(BrandDiagnosisResult::query(), $context)
+            ->where('status', 'success')
+            ->get(['platform'])
+            ->map(fn (BrandDiagnosisResult $result): string => $this->normalizePlatformKey((string) $result->platform))
+            ->filter()
+            ->countBy();
+        $platformKeys = collect($resultTotals->keys())
+            ->merge(self::DEFAULT_SEARCH_REPORT_PLATFORMS)
+            ->unique()
+            ->values();
+
         return $this->scope(BrandDiagnosisBrandMention::query(), $context)
             ->where('is_target_brand', false)
             ->get(['brand_name', 'platform', 'mention_count', 'mention_rank'])
+            ->map(fn (BrandDiagnosisBrandMention $mention): array => [
+                'brand_name' => (string) $mention->brand_name,
+                'platform_key' => $this->normalizePlatformKey((string) $mention->platform),
+                'mention_count' => (int) $mention->mention_count,
+                'mention_rank' => (int) $mention->mention_rank,
+            ])
             ->groupBy('brand_name')
-            ->map(function (Collection $mentions, string $brandName): array {
+            ->map(function (Collection $mentions, string $brandName) use ($platformKeys, $resultTotals): array {
+                $platforms = $platformKeys
+                    ->map(function (string $platform) use ($mentions, $resultTotals): array {
+                        $platformMentions = $mentions->where('platform_key', $platform);
+                        $mentionRows = $platformMentions->count();
+                        $totalResults = (int) ($resultTotals[$platform] ?? 0);
+
+                        return [
+                            'platform_key' => $platform,
+                            'platform' => $this->platformLabel($platform),
+                            'mention_count' => (int) $platformMentions->sum('mention_count'),
+                            'best_rank' => $mentionRows > 0 ? (int) $platformMentions->min('mention_rank') : 0,
+                            'rate' => $this->rate($mentionRows, $totalResults),
+                        ];
+                    })
+                    ->values();
+
                 return [
                     'brand_name' => $brandName,
                     'mention_count' => (int) $mentions->sum('mention_count'),
                     'best_rank' => (int) $mentions->min('mention_rank'),
-                    'platforms' => $mentions
-                        ->groupBy('platform')
-                        ->map(fn (Collection $platformMentions, string $platform): array => [
-                            'platform_key' => $platform,
-                            'platform' => $this->platformLabel($platform),
-                            'mention_count' => (int) $platformMentions->sum('mention_count'),
-                            'best_rank' => (int) $platformMentions->min('mention_rank'),
+                    'platforms' => $platforms->all(),
+                    'platform_rates' => $platforms
+                        ->mapWithKeys(fn (array $platform): array => [
+                            (string) $platform['platform_key'] => (float) $platform['rate'],
                         ])
-                        ->values()
                         ->all(),
                 ];
             })
@@ -737,7 +779,11 @@ class MonitoringReportDataService
     {
         $results = $this->scope(BrandDiagnosisResult::query(), $context)
             ->where('status', 'success')
-            ->get(['platform', 'sentiment']);
+            ->get(['platform', 'sentiment'])
+            ->map(fn (BrandDiagnosisResult $result): array => [
+                'platform_key' => $this->normalizePlatformKey((string) $result->platform),
+                'sentiment' => (string) $result->sentiment,
+            ]);
         $total = $results->count();
 
         return [
@@ -746,9 +792,9 @@ class MonitoringReportDataService
                 'neutral_rate' => $this->rate($results->where('sentiment', 'neutral')->count(), $total),
                 'negative_rate' => $this->rate($results->where('sentiment', 'negative')->count(), $total),
             ],
-            'platforms' => $results
-                ->groupBy('platform')
-                ->map(function (Collection $platformResults, string $platform): array {
+            'platforms' => $this->industryPlatformKeys($results)
+                ->map(function (string $platform) use ($results): array {
+                    $platformResults = $results->where('platform_key', $platform);
                     $total = $platformResults->count();
 
                     return [
@@ -762,6 +808,23 @@ class MonitoringReportDataService
                 ->values()
                 ->all(),
         ];
+    }
+
+    /**
+     * @param  Collection<int,array{platform_key:string}>  $rows
+     * @return Collection<int,string>
+     */
+    private function industryPlatformKeys(Collection $rows): Collection
+    {
+        return $rows
+            ->groupBy('platform_key')
+            ->map(fn (Collection $platformRows): int => $platformRows->count())
+            ->sortDesc()
+            ->keys()
+            ->merge(self::DEFAULT_SEARCH_REPORT_PLATFORMS)
+            ->filter()
+            ->unique()
+            ->values();
     }
 
     /**

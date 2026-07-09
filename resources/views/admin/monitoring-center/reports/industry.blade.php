@@ -3981,7 +3981,7 @@
             <img class="title-bg" src="https://geo.zxaigc.com/assets/images/title-bg-163046e6.png" alt="" />
             <span class="title">一.&nbsp;&nbsp;&nbsp;报告概述</span>
           </div>
-          <div class="arco-row arco-row-align-start arco-row-justify-start report-summary-row" style="margin: -5px -10px;">
+          <div id="industrySummaryRow" class="arco-row arco-row-align-start arco-row-justify-start report-summary-row" style="margin: -5px -10px;">
             <div class="arco-col arco-col-xs-24 arco-col-sm-12 arco-col-md-6" style="padding: 5px 10px;">
               <div class="competitiveness_analysis_report_summary_card">
                 <div class="left">
@@ -4040,7 +4040,7 @@
             <img class="title-bg" src="https://geo.zxaigc.com/assets/images/title-bg-163046e6.png" alt="" />
             <span class="title">二.&nbsp;&nbsp;&nbsp;品牌画像</span>
           </div>
-          <div class="brand_intro2">
+          <div id="industryBrandProfile" class="brand_intro2">
             <div class="left">
               <img class="photo" src="https://geo.zxaigc.com/assets/images/photo-40729b51.png" alt="" />
             </div>
@@ -4066,7 +4066,7 @@
             <img class="title-bg" src="https://geo.zxaigc.com/assets/images/title-bg-163046e6.png" alt="" />
             <span class="title">三.&nbsp;&nbsp;&nbsp;AI搜索整体概况</span>
           </div>
-          <div class="aisearch_row">
+          <div id="industryOverallSection" class="aisearch_row">
             <div class="aisearch_title">品牌前五综合占比</div>
             <div class="arco-row arco-row-align-start arco-row-justify-start" style="margin: -5px -10px;">
               <div class="arco-col arco-col-xs-24 arco-col-sm-12" style="padding: 5px 10px;">
@@ -4106,7 +4106,7 @@
             <span class="title">四.&nbsp;&nbsp;&nbsp;AI搜索平台分析</span>
           </div>
           <div class="data_analysis">
-            <div class="ref_table platform_table">
+            <div id="industryPlatformTable" class="ref_table platform_table">
               <div class="ref_table_header">
                 <div>对比维度</div><div>搜索推荐分析次数</div><div>品牌词TOP1占比</div><div>品牌词TOP2占比</div><div>品牌词TOP3占比</div><div>品牌词TOP4占比</div><div>品牌词TOP5占比</div><div>正向舆情占比</div><div>信源站点数</div>
               </div>
@@ -4117,7 +4117,7 @@
               <div class="ref_table_row"><div><span class="model-name"><span class="model-logo"><img src="assets/ai-platforms/qianwen.png" alt="千问"></span>千问</span></div><div>44</div><div>18.18%</div><div>42.42%</div><div>6.06%</div><div>12.12%</div><div>0%</div><div>96.97%</div><div>696</div></div>
             </div>
           </div>
-          <div class="analysis_chart platform-charts">
+          <div id="industryPlatformCharts" class="analysis_chart platform-charts">
             <div class="chart_grid">
               <div class="chart">
                 <div class="title">品牌推荐分析次数指数</div>
@@ -4196,7 +4196,7 @@
           </div>
           <div class="data_analysis competitor_area">
             <div class="text">同行竞品大模型能见度分析</div>
-            <div class="ref_table competitor_table">
+            <div id="industryCompetitorTable" class="ref_table competitor_table">
               <div class="ref_table_header"><div>类型</div><div>公司名称</div><div><span class="model-name"><span class="model-logo"><img src="assets/ai-platforms/deepseek.png" alt="DeepSeek"></span>DeepSeek</span></div><div><span class="model-name"><span class="model-logo"><img src="assets/ai-platforms/doubao.png" alt="豆包"></span>豆包</span></div><div><span class="model-name"><span class="model-logo"><img src="assets/ai-platforms/yuanbao.png" alt="腾讯元宝"></span>腾讯元宝</span></div><div><span class="model-name"><span class="model-logo"><img src="assets/ai-platforms/wenxin.png" alt="文心一言"></span>文心一言</span></div><div><span class="model-name"><span class="model-logo"><img src="assets/ai-platforms/qianwen.png" alt="千问"></span>千问</span></div></div>
               <div class="ref_table_row"><div><span class="tag">推荐竞品</span></div><div class="name_cell">新知地（成都）人工智能科技有限公司</div><div>0%</div><div>0%</div><div class="heat-50">10%</div><div class="heat-65">19.23%</div><div>0%</div></div>
               <div class="ref_table_row"><div><span class="tag">推荐竞品</span></div><div class="name_cell">成都新智地科技有限公司</div><div>0%</div><div>0%</div><div>0%</div><div class="heat-65">19.23%</div><div class="heat-60">12.12%</div></div>
@@ -4218,7 +4218,7 @@
             <span class="title">六.&nbsp;&nbsp;&nbsp;AI 搜索舆情概况</span>
           </div>
           <div class="analysis_chart">
-            <div class="sentiment_grid">
+            <div id="industrySentimentGrid" class="sentiment_grid">
               <div class="score_chart sentiment-overview-card">
                 <div class="sentiment-donut"><div class="center"><div><b>92%</b><span>情感正向率</span></div></div></div>
                 <div class="chart-legend">
@@ -4246,6 +4246,436 @@
   <script>
     window.__MONITORING_REPORT__ = {!! json_encode($reportData ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) !!};
     window.__MONITORING_SEARCH_REPORT_USE_VIRTUAL__ = @json((bool) ($useVirtualSearchReportData ?? false));
+
+    const industryReportData = window.__MONITORING_REPORT__ || {};
+    const industryDefaultPlatforms = [
+      { key: 'deepseek', name: 'DeepSeek' },
+      { key: 'doubao', name: '豆包' },
+      { key: 'yuanbao', name: '腾讯元宝' },
+      { key: 'wenxin', name: '文心一言' },
+      { key: 'qianwen', name: '千问' },
+    ];
+    const industryPlatformLogos = {
+      deepseek: 'assets/ai-platforms/deepseek.png',
+      doubao: 'assets/ai-platforms/doubao.png',
+      yuanbao: 'assets/ai-platforms/yuanbao.png',
+      wenxin: 'assets/ai-platforms/wenxin.png',
+      qianwen: 'assets/ai-platforms/qianwen.png',
+      kimi: 'assets/ai-platforms/kimi.png',
+    };
+
+    function escapeIndustryHtml(value) {
+      return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function industryNumber(value) {
+      const number = Number(value);
+      return Number.isFinite(number) ? number : 0;
+    }
+
+    function industryClampPercent(value) {
+      return Math.min(100, Math.max(0, industryNumber(value)));
+    }
+
+    function formatIndustryPercent(value) {
+      const number = industryClampPercent(value);
+      return `${number.toFixed(2).replace(/\.?0+$/, '')}%`;
+    }
+
+    function formatIndustryInteger(value) {
+      return String(Math.round(industryNumber(value)));
+    }
+
+    function normalizeIndustryPlatformKey(key) {
+      const normalized = String(key || '').toLowerCase().trim();
+      if (normalized === 'tencent_yuanbao') return 'yuanbao';
+      if (normalized === 'ernie') return 'wenxin';
+      if (normalized === 'tongyi') return 'qianwen';
+      return normalized;
+    }
+
+    function getIndustryPlatforms() {
+      const rows = Array.isArray(industryReportData.platforms) ? industryReportData.platforms : [];
+      const normalizedRows = rows.map((row) => {
+        const key = normalizeIndustryPlatformKey(row.platform_key || row.key || row.platform);
+        const fallback = industryDefaultPlatforms.find((platform) => platform.key === key);
+
+        return {
+          platform_key: key,
+          platform: row.platform || fallback?.name || key,
+          analysis_count: industryNumber(row.analysis_count),
+          top_rank_rates: row.top_rank_rates || {},
+          positive_sentiment_rate: industryNumber(row.positive_sentiment_rate),
+          source_count: industryNumber(row.source_count),
+        };
+      }).filter((row) => row.platform_key);
+
+      industryDefaultPlatforms.forEach((platform) => {
+        if (! normalizedRows.some((row) => row.platform_key === platform.key)) {
+          normalizedRows.push({
+            platform_key: platform.key,
+            platform: platform.name,
+            analysis_count: 0,
+            top_rank_rates: {},
+            positive_sentiment_rate: 0,
+            source_count: 0,
+          });
+        }
+      });
+
+      return normalizedRows;
+    }
+
+    function industryModelName(platform) {
+      const key = normalizeIndustryPlatformKey(platform.platform_key || platform.key || platform.platform);
+      const name = platform.platform || industryDefaultPlatforms.find((item) => item.key === key)?.name || key;
+      const logo = industryPlatformLogos[key] || `assets/ai-platforms/${key}.png`;
+
+      return `<span class="model-name"><span class="model-logo"><img src="${escapeIndustryHtml(logo)}" alt="${escapeIndustryHtml(name)}"></span>${escapeIndustryHtml(name)}</span>`;
+    }
+
+    function renderIndustrySummary() {
+      const target = document.getElementById('industrySummaryRow');
+      const summary = Array.isArray(industryReportData.summary) ? industryReportData.summary : [];
+      if (! target || summary.length === 0) return;
+
+      const colors = ['#055cff', '#9265ff', '#37babb', '#f0934e'];
+      const platforms = getIndustryPlatforms();
+
+      target.innerHTML = summary.map((metric, index) => {
+        const value = metric.display ?? metric.value ?? metric.actual ?? 0;
+        const platformIcons = index === 2
+          ? `<div class="platform-icons">${platforms.map((platform) => {
+              const key = normalizeIndustryPlatformKey(platform.platform_key);
+              const name = platform.platform || key;
+              return `<span class="model-logo"><img src="${escapeIndustryHtml(industryPlatformLogos[key] || `assets/ai-platforms/${key}.png`)}" alt="${escapeIndustryHtml(name)}"></span>`;
+            }).join('')}</div>`
+          : '';
+
+        return `
+          <div class="arco-col arco-col-xs-24 arco-col-sm-12 arco-col-md-6" style="padding: 5px 10px;">
+            <div class="competitiveness_analysis_report_summary_card">
+              <div class="left">
+                <div class="icon_wrap" style="--icon-bg:${colors[index % colors.length]}">
+                  <img class="icon" src="assets/live-summary-icons/icon-${index + 1}.png" alt="" />
+                </div>
+              </div>
+              <div class="right">
+                <div class="label">${escapeIndustryHtml(metric.label || '')}</div>
+                <div class="value">${escapeIndustryHtml(formatIndustryInteger(value))}</div>
+                ${platformIcons}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderIndustryBrandProfile() {
+      const target = document.getElementById('industryBrandProfile');
+      const profile = industryReportData.brand_profile || {};
+      const context = industryReportData.context || {};
+      if (! target) return;
+
+      const existingPhoto = target.querySelector('img.photo')?.getAttribute('src') || 'https://geo.zxaigc.com/assets/images/photo-40729b51.png';
+      const photo = profile.image_url || profile.cover_image || existingPhoto;
+      const companyName = profile.company_name || context.company_name || context.site_name || '-';
+      const brandNames = Array.isArray(profile.brand_names) && profile.brand_names.length > 0 ? profile.brand_names.join('、') : companyName;
+      const services = Array.isArray(profile.core_services) && profile.core_services.length > 0 ? profile.core_services.join('、') : (profile.description || '-');
+
+      target.innerHTML = `
+        <div class="left">
+          <img class="photo" src="${escapeIndustryHtml(photo)}" alt="" />
+        </div>
+        <div class="right">
+          <div class="item"><div class="text">公司名称：</div><div class="content">${escapeIndustryHtml(companyName)}</div></div>
+          <div class="item"><div class="text">品牌名称：</div><div class="content">${escapeIndustryHtml(brandNames)}</div></div>
+          <div class="item"><div class="text">核心服务：</div><div class="content">${escapeIndustryHtml(services)}</div></div>
+        </div>
+      `;
+    }
+
+    function renderIndustryOverall() {
+      const target = document.getElementById('industryOverallSection');
+      const overall = industryReportData.overall || {};
+      if (! target) return;
+
+      const topRate = industryClampPercent(overall.top5_rate);
+      const topCount = industryNumber(overall.top5_count);
+      const otherRate = Math.max(0, 100 - topRate);
+      const rankRates = overall.top_rank_rates || {};
+      const rankColors = ['rgb(255, 177, 122)', 'rgb(52, 123, 255)', 'rgb(255, 134, 134)', 'rgb(37, 191, 171)', 'rgb(64, 196, 127)'];
+      const rankIcons = [
+        'https://geo.zxaigc.com/assets/images/top1-c1bd254d.png',
+        'https://geo.zxaigc.com/assets/images/top2-8eb03e02.png',
+        'https://geo.zxaigc.com/assets/images/top3-873efdd1.png',
+        'https://geo.zxaigc.com/assets/images/top4-8b699781.png',
+        'https://geo.zxaigc.com/assets/images/top5-1f653c40.png',
+      ];
+
+      target.innerHTML = `
+        <div class="aisearch_title">品牌前五综合占比</div>
+        <div class="arco-row arco-row-align-start arco-row-justify-start" style="margin: -5px -10px;">
+          <div class="arco-col arco-col-xs-24 arco-col-sm-12" style="padding: 5px 10px;">
+            <div class="aisearch_left aisearch_left_line">
+              <div class="aisearch_left_inner">
+                <div class="left">
+                  <img src="https://geo.zxaigc.com/assets/images/round-8f2394a9.png" alt="" />
+                  <div class="text">${formatIndustryPercent(topRate)}</div>
+                  <div class="donut-meta">
+                    <span><i style="--dot:#73df94"></i>品牌前五 ${formatIndustryPercent(topRate)}</span>
+                    <span><i style="--dot:#65bdff"></i>其他 ${formatIndustryPercent(otherRate)}</span>
+                  </div>
+                </div>
+                <div class="right_card">
+                  <div class="card card2"><div class="card_top" style="font-size: 28px;">${formatIndustryPercent(topRate)}</div><div class="card_bottom" style="font-size: 14px;">品牌前五占比</div></div>
+                  <div class="card card2"><div class="card_top" style="font-size: 28px;">${formatIndustryInteger(topCount)}</div><div class="card_bottom" style="font-size: 14px;">品牌前五次数</div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="arco-col arco-col-xs-24 arco-col-sm-12" style="padding: 5px 10px;">
+            <div class="aisearch_right">
+              ${[1, 2, 3, 4, 5].map((rank, index) => {
+                const rate = industryClampPercent(rankRates[`top${rank}`]);
+                return `<div class="aisearch_right_item"><div class="ai-data-overview-progress"><img class="icon" src="${rankIcons[index]}" alt="" /><div class="progress" style="background-color: ${rankColors[index]}; width: ${rate}%;"></div><span>${formatIndustryPercent(rate)}</span></div></div>`;
+              }).join('')}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderIndustryBarSvg(rows, title, valueGetter, options = {}) {
+      const values = rows.map((row) => industryNumber(valueGetter(row)));
+      const maxValue = options.maxValue || Math.max(...values, 1);
+      const barWidth = Math.max(22, Math.min(40, 260 / Math.max(rows.length, 1)));
+      const slot = 340 / Math.max(rows.length, 1);
+      const bars = rows.map((row, index) => {
+        const value = values[index];
+        const height = maxValue > 0 ? Math.min(180, Math.max(0, value / maxValue * 180)) : 0;
+        const x = 58 + index * slot + (slot - barWidth) / 2;
+        const y = 245 - height;
+        const label = row.platform || row.platform_key;
+        const valueText = options.percent ? formatIndustryPercent(value) : formatIndustryInteger(value);
+
+        return `
+          <rect class="bar-fill" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${height.toFixed(1)}"/>
+          <text class="axis-label" x="${(x + barWidth / 2).toFixed(1)}" y="${Math.max(45, y - 8).toFixed(1)}" text-anchor="middle">${escapeIndustryHtml(valueText)}</text>
+          <text class="axis-label" x="${(x + barWidth / 2).toFixed(1)}" y="266" text-anchor="middle">${escapeIndustryHtml(label)}</text>
+        `;
+      }).join('');
+
+      return `
+        <svg class="bar-svg" viewBox="0 0 430 307" role="img" aria-label="${escapeIndustryHtml(title)}">
+          <line x1="46" y1="245" x2="410" y2="245" stroke="#e5e5e5"/>
+          <line x1="46" y1="55" x2="46" y2="245" stroke="#e5e5e5"/>
+          <text class="axis-label" x="34" y="249" text-anchor="end">0</text>
+          <text class="axis-label" x="34" y="65" text-anchor="end">${escapeIndustryHtml(options.percent ? '100%' : formatIndustryInteger(maxValue))}</text>
+          ${bars}
+        </svg>
+      `;
+    }
+
+    function industryDonutSegments(rows, valueGetter) {
+      const colors = ['#7da0f2', '#b8d1fb', '#95bff4', '#4d7fff', '#2d65f3', '#63d6be', '#ffba75'];
+      const total = rows.reduce((sum, row) => sum + industryNumber(valueGetter(row)), 0);
+      if (total <= 0) return '#203a69 0 100%';
+
+      let cursor = 0;
+      return rows.map((row, index) => {
+        const value = industryNumber(valueGetter(row));
+        const start = cursor;
+        const end = index === rows.length - 1 ? 100 : cursor + value / total * 100;
+        cursor = end;
+        return `${colors[index % colors.length]} ${start.toFixed(2)}% ${end.toFixed(2)}%`;
+      }).join(', ');
+    }
+
+    function renderIndustryPlatforms() {
+      const table = document.getElementById('industryPlatformTable');
+      const charts = document.getElementById('industryPlatformCharts');
+      const platforms = getIndustryPlatforms();
+
+      if (table) {
+        table.innerHTML = `
+          <div class="ref_table_header">
+            <div>对比维度</div><div>搜索推荐分析次数</div><div>品牌词TOP1占比</div><div>品牌词TOP2占比</div><div>品牌词TOP3占比</div><div>品牌词TOP4占比</div><div>品牌词TOP5占比</div><div>正向舆情占比</div><div>信源站点数</div>
+          </div>
+          ${platforms.map((platform) => {
+            const rates = platform.top_rank_rates || {};
+            return `
+              <div class="ref_table_row">
+                <div>${industryModelName(platform)}</div>
+                <div>${formatIndustryInteger(platform.analysis_count)}</div>
+                <div>${formatIndustryPercent(rates.top1)}</div>
+                <div>${formatIndustryPercent(rates.top2)}</div>
+                <div>${formatIndustryPercent(rates.top3)}</div>
+                <div>${formatIndustryPercent(rates.top4)}</div>
+                <div>${formatIndustryPercent(rates.top5)}</div>
+                <div>${formatIndustryPercent(platform.positive_sentiment_rate)}</div>
+                <div>${formatIndustryInteger(platform.source_count)}</div>
+              </div>
+            `;
+          }).join('')}
+        `;
+      }
+
+      if (charts) {
+        const topSourceRows = platforms.slice(0, 5);
+        charts.innerHTML = `
+          <div class="chart_grid">
+            <div class="chart">
+              <div class="title">品牌推荐分析次数指数</div>
+              ${renderIndustryBarSvg(platforms, '品牌推荐分析次数指数', (row) => row.analysis_count)}
+            </div>
+            <div class="chart">
+              <div class="title">品牌在各大模型的首位推荐率</div>
+              ${renderIndustryBarSvg(platforms, '品牌在各大模型的首位推荐率', (row) => row.top_rank_rates?.top1 || 0, { maxValue: 100, percent: true })}
+            </div>
+            <div class="chart">
+              <div class="title">品牌各平台信源占比</div>
+              <div class="donut-chart" style="--segments:${industryDonutSegments(topSourceRows, (row) => row.source_count)};"></div>
+              ${topSourceRows.map((platform, index) => `<span class="source-label l${index + 1}">${escapeIndustryHtml(platform.platform)} ${formatIndustryInteger(platform.source_count)}</span>`).join('')}
+              <div class="chart-legend">
+                ${topSourceRows.map((platform, index) => `<span><i class="legend-dot" style="--dot:${['#7da0f2', '#b8d1fb', '#95bff4', '#4d7fff', '#2d65f3'][index % 5]}"></i>${escapeIndustryHtml(platform.platform)}</span>`).join('')}
+              </div>
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    function industryHeatClass(rate) {
+      const value = industryNumber(rate);
+      if (value >= 20) return 'heat-65';
+      if (value >= 10) return 'heat-60';
+      if (value >= 5) return 'heat-50';
+      if (value > 0) return 'heat-45';
+      return '';
+    }
+
+    function renderIndustryCompetitors() {
+      const table = document.getElementById('industryCompetitorTable');
+      if (! table) return;
+
+      const platforms = getIndustryPlatforms();
+      const competitors = Array.isArray(industryReportData.competitors) ? industryReportData.competitors : [];
+      const header = `
+        <div class="ref_table_header">
+          <div>类型</div><div>公司名称</div>
+          ${platforms.map((platform) => `<div>${industryModelName(platform)}</div>`).join('')}
+        </div>
+      `;
+      const rows = competitors.length > 0
+        ? competitors.map((competitor) => {
+            const rates = competitor.platform_rates || {};
+            return `
+              <div class="ref_table_row">
+                <div><span class="tag">推荐竞品</span></div>
+                <div class="name_cell">${escapeIndustryHtml(competitor.brand_name || '-')}</div>
+                ${platforms.map((platform) => {
+                  const key = normalizeIndustryPlatformKey(platform.platform_key);
+                  const fallback = Array.isArray(competitor.platforms)
+                    ? competitor.platforms.find((item) => normalizeIndustryPlatformKey(item.platform_key) === key)
+                    : null;
+                  const rate = industryNumber(rates[key] ?? fallback?.rate ?? 0);
+                  return `<div class="${industryHeatClass(rate)}">${formatIndustryPercent(rate)}</div>`;
+                }).join('')}
+              </div>
+            `;
+          }).join('')
+        : `<div class="ref_table_row"><div><span class="tag">暂无</span></div><div class="name_cell">暂无竞品数据</div>${platforms.map(() => '<div>0%</div>').join('')}</div>`;
+
+      table.innerHTML = header + rows;
+    }
+
+    function renderIndustrySentiment() {
+      const target = document.getElementById('industrySentimentGrid');
+      if (! target) return;
+
+      const sentiment = industryReportData.sentiment || {};
+      const overall = sentiment.overall || {};
+      const platforms = Array.isArray(sentiment.platforms) && sentiment.platforms.length > 0
+        ? sentiment.platforms
+        : getIndustryPlatforms().map((platform) => ({
+            platform_key: platform.platform_key,
+            platform: platform.platform,
+            positive_rate: 0,
+            neutral_rate: 0,
+            negative_rate: 0,
+          }));
+      const positive = industryClampPercent(overall.positive_rate);
+      const neutral = industryClampPercent(overall.neutral_rate);
+      const negative = industryClampPercent(overall.negative_rate);
+      const neutralStart = positive;
+      const negativeStart = Math.min(100, positive + neutral);
+
+      target.innerHTML = `
+        <div class="score_chart sentiment-overview-card">
+          <div class="sentiment-donut" style="background: conic-gradient(#6669ff 0 ${positive}%, #ff9245 ${neutralStart}% ${negativeStart}%, #e94f4c ${negativeStart}% 100%);">
+            <div class="center"><div><b>${formatIndustryPercent(positive)}</b><span>情感正向率</span></div></div>
+          </div>
+          <div class="chart-legend">
+            <span><i class="legend-dot" style="--dot:#6669ff"></i>${formatIndustryPercent(positive)} 正面</span>
+            <span><i class="legend-dot" style="--dot:#ff9245"></i>${formatIndustryPercent(neutral)} 中性</span>
+            <span><i class="legend-dot" style="--dot:#e94f4c"></i>${formatIndustryPercent(negative)} 负面</span>
+          </div>
+        </div>
+        <div class="chart2">
+          <div class="title2">各平台舆情占比</div>
+          <div class="public-opinion-share-chart">
+            ${platforms.map((platform) => {
+              const key = normalizeIndustryPlatformKey(platform.platform_key || platform.key || platform.platform);
+              const row = {
+                platform_key: key,
+                platform: platform.platform || industryDefaultPlatforms.find((item) => item.key === key)?.name || key,
+              };
+              const rowPositive = industryClampPercent(platform.positive_rate);
+              const rowNeutral = industryClampPercent(platform.neutral_rate);
+              const rowNegative = industryClampPercent(platform.negative_rate);
+              return `
+                <div class="public-opinion-share-item">
+                  <div class="top_content"><div class="left">${industryModelName(row)}</div><div class="right">正面${formatIndustryPercent(rowPositive)}</div></div>
+                  <div class="bottom_content">
+                    <div class="front" style="width:${rowPositive}%"></div>
+                    <div class="neutral" style="width:${rowNeutral}%"></div>
+                    <div class="back" style="width:${rowNegative}%"></div>
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    function applyDynamicIndustryData() {
+      if (! industryReportData || Object.keys(industryReportData).length === 0) return;
+
+      const dateLabel = document.querySelector('.desc span');
+      if (dateLabel && industryReportData.context?.date) {
+        dateLabel.textContent = `最近更新时间：${industryReportData.context.date}`;
+      }
+
+      renderIndustrySummary();
+      renderIndustryBrandProfile();
+      renderIndustryOverall();
+      renderIndustryPlatforms();
+      renderIndustryCompetitors();
+      renderIndustrySentiment();
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', applyDynamicIndustryData);
+    } else {
+      applyDynamicIndustryData();
+    }
   </script>
 </body>
 </html>
