@@ -84,7 +84,7 @@ class WorkerExecutionService
 
         $titleRow = $this->pickTitle($task);
         $author = $this->pickAuthor($task);
-        $category = $this->pickCategory($task);
+        $category = $this->pickCategory($task, $titleRow);
         $prompt = $task->prompt_id ? $this->aiConfigQueryForTask(
             Prompt::query()->withoutGlobalScope('current_site'),
             $task,
@@ -524,7 +524,7 @@ class WorkerExecutionService
         );
     }
 
-    private function pickCategory(Task $task): ?Category
+    private function pickCategory(Task $task, ?Title $title = null): ?Category
     {
         $siteId = (int) ($task->site_id ?? 0);
 
@@ -546,7 +546,110 @@ class WorkerExecutionService
             $query->where('site_id', $siteId);
         }
 
-        return $query->orderBy('sort_order')->orderBy('id')->first();
+        $categories = $query->orderBy('sort_order')->orderBy('id')->get();
+        if ($categories->isEmpty()) {
+            return null;
+        }
+
+        if (($task->category_mode ?? 'smart') === 'smart') {
+            $smartCategory = $this->pickSmartCategory($categories, $title);
+            if ($smartCategory instanceof Category) {
+                return $smartCategory;
+            }
+        }
+
+        return $categories->first();
+    }
+
+    /**
+     * @param  iterable<int, Category>  $categories
+     */
+    private function pickSmartCategory(iterable $categories, ?Title $title): ?Category
+    {
+        $context = $this->normalizeSmartCategoryText(trim((string) ($title?->title ?? '').' '.(string) ($title?->keyword ?? '')));
+        if ($context === '') {
+            return null;
+        }
+
+        $bestCategory = null;
+        $bestScore = 0;
+        foreach ($categories as $category) {
+            $score = $this->scoreSmartCategory($context, $category);
+            if ($score > $bestScore) {
+                $bestCategory = $category;
+                $bestScore = $score;
+            }
+        }
+
+        return $bestScore > 0 ? $bestCategory : null;
+    }
+
+    private function scoreSmartCategory(string $context, Category $category): int
+    {
+        $score = 0;
+        $nameTokens = $this->smartCategoryTokens((string) $category->name);
+        foreach ($nameTokens as $token) {
+            if (mb_strpos($context, $token, 0, 'UTF-8') !== false) {
+                $score += mb_strlen($token, 'UTF-8') * 10;
+            }
+        }
+
+        $descriptionTokens = $this->smartCategoryTokens((string) ($category->description ?? ''));
+        foreach ($descriptionTokens as $token) {
+            if (mb_strpos($context, $token, 0, 'UTF-8') !== false) {
+                $score += mb_strlen($token, 'UTF-8') * 4;
+            }
+        }
+
+        return $score;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function smartCategoryTokens(string $value): array
+    {
+        $normalized = $this->normalizeSmartCategoryText($value);
+        if ($normalized === '') {
+            return [];
+        }
+
+        $parts = preg_split('/\s+/u', $normalized, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $tokens = [];
+        foreach ($parts as $part) {
+            $part = trim((string) $part);
+            if (mb_strlen($part, 'UTF-8') >= 2) {
+                $tokens[] = $part;
+            }
+
+            $stripped = $this->stripSmartCategorySuffix($part);
+            if ($stripped !== $part && mb_strlen($stripped, 'UTF-8') >= 2) {
+                $tokens[] = $stripped;
+            }
+        }
+
+        return array_values(array_unique($tokens));
+    }
+
+    private function stripSmartCategorySuffix(string $value): string
+    {
+        $suffixes = ['新闻资讯', '行业资讯', '资讯', '新闻', '信息', '动态', '专栏', '栏目', '百科', '知识', '分类'];
+        foreach ($suffixes as $suffix) {
+            $suffixLength = mb_strlen($suffix, 'UTF-8');
+            if (mb_strlen($value, 'UTF-8') > $suffixLength && mb_substr($value, -$suffixLength, null, 'UTF-8') === $suffix) {
+                return mb_substr($value, 0, -$suffixLength, 'UTF-8');
+            }
+        }
+
+        return $value;
+    }
+
+    private function normalizeSmartCategoryText(string $value): string
+    {
+        $normalized = mb_strtolower($value, 'UTF-8');
+        $normalized = preg_replace('/[^\p{L}\p{N}]+/u', ' ', $normalized) ?? $normalized;
+
+        return trim(preg_replace('/\s+/u', ' ', $normalized) ?? $normalized);
     }
 
     /**

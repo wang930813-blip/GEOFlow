@@ -596,6 +596,83 @@ class WorkerExecutionSiteIsolationTest extends TestCase
         $this->assertSame((int) $siteCategory->id, (int) $article->category_id);
     }
 
+    public function test_worker_smart_category_selection_matches_title_to_available_category(): void
+    {
+        config(['geoflow.api_key_crypto_roots' => ['worker-smart-category-title-test-key']]);
+
+        $site = $this->createSite([
+            'name' => 'Smart Category Title Site',
+            'status' => 'active',
+        ]);
+        $firstCategory = Category::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => '三角洲资讯',
+            'slug' => 'delta-news',
+            'sort_order' => 0,
+        ]);
+        $matchedCategory = Category::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => '俱乐部资讯',
+            'slug' => 'club-news',
+            'sort_order' => 10,
+        ]);
+        $titleLibrary = TitleLibrary::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Smart Category Titles',
+        ]);
+        Title::query()->create([
+            'site_id' => (int) $site->id,
+            'library_id' => (int) $titleLibrary->id,
+            'title' => '俱乐部新赛季活动运营方案',
+            'keyword' => '俱乐部 活动',
+        ]);
+        $prompt = Prompt::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Smart Category Prompt',
+            'type' => 'content',
+            'content' => 'Write about {{title}}.',
+        ]);
+        $author = Author::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Smart Category Author',
+        ]);
+        $aiModel = AiModel::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Smart Category Chat',
+            'model_id' => 'deepseek-chat',
+            'model_type' => 'chat',
+            'api_url' => 'https://ai.example.test',
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('test-api-key'),
+            'status' => 'active',
+        ]);
+        $task = Task::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Smart category title task',
+            'title_library_id' => (int) $titleLibrary->id,
+            'prompt_id' => (int) $prompt->id,
+            'ai_model_id' => (int) $aiModel->id,
+            'author_id' => (int) $author->id,
+            'category_mode' => 'smart',
+            'need_review' => 1,
+            'auto_keywords' => 0,
+            'auto_description' => 0,
+            'status' => 'active',
+            'schedule_enabled' => 1,
+            'draft_limit' => 5,
+            'article_limit' => 5,
+        ]);
+
+        Http::fake([
+            'https://ai.example.test/v1/chat/completions' => Http::response($this->chatCompletion("# 俱乐部新赛季活动运营方案\n\nGenerated body.")),
+        ]);
+
+        $result = app(WorkerExecutionService::class)->executeTask((int) $task->id);
+
+        $article = Article::withoutGlobalScope('current_site')->findOrFail((int) $result['article_id']);
+        $this->assertNotSame((int) $firstCategory->id, (int) $article->category_id);
+        $this->assertSame((int) $matchedCategory->id, (int) $article->category_id);
+    }
+
     public function test_worker_does_not_publish_local_only_draft_before_scheduled_first_publish_time(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-06-16 10:00:00'));

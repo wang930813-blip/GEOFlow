@@ -266,7 +266,7 @@ class AdminArticlesPageTest extends TestCase
             ->assertSee(__('admin.distribution.article_status.synced'));
     }
 
-    public function test_article_date_filters_display_slash_format_and_accept_slash_input(): void
+    public function test_article_date_filters_render_native_date_inputs_and_accept_slash_input(): void
     {
         $admin = Admin::query()->create([
             'username' => 'articles_date_filter_admin',
@@ -329,9 +329,20 @@ class AdminArticlesPageTest extends TestCase
             ->assertOk()
             ->assertSee('Inside Date Range Article')
             ->assertDontSee('Outside Date Range Article')
-            ->assertSee('name="date_from"', false)
-            ->assertSee('placeholder="yyyy/mm/dd"', false)
-            ->assertSee('value="2026/05/27"', false);
+            ->assertSee('type="date" name="date_from" value="2026-05-27"', false)
+            ->assertSee('type="date" name="date_to" value="2026-05-27"', false)
+            ->assertDontSee('placeholder="yyyy/mm/dd"', false);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.articles.index', [
+                'trashed' => 1,
+                'date_from' => '2026/05/27',
+                'date_to' => '2026/05/27',
+            ]))
+            ->assertOk()
+            ->assertSee('type="date" name="date_from" value="2026-05-27"', false)
+            ->assertSee('type="date" name="date_to" value="2026-05-27"', false);
     }
 
     public function test_article_list_can_be_filtered_by_category(): void
