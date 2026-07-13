@@ -3235,8 +3235,8 @@
       position: absolute;
       top: 27px;
       right: 18px;
-      width: 560px;
-      flex: 0 0 560px;
+      width: 660px;
+      flex: 0 0 660px;
       gap: 18px;
       justify-content: flex-end;
       height: 47px;
@@ -3323,7 +3323,7 @@
         position: absolute;
         top: 27px;
         right: 50%;
-        width: 560px;
+        width: 660px;
         flex: 0 0 auto;
         height: 47px;
         flex-direction: row;
@@ -3523,7 +3523,7 @@
       min-height: 0;
       padding: 0 18px;
       display: grid;
-      grid-template-columns: 410px 1fr 560px;
+      grid-template-columns: 410px 1fr 660px;
       align-items: center;
       gap: 18px;
       margin: 0 18px;
@@ -3573,7 +3573,7 @@
       top: 72px;
       right: 18px;
       z-index: 1001;
-      width: 560px;
+      width: 660px;
       height: 47px;
       display: flex;
       align-items: center;
@@ -3931,6 +3931,70 @@
       width: 270px;
       height: 188px;
     }
+    .monitoring-share-action {
+      box-sizing: border-box;
+      flex: 0 0 82px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 82px;
+      height: 44px;
+      min-height: 44px;
+      border: 1px solid rgba(0, 215, 255, .45);
+      background:
+        linear-gradient(180deg, rgba(0, 215, 255, .16), rgba(3, 23, 50, .82)),
+        rgba(3, 23, 50, .86);
+      color: #ecf8ff;
+      padding: 0;
+      border-radius: 999px;
+      font-size: 16px;
+      font-weight: 850;
+      line-height: 1;
+      letter-spacing: 0;
+      white-space: nowrap;
+      cursor: pointer;
+      text-align: center;
+      text-decoration: none;
+      box-shadow: inset 0 0 0 1px rgba(119, 226, 255, .18), 0 8px 22px rgba(0, 0, 0, .28);
+      transition: transform .16s ease, border-color .16s ease, background .16s ease, box-shadow .16s ease;
+    }
+    .monitoring-share-action:hover {
+      border-color: rgba(0, 215, 255, .9);
+      background:
+        linear-gradient(180deg, rgba(0, 215, 255, .24), rgba(4, 32, 69, .94)),
+        rgba(4, 32, 69, .92);
+      box-shadow: inset 0 0 0 1px rgba(119, 226, 255, .32), 0 10px 24px rgba(0, 194, 255, .2);
+      transform: translateY(-1px);
+    }
+    .monitoring-share-action:disabled {
+      cursor: wait;
+      opacity: .68;
+      transform: none;
+    }
+    @media (max-width: 720px) {
+      .monitoring-share-action {
+        width: 100%;
+        flex: 0 0 auto;
+      }
+    }
+    .monitoring-share-toast {
+      position: fixed;
+      left: 50%;
+      bottom: 28px;
+      z-index: 9999;
+      display: none;
+      transform: translateX(-50%);
+      border: 1px solid rgba(0, 215, 255, .45);
+      border-radius: 999px;
+      background: rgba(3, 23, 50, .94);
+      color: #ecf8ff;
+      padding: 10px 18px;
+      font-size: 14px;
+      box-shadow: 0 16px 38px rgba(0, 0, 0, .32);
+    }
+    .monitoring-share-toast.show {
+      display: block;
+    }
   </style>
   <link rel="stylesheet" href="assets/responsive-report.css" />
 </head>
@@ -3956,6 +4020,9 @@
             <a href="geo-dashboard-replica.html">企业輿情分析报表</a>
           </div>
         </details>
+        @if(!empty($shareCreateUrl ?? ''))
+          <button type="button" class="monitoring-share-action" data-monitoring-share-button onclick="createMonitoringReportShare(this)">分享</button>
+        @endif
       </div>
     </header>
 
@@ -4246,6 +4313,11 @@
   <script>
     window.__MONITORING_REPORT__ = {!! json_encode($reportData ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) !!};
     window.__MONITORING_SEARCH_REPORT_USE_VIRTUAL__ = @json((bool) ($useVirtualSearchReportData ?? false));
+    window.__MONITORING_SHARE__ = {!! json_encode([
+      'createUrl' => (string) ($shareCreateUrl ?? ''),
+      'csrfToken' => (string) ($shareCsrfToken ?? ''),
+      'report' => 'industry',
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) !!};
 
     const industryReportData = window.__MONITORING_REPORT__ || {};
     const industryDefaultPlatforms = [
@@ -4653,6 +4725,73 @@
           </div>
         </div>
       `;
+    }
+
+    async function createMonitoringReportShare(button) {
+      const share = window.__MONITORING_SHARE__ || {};
+      if (!share.createUrl) return;
+      const previousText = button?.textContent || "分享";
+      if (button) {
+        button.disabled = true;
+        button.textContent = "生成中";
+      }
+      try {
+        const response = await fetch(share.createUrl, {
+          method: "POST",
+          headers: {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "X-CSRF-TOKEN": share.csrfToken || ""
+          },
+          body: JSON.stringify({ report: share.report || "industry" })
+        });
+        if (!response.ok) throw new Error("share failed");
+        const data = await response.json();
+        if (!data.url) throw new Error("missing url");
+        await copyMonitoringShareUrl(data.url);
+        showMonitoringShareToast("分享链接已复制");
+        if (button) button.textContent = "已复制";
+      } catch (error) {
+        showMonitoringShareToast("分享失败，请稍后重试");
+        if (button) button.textContent = previousText;
+      } finally {
+        if (button) {
+          setTimeout(() => {
+            button.disabled = false;
+            button.textContent = previousText;
+          }, 1400);
+        }
+      }
+    }
+
+    async function copyMonitoringShareUrl(url) {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(url);
+        return;
+      }
+      const textarea = document.createElement("textarea");
+      textarea.value = url;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      document.execCommand("copy");
+      textarea.remove();
+    }
+
+    function showMonitoringShareToast(text) {
+      let toast = document.getElementById("monitoring-share-toast");
+      if (!toast) {
+        toast = document.createElement("div");
+        toast.id = "monitoring-share-toast";
+        toast.className = "monitoring-share-toast";
+        document.body.appendChild(toast);
+      }
+      toast.textContent = text;
+      toast.classList.add("show");
+      clearTimeout(window.__monitoringShareToastTimer);
+      window.__monitoringShareToastTimer = setTimeout(() => toast.classList.remove("show"), 1700);
     }
 
     function applyDynamicIndustryData() {

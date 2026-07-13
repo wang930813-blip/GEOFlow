@@ -9,13 +9,27 @@ use App\Models\BrandDiagnosisResult;
 use App\Models\BrandDiagnosisRun;
 use App\Models\BrandDiagnosisSource;
 use App\Models\KnowledgeBase;
+use App\Models\MonitoringReportShare;
 use App\Models\Site;
+use App\Services\MonitoringCenter\MonitoringReportRenderer;
+use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class AdminMonitoringCenterPageTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_monitoring_report_renderer_uses_readable_utf8_page_titles(): void
+    {
+        $renderer = app(MonitoringReportRenderer::class);
+
+        $enterprise = $renderer->render('enterprise', [], false);
+        $industry = $renderer->render('industry', [], false);
+
+        $this->assertStringContainsString('<title>企业舆情分析报表 - 监测中心</title>', $enterprise);
+        $this->assertStringContainsString('<title>行业竞争力分析报表 - 监测中心</title>', $industry);
+    }
 
     public function test_monitoring_center_renders_enterprise_report_as_standalone_page(): void
     {
@@ -30,6 +44,8 @@ class AdminMonitoringCenterPageTest extends TestCase
             ->assertSee('企业舆情分析报表')
             ->assertSee('行业竞争力分析报表')
             ->assertSee('href="'.route('admin.monitoring-center.index', ['report' => 'industry']).'"', false)
+            ->assertSee('data-monitoring-share-button', false)
+            ->assertSee(route('admin.monitoring-center.share'), false)
             ->assertSee('/assets/monitoring-center/assets/backgrounds/enterprise-space-bg.png', false)
             ->assertSee('/assets/monitoring-center/assets/ai-platforms/deepseek.png', false)
             ->assertDontSee('"assets/ai-platforms/deepseek.png"', false)
@@ -49,6 +65,8 @@ class AdminMonitoringCenterPageTest extends TestCase
             ->assertSee('行业竞争力分析报表')
             ->assertSee('企业舆情分析报表')
             ->assertSee('href="'.route('admin.monitoring-center.index', ['report' => 'enterprise']).'"', false)
+            ->assertSee('data-monitoring-share-button', false)
+            ->assertSee(route('admin.monitoring-center.share'), false)
             ->assertSee('/assets/monitoring-center/ceying-ai-logo1.png', false)
             ->assertDontSee('data-monitoring-dynamic-summary', false)
             ->assertDontSee('admin-topbar', false);
@@ -323,6 +341,68 @@ class AdminMonitoringCenterPageTest extends TestCase
             $this->assertStringContainsString('window.__MONITORING_REPORT__ = {', $html);
             $this->assertStringNotContainsString('window.__MONITORING_REPORT__ = ;', $html);
         }
+    }
+
+    public function test_monitoring_center_share_endpoint_creates_snapshot_link_for_current_site(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+
+        [$admin, $site] = $this->createAdminWithSite('monitoring_share_creator');
+
+        $response = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->postJson(route('admin.monitoring-center.share'), [
+                'report' => 'industry',
+            ]);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('report', 'industry')
+            ->assertJsonStructure(['url']);
+
+        $share = MonitoringReportShare::query()->firstOrFail();
+        $this->assertSame('industry', (string) $share->report_type);
+        $this->assertSame((int) $site->id, (int) $share->site_id);
+        $this->assertSame((int) $admin->id, (int) $share->created_by_admin_id);
+        $this->assertSame('monitoring_share_creator Site', (string) data_get($share->payload, 'context.company_name'));
+        $this->assertStringContainsString('/monitoring-report/share/', (string) $response->json('url'));
+    }
+
+    public function test_monitoring_report_share_link_is_public_and_renders_snapshot_payload(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('monitoring_public_share');
+        $token = 'publicsharetoken123';
+
+        MonitoringReportShare::query()->create([
+            'token_hash' => hash('sha256', $token),
+            'report_type' => 'enterprise',
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'created_by_admin_id' => (int) $admin->id,
+            'title' => 'Enterprise report snapshot',
+            'payload' => [
+                'context' => [
+                    'company_name' => '公开分享快照公司',
+                    'site_name' => (string) $site->name,
+                    'date' => '2026-07-13',
+                    'updated_at' => '2026-07-13 10:00',
+                ],
+                'summary' => [],
+                'model_collection' => [],
+                'metrics' => [],
+                'distillation_words' => [],
+                'platform_filters' => [],
+                'trend' => [],
+                'search_rows' => [],
+            ],
+            'use_virtual_search_report_data' => false,
+        ]);
+
+        $this->get(route('monitoring-report-share.show', ['token' => $token]))
+            ->assertOk()
+            ->assertSee('公开分享快照公司')
+            ->assertSee('window.__MONITORING_REPORT__', false)
+            ->assertDontSee(route('admin.login'), false);
     }
 
     private function createAdmin(string $username = 'monitoring_center_admin'): Admin

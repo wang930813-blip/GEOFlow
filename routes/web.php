@@ -50,6 +50,7 @@ use App\Http\Controllers\Admin\UrlImportController;
 use App\Http\Controllers\Admin\VideoGenerationController;
 use App\Http\Controllers\Admin\VideoSelfMediaPublishController;
 use App\Http\Controllers\MediaSubmissionPreviewController;
+use App\Http\Controllers\MonitoringReportShareController;
 use App\Http\Controllers\Site\ArchiveController;
 use App\Http\Controllers\Site\ArticleController as SiteArticleController;
 use App\Http\Controllers\Site\CategoryController as SiteCategoryController;
@@ -60,6 +61,10 @@ use Illuminate\Support\Facades\Route;
 Route::get('/media-submission-preview/{submission}/{token}', [MediaSubmissionPreviewController::class, 'show'])
     ->name('media-submission-preview.show')
     ->whereNumber('submission');
+
+Route::get('/monitoring-report/share/{token}', [MonitoringReportShareController::class, 'show'])
+    ->name('monitoring-report-share.show')
+    ->where('token', '[A-Za-z0-9]+');
 
 Route::middleware(['site.domain', 'site.locale', 'site.view_log'])->group(function (): void {
     Route::get('/', [HomeController::class, 'index'])->name('site.home');
@@ -104,6 +109,7 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             ->where('websiteKey', '[A-Za-z0-9_-]+');
         Route::get('geo-reports', [GeoReportController::class, 'index'])->name('geo-reports.index');
         Route::get('monitoring-center', [MonitoringCenterController::class, 'index'])->name('monitoring-center.index');
+        Route::post('monitoring-center/share', [MonitoringCenterController::class, 'share'])->name('monitoring-center.share');
         Route::get('brand-diagnosis', [BrandDiagnosisController::class, 'index'])->name('brand-diagnosis.index');
         Route::post('brand-diagnosis', [BrandDiagnosisController::class, 'store'])->name('brand-diagnosis.store');
         Route::get('brand-diagnosis/reusable-questions', [BrandDiagnosisController::class, 'reusableQuestions'])

@@ -272,13 +272,13 @@
       box-shadow: 0 10px 22px rgba(78, 94, 245, .22);
     }
     .company-box {
-      width: 560px;
-      flex: 0 0 560px;
+      width: 660px;
+      flex: 0 0 660px;
       gap: 18px;
       justify-content: flex-end;
     }
     .report-header {
-      grid-template-columns: 410px 1fr 560px;
+      grid-template-columns: 410px 1fr 660px;
     }
     .company-meta {
       width: 282px;
@@ -1814,6 +1814,52 @@
     #metric-cards .metric-value-label {
       font-weight: 400;
     }
+    .monitoring-share-action {
+      box-sizing: border-box;
+      flex: 0 0 82px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 82px;
+      height: 44px;
+      min-height: 44px;
+      border: 1px solid rgba(66, 153, 225, .45);
+      background:
+        linear-gradient(180deg, rgba(15, 118, 255, .18), rgba(5, 22, 58, .78)),
+        rgba(14, 45, 86, .82);
+      color: #eaf6ff;
+      padding: 0;
+      border-radius: 999px;
+      font-size: 16px;
+      font-weight: 850;
+      line-height: 1;
+      letter-spacing: 0;
+      white-space: nowrap;
+      cursor: pointer;
+      text-align: center;
+      text-decoration: none;
+      box-shadow: inset 0 0 0 1px rgba(167, 214, 255, .2), 0 8px 22px rgba(0, 0, 0, .22);
+      transition: transform .16s ease, border-color .16s ease, background .16s ease, box-shadow .16s ease;
+    }
+    .monitoring-share-action:hover {
+      border-color: rgba(125, 211, 252, .9);
+      background:
+        linear-gradient(180deg, rgba(33, 150, 255, .28), rgba(8, 38, 92, .9)),
+        rgba(22, 73, 132, .9);
+      box-shadow: inset 0 0 0 1px rgba(167, 214, 255, .36), 0 10px 24px rgba(30, 122, 255, .24);
+      transform: translateY(-1px);
+    }
+    .monitoring-share-action:disabled {
+      cursor: wait;
+      opacity: .68;
+      transform: none;
+    }
+    @media (max-width: 720px) {
+      .monitoring-share-action {
+        width: 100%;
+        flex: 0 0 auto;
+      }
+    }
   </style>
   <link rel="stylesheet" href="assets/responsive-report.css" />
 </head>
@@ -1839,6 +1885,9 @@
             <a href="ai-search-competition-report.html">行业竞争力分析报表</a>
           </div>
         </details>
+        @if(!empty($shareCreateUrl ?? ''))
+          <button type="button" class="monitoring-share-action" data-monitoring-share-button onclick="createMonitoringReportShare(this)">分享</button>
+        @endif
       </div>
     </header>
 
@@ -1946,6 +1995,11 @@
   <script>
     window.__MONITORING_REPORT__ = {!! json_encode($reportData ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) !!};
     window.__MONITORING_SEARCH_REPORT_USE_VIRTUAL__ = @json((bool) ($useVirtualSearchReportData ?? false));
+    window.__MONITORING_SHARE__ = {!! json_encode([
+      'createUrl' => (string) ($shareCreateUrl ?? ''),
+      'csrfToken' => (string) ($shareCsrfToken ?? ''),
+      'report' => 'enterprise',
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) !!};
     const dynamicReport = window.__MONITORING_REPORT__ || {};
     const useVirtualSearchReportData = window.__MONITORING_SEARCH_REPORT_USE_VIRTUAL__ === true;
     let activeSnapshotRow = null;
@@ -2772,6 +2826,59 @@
       toast.classList.add("show");
       clearTimeout(window.__toastTimer);
       window.__toastTimer = setTimeout(() => toast.classList.remove("show"), 1700);
+    }
+
+    async function createMonitoringReportShare(button) {
+      const share = window.__MONITORING_SHARE__ || {};
+      if (!share.createUrl) return;
+      const previousText = button?.textContent || "分享";
+      if (button) {
+        button.disabled = true;
+        button.textContent = "生成中";
+      }
+      try {
+        const response = await fetch(share.createUrl, {
+          method: "POST",
+          headers: {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "X-CSRF-TOKEN": share.csrfToken || ""
+          },
+          body: JSON.stringify({ report: share.report || "enterprise" })
+        });
+        if (!response.ok) throw new Error("share failed");
+        const data = await response.json();
+        if (!data.url) throw new Error("missing url");
+        await copyMonitoringShareUrl(data.url);
+        showToast("分享链接已复制");
+        if (button) button.textContent = "已复制";
+      } catch (error) {
+        showToast("分享失败，请稍后重试");
+        if (button) button.textContent = previousText;
+      } finally {
+        if (button) {
+          setTimeout(() => {
+            button.disabled = false;
+            button.textContent = previousText;
+          }, 1400);
+        }
+      }
+    }
+
+    async function copyMonitoringShareUrl(url) {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(url);
+        return;
+      }
+      const textarea = document.createElement("textarea");
+      textarea.value = url;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      document.execCommand("copy");
+      textarea.remove();
     }
 
     document.getElementById("platform-filter").addEventListener("click", event => {
