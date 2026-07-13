@@ -31,6 +31,27 @@ class AdminMonitoringCenterPageTest extends TestCase
         $this->assertStringContainsString('<title>行业竞争力分析报表 - 监测中心</title>', $industry);
     }
 
+    public function test_shared_monitoring_report_renders_fixed_report_label(): void
+    {
+        $renderer = app(MonitoringReportRenderer::class);
+
+        foreach (['enterprise' => '企业舆情分析报表', 'industry' => '行业竞争力分析报表'] as $report => $label) {
+            $html = $renderer->render($report, [], false, [
+                'enterprise_url' => '/monitoring-report/share/example-token',
+                'industry_url' => '/monitoring-report/share/example-token',
+                'is_shared_view' => true,
+            ]);
+
+            $this->assertStringContainsString('data-monitoring-fixed-report', $html);
+            $this->assertStringContainsString('<span>'.$label.'</span>', $html);
+            $this->assertStringNotContainsString('<details class="report-menu">', $html);
+            $this->assertStringNotContainsString('<div class="report-menu-list">', $html);
+        }
+
+        $adminHtml = $renderer->render('enterprise', [], false);
+        $this->assertStringContainsString('<details class="report-menu">', $adminHtml);
+    }
+
     public function test_monitoring_center_renders_enterprise_report_as_standalone_page(): void
     {
         $admin = $this->createAdmin();

@@ -36,6 +36,7 @@ class MonitoringReportShareController extends Controller
             [
                 'enterprise_url' => $url,
                 'industry_url' => $url,
+                'is_shared_view' => true,
             ]
         ), 200, [
             'Content-Type' => 'text/html; charset=UTF-8',

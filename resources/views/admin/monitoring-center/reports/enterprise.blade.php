@@ -1854,10 +1854,34 @@
       opacity: .68;
       transform: none;
     }
+    .monitoring-fixed-report {
+      box-sizing: border-box;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 24px;
+      color: #fff;
+      padding: 0 18px;
+      background: linear-gradient(135deg, #0d5dff 0%, #244bce 48%, #14235f 100%);
+      box-shadow: inset 0 0 0 1px rgba(95, 194, 255, .5), 0 0 22px rgba(30, 122, 255, .32);
+      font-weight: 850;
+      line-height: 1;
+      white-space: nowrap;
+      cursor: default;
+      user-select: none;
+    }
     @media (max-width: 720px) {
       .monitoring-share-action {
         width: 100%;
         flex: 0 0 auto;
+      }
+      .monitoring-fixed-report {
+        width: 100%;
+        min-width: 0;
+        height: 44px;
+        min-height: 44px;
+        font-size: 16px;
       }
     }
   </style>
@@ -1878,13 +1902,19 @@
           <div>新知地（成都）人工智能科技有限公司</div>
           <div>数据更新日期：2026-06-17</div>
         </div>
-        <details class="report-menu">
-          <summary>企业輿情分析报表</summary>
-          <div class="report-menu-list">
-            <span>企业輿情分析报表</span>
-            <a href="ai-search-competition-report.html">行业竞争力分析报表</a>
+        @if($isSharedView ?? false)
+          <div class="report-menu monitoring-fixed-report" data-monitoring-fixed-report>
+            <span>企业舆情分析报表</span>
           </div>
-        </details>
+        @else
+          <details class="report-menu">
+            <summary>企业輿情分析报表</summary>
+            <div class="report-menu-list">
+              <span>企业輿情分析报表</span>
+              <a href="ai-search-competition-report.html">行业竞争力分析报表</a>
+            </div>
+          </details>
+        @endif
         @if(!empty($shareCreateUrl ?? ''))
           <button type="button" class="monitoring-share-action" data-monitoring-share-button onclick="createMonitoringReportShare(this)">分享</button>
         @endif

@@ -3971,10 +3971,35 @@
       opacity: .68;
       transform: none;
     }
+    .report-header .monitoring-fixed-report {
+      box-sizing: border-box;
+      width: 260px;
+      height: 44px;
+      min-height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 18px;
+      border: 0;
+      border-radius: 24px;
+      color: #fff;
+      font-size: 16px;
+      font-weight: 850;
+      line-height: 1;
+      white-space: nowrap;
+      background: linear-gradient(135deg, #2f7cff 0%, #4e60f5 58%, #9456ff 100%);
+      box-shadow: inset 0 0 0 1px rgba(167, 214, 255, .45), 0 8px 24px rgba(53, 95, 255, .26);
+      cursor: default;
+      user-select: none;
+    }
     @media (max-width: 720px) {
       .monitoring-share-action {
         width: 100%;
         flex: 0 0 auto;
+      }
+      .report-header .monitoring-fixed-report {
+        width: 100%;
+        min-width: 0;
       }
     }
     .monitoring-share-toast {
@@ -4013,13 +4038,19 @@
           <div>新知地（成都）人工智能科技有限公司</div>
           <div>数据更新日期：2026-06-17</div>
         </div>
-        <details class="report-menu">
-          <summary>行业竞争力分析报表</summary>
-          <div class="report-menu-list">
+        @if($isSharedView ?? false)
+          <div class="report-menu monitoring-fixed-report" data-monitoring-fixed-report>
             <span>行业竞争力分析报表</span>
-            <a href="geo-dashboard-replica.html">企业輿情分析报表</a>
           </div>
-        </details>
+        @else
+          <details class="report-menu">
+            <summary>行业竞争力分析报表</summary>
+            <div class="report-menu-list">
+              <span>行业竞争力分析报表</span>
+              <a href="geo-dashboard-replica.html">企业輿情分析报表</a>
+            </div>
+          </details>
+        @endif
         @if(!empty($shareCreateUrl ?? ''))
           <button type="button" class="monitoring-share-action" data-monitoring-share-button onclick="createMonitoringReportShare(this)">分享</button>
         @endif

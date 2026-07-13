@@ -13,6 +13,7 @@ class MonitoringReportRenderer
      *     industry_url?: string,
      *     share_create_url?: string,
      *     share_csrf_token?: string,
+     *     is_shared_view?: bool,
      * }  $options
      */
     public function render(string $report, array $reportData, bool $useVirtualSearchReportData, array $options = []): string
@@ -29,6 +30,7 @@ class MonitoringReportRenderer
             'useVirtualSearchReportData' => $useVirtualSearchReportData,
             'shareCreateUrl' => (string) ($options['share_create_url'] ?? ''),
             'shareCsrfToken' => (string) ($options['share_csrf_token'] ?? ''),
+            'isSharedView' => (bool) ($options['is_shared_view'] ?? false),
         ])->render(), $options);
     }
 
