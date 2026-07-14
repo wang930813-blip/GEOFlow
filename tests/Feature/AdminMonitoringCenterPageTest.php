@@ -31,6 +31,20 @@ class AdminMonitoringCenterPageTest extends TestCase
         $this->assertStringContainsString('<title>行业竞争力分析报表 - 监测中心</title>', $industry);
     }
 
+    public function test_industry_report_header_keeps_space_between_title_and_company_meta(): void
+    {
+        $html = app(MonitoringReportRenderer::class)->render('industry', [], false);
+
+        $this->assertMatchesRegularExpression(
+            '/\.report-header \.report-title\s*\{[^}]*left: calc\(50% - 70px\);[^}]*font-size: clamp\(28px, 2\.7vw, 42px\);/s',
+            $html
+        );
+        $this->assertMatchesRegularExpression(
+            '/\.monitoring-share-toast\s*\{[^}]*left: 50%;/s',
+            $html
+        );
+    }
+
     public function test_shared_monitoring_report_renders_fixed_report_label(): void
     {
         $renderer = app(MonitoringReportRenderer::class);

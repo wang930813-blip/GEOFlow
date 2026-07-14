@@ -3552,14 +3552,14 @@
     }
     .report-header .report-title {
       position: absolute;
-      left: 50%;
+      left: calc(50% - 70px);
       top: 72px;
       z-index: 1001;
       width: max-content;
       margin: 0;
       transform: translate(-50%, -50%);
       color: #f4fbff;
-      font-size: clamp(28px, 3vw, 46px);
+      font-size: clamp(28px, 2.7vw, 42px);
       font-weight: 950;
       font-style: italic;
       line-height: 1.15;
