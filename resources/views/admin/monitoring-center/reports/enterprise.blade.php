@@ -156,7 +156,7 @@
     }
     .report-title {
       position: absolute;
-      left: 50%;
+      left: calc(50% - 70px);
       top: var(--report-title-center-y);
       z-index: 1;
       width: max-content;
@@ -164,7 +164,7 @@
       margin: 0;
       text-align: center;
       color: #f4fbff;
-      font-size: clamp(28px, 3vw, 46px);
+      font-size: clamp(28px, 2.7vw, 42px);
       font-weight: 950;
       font-style: italic;
       text-shadow:

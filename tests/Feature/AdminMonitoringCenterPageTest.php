@@ -45,6 +45,17 @@ class AdminMonitoringCenterPageTest extends TestCase
         );
     }
 
+    public function test_enterprise_report_header_keeps_space_between_title_and_company_meta(): void
+    {
+        $html = app(MonitoringReportRenderer::class)->render('enterprise', [], false);
+
+        $this->assertMatchesRegularExpression(
+            '/\.report-title\s*\{[^}]*left: calc\(50% - 70px\);[^}]*font-size: clamp\(28px, 2\.7vw, 42px\);/s',
+            $html
+        );
+        $this->assertMatchesRegularExpression('/\.toast\s*\{[^}]*left: 50%;/s', $html);
+    }
+
     public function test_shared_monitoring_report_renders_fixed_report_label(): void
     {
         $renderer = app(MonitoringReportRenderer::class);
