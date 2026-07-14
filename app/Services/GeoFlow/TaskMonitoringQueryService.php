@@ -352,7 +352,7 @@ class TaskMonitoringQueryService
         }
 
         if ($createdCount >= $articleLimit) {
-            return 'limit_reached';
+            return 'waiting_review';
         }
 
         $latestStatus = (string) ($latestRun?->status ?? '');

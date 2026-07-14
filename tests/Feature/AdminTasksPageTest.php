@@ -14,6 +14,7 @@ use App\Models\Site;
 use App\Models\Task;
 use App\Models\Title;
 use App\Models\TitleLibrary;
+use App\Services\GeoFlow\TaskMonitoringQueryService;
 use App\Support\AdminWeb;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -555,6 +556,52 @@ class AdminTasksPageTest extends TestCase
         $response->assertSee(__('admin.tasks.status.completed'))
             ->assertSee('data-task-runnable="0"', false)
             ->assertDontSee('id="batch-btn-'.(int) $task->id.'"', false);
+    }
+
+    public function test_task_at_article_limit_with_unapproved_drafts_waits_for_review(): void
+    {
+        $site = Site::query()->create([
+            'name' => 'Task Waiting Review Site',
+            'status' => 'active',
+        ]);
+        $category = Category::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Task Waiting Review Category',
+            'slug' => 'task-waiting-review-category',
+        ]);
+        $author = Author::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Task Waiting Review Author',
+        ]);
+        $task = Task::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Task Waiting Review',
+            'status' => 'active',
+            'schedule_enabled' => 1,
+            'created_count' => 2,
+            'article_limit' => 2,
+            'draft_limit' => 2,
+        ]);
+
+        foreach ([1, 2] as $index) {
+            Article::query()->create([
+                'site_id' => (int) $site->id,
+                'task_id' => (int) $task->id,
+                'category_id' => (int) $category->id,
+                'author_id' => (int) $author->id,
+                'title' => 'Pending review article '.$index,
+                'slug' => 'pending-review-article-'.$index,
+                'content' => 'Draft content.',
+                'status' => 'draft',
+                'review_status' => 'pending',
+            ]);
+        }
+
+        $row = collect(app(TaskMonitoringQueryService::class)->buildTaskSnapshot())
+            ->firstWhere('id', (int) $task->id);
+
+        $this->assertIsArray($row);
+        $this->assertSame('waiting_review', $row['batch_status']);
     }
 
     public function test_completed_task_cannot_be_started_by_batch_endpoint(): void

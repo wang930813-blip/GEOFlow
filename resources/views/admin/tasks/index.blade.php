@@ -492,6 +492,8 @@ function updateBatchStatus(task) {
         } else if (task.batch_status === 'waiting_publish') {
             const nextPublishAt = formatTaskDateTime(task.next_publish_at || task.next_run_at || '');
             statusDiv.innerHTML = `<div class="flex flex-col gap-1 text-xs"><span class="inline-flex w-fit items-center rounded-full border px-2 py-1 bg-cyan-50 text-cyan-700 border-cyan-200">${escapeHtml(TASK_I18N.waitingPublish)}</span>${nextPublishAt ? `<div class="text-gray-500">${escapeHtml(TASK_I18N.nextRunAt.replace('__TIME__', nextPublishAt))}</div>` : ''}</div>`;
+        } else if (task.batch_status === 'waiting_review') {
+            statusDiv.innerHTML = `<span class="inline-flex w-fit text-xs text-orange-700 bg-orange-50 px-2 py-1 rounded-full border border-orange-200">${escapeHtml(TASK_I18N.waitingReview)}</span>`;
         } else if (task.batch_status === 'draft_pool_full') {
             statusDiv.innerHTML = `<span class="text-xs text-orange-700 bg-orange-50 px-2 py-1 rounded-full border border-orange-200">${escapeHtml(TASK_I18N.draftPoolFull)}</span>`;
         } else if (task.batch_status === 'limit_reached') {

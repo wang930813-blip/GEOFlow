@@ -381,6 +381,7 @@ class TaskController extends Controller
             'completed' => __('admin.tasks.status.completed'),
             'waiting' => __('admin.tasks.status.waiting'),
             'waitingPublish' => __('admin.tasks.status.waiting_publish'),
+            'waitingReview' => __('admin.tasks.status.waiting_review'),
             'draftPoolFull' => __('admin.tasks.status.draft_pool_full'),
             'limitReached' => __('admin.tasks.status.limit_reached'),
             'queued' => __('admin.tasks.status.pending'),
