@@ -357,7 +357,7 @@ class WorkerExecutionService
             }
 
             try {
-                $content = $this->generateContent($candidate, $contentPrompt);
+                $content = $this->generateContent($candidate, $contentPrompt, stream: true);
                 $attempts[] = $this->buildModelAttempt($candidate, 'success', null);
 
                 return [
@@ -1257,7 +1257,7 @@ class WorkerExecutionService
     /**
      * Generate content with the selected task model.
      */
-    private function generateContent(AiModel $aiModel, string $contentPrompt): string
+    private function generateContent(AiModel $aiModel, string $contentPrompt, bool $stream = false): string
     {
         $providerUrl = OpenAiRuntimeProvider::resolveChatBaseUrl((string) ($aiModel->api_url ?? ''));
         if ($providerUrl === '') {
@@ -1274,7 +1274,14 @@ class WorkerExecutionService
         $agent = new MarkdownContentWriterAgent;
 
         try {
-            $response = $agent->prompt($contentPrompt, [], $providerName, (string) ($aiModel->model_id ?? ''));
+            if ($stream) {
+                $response = $agent->stream($contentPrompt, [], $providerName, (string) ($aiModel->model_id ?? ''));
+                foreach ($response as $_event) {
+                    // Consume the stream so the assembled response text is available below.
+                }
+            } else {
+                $response = $agent->prompt($contentPrompt, [], $providerName, (string) ($aiModel->model_id ?? ''));
+            }
         } catch (Throwable $exception) {
             throw new RuntimeException('AI 鐢熸垚澶辫触: '.OpenAiRuntimeProvider::normalizeApiException($exception, $providerUrl), 0, $exception);
         }

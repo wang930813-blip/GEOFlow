@@ -150,9 +150,9 @@ class WorkerExecutionSiteIsolationTest extends TestCase
 
         Http::fake([
             'https://ai.example.test/v1/chat/completions' => Http::sequence()
-                ->push($this->chatCompletion("# First Library Title\n\nGenerated body."))
-                ->push($this->chatCompletion("# Second Library Title\n\nGenerated body."))
-                ->push($this->chatCompletion("# Third Library Title\n\nGenerated body.")),
+                ->push($this->streamCompletion("# First Library Title\n\nGenerated body."), 200, ['Content-Type' => 'text/event-stream'])
+                ->push($this->streamCompletion("# Second Library Title\n\nGenerated body."), 200, ['Content-Type' => 'text/event-stream'])
+                ->push($this->streamCompletion("# Third Library Title\n\nGenerated body."), 200, ['Content-Type' => 'text/event-stream']),
         ]);
 
         app(WorkerExecutionService::class)->executeTask((int) $task->id);
@@ -231,7 +231,11 @@ class WorkerExecutionSiteIsolationTest extends TestCase
         app(CurrentSite::class)->set(null);
 
         Http::fake([
-            'https://ai.example.test/v1/chat/completions' => Http::response($this->chatCompletion("# Limit Pause Article\n\nGenerated body.")),
+            'https://ai.example.test/v1/chat/completions' => Http::response(
+                $this->streamCompletion("# Limit Pause Article\n\nGenerated body."),
+                200,
+                ['Content-Type' => 'text/event-stream']
+            ),
         ]);
 
         app(WorkerExecutionService::class)->executeTask((int) $task->id);
@@ -305,20 +309,11 @@ class WorkerExecutionSiteIsolationTest extends TestCase
         app(CurrentSite::class)->set(null);
 
         Http::fake([
-            'https://ai.example.test/v1/chat/completions' => Http::response([
-                'id' => 'chatcmpl-test',
-                'object' => 'chat.completion',
-                'choices' => [
-                    [
-                        'index' => 0,
-                        'message' => [
-                            'role' => 'assistant',
-                            'content' => "# Generated Company Article\n\nGenerated body.",
-                        ],
-                        'finish_reason' => 'stop',
-                    ],
-                ],
-            ]),
+            'https://ai.example.test/v1/chat/completions' => Http::response(
+                $this->streamCompletion("# Generated Company Article\n\nGenerated body."),
+                200,
+                ['Content-Type' => 'text/event-stream']
+            ),
         ]);
 
         $result = app(WorkerExecutionService::class)->executeTask((int) $task->id);
@@ -409,7 +404,11 @@ class WorkerExecutionSiteIsolationTest extends TestCase
         app(CurrentSite::class)->set(null);
 
         Http::fake([
-            'https://ai.example.test/v1/chat/completions' => Http::response($this->chatCompletion("# Owner Quota Article\n\nGenerated body.")),
+            'https://ai.example.test/v1/chat/completions' => Http::response(
+                $this->streamCompletion("# Owner Quota Article\n\nGenerated body."),
+                200,
+                ['Content-Type' => 'text/event-stream']
+            ),
         ]);
 
         $result = app(WorkerExecutionService::class)->executeTask((int) $task->id);
@@ -498,7 +497,7 @@ class WorkerExecutionSiteIsolationTest extends TestCase
 
         Http::fake([
             'https://ai.example.test/v1/chat/completions' => Http::sequence()
-                ->push($this->chatCompletion("# Special Prompt Article\n\nGenerated body for prompt testing."))
+                ->push($this->streamCompletion("# Special Prompt Article\n\nGenerated body for prompt testing."), 200, ['Content-Type' => 'text/event-stream'])
                 ->push($this->chatCompletion('custom keyword one, custom keyword two'))
                 ->push($this->chatCompletion('Custom generated meta description.')),
         ]);
@@ -586,7 +585,11 @@ class WorkerExecutionSiteIsolationTest extends TestCase
         app(CurrentSite::class)->set(null);
 
         Http::fake([
-            'https://ai.example.test/v1/chat/completions' => Http::response($this->chatCompletion("# Task Site Article\n\nGenerated body.")),
+            'https://ai.example.test/v1/chat/completions' => Http::response(
+                $this->streamCompletion("# Task Site Article\n\nGenerated body."),
+                200,
+                ['Content-Type' => 'text/event-stream']
+            ),
         ]);
 
         $result = app(WorkerExecutionService::class)->executeTask((int) $task->id);
@@ -663,7 +666,11 @@ class WorkerExecutionSiteIsolationTest extends TestCase
         ]);
 
         Http::fake([
-            'https://ai.example.test/v1/chat/completions' => Http::response($this->chatCompletion("# 俱乐部新赛季活动运营方案\n\nGenerated body.")),
+            'https://ai.example.test/v1/chat/completions' => Http::response(
+                $this->streamCompletion("# 俱乐部新赛季活动运营方案\n\nGenerated body."),
+                200,
+                ['Content-Type' => 'text/event-stream']
+            ),
         ]);
 
         $result = app(WorkerExecutionService::class)->executeTask((int) $task->id);
@@ -846,7 +853,11 @@ class WorkerExecutionSiteIsolationTest extends TestCase
             'https://ai.example.test/v1/chat/completions' => function () {
                 Carbon::setTestNow(Carbon::parse('2026-06-16 10:02:00'));
 
-                return Http::response($this->chatCompletion("# Missed Publish Article\n\nGenerated body."));
+                return Http::response(
+                    $this->streamCompletion("# Missed Publish Article\n\nGenerated body."),
+                    200,
+                    ['Content-Type' => 'text/event-stream']
+                );
             },
         ]);
 
@@ -895,6 +906,25 @@ class WorkerExecutionSiteIsolationTest extends TestCase
                 ],
             ],
         ];
+    }
+
+    private function streamCompletion(string $content): string
+    {
+        $chunk = [
+            'id' => 'chatcmpl-stream-test',
+            'object' => 'chat.completion.chunk',
+            'model' => 'deepseek-chat',
+            'choices' => [
+                [
+                    'index' => 0,
+                    'delta' => ['content' => $content],
+                    'finish_reason' => 'stop',
+                ],
+            ],
+        ];
+
+        return 'data: '.json_encode($chunk, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+            ."\n\ndata: [DONE]\n\n";
     }
 
     /**
