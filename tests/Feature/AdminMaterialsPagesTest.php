@@ -6,6 +6,7 @@ use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\Image;
 use App\Models\ImageLibrary;
+use App\Models\Keyword;
 use App\Models\KeywordLibrary;
 use App\Models\KnowledgeBase;
 use App\Models\Prompt;
@@ -16,6 +17,7 @@ use App\Models\UrlImportJob;
 use App\Models\UrlImportJobLog;
 use App\Jobs\ProcessUrlImportJob;
 use App\Models\PlatformPlan;
+use App\Services\GeoFlow\TitleAiGenerationService;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -1354,6 +1356,84 @@ class AdminMaterialsPagesTest extends TestCase
             'title_style' => 'professional',
             'custom_prompt' => '',
         ])->assertSessionHasErrors();
+    }
+
+    public function test_ai_title_generation_samples_requested_keywords_and_preserves_mapping(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'materials_ai_title_mapping_admin',
+            'password' => 'secret-123',
+            'email' => 'materials-ai-title-mapping@example.com',
+            'display_name' => 'Materials AI Title Mapping Admin',
+            'role' => 'super_admin',
+            'status' => 'active',
+        ]);
+        $site = $this->createSiteForAdmin($admin);
+        $keywordLibrary = KeywordLibrary::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'name' => '武城煊饼关键词库',
+            'description' => '',
+            'keyword_count' => 9,
+        ]);
+        $titleLibrary = TitleLibrary::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'name' => '武城煊饼标题库',
+            'description' => '',
+            'title_count' => 0,
+            'generation_type' => 'manual',
+            'generation_rounds' => 1,
+            'is_ai_generated' => false,
+        ]);
+        foreach (range(1, 9) as $index) {
+            Keyword::query()->create([
+                'site_id' => (int) $site->id,
+                'owner_admin_id' => (int) $admin->id,
+                'library_id' => (int) $keywordLibrary->id,
+                'keyword' => '武城煊饼关键词'.$index,
+                'used_count' => 0,
+                'usage_count' => 0,
+            ]);
+        }
+        $aiModel = $this->createReadyUrlImportAiModel();
+
+        $this->mock(TitleAiGenerationService::class, function ($mock): void {
+            $mock->shouldReceive('generateTitles')
+                ->once()
+                ->andReturnUsing(function (AiModel $model, array $keywords, int $count): array {
+                    $this->assertCount(2, $keywords);
+                    $this->assertCount(2, array_unique($keywords));
+                    $this->assertSame(2, $count);
+
+                    return [
+                        'entries' => array_map(static fn (string $keyword): array => [
+                            'keyword' => $keyword,
+                            'title' => $keyword.'专业标题',
+                        ], $keywords),
+                        'fallback_used' => false,
+                        'fallback_reason' => null,
+                    ];
+                });
+        });
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.title-libraries.ai-generate.submit', ['libraryId' => (int) $titleLibrary->id]), [
+                'keyword_library_id' => (int) $keywordLibrary->id,
+                'ai_model_id' => (int) $aiModel->id,
+                'title_count' => 2,
+                'title_style' => 'professional',
+                'custom_prompt' => '',
+            ])
+            ->assertRedirect(route('admin.title-libraries.detail', ['libraryId' => (int) $titleLibrary->id]));
+
+        $titles = Title::query()->where('library_id', (int) $titleLibrary->id)->get();
+        $this->assertCount(2, $titles);
+        foreach ($titles as $title) {
+            $this->assertNotSame('', (string) $title->keyword);
+            $this->assertStringContainsString((string) $title->keyword, (string) $title->title);
+        }
     }
 
     public function test_admin_can_bulk_delete_and_edit_titles_from_detail_page(): void

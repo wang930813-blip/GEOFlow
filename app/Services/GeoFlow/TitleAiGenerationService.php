@@ -29,7 +29,7 @@ class TitleAiGenerationService
      *
      * @param  list<string>  $keywords
      * @return array{
-     *   titles:list<string>,
+     *   entries:list<array{keyword:string,title:string}>,
      *   fallback_used:bool,
      *   fallback_reason:?string
      * }
@@ -41,40 +41,56 @@ class TitleAiGenerationService
         string $style,
         string $customPrompt = ''
     ): array {
-        try {
-            $content = $this->requestTitlesFromModel($aiModel, $keywords, $count, $style, $customPrompt);
-            $titles = $this->parseGeneratedTitles($content);
-            if ($titles !== []) {
-                return [
-                    'titles' => $titles,
-                    'fallback_used' => false,
-                    'fallback_reason' => null,
-                ];
-            }
-        } catch (Throwable $exception) {
+        $assignments = $this->allocateKeywords($keywords, $count);
+        if ($assignments === []) {
             return [
-                'titles' => $this->generateMockTitles($keywords, $count, $style),
+                'entries' => [],
                 'fallback_used' => true,
-                'fallback_reason' => $exception->getMessage(),
+                'fallback_reason' => 'no_keywords',
             ];
         }
 
+        $entries = [];
+        $fallbackReason = null;
+
+        try {
+            $content = $this->requestTitlesFromModel($aiModel, $assignments, $style, $customPrompt);
+            $entries = $this->parseGeneratedEntries($content, $assignments);
+
+            $missingAssignments = array_diff_key($assignments, $entries);
+            if ($missingAssignments !== []) {
+                try {
+                    $retryContent = $this->requestTitlesFromModel($aiModel, $missingAssignments, $style, $customPrompt);
+                    $entries += $this->parseGeneratedEntries($retryContent, $missingAssignments);
+                } catch (Throwable $exception) {
+                    $fallbackReason = $exception->getMessage();
+                }
+            }
+        } catch (Throwable $exception) {
+            $fallbackReason = $exception->getMessage();
+        }
+
+        $fallbackUsed = count($entries) !== count($assignments);
+        foreach (array_diff_key($assignments, $entries) as $index => $keyword) {
+            $entries[$index] = $this->generateFallbackEntry($keyword, $style, $index);
+        }
+        ksort($entries);
+
         return [
-            'titles' => $this->generateMockTitles($keywords, $count, $style),
-            'fallback_used' => true,
-            'fallback_reason' => 'empty_result',
+            'entries' => array_values($entries),
+            'fallback_used' => $fallbackUsed,
+            'fallback_reason' => $fallbackUsed ? ($fallbackReason ?: 'invalid_keyword_mapping') : null,
         ];
     }
 
     /**
      * 请求真实模型生成标题。
      *
-     * @param  list<string>  $keywords
+     * @param  array<int,string>  $assignments
      */
     private function requestTitlesFromModel(
         AiModel $aiModel,
-        array $keywords,
-        int $count,
+        array $assignments,
         string $style,
         string $customPrompt
     ): string {
@@ -99,14 +115,17 @@ class TitleAiGenerationService
             'question' => '疑问式的',
         ];
         $styleDescription = $styleMap[$style] ?? '专业严谨的';
-        $keywordsText = implode('、', $keywords);
+        $tasks = collect(array_values($assignments))
+            ->map(static fn (string $keyword, int $index): string => ($index + 1).'. '.$keyword)
+            ->implode("\n");
+        $count = count($assignments);
 
-        $systemPrompt = "你是一个专业的内容标题生成专家。请根据提供的关键词生成{$styleDescription}文章标题。";
-        $userPrompt = "请基于以下关键词生成 {$count} 个{$styleDescription}文章标题：\n\n关键词：{$keywordsText}\n\n";
+        $systemPrompt = "你是一个专业的内容标题生成专家。请为每个指定关键词生成一个{$styleDescription}文章标题，并保持关键词与标题严格对应。";
+        $userPrompt = "请按任务顺序生成 {$count} 个{$styleDescription}文章标题：\n\n{$tasks}\n\n";
         if ($customPrompt !== '') {
             $userPrompt .= "额外要求：{$customPrompt}\n\n";
         }
-        $userPrompt .= "要求：\n1. 每个标题独占一行\n2. 标题要有吸引力和可读性\n3. 适合搜索引擎优化\n4. 不要添加序号或其他标记\n5. 直接输出标题内容";
+        $userPrompt .= "要求：\n1. 每个任务只生成一个标题\n2. 标题必须完整包含对应关键词原文，不得替换、缩写或关联到其他关键词\n3. 标题要有吸引力、可读性并适合搜索引擎优化\n4. 严格按照任务顺序逐行输出\n5. 每行格式固定为：关键词|||标题\n6. 不要输出序号、解释、Markdown或其他内容";
 
         try {
             $response = agent($systemPrompt)->prompt(
@@ -134,23 +153,53 @@ class TitleAiGenerationService
     }
 
     /**
-     * 解析模型输出文本为标题列表。
+     * 解析模型输出，并按预先分配的关键词恢复一一对应关系。
      *
-     * @return list<string>
+     * @param  array<int,string>  $assignments
+     * @return array<int,array{keyword:string,title:string}>
      */
-    private function parseGeneratedTitles(string $content): array
+    private function parseGeneratedEntries(string $content, array $assignments): array
     {
-        $titles = [];
+        /** @var array<string,list<string>> $titlesByKeyword */
+        $titlesByKeyword = [];
         foreach (preg_split('/\R/u', $content) ?: [] as $line) {
-            $title = preg_replace('/^\d+[\.\)\-、\s]*/u', '', trim($line));
-            $title = trim((string) $title);
-            if ($title === '') {
+            $line = preg_replace('/^\d+[\.\)\-、\s]*/u', '', trim($line));
+            $parts = preg_split('/\s*(?:\|\|\||｜｜｜)\s*/u', trim((string) $line), 2);
+            if (! is_array($parts) || count($parts) !== 2) {
                 continue;
             }
-            $titles[] = $title;
+
+            $keyword = trim((string) $parts[0]);
+            $title = trim((string) $parts[1]);
+            if ($keyword === '' || $title === '' || ! in_array($keyword, $assignments, true)) {
+                continue;
+            }
+            if (mb_stripos($title, $keyword, 0, 'UTF-8') === false) {
+                continue;
+            }
+
+            $titlesByKeyword[$keyword] ??= [];
+            if (! in_array($title, $titlesByKeyword[$keyword], true)) {
+                $titlesByKeyword[$keyword][] = $title;
+            }
         }
 
-        return array_values(array_unique($titles));
+        $entries = [];
+        foreach ($assignments as $index => $keyword) {
+            if (($titlesByKeyword[$keyword] ?? []) === []) {
+                continue;
+            }
+            $title = array_shift($titlesByKeyword[$keyword]);
+            if (! is_string($title) || $title === '') {
+                continue;
+            }
+            $entries[$index] = [
+                'keyword' => $keyword,
+                'title' => $title,
+            ];
+        }
+
+        return $entries;
     }
 
     /**
@@ -162,9 +211,31 @@ class TitleAiGenerationService
     }
 
     /**
-     * @return list<string>
+     * @param  list<string>  $keywords
+     * @return array<int,string>
      */
-    private function generateMockTitles(array $keywords, int $count, string $style): array
+    private function allocateKeywords(array $keywords, int $count): array
+    {
+        $keywords = array_values(array_unique(array_filter(array_map(
+            static fn (mixed $keyword): string => trim((string) $keyword),
+            $keywords
+        ), static fn (string $keyword): bool => $keyword !== '')));
+        if ($keywords === [] || $count < 1) {
+            return [];
+        }
+
+        $assignments = [];
+        for ($index = 0; $index < $count; $index++) {
+            $assignments[$index] = $keywords[$index % count($keywords)];
+        }
+
+        return $assignments;
+    }
+
+    /**
+     * @return array{keyword:string,title:string}
+     */
+    private function generateFallbackEntry(string $keyword, string $style, int $index): array
     {
         $styleTemplates = [
             'professional' => [
@@ -195,13 +266,10 @@ class TitleAiGenerationService
         ];
 
         $templates = $styleTemplates[$style] ?? $styleTemplates['professional'];
-        $titles = [];
-        for ($index = 0; $index < $count; $index++) {
-            $keyword = $keywords[array_rand($keywords)];
-            $template = $templates[array_rand($templates)];
-            $titles[] = str_replace('{keyword}', $keyword, $template);
-        }
 
-        return $titles;
+        return [
+            'keyword' => $keyword,
+            'title' => str_replace('{keyword}', $keyword, $templates[$index % count($templates)]),
+        ];
     }
 }

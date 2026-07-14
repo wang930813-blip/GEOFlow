@@ -15,6 +15,7 @@ use App\Services\Billing\AdminResourceQuotaService;
 use App\Services\GeoFlow\TitleAiGenerationService;
 use App\Support\AdminWeb;
 use App\Support\AiConfigurationScope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -101,7 +102,7 @@ class TitleLibraryController extends Controller
     }
 
     /**
-     * 执行 AI 标题生成（当前使用可控模板生成，保证流程稳定）。
+     * 执行 AI 标题生成，并在模型不可用时使用关键词模板兜底。
      */
     public function generateWithAi(Request $request, int $libraryId): RedirectResponse
     {
@@ -135,13 +136,18 @@ class TitleLibraryController extends Controller
         }
 
         /** @var Collection<int, string> $keywords */
+        $keywordSampleLimit = min(
+            (int) $payload['title_count'],
+            (int) config('geoflow.title_ai_keyword_sample_limit', 10)
+        );
         $keywords = Keyword::query()
             ->where('library_id', (int) $payload['keyword_library_id'])
             ->inRandomOrder()
-            ->limit((int) config('geoflow.title_ai_keyword_sample_limit', 10))
+            ->limit(max(1, $keywordSampleLimit))
             ->pluck('keyword')
             ->map(static fn (mixed $value): string => trim((string) $value))
             ->filter(static fn (string $keyword): bool => $keyword !== '')
+            ->unique()
             ->values();
         if ($keywords->isEmpty()) {
             return back()->withErrors(__('admin.title_ai_generate.error.no_keywords'));
@@ -163,14 +169,18 @@ class TitleLibraryController extends Controller
             (string) $payload['title_style'],
             trim((string) ($payload['custom_prompt'] ?? ''))
         );
-        $generatedTitles = $generationResult['titles'];
+        $generatedEntries = $generationResult['entries'];
 
         $savedCount = 0;
         $duplicateCount = 0;
-        DB::transaction(function () use ($generatedTitles, $keywords, $library, $libraryId, $admin, &$savedCount, &$duplicateCount): void {
-            foreach ($generatedTitles as $titleText) {
-                $title = $this->normalizeGeneratedTitle($titleText);
-                if ($title === '' || mb_strlen($title, 'UTF-8') > 500) {
+        DB::transaction(function () use ($generatedEntries, $library, $libraryId, $admin, &$savedCount, &$duplicateCount): void {
+            foreach ($generatedEntries as $entry) {
+                $title = $this->normalizeGeneratedTitle((string) ($entry['title'] ?? ''));
+                $keyword = trim((string) ($entry['keyword'] ?? ''));
+                if ($title === '' || $keyword === '' || mb_strlen($title, 'UTF-8') > 500) {
+                    continue;
+                }
+                if (mb_stripos($title, $keyword, 0, 'UTF-8') === false) {
                     continue;
                 }
 
@@ -189,7 +199,7 @@ class TitleLibraryController extends Controller
                     'owner_admin_id' => $this->ownerAdminIdForLibrary($library, $admin instanceof Admin ? $admin : null),
                     'library_id' => $libraryId,
                     'title' => $title,
-                    'keyword' => $keywords->random(),
+                    'keyword' => $keyword,
                     'is_ai_generated' => true,
                     'used_count' => 0,
                     'usage_count' => 0,
@@ -213,7 +223,7 @@ class TitleLibraryController extends Controller
                     'actor_admin_id' => (int) (auth('admin')->id() ?? 0),
                     'subject_type' => TitleLibrary::class,
                     'subject_id' => (int) $library->id,
-                    'idempotency_key' => 'title-ai-generation:'.$library->id.':'.md5(implode('|', $generatedTitles)),
+                    'idempotency_key' => 'title-ai-generation:'.$library->id.':'.md5((string) json_encode($generatedEntries, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)),
                     'remark' => 'AI 标题生成消耗',
                 ]);
             } catch (\Throwable $exception) {
@@ -696,7 +706,7 @@ class TitleLibraryController extends Controller
         return (int) $admin->id;
     }
 
-    private function currentConsumerAiModelsQuery(): \Illuminate\Database\Eloquent\Builder
+    private function currentConsumerAiModelsQuery(): Builder
     {
         return $this->aiConfigurationScope->applyCurrentConsumerScope(
             AiModel::query()->withoutGlobalScope('current_site'),
