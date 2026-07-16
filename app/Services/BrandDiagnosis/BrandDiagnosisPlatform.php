@@ -93,4 +93,39 @@ final class BrandDiagnosisPlatform
 
         return $path !== '' ? public_path($path) : '';
     }
+
+    /**
+     * @return list<string>
+     */
+    public static function officialShareDomains(string $platform): array
+    {
+        return match (self::normalize($platform)) {
+            self::DOUBAO => ['doubao.com'],
+            self::DEEPSEEK => ['deepseek.com'],
+            self::QIANWEN => ['tongyi.com', 'qianwen.com', 'aliyun.com', 'qwen.ai'],
+            self::WENXIN => ['baidu.com'],
+        };
+    }
+
+    public static function isOfficialShareUrl(string $platform, string $url): bool
+    {
+        $url = trim($url);
+        if (filter_var($url, FILTER_VALIDATE_URL) === false) {
+            return false;
+        }
+
+        $parts = parse_url($url);
+        if (! is_array($parts) || isset($parts['user']) || isset($parts['pass'])) {
+            return false;
+        }
+
+        $scheme = strtolower((string) ($parts['scheme'] ?? ''));
+        $host = rtrim(strtolower((string) ($parts['host'] ?? '')), '.');
+        if (! in_array($scheme, ['http', 'https'], true) || $host === '') {
+            return false;
+        }
+
+        return collect(self::officialShareDomains($platform))
+            ->contains(static fn (string $domain): bool => $host === $domain || str_ends_with($host, '.'.$domain));
+    }
 }

@@ -1134,6 +1134,10 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         $this->assertSame(2, (int) $result->mention_count);
         $this->assertSame('positive', $result->sentiment);
         $this->assertStringContainsString('策影GEO', (string) $result->answer);
+        $this->assertSame('策影GEO', data_get($result->snapshot_payload, 'brand'));
+        $this->assertSame('策影GEO 是什么品牌？', data_get($result->snapshot_payload, 'question'));
+        $this->assertStringContainsString('策影GEO', (string) data_get($result->snapshot_payload, 'answer'));
+        $this->assertSame('https://geo.example.com/intro', data_get($result->snapshot_payload, 'sources.0.url'));
 
         $source = BrandDiagnosisSource::query()->where('result_id', (int) $result->id)->firstOrFail();
         $this->assertSame('策影GEO 官网介绍', $source->title);

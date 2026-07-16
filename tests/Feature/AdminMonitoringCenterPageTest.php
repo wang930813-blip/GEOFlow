@@ -247,6 +247,10 @@ class AdminMonitoringCenterPageTest extends TestCase
 
         $this->assertStringContainsString('if (!useVirtualSearchReportData && Array.isArray(dynamicReport.search_rows))', $html);
         $this->assertStringNotContainsString('Array.isArray(dynamicReport.search_rows) && dynamicReport.search_rows.length', $html);
+        $this->assertStringContainsString('snapshotUrl: row.snapshot_url || ""', $html);
+        $this->assertStringContainsString('const url = safeUrl(row.snapshotUrl)', $html);
+        $this->assertStringContainsString('officialUrl: row.official_url || ""', $html);
+        $this->assertStringNotContainsString('row.related_articles?.[0]?.url', $html);
         $this->assertStringContainsString('officialLink(row)', $html);
         $this->assertStringContainsString('platformLink(row)', $html);
         $this->assertStringContainsString('copyQuestion(', $html);

@@ -473,7 +473,19 @@
                                                 <p class="mt-2 line-clamp-2 text-xs leading-5 text-gray-600">{{ $conversation['answer'] }}</p>
                                             @endif
                                         </div>
-                                        <button type="button" data-conversation-detail-open class="inline-flex h-9 shrink-0 items-center justify-center rounded-md bg-orange-50 px-3 text-xs font-semibold text-orange-700 hover:bg-orange-100">AI对话详情</button>
+                                        <div class="flex shrink-0 flex-wrap items-center gap-2">
+                                            @if (! empty($conversation['snapshot_url']))
+                                                <a href="{{ $conversation['snapshot_url'] }}" target="_blank" rel="noopener noreferrer" title="打开快照凭证" class="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 hover:border-orange-200 hover:text-orange-700">
+                                                    <i data-lucide="file-check-2" class="h-4 w-4"></i>
+                                                </a>
+                                            @endif
+                                            @if (! empty($conversation['official_share_url']))
+                                                <a href="{{ $conversation['official_share_url'] }}" target="_blank" rel="noopener noreferrer" title="打开官方链接" class="inline-flex h-9 w-9 items-center justify-center rounded-md border border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100">
+                                                    <i data-lucide="external-link" class="h-4 w-4"></i>
+                                                </a>
+                                            @endif
+                                            <button type="button" data-conversation-detail-open class="inline-flex h-9 items-center justify-center rounded-md bg-orange-50 px-3 text-xs font-semibold text-orange-700 hover:bg-orange-100">AI对话详情</button>
+                                        </div>
                                     </div>
                                 </div>
                             @empty
@@ -503,6 +515,12 @@
                             <i data-lucide="file-text" class="h-4 w-4"></i>
                             查看报告
                         </a>
+                        @if ($record['can_manage_official_links'] ?? false)
+                            <a href="{{ route('admin.brand-diagnosis.official-links.edit', ['run' => $record['id']]) }}" class="inline-flex h-10 items-center gap-2 rounded-md border border-orange-200 bg-orange-50 px-5 text-sm font-semibold text-orange-700 hover:bg-orange-100">
+                                <i data-lucide="link-2" class="h-4 w-4"></i>
+                                官方链接管理
+                            </a>
+                        @endif
                     @else
                         <span class="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-5 text-sm font-semibold text-slate-400">
                             <i data-lucide="file-clock" class="h-4 w-4"></i>

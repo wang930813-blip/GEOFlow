@@ -381,6 +381,7 @@ class BrandDiagnosisController extends Controller
             'rankings' => $allPlatformData['rankings'],
             'platform_options' => $this->recordPlatformOptions($run),
             'platform_data' => $platformData,
+            'can_manage_official_links' => auth('admin')->user()?->isSuperAdmin() ?? false,
         ];
     }
 
@@ -665,18 +666,31 @@ class BrandDiagnosisController extends Controller
                             ])
                             ->values()
                             ->all();
+                        $answer = (string) ($result->answer ?? '');
+                        $status = (string) ($result->status ?? $question->status);
+                        $platformKey = (string) $result->platform;
+                        $officialShareUrl = trim((string) ($result->official_share_url ?? ''));
 
                         return [
+                            'result_id' => (int) $result->id,
                             'question' => (string) $question->question,
-                            'platform' => $this->platformLabel((string) $result->platform),
-                            'platform_key' => (string) $result->platform,
-                            'platform_logo' => $this->platformLogo((string) $result->platform),
+                            'platform' => $this->platformLabel($platformKey),
+                            'platform_key' => $platformKey,
+                            'platform_logo' => $this->platformLogo($platformKey),
                             'brands' => $brands,
                             'visible_brands' => array_slice($brands, 0, 4),
                             'hidden_brand_count' => max(0, count($brands) - 4),
-                            'answer' => (string) ($result->answer ?? ''),
-                            'status' => (string) ($result->status ?? $question->status),
+                            'answer' => $answer,
+                            'status' => $status,
                             'sources' => $sources,
+                            'snapshot_url' => $status === 'success'
+                                && trim($answer) !== ''
+                                && trim((string) ($result->snapshot_token ?? '')) !== ''
+                                ? route('brand-diagnosis.snapshot', ['token' => $result->snapshot_token])
+                                : '',
+                            'official_share_url' => BrandDiagnosisPlatform::isOfficialShareUrl($platformKey, $officialShareUrl)
+                                ? $officialShareUrl
+                                : '',
                         ];
                     });
             })

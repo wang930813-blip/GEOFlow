@@ -2423,9 +2423,11 @@
           answer: row.answer || "",
           refs: (row.sources || []).map(source => source.title || source.domain || source.url).filter(Boolean),
           sourceUrls: (row.sources || []).map(source => source.url).filter(Boolean),
-          officialUrl: row.official_url || row.related_articles?.[0]?.url || "",
+          officialUrl: row.official_url || "",
+          snapshotUrl: row.snapshot_url || "",
           platformUrl: row.platform_url || "",
-          relatedArticles: row.related_articles || []
+          relatedArticles: row.related_articles || [],
+          snapshotAvailable: Boolean(row.snapshot_url)
         }));
       }
 
@@ -2699,7 +2701,7 @@
       const url = safeUrl(row.officialUrl);
       return url
         ? `<a class="link-btn" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">官方链接</a>`
-        : `<button class="link-btn" type="button" onclick="showToast('暂无可跳转的官方文章')">官方链接</button>`;
+        : `<button class="link-btn" type="button" onclick="showToast('暂无官方对话链接')">官方链接</button>`;
     }
 
     function platformLink(row) {
@@ -2710,6 +2712,11 @@
     }
 
     function snapshotLink(row) {
+      const url = safeUrl(row.snapshotUrl);
+      if (url) {
+        return `<a class="link-btn" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">快照凭证</a>`;
+      }
+
       return row.snapshotAvailable === false
         ? `<button class="link-btn" type="button" onclick="showToast('暂无快照凭证')">快照凭证</button>`
         : `<button class="link-btn" type="button" onclick="openSnapshot(${row.id})">快照凭证</button>`;

@@ -18,6 +18,7 @@ use App\Http\Controllers\Admin\ArticleSelfMediaPublishController;
 use App\Http\Controllers\Admin\AuthorController;
 use App\Http\Controllers\Admin\B2BWebsiteController;
 use App\Http\Controllers\Admin\BrandDiagnosisController;
+use App\Http\Controllers\Admin\BrandDiagnosisOfficialLinkController;
 use App\Http\Controllers\Admin\CategoryController;
 use App\Http\Controllers\Admin\CrebeeAccountController;
 use App\Http\Controllers\Admin\CrebeePublishRecordController;
@@ -49,6 +50,7 @@ use App\Http\Controllers\Admin\TitleLibraryController;
 use App\Http\Controllers\Admin\UrlImportController;
 use App\Http\Controllers\Admin\VideoGenerationController;
 use App\Http\Controllers\Admin\VideoSelfMediaPublishController;
+use App\Http\Controllers\BrandDiagnosisSnapshotController;
 use App\Http\Controllers\MediaSubmissionPreviewController;
 use App\Http\Controllers\MonitoringReportShareController;
 use App\Http\Controllers\Site\ArchiveController;
@@ -57,6 +59,10 @@ use App\Http\Controllers\Site\CategoryController as SiteCategoryController;
 use App\Http\Controllers\Site\HomeController;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
+
+Route::get('/brand-diagnosis/snapshot/{token}', [BrandDiagnosisSnapshotController::class, 'show'])
+    ->name('brand-diagnosis.snapshot')
+    ->where('token', '[A-Za-z0-9]{48}');
 
 Route::get('/media-submission-preview/{submission}/{token}', [MediaSubmissionPreviewController::class, 'show'])
     ->name('media-submission-preview.show')
@@ -122,6 +128,12 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             ->whereNumber('run');
         Route::get('brand-diagnosis/{run}/report/download', [BrandDiagnosisController::class, 'downloadReport'])
             ->name('brand-diagnosis.report.download')
+            ->whereNumber('run');
+        Route::get('brand-diagnosis/{run}/official-links', [BrandDiagnosisOfficialLinkController::class, 'edit'])
+            ->name('brand-diagnosis.official-links.edit')
+            ->whereNumber('run');
+        Route::put('brand-diagnosis/{run}/official-links', [BrandDiagnosisOfficialLinkController::class, 'update'])
+            ->name('brand-diagnosis.official-links.update')
             ->whereNumber('run');
         Route::get('analytics', [AnalyticsController::class, 'index'])->name('analytics');
 

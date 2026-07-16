@@ -6,6 +6,7 @@ use App\Models\BrandDiagnosisRun;
 use App\Models\BrandDiagnosisResult;
 use App\Services\BrandDiagnosis\BrandDiagnosisMetricsCalculator;
 use App\Services\BrandDiagnosis\BrandDiagnosisPlatform;
+use App\Services\BrandDiagnosis\BrandDiagnosisSnapshotPayload;
 use App\Services\BrandDiagnosis\DoubaoBrandDiagnosisClient;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -136,6 +137,7 @@ class ProcessBrandDiagnosisJob implements ShouldQueue
                         ]);
                     }
                     $this->replaceBrandMentions($result, $brandMentions, (string) $run->brand_name, count($clientResponse->sources));
+                    app(BrandDiagnosisSnapshotPayload::class)->captureIfMissing($result);
 
                     $question->update(['status' => 'completed']);
                 } catch (Throwable $exception) {

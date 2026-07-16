@@ -45,7 +45,7 @@ return [
     'operation_guide_user_url' => env('GEOFLOW_OPERATION_GUIDE_USER_URL', ''),
     'customer_site_domain_base' => trim((string) env('GEOFLOW_CUSTOMER_SITE_DOMAIN_BASE', 'geo.xinzhidi.cn'), " \t\n\r\0\x0B."),
     'monitoring_search_report_virtual_data_enabled' => filter_var(
-        env('GEOFLOW_MONITORING_SEARCH_REPORT_VIRTUAL_DATA', env('GEOFLOW_MONITORING_REPORT_VIRTUAL_DATA', false)),
+        env('GEOFLOW_MONITORING_SEARCH_REPORT_VIRTUAL_DATA', false),
         FILTER_VALIDATE_BOOLEAN
     ),
 

@@ -7,6 +7,7 @@ use App\Models\Concerns\BelongsToAdminOwner;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Str;
 
 class BrandDiagnosisResult extends Model
 {
@@ -28,8 +29,20 @@ class BrandDiagnosisResult extends Model
         'error_message',
         'raw_response',
         'meta',
+        'official_share_url',
+        'official_share_updated_by',
+        'official_share_updated_at',
         'checked_at',
     ];
+
+    protected static function booted(): void
+    {
+        static::creating(function (self $result): void {
+            if (trim((string) $result->snapshot_token) === '') {
+                $result->snapshot_token = Str::random(48);
+            }
+        });
+    }
 
     protected function casts(): array
     {
@@ -43,6 +56,9 @@ class BrandDiagnosisResult extends Model
             'mention_rank' => 'integer',
             'raw_response' => 'array',
             'meta' => 'array',
+            'snapshot_payload' => 'array',
+            'official_share_updated_by' => 'integer',
+            'official_share_updated_at' => 'datetime',
             'checked_at' => 'datetime',
         ];
     }
@@ -55,6 +71,11 @@ class BrandDiagnosisResult extends Model
     public function question(): BelongsTo
     {
         return $this->belongsTo(BrandDiagnosisQuestion::class, 'question_id');
+    }
+
+    public function officialShareUpdater(): BelongsTo
+    {
+        return $this->belongsTo(Admin::class, 'official_share_updated_by');
     }
 
     public function sources(): HasMany

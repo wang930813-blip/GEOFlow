@@ -13,6 +13,7 @@ use App\Models\KeywordLibrary;
 use App\Models\KeywordQuestionVariant;
 use App\Models\KnowledgeBase;
 use App\Models\Site;
+use App\Services\BrandDiagnosis\BrandDiagnosisPlatform;
 use App\Support\CurrentSite;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -526,12 +527,25 @@ class MonitoringReportDataService
             ->get(['id', 'title', 'slug', 'content', 'keywords', 'published_at']);
 
         return $this->scope(BrandDiagnosisResult::query(), $context)
+            ->select([
+                'id',
+                'question_id',
+                'platform',
+                'answer',
+                'status',
+                'checked_at',
+                'created_at',
+                'snapshot_token',
+                'official_share_url',
+            ])
             ->with([
                 'brandMentions' => fn ($query) => $query->where('is_target_brand', true)->orderBy('mention_rank'),
                 'question:id,question',
                 'sources:id,result_id,title,url,domain,platform',
             ])
             ->where('status', 'success')
+            ->whereNotNull('answer')
+            ->where('answer', '<>', '')
             ->orderByDesc('checked_at')
             ->orderByDesc('id')
             ->limit(80)
@@ -540,7 +554,9 @@ class MonitoringReportDataService
                 $question = (string) ($result->question?->question ?? '');
                 $relatedArticles = $this->relatedArticles($articles, $question, $companyName);
                 $target = $this->targetBrandName($result);
-                $createdAt = $result->created_at ?? $result->checked_at;
+                $checkedAt = $result->checked_at ?? $result->created_at;
+                $officialShareUrl = trim((string) ($result->official_share_url ?? ''));
+                $snapshotToken = trim((string) ($result->snapshot_token ?? ''));
 
                 return [
                     'id' => (int) $result->id,
@@ -549,8 +565,8 @@ class MonitoringReportDataService
                     'platform' => $this->platformLabel((string) $result->platform),
                     'platform_url' => $this->platformUrl((string) $result->platform),
                     'terminal' => 'PC',
-                    'date' => $createdAt?->format('Y-m-d') ?? '',
-                    'time' => $createdAt?->format('Y-m-d H:i:s') ?? '',
+                    'date' => $checkedAt?->format('Y-m-d') ?? '',
+                    'time' => $checkedAt?->format('Y-m-d H:i:s') ?? '',
                     'target' => $target,
                     'answer' => strip_tags((string) $result->answer),
                     'sources' => $result->sources->map(fn ($source): array => [
@@ -559,7 +575,12 @@ class MonitoringReportDataService
                         'domain' => (string) $source->domain,
                     ])->values()->all(),
                     'related_articles' => $relatedArticles,
-                    'official_url' => (string) ($relatedArticles[0]['url'] ?? ''),
+                    'official_url' => BrandDiagnosisPlatform::isOfficialShareUrl((string) $result->platform, $officialShareUrl)
+                        ? $officialShareUrl
+                        : '',
+                    'snapshot_url' => $snapshotToken !== ''
+                        ? route('brand-diagnosis.snapshot', ['token' => $snapshotToken])
+                        : '',
                 ];
             })
             ->values()

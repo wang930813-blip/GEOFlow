@@ -67,6 +67,8 @@ class MonitoringReportDataServiceTest extends TestCase
             'sourceTitle' => '其他来源',
             'articleTitle' => '其他文章',
         ]);
+        $officialShareUrl = 'https://www.doubao.com/thread/dynamic-report-share';
+        $current['result']->forceFill(['official_share_url' => $officialShareUrl])->save();
 
         $report = app(MonitoringReportDataService::class)->enterpriseReport($admin, $site);
 
@@ -104,7 +106,12 @@ class MonitoringReportDataServiceTest extends TestCase
         $this->assertSame(now()->toDateString(), $report['search_rows'][0]['date']);
         $this->assertSame('星河智能科技有限公司在回答中被提及，并引用了行业资料。', $report['search_rows'][0]['answer']);
         $this->assertSame('https://www.doubao.com/chat/', $report['search_rows'][0]['platform_url']);
-        $this->assertStringEndsWith('/article/'.rawurlencode((string) $current['article']->slug), $report['search_rows'][0]['official_url']);
+        $this->assertSame($officialShareUrl, $report['search_rows'][0]['official_url']);
+        $this->assertSame(
+            route('brand-diagnosis.snapshot', ['token' => $current['result']->snapshot_token]),
+            $report['search_rows'][0]['snapshot_url']
+        );
+        $this->assertSame($current['result']->checked_at?->format('Y-m-d H:i:s'), $report['search_rows'][0]['time']);
         $this->assertSame('星河智能案例报道', $report['search_rows'][0]['sources'][0]['title']);
         $this->assertSame('星河智能 AI 搜索优化实践', $report['search_rows'][0]['related_articles'][0]['title']);
         $this->assertStringEndsWith('/article/'.rawurlencode((string) $current['article']->slug), $report['search_rows'][0]['related_articles'][0]['url']);
@@ -337,12 +344,13 @@ class MonitoringReportDataServiceTest extends TestCase
         $this->assertSame(0, $totals['wenxin|移动']);
     }
 
-    public function test_enterprise_search_report_uses_result_created_time_and_dash_when_target_brand_is_not_mentioned(): void
+    public function test_enterprise_search_report_uses_result_checked_time_and_dash_when_target_brand_is_not_mentioned(): void
     {
         [$admin, $site] = $this->createAdminWithSite('monitoring_search_no_brand_target', 'site_user', 'search no brand site');
 
         app(CurrentSite::class)->set($site);
         $createdAt = now()->subDays(10)->setTime(8, 30, 15);
+        $checkedAt = now()->subDays(2)->setTime(14, 20, 10);
 
         $diagnosisRun = BrandDiagnosisRun::query()->create([
             'site_id' => (int) $site->id,
@@ -381,15 +389,15 @@ class MonitoringReportDataServiceTest extends TestCase
             'mention_rank' => 0,
             'sentiment' => 'neutral',
             'status' => 'success',
-            'checked_at' => now(),
+            'checked_at' => $checkedAt,
         ]);
         $result->forceFill(['created_at' => $createdAt])->save();
 
         $report = app(MonitoringReportDataService::class)->enterpriseReport($admin, $site);
 
         $this->assertSame('-', $report['search_rows'][0]['target']);
-        $this->assertSame($createdAt->toDateString(), $report['search_rows'][0]['date']);
-        $this->assertSame($createdAt->format('Y-m-d H:i:s'), $report['search_rows'][0]['time']);
+        $this->assertSame($checkedAt->toDateString(), $report['search_rows'][0]['date']);
+        $this->assertSame($checkedAt->format('Y-m-d H:i:s'), $report['search_rows'][0]['time']);
     }
 
     public function test_enterprise_search_report_uses_chat_baidu_for_wenxin_platform_link(): void
@@ -521,7 +529,7 @@ class MonitoringReportDataServiceTest extends TestCase
 
     /**
      * @param  array{company:string,question:string,keyword:string,competitor:string,platform:string,sourceTitle:string,articleTitle:string}  $data
-     * @return array{question:KeywordQuestionVariant,article:Article}
+     * @return array{question:KeywordQuestionVariant,article:Article,result:BrandDiagnosisResult}
      */
     private function seedSearchData(Admin $admin, Site $site, array $data): array
     {
@@ -694,6 +702,6 @@ class MonitoringReportDataServiceTest extends TestCase
             'published_at' => now()->subMinutes(10),
         ]);
 
-        return ['question' => $question, 'article' => $article];
+        return ['question' => $question, 'article' => $article, 'result' => $diagnosisResult];
     }
 }

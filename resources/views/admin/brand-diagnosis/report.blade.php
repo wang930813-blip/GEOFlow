@@ -110,6 +110,12 @@
                         导出PDF
                     </a>
                 @endif
+                @if ($record['can_manage_official_links'] ?? false)
+                    <a href="{{ route('admin.brand-diagnosis.official-links.edit', ['run' => $record['id']]) }}" class="inline-flex h-10 items-center gap-2 rounded-md border border-orange-200 bg-orange-50 px-4 text-sm font-semibold text-orange-700 hover:bg-orange-100">
+                        <i data-lucide="link-2" class="h-4 w-4"></i>
+                        官方链接管理
+                    </a>
+                @endif
             </div>
         </div>
     </header>
@@ -394,6 +400,20 @@
                                 </div>
                             </div>
                             <p class="whitespace-pre-wrap text-sm leading-7 text-slate-700">{{ $conversation['answer'] ?: '暂无回答内容。' }}</p>
+                            <div class="mt-4 flex flex-wrap items-center gap-2">
+                                @if (! empty($conversation['snapshot_url']))
+                                    <a href="{{ $conversation['snapshot_url'] }}" target="_blank" rel="noopener noreferrer" class="inline-flex h-9 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 hover:border-orange-200 hover:text-orange-700">
+                                        <i data-lucide="file-check-2" class="h-4 w-4"></i>
+                                        快照凭证
+                                    </a>
+                                @endif
+                                @if (! empty($conversation['official_share_url']))
+                                    <a href="{{ $conversation['official_share_url'] }}" target="_blank" rel="noopener noreferrer" class="inline-flex h-9 items-center gap-2 rounded-md border border-orange-200 bg-orange-50 px-3 text-xs font-semibold text-orange-700 hover:bg-orange-100">
+                                        <i data-lucide="external-link" class="h-4 w-4"></i>
+                                        官方链接
+                                    </a>
+                                @endif
+                            </div>
                             @if (! empty($conversation['sources']))
                                 <div class="mt-4 border-t border-slate-200 pt-4">
                                     <div class="mb-2 text-xs font-semibold text-slate-500">引用记录</div>
