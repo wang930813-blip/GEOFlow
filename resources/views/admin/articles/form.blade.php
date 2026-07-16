@@ -10,7 +10,9 @@
         'title' => old('title', (string) ($articleForm['title'] ?? '')),
         'excerpt' => old('excerpt', (string) ($articleForm['excerpt'] ?? '')),
         'cover_image' => old('cover_image', (string) ($articleForm['cover_image'] ?? '')),
-        'content' => old('content', (string) ($articleForm['content'] ?? '')),
+        'content' => \App\Support\Site\ArticleHtmlPresenter::normalizeMarkdownSyntax(
+            (string) old('content', (string) ($articleForm['content'] ?? ''))
+        ),
         'keywords' => old('keywords', (string) ($articleForm['keywords'] ?? '')),
         'meta_description' => old('meta_description', (string) ($articleForm['meta_description'] ?? '')),
         'status' => old('status', (string) ($articleForm['status'] ?? 'draft')),

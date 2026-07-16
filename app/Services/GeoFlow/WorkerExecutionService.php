@@ -22,6 +22,7 @@ use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\ArticleWorkflow;
 use App\Support\GeoFlow\ImageUrlNormalizer;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
+use App\Support\Site\ArticleHtmlPresenter;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 use Throwable;
@@ -98,7 +99,7 @@ class WorkerExecutionService
         $aiModel = $generation['model'];
         $generatedContent = $generation['content'];
         $imageResult = $this->insertTaskImagesIntoContent($task, $generatedContent, $aiModel, (string) $titleRow->title, $keyword);
-        $content = $imageResult['content'];
+        $content = ArticleHtmlPresenter::normalizeMarkdownSyntax($imageResult['content']);
         $selectedImages = $imageResult['images'];
         $generatedImages = $imageResult['generated_images'] ?? [];
         $imageError = $imageResult['image_error'] ?? null;
@@ -505,21 +506,39 @@ class WorkerExecutionService
 
     private function pickAuthor(Task $task): Author
     {
+        $siteId = (int) ($task->site_id ?? 0);
+        $ownerAdminId = (int) ($task->owner_admin_id ?? 0);
+        $authorQuery = Author::query()->withoutGlobalScope('current_site');
+        if ($siteId > 0) {
+            $authorQuery->where('site_id', $siteId);
+        } else {
+            $authorQuery->whereNull('site_id');
+            if ($ownerAdminId > 0) {
+                $authorQuery->where('owner_admin_id', $ownerAdminId);
+            } else {
+                $authorQuery->whereNull('owner_admin_id');
+            }
+        }
+
         $authorId = (int) ($task->custom_author_id ?: $task->author_id);
         if ($authorId > 0) {
-            $author = Author::query()->find($authorId);
+            $author = (clone $authorQuery)->whereKey($authorId)->first();
             if ($author) {
                 return $author;
             }
         }
 
-        $author = Author::query()->orderBy('id')->first();
+        $author = (clone $authorQuery)->inRandomOrder()->first();
         if ($author) {
             return $author;
         }
 
-        return Author::query()->firstOrCreate(
-            ['name' => 'GEOFlow'],
+        return Author::query()->withoutGlobalScope('current_site')->firstOrCreate(
+            [
+                'site_id' => $siteId > 0 ? $siteId : null,
+                'owner_admin_id' => $ownerAdminId > 0 ? $ownerAdminId : null,
+                'name' => 'GEOFlow',
+            ],
             ['bio' => 'Default GEOFlow author for automated content generation.']
         );
     }
@@ -787,9 +806,9 @@ class WorkerExecutionService
                 '请直接输出最终文章正文（Markdown），不要重复提示词、不要输出占位符。',
                 '必须写成完整文章，包含开头导语、清晰小节和结尾总结；不要只输出检查清单、提纲或提示词内容。',
             ];
-//            if (trim($knowledgeContext) !== '') {
-//                $instructions[] = '如果提供了参考知识或来源资料，必须在正文中吸收关键事实，并在文末增加“参考依据”小节，列出可验证的来源、事实或引用依据；不要编造来源。';
-//            }
+            //            if (trim($knowledgeContext) !== '') {
+            //                $instructions[] = '如果提供了参考知识或来源资料，必须在正文中吸收关键事实，并在文末增加“参考依据”小节，列出可验证的来源、事实或引用依据；不要编造来源。';
+            //            }
 
             return implode("\n", $instructions);
         }
@@ -798,9 +817,9 @@ class WorkerExecutionService
             'Please output only the final article body in Markdown. Do not repeat the prompt or output placeholders.',
             'Write a complete article with an introduction, clear sections, and a conclusion. Do not output only a checklist, outline, or prompt instructions.',
         ];
-//        if (trim($knowledgeContext) !== '') {
-//            $instructions[] = 'When reference knowledge or source material is provided, incorporate the key facts into the article and include a "References" section with verifiable sources, facts, or citation basis. Do not invent sources.';
-//        }
+        //        if (trim($knowledgeContext) !== '') {
+        //            $instructions[] = 'When reference knowledge or source material is provided, incorporate the key facts into the article and include a "References" section with verifiable sources, facts, or citation basis. Do not invent sources.';
+        //        }
 
         return implode("\n", $instructions);
     }
@@ -1333,14 +1352,12 @@ class WorkerExecutionService
      * 浠庢鏂囨彁鍙栨憳瑕侊紝閬垮厤鎶婂畬鏁存彁绀鸿瘝鍘熸枃褰撴憳瑕併€?     */
     private function buildExcerpt(string $content): string
     {
-        $plain = preg_replace('/[`#>*_\-\[\]\(\)]/u', ' ', $content) ?: $content;
-        $plain = preg_replace('/\s+/u', ' ', $plain) ?: $plain;
-        $plain = trim($plain);
-        if ($plain === '') {
+        $excerpt = ArticleHtmlPresenter::excerptFromMarkdown($content, 180);
+        if ($excerpt === '') {
             return 'AI 鐢熸垚鍐呭鎽樿';
         }
 
-        return mb_substr($plain, 0, 180);
+        return $excerpt;
     }
 
     /**

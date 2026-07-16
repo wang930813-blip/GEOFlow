@@ -2,8 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Models\AiModel;
 use App\Models\Admin;
+use App\Models\AiModel;
 use App\Models\Article;
 use App\Models\ArticleDistribution;
 use App\Models\Author;
@@ -324,6 +324,79 @@ class WorkerExecutionSiteIsolationTest extends TestCase
         app(CurrentSite::class)->set($site);
 
         $this->assertTrue(Article::query()->whereKey((int) $article->id)->exists());
+    }
+
+    public function test_worker_normalizes_generated_markdown_before_saving_article(): void
+    {
+        config(['geoflow.api_key_crypto_roots' => ['worker-markdown-normalization-test-key']]);
+
+        $titleLibrary = TitleLibrary::query()->create([
+            'name' => 'Markdown Titles',
+        ]);
+        Title::query()->create([
+            'library_id' => (int) $titleLibrary->id,
+            'title' => 'Markdown Article',
+            'keyword' => 'markdown',
+        ]);
+        $prompt = Prompt::query()->create([
+            'name' => 'Markdown Prompt',
+            'type' => 'content',
+            'content' => 'Write about {{title}}.',
+        ]);
+        $author = Author::query()->create([
+            'name' => 'Markdown Author',
+        ]);
+        Category::query()->create([
+            'name' => 'Markdown Category',
+            'slug' => 'markdown-category',
+        ]);
+        $aiModel = AiModel::query()->create([
+            'name' => 'Markdown Chat',
+            'model_id' => 'deepseek-chat',
+            'model_type' => 'chat',
+            'api_url' => 'https://ai.example.test',
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('test-api-key'),
+            'status' => 'active',
+        ]);
+        $task = Task::query()->create([
+            'name' => 'Markdown generation task',
+            'title_library_id' => (int) $titleLibrary->id,
+            'prompt_id' => (int) $prompt->id,
+            'ai_model_id' => (int) $aiModel->id,
+            'author_id' => (int) $author->id,
+            'image_mode' => 'none',
+            'auto_keywords' => 0,
+            'auto_description' => 0,
+            'need_review' => 1,
+            'status' => 'active',
+            'schedule_enabled' => 1,
+            'draft_limit' => 5,
+            'article_limit' => 5,
+        ]);
+        $generatedContent = <<<'MD'
+##标题缺少空格
+
+** 核心结论： **正文紧跟粗体。
+
+```markdown
+##代码中的标题保持原样
+** 代码示例： **正文
+```
+MD;
+
+        Http::fake([
+            'https://ai.example.test/v1/chat/completions' => Http::response(
+                $this->streamCompletion($generatedContent),
+                200,
+                ['Content-Type' => 'text/event-stream']
+            ),
+        ]);
+
+        $result = app(WorkerExecutionService::class)->executeTask((int) $task->id);
+
+        $article = Article::withoutGlobalScope('current_site')->findOrFail((int) $result['article_id']);
+        $this->assertStringContainsString("## 标题缺少空格\n\n**核心结论：** 正文紧跟粗体。", (string) $article->content);
+        $this->assertStringContainsString("##代码中的标题保持原样\n** 代码示例： **正文", (string) $article->content);
     }
 
     public function test_worker_consumes_article_generation_quota_for_task_owner_and_sets_article_owner(): void

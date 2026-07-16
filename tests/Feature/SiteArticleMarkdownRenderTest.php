@@ -39,6 +39,27 @@ MD);
         $this->assertStringContainsString('type="checkbox"', $html);
     }
 
+    public function test_article_markdown_repairs_common_ai_spacing_outside_fenced_code_blocks(): void
+    {
+        $html = ArticleHtmlPresenter::markdownToHtml(<<<'MD'
+##标题缺少空格
+
+** 核心结论： **正文紧跟粗体。
+
+**适用建议：**正文同样紧跟粗体。
+
+```markdown
+##代码中的标题保持原样
+** 代码示例： **正文
+```
+MD);
+
+        $this->assertStringContainsString('<h2>标题缺少空格</h2>', $html);
+        $this->assertStringContainsString('<strong>核心结论：</strong> 正文紧跟粗体。', $html);
+        $this->assertStringContainsString('<strong>适用建议：</strong> 正文同样紧跟粗体。', $html);
+        $this->assertStringContainsString("##代码中的标题保持原样\n** 代码示例： **正文", html_entity_decode($html));
+    }
+
     public function test_published_article_page_outputs_normalized_image_url(): void
     {
         $category = Category::query()->create([

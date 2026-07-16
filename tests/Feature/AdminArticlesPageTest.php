@@ -62,6 +62,51 @@ class AdminArticlesPageTest extends TestCase
             ->assertSee(__('admin.article_create.page_heading'));
     }
 
+    public function test_article_edit_form_previews_normalized_markdown_for_existing_articles(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'articles_markdown_admin',
+            'password' => 'secret-123',
+            'email' => 'articles-markdown@example.com',
+            'display_name' => 'Articles Markdown Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'Markdown Preview Site',
+            'status' => 'active',
+        ]);
+        $site->members()->attach((int) $admin->id, ['role' => 'owner']);
+        $category = Category::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Markdown Category',
+            'slug' => 'markdown-preview-category',
+        ]);
+        $author = Author::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Markdown Author',
+        ]);
+        $article = Article::query()->create([
+            'site_id' => (int) $site->id,
+            'title' => 'Markdown Preview Article',
+            'slug' => 'markdown-preview-article',
+            'excerpt' => '',
+            'content' => "##标题缺少空格\n\n** 核心结论： **正文紧跟粗体。",
+            'category_id' => (int) $category->id,
+            'author_id' => (int) $author->id,
+            'status' => 'draft',
+            'review_status' => 'pending',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.articles.edit', ['articleId' => (int) $article->id]))
+            ->assertOk()
+            ->assertSee("## 标题缺少空格\n\n**核心结论：** 正文紧跟粗体。", false)
+            ->assertDontSee('** 核心结论： **正文紧跟粗体。', false);
+    }
+
     public function test_admin_can_save_article_hot_and_featured_flags(): void
     {
         $admin = Admin::query()->create([

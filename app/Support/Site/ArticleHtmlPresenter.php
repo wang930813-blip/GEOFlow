@@ -4,6 +4,9 @@ namespace App\Support\Site;
 
 use App\Models\Article;
 use App\Support\GeoFlow\ImageUrlNormalizer;
+use DOMDocument;
+use DOMElement;
+use DOMNode;
 use League\CommonMark\GithubFlavoredMarkdownConverter;
 
 /**
@@ -16,7 +19,8 @@ final class ArticleHtmlPresenter
      */
     public static function markdownToHtml(string $markdown): string
     {
-        $markdown = self::normalizeMarkdownImages(trim($markdown));
+        $markdown = self::normalizeMarkdownSyntax(trim($markdown));
+        $markdown = self::normalizeMarkdownImages($markdown);
         if ($markdown === '') {
             return '';
         }
@@ -27,6 +31,68 @@ final class ArticleHtmlPresenter
         ]);
 
         return self::decorateRenderedHtml($converter->convert($markdown)->getContent());
+    }
+
+    public static function normalizeMarkdownSyntax(string $markdown): string
+    {
+        if ($markdown === '') {
+            return '';
+        }
+
+        $parts = preg_split('/(\r\n|\n|\r)/', $markdown, -1, PREG_SPLIT_DELIM_CAPTURE);
+        if (! is_array($parts)) {
+            return $markdown;
+        }
+
+        $fenceCharacter = null;
+        $fenceLength = 0;
+
+        foreach ($parts as $index => $part) {
+            if ($part === "\r\n" || $part === "\n" || $part === "\r") {
+                continue;
+            }
+
+            if (preg_match('/^[ ]{0,3}(`{3,}|~{3,})(.*)$/u', $part, $matches) === 1) {
+                $marker = (string) $matches[1];
+                $markerCharacter = $marker[0];
+
+                if ($fenceCharacter === null) {
+                    $fenceCharacter = $markerCharacter;
+                    $fenceLength = strlen($marker);
+                } elseif (
+                    $markerCharacter === $fenceCharacter
+                    && strlen($marker) >= $fenceLength
+                    && trim((string) ($matches[2] ?? '')) === ''
+                ) {
+                    $fenceCharacter = null;
+                    $fenceLength = 0;
+                }
+
+                continue;
+            }
+
+            if ($fenceCharacter !== null) {
+                continue;
+            }
+
+            $part = preg_replace('/^([ ]{0,3})(#{1,6})(?=[^#\s])/u', '$1$2 ', $part) ?? $part;
+            $parts[$index] = preg_replace_callback(
+                '/\*\*((?:(?!\*\*).)+?)\*\*(?<next>[\p{L}\p{N}])?/u',
+                static function (array $matches): string {
+                    $content = trim((string) $matches[1], " \t");
+                    if ($content === '') {
+                        return (string) $matches[0];
+                    }
+
+                    $next = (string) ($matches['next'] ?? '');
+
+                    return '**'.$content.'**'.($next !== '' ? ' '.$next : '');
+                },
+                $part
+            ) ?? $part;
+        }
+
+        return implode('', $parts);
     }
 
     /**
@@ -43,6 +109,59 @@ final class ArticleHtmlPresenter
         $pattern = '/^\s*#\s*'.preg_quote($title, '/').'\s*(?:\r?\n)+/u';
 
         return (string) preg_replace($pattern, '', $content, 1);
+    }
+
+    public static function excerptFromMarkdown(string $markdown, int $limit = 180): string
+    {
+        $html = self::markdownToHtml($markdown);
+        if ($html === '') {
+            return '';
+        }
+
+        $document = new DOMDocument('1.0', 'UTF-8');
+        $previousErrorMode = libxml_use_internal_errors(true);
+        try {
+            $loaded = $document->loadHTML(
+                '<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body><div id="article-excerpt-root">'.$html.'</div></body></html>',
+                LIBXML_NOERROR | LIBXML_NOWARNING
+            );
+        } finally {
+            libxml_clear_errors();
+            libxml_use_internal_errors($previousErrorMode);
+        }
+
+        if (! $loaded) {
+            return '';
+        }
+
+        $root = $document->getElementById('article-excerpt-root');
+        if (! $root instanceof DOMElement) {
+            return '';
+        }
+
+        foreach ($root->childNodes as $node) {
+            if (! $node instanceof DOMElement || ! self::isSummaryHeading($node)) {
+                continue;
+            }
+
+            $summary = self::sectionTextAfterHeading($node);
+            if ($summary !== '') {
+                return self::limitPlainText($summary, $limit);
+            }
+        }
+
+        foreach ($root->childNodes as $node) {
+            if (! $node instanceof DOMElement || ! self::isBodyTextElement($node)) {
+                continue;
+            }
+
+            $plain = self::nodePlainText($node);
+            if ($plain !== '') {
+                return self::limitPlainText($plain, $limit);
+            }
+        }
+
+        return '';
     }
 
     /**
@@ -72,6 +191,57 @@ final class ArticleHtmlPresenter
         $text = preg_replace('/\s+/u', ' ', $text) ?? $text;
 
         return trim($text);
+    }
+
+    private static function isSummaryHeading(DOMElement $element): bool
+    {
+        if (preg_match('/^h[1-6]$/i', $element->tagName) !== 1) {
+            return false;
+        }
+
+        $heading = preg_replace('/[\s:：\-—]+/u', '', self::nodePlainText($element)) ?? '';
+
+        return in_array($heading, ['核心摘要', '文章摘要', '内容摘要', '摘要'], true);
+    }
+
+    private static function sectionTextAfterHeading(DOMElement $heading): string
+    {
+        $parts = [];
+        for ($node = $heading->nextSibling; $node instanceof DOMNode; $node = $node->nextSibling) {
+            if ($node instanceof DOMElement && preg_match('/^h[1-6]$/i', $node->tagName) === 1) {
+                break;
+            }
+            if (! $node instanceof DOMElement || ! self::isBodyTextElement($node)) {
+                continue;
+            }
+
+            $plain = self::nodePlainText($node);
+            if ($plain !== '') {
+                $parts[] = $plain;
+            }
+        }
+
+        return trim(implode(' ', $parts));
+    }
+
+    private static function isBodyTextElement(DOMElement $element): bool
+    {
+        return in_array(strtolower($element->tagName), ['p', 'blockquote', 'ul', 'ol', 'table'], true);
+    }
+
+    private static function nodePlainText(DOMNode $node): string
+    {
+        $text = html_entity_decode((string) $node->textContent, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $text = preg_replace('/\s+/u', ' ', $text) ?? $text;
+
+        return trim($text);
+    }
+
+    private static function limitPlainText(string $text, int $limit): string
+    {
+        $limit = max(1, $limit);
+
+        return mb_strlen($text, 'UTF-8') > $limit ? mb_substr($text, 0, $limit, 'UTF-8') : $text;
     }
 
     private static function normalizeMarkdownImages(string $markdown): string
