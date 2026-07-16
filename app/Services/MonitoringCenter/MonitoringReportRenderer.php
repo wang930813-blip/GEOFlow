@@ -40,6 +40,11 @@ class MonitoringReportRenderer
     private function rewriteHtml(string $html, array $options): string
     {
         $assetBase = rtrim(asset('assets/monitoring-center'), '/');
+        $logoPath = public_path('assets/monitoring-center/ceying-ai-logo1.png');
+        $logoHash = File::exists($logoPath) ? hash_file('sha256', $logoPath) : false;
+        $logoUrl = $assetBase.'/ceying-ai-logo1.png'.(
+            is_string($logoHash) ? '?v='.substr($logoHash, 0, 12) : ''
+        );
         $enterpriseUrl = (string) ($options['enterprise_url'] ?? route('admin.monitoring-center.index', ['report' => 'enterprise']));
         $industryUrl = (string) ($options['industry_url'] ?? route('admin.monitoring-center.index', ['report' => 'industry']));
 
@@ -67,8 +72,8 @@ class MonitoringReportRenderer
                 "url('".$assetBase.'/assets/',
                 '"'.$assetBase.'/assets/',
                 "'".$assetBase.'/assets/',
-                'src="'.$assetBase.'/ceying-ai-logo1.png"',
-                'src="'.$assetBase.'/ceying-ai-logo1.png"',
+                'src="'.$logoUrl.'"',
+                'src="'.$logoUrl.'"',
                 'href="'.$enterpriseUrl.'"',
                 'href="'.$industryUrl.'"',
                 '// Monitoring center keeps the selected report on refresh.',

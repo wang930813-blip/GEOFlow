@@ -31,6 +31,19 @@ class AdminMonitoringCenterPageTest extends TestCase
         $this->assertStringContainsString('<title>行业竞争力分析报表 - 监测中心</title>', $industry);
     }
 
+    public function test_monitoring_report_logo_url_uses_content_hash_for_cache_busting(): void
+    {
+        $logoPath = public_path('assets/monitoring-center/ceying-ai-logo1.png');
+        $version = substr((string) hash_file('sha256', $logoPath), 0, 12);
+
+        $html = app(MonitoringReportRenderer::class)->render('enterprise', [], false);
+
+        $this->assertStringContainsString(
+            '/assets/monitoring-center/ceying-ai-logo1.png?v='.$version,
+            $html
+        );
+    }
+
     public function test_industry_report_header_keeps_space_between_title_and_company_meta(): void
     {
         $html = app(MonitoringReportRenderer::class)->render('industry', [], false);

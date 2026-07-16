@@ -16,4 +16,15 @@ class ProductionNginxConfigTest extends TestCase
             $config
         );
     }
+
+    public function test_public_brand_diagnosis_snapshot_route_is_forwarded_to_laravel(): void
+    {
+        $config = file_get_contents(base_path('docker/nginx/default.conf'));
+
+        $this->assertIsString($config);
+        $this->assertMatchesRegularExpression(
+            '/location \^~ \/brand-diagnosis\/snapshot\/ \{\s+try_files \$uri \$uri\/ \/index\.php\?\$query_string;\s+\}/',
+            $config
+        );
+    }
 }
