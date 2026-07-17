@@ -216,6 +216,8 @@ class AdminGeoProjectPhaseOneTest extends TestCase
             ->assertJsonPath('questions.4', '硕士论文需要润色和写作指导，线上服务靠谱吗？');
 
         $this->assertIsString($capturedPrompt);
+        $this->assertStringContainsString('Generate 10 Chinese AI search query candidates', $capturedPrompt);
+        $this->assertStringContainsString('Finally return the best 5 usable variants', $capturedPrompt);
         $this->assertStringContainsString('Query mix:', $capturedPrompt);
         $this->assertStringContainsString('2 short keyword-style searches', $capturedPrompt);
         $this->assertStringContainsString('2 medium direct questions', $capturedPrompt);
@@ -225,6 +227,91 @@ class AdminGeoProjectPhaseOneTest extends TestCase
         $this->assertStringContainsString('Do not make every variant repeat the keyword verbatim', $capturedPrompt);
         $this->assertStringContainsString('For brand-name keywords, include about 2 variants with the brand name and about 2 variants without the brand name', $capturedPrompt);
         $this->assertStringContainsString('Industry or demand variants should use service, recommendation, comparison, and scenario terms', $capturedPrompt);
+        $this->assertStringContainsString('Brand mentions must be natural user questions, not stiff brand-plus-keyword phrases', $capturedPrompt);
+    }
+
+    public function test_ai_question_generation_filters_invalid_existing_and_duplicate_candidates_then_backfills(): void
+    {
+        MarkdownContentWriterAgent::fake(function (): string {
+            return json_encode([
+                '智能招聘系统',
+                '智能招聘系统推荐',
+                '元睿AI智能招聘系统',
+                '元睿AI适合做智能招聘系统吗？',
+                '企业AI招聘系统',
+                '企业 AI 招聘系统',
+                '中型企业想降低简历筛选和邀约成本，选',
+                str_repeat('智能招聘系统', 20),
+                '智能招聘软件有哪些值得推荐？',
+                '招聘系统怎么判断是否专业？',
+            ], JSON_UNESCAPED_UNICODE);
+        })->preventStrayPrompts();
+
+        $admin = $this->createAdmin('geo_question_filter_admin');
+        $site = $this->createSiteForAdmin($admin);
+        $library = KeywordLibrary::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Recruiting Project',
+            'company_name' => '元睿AI',
+            'domain_keyword' => '企业招聘',
+            'industry' => 'HR SaaS',
+            'brand_description' => '帮助企业降低简历筛选和邀约成本。',
+            'keyword_count' => 1,
+        ]);
+        $keyword = Keyword::query()->create([
+            'site_id' => (int) $site->id,
+            'library_id' => (int) $library->id,
+            'keyword' => '智能招聘系统',
+            'used_count' => 0,
+            'usage_count' => 0,
+        ]);
+        KeywordQuestionVariant::query()->create([
+            'site_id' => (int) $site->id,
+            'keyword_id' => (int) $keyword->id,
+            'question' => '智能招聘系统推荐',
+        ]);
+        AiModel::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Question Chat',
+            'version' => '',
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('test-key'),
+            'model_id' => 'test-chat',
+            'model_type' => 'chat',
+            'api_url' => 'https://ai.test/v1',
+            'failover_priority' => 1,
+            'daily_limit' => 100,
+            'used_today' => 0,
+            'total_used' => 0,
+            'status' => 'active',
+        ]);
+
+        $response = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->postJson(route('admin.keyword-libraries.keywords.questions.generate', [
+                'libraryId' => (int) $library->id,
+                'keywordId' => (int) $keyword->id,
+            ]), [
+                'count' => 5,
+            ]);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonCount(5, 'questions');
+
+        $questions = $response->json('questions');
+
+        $this->assertIsArray($questions);
+        $this->assertNotContains('智能招聘系统', $questions);
+        $this->assertNotContains('智能招聘系统推荐', $questions);
+        $this->assertNotContains('元睿AI智能招聘系统', $questions);
+        $this->assertContains('元睿AI适合做智能招聘系统吗？', $questions);
+        $this->assertNotContains('企业 AI 招聘系统', $questions);
+        $this->assertNotContains('中型企业想降低简历筛选和邀约成本，选', $questions);
+        $this->assertContains('智能招聘软件有哪些值得推荐？', $questions);
+        $this->assertContains('招聘系统怎么判断是否专业？', $questions);
+        $this->assertSame($questions, array_values(array_unique($questions)));
+        $this->assertSame(6, KeywordQuestionVariant::query()->where('keyword_id', (int) $keyword->id)->count());
     }
 
     public function test_keyword_library_detail_shows_all_question_variants(): void

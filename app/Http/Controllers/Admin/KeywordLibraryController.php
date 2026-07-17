@@ -401,20 +401,24 @@ class KeywordLibraryController extends Controller
         try {
             $this->assertQuotaForLibrary($library, PlatformPlan::RESOURCE_KEYWORD_QUESTION_GENERATIONS, 1);
             $questions = $this->questionVariantService->generate($keyword, $library, (int) ($payload['count'] ?? 5));
+            $createdQuestions = [];
             foreach ($questions as $question) {
-                KeywordQuestionVariant::query()->firstOrCreate([
+                $variant = KeywordQuestionVariant::query()->firstOrCreate([
                     'keyword_id' => (int) $keyword->id,
                     'question' => $question,
                 ], [
                     'site_id' => (int) ($keyword->site_id ?? $library->site_id ?? 0) ?: null,
                     'owner_admin_id' => (int) ($keyword->owner_admin_id ?? $library->owner_admin_id ?? 0) ?: $this->currentAdminId(auth('admin')->user()),
                 ]);
+                if ($variant->wasRecentlyCreated) {
+                    $createdQuestions[] = $question;
+                }
             }
             $this->consumeQuotaForLibrary($library, PlatformPlan::RESOURCE_KEYWORD_QUESTION_GENERATIONS, 1, '关键词问题生成消耗', Keyword::class, (int) $keyword->id);
 
             return response()->json([
                 'success' => true,
-                'questions' => $questions,
+                'questions' => $createdQuestions,
             ]);
         } catch (Throwable $e) {
             return response()->json([
