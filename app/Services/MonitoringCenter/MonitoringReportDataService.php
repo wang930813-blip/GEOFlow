@@ -11,7 +11,6 @@ use App\Models\GeoInclusionCheckResult;
 use App\Models\GeoInclusionCheckRun;
 use App\Models\KeywordLibrary;
 use App\Models\KeywordQuestionVariant;
-use App\Models\KnowledgeBase;
 use App\Models\Site;
 use App\Services\BrandDiagnosis\BrandDiagnosisPlatform;
 use App\Support\CurrentSite;
@@ -167,55 +166,22 @@ class MonitoringReportDataService
      */
     private function resolveCompanyName(array $context): string
     {
-        $knowledge = $this->scope(KnowledgeBase::query(), $context)
-            ->orderByDesc('created_at')
-            ->orderByDesc('id')
-            ->first(['name', 'description', 'content']);
-
-        if ($knowledge instanceof KnowledgeBase) {
-            $company = $this->extractCompanyName(implode("\n", [
-                (string) $knowledge->content,
-                (string) $knowledge->description,
-                (string) $knowledge->name,
-            ]));
-            if ($company !== '') {
-                return $company;
-            }
-        }
-
-        $libraryCompany = $this->scope(KeywordLibrary::query(), $context)
+        $libraryCompanies = $this->scope(KeywordLibrary::query(), $context)
             ->whereNotNull('company_name')
+            ->where('company_name', '<>', '')
             ->orderByDesc('updated_at')
             ->orderByDesc('id')
-            ->value('company_name');
-        if (is_string($libraryCompany) && trim($libraryCompany) !== '') {
-            return $this->cleanText($libraryCompany);
-        }
+            ->select('company_name')
+            ->cursor();
 
-        if ($context['site'] instanceof Site && trim((string) $context['site']->name) !== '') {
-            return $this->cleanText((string) $context['site']->name);
+        foreach ($libraryCompanies as $libraryCompany) {
+            $companyName = $this->cleanText((string) $libraryCompany->company_name);
+            if ($companyName !== '') {
+                return $companyName;
+            }
         }
 
         return $this->cleanText($context['admin']->name);
-    }
-
-    private function extractCompanyName(string $text): string
-    {
-        $text = trim($text);
-        if ($text === '') {
-            return '';
-        }
-
-        foreach ([
-            '/(?:公司名称|企业名称|品牌名称|公司名|企业名|品牌名)\s*[：:]\s*([^\r\n，,。；;]+)/u',
-            '/([一-龥A-Za-z0-9（）()·\-\s]{2,80}(?:有限责任公司|股份有限公司|有限公司|集团|公司))/u',
-        ] as $pattern) {
-            if (preg_match($pattern, $text, $matches) === 1) {
-                return $this->cleanText((string) $matches[1]);
-            }
-        }
-
-        return '';
     }
 
     private function cleanText(string $value): string

@@ -27,7 +27,7 @@ class MonitoringReportDataServiceTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_enterprise_report_uses_current_site_data_and_resolves_company_from_latest_knowledge_base(): void
+    public function test_enterprise_report_uses_current_site_data_and_resolves_company_from_keyword_library(): void
     {
         [$admin, $site] = $this->createAdminWithSite('monitoring_enterprise_user', 'site_user', '默认站点名称');
         [, $otherSite] = $this->createAdminWithSite('monitoring_enterprise_other', 'site_user', '其他站点');
@@ -45,7 +45,7 @@ class MonitoringReportDataServiceTest extends TestCase
             'site_id' => (int) $site->id,
             'owner_admin_id' => (int) $admin->id,
             'name' => '最新知识库',
-            'content' => '公司名称：星河智能科技有限公司'."\n".'主营：AI 搜索优化与内容增长',
+            'content' => '公司名称：知识库不应作为报表企业名'."\n".'主营：AI 搜索优化与内容增长',
             'created_at' => now()->subDay(),
         ]);
 
@@ -120,6 +120,60 @@ class MonitoringReportDataServiceTest extends TestCase
         $this->assertStringNotContainsString('其他公司问题不应出现', $flatJson);
         $this->assertStringNotContainsString('其他竞品', $flatJson);
         $this->assertStringNotContainsString('其他文章', $flatJson);
+    }
+
+    public function test_report_company_name_uses_latest_non_empty_keyword_library_company_name(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('monitoring_company_name_user', 'site_user', '不应兜底到站点名');
+
+        app(CurrentSite::class)->set($site);
+
+        KeywordLibrary::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'name' => '旧关键词库',
+            'company_name' => '旧公司名称',
+            'domain_keyword' => '旧关键词',
+            'status' => 'active',
+            'keyword_count' => 1,
+            'created_at' => now()->subDays(3),
+            'updated_at' => now()->subDays(3),
+        ]);
+        KeywordLibrary::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'name' => '最新有效关键词库',
+            'company_name' => '最新有效公司名称',
+            'domain_keyword' => '有效关键词',
+            'status' => 'active',
+            'keyword_count' => 1,
+            'created_at' => now()->subDay(),
+            'updated_at' => now()->subDay(),
+        ]);
+        KeywordLibrary::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'name' => '最新空公司名关键词库',
+            'company_name' => '   ',
+            'domain_keyword' => '空公司名关键词',
+            'status' => 'active',
+            'keyword_count' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        KnowledgeBase::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'name' => '不参与企业名识别的知识库',
+            'content' => '公司名称：知识库公司名称',
+            'created_at' => now(),
+        ]);
+
+        $enterpriseReport = app(MonitoringReportDataService::class)->enterpriseReport($admin, $site);
+        $industryReport = app(MonitoringReportDataService::class)->industryReport($admin, $site);
+
+        $this->assertSame('最新有效公司名称', $enterpriseReport['context']['company_name']);
+        $this->assertSame('最新有效公司名称', $industryReport['context']['company_name']);
     }
 
     public function test_xueshuyi_enterprise_report_prepends_five_static_snapshots_before_dynamic_rows(): void
@@ -303,7 +357,7 @@ class MonitoringReportDataServiceTest extends TestCase
 
         $report = app(MonitoringReportDataService::class)->enterpriseReport($admin, $site);
 
-        $this->assertSame('星河智能科技有限公司', $report['context']['company_name']);
+        $this->assertSame('monitoring_empty_enterprise_user', $report['context']['company_name']);
         $this->assertSame([], $report['model_collection']);
         $this->assertSame([], $report['metrics']);
         $this->assertCount(11, $report['platform_filters']);
