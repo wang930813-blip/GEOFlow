@@ -155,7 +155,7 @@ class MonitoringReportDataServiceTest extends TestCase
             'owner_admin_id' => (int) $admin->id,
             'name' => '最新空公司名关键词库',
             'company_name' => '   ',
-            'domain_keyword' => '空公司名关键词',
+            'domain_keyword' => '核心服务？、另一个服务',
             'status' => 'active',
             'keyword_count' => 1,
             'created_at' => now(),
@@ -174,6 +174,7 @@ class MonitoringReportDataServiceTest extends TestCase
 
         $this->assertSame('最新有效公司名称', $enterpriseReport['context']['company_name']);
         $this->assertSame('最新有效公司名称', $industryReport['context']['company_name']);
+        $this->assertSame(['核心服务、另一个服务'], $industryReport['brand_profile']['core_services']);
     }
 
     public function test_xueshuyi_enterprise_report_prepends_five_static_snapshots_before_dynamic_rows(): void

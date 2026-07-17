@@ -188,7 +188,7 @@ class MonitoringReportDataService
     {
         $value = $this->normalizeUtf8Text($value);
         $value = preg_replace('/\x{FFFD}+/u', '', $value) ?? $value;
-        $value = preg_replace('/(?<=\p{Han})\?(?=$|[\s,，、。；;:\-]|\p{Han})/u', '', $value) ?? $value;
+        $value = preg_replace('/(?<=\p{Han})[?？]+(?=$|[\s,，、。；;:\-]|\p{Han})/u', '', $value) ?? $value;
         $value = trim(preg_replace('/\s+/u', ' ', $value) ?? $value);
 
         return trim($value, " \t\n\r\0\x0B：:，,。；;?？");
