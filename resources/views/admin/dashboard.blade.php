@@ -7,6 +7,10 @@
         $isAgentDashboard = $currentDashboardAdmin?->isAgentAdmin() ?? false;
         $canManageAiConfig = $isSuperAdminDashboard || $isAgentDashboard;
         $canCreateContent = ! $isAgentDashboard;
+        $adminDisplaySettings = $adminDisplaySettings ?? [];
+        $quickStartEyebrow = $adminDisplaySettings['admin_quick_start_eyebrow'] ?? __('admin.dashboard.quick_start.eyebrow');
+        $quickStartTitle = $adminDisplaySettings['admin_quick_start_title'] ?? __('admin.dashboard.quick_start.title');
+        $quickStartSubtitle = $adminDisplaySettings['admin_quick_start_subtitle'] ?? __('admin.dashboard.quick_start.subtitle');
         $singleSiteCards = [
             $canManageAiConfig ? [
                 'title' => __('admin.dashboard.navigation.ai_config_title'),
@@ -133,9 +137,9 @@
 
         <section class="mb-8 overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-gray-200">
             <div class="border-b border-gray-100 px-6 py-5">
-                <p class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600">{{ __('admin.dashboard.quick_start.eyebrow') }}</p>
-                <h2 class="mt-2 text-xl font-semibold text-gray-900">{{ __('admin.dashboard.quick_start.title') }}</h2>
-                <p class="mt-2 max-w-3xl text-sm leading-6 text-gray-500">{{ __('admin.dashboard.quick_start.subtitle') }}</p>
+                <p class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600">{{ $quickStartEyebrow }}</p>
+                <h2 class="mt-2 text-xl font-semibold text-gray-900">{{ $quickStartTitle }}</h2>
+                <p class="mt-2 max-w-3xl text-sm leading-6 text-gray-500">{{ $quickStartSubtitle }}</p>
             </div>
 
             <div class="grid grid-cols-1 divide-y divide-gray-100 lg:grid-cols-3 lg:divide-x lg:divide-y-0">

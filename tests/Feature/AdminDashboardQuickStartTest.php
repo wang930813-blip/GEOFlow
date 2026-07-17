@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Admin;
+use App\Models\SiteSetting;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -97,6 +98,41 @@ class AdminDashboardQuickStartTest extends TestCase
         $this->assertSame(1, substr_count($html, route('admin.keyword-libraries.index')));
         $this->assertSame(1, substr_count($html, route('admin.image-libraries.index')));
         $this->assertSame(1, substr_count($html, route('admin.authors.index')));
+    }
+
+    public function test_dashboard_quick_start_and_footer_use_configurable_admin_display_copy(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'dashboard_display_copy_admin',
+            'password' => 'secret-123',
+            'email' => 'dashboard-display-copy@example.com',
+            'display_name' => 'Dashboard Display Admin',
+            'role' => 'super_admin',
+            'status' => 'active',
+        ]);
+
+        foreach ([
+            'admin_quick_start_eyebrow' => 'Operator Launch',
+            'admin_quick_start_title' => 'Launch custom AI production',
+            'admin_quick_start_subtitle' => 'Prepare the model and reusable assets before creating tasks.',
+            'admin_footer_brand' => 'Acme Console',
+            'admin_footer_version' => '9.9.1',
+        ] as $key => $value) {
+            SiteSetting::withoutGlobalScope('current_site')->create([
+                'site_id' => null,
+                'setting_key' => $key,
+                'setting_value' => $value,
+            ]);
+        }
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.dashboard'))
+            ->assertOk()
+            ->assertSee('Operator Launch')
+            ->assertSee('Launch custom AI production')
+            ->assertSee('Prepare the model and reusable assets before creating tasks.')
+            ->assertSee('© '.date('Y').' Acme Console')
+            ->assertSee('9.9.1');
     }
 
     public function test_site_user_dashboard_hides_ai_configuration_and_shows_publish_step(): void

@@ -91,6 +91,68 @@
                         </p>
                     </div>
 
+                    @if ($canEditAdminDisplaySettings ?? false)
+                        <div class="rounded-lg border border-blue-100 bg-blue-50/60 p-5">
+                            <div class="mb-5">
+                                <h4 class="text-lg font-medium text-gray-900">后台展示文案</h4>
+                                <p class="mt-1 text-sm text-gray-600">配置后台首页、页脚和媒体分发平台名称，仅超级管理员可修改。</p>
+                            </div>
+
+                            <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
+                                <div>
+                                    <label class="mb-2 block text-sm font-medium text-gray-700">快速开始角标</label>
+                                    <input type="text" name="admin_quick_start_eyebrow"
+                                           value="{{ old('admin_quick_start_eyebrow', $adminDisplaySettings['admin_quick_start_eyebrow'] ?? '') }}"
+                                           class="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                </div>
+                                <div>
+                                    <label class="mb-2 block text-sm font-medium text-gray-700">快速开始标题</label>
+                                    <input type="text" name="admin_quick_start_title"
+                                           value="{{ old('admin_quick_start_title', $adminDisplaySettings['admin_quick_start_title'] ?? '') }}"
+                                           class="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                </div>
+                                <div class="md:col-span-2">
+                                    <label class="mb-2 block text-sm font-medium text-gray-700">快速开始说明</label>
+                                    <textarea name="admin_quick_start_subtitle" rows="2"
+                                              class="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500">{{ old('admin_quick_start_subtitle', $adminDisplaySettings['admin_quick_start_subtitle'] ?? '') }}</textarea>
+                                </div>
+                                <div>
+                                    <label class="mb-2 block text-sm font-medium text-gray-700">后台页脚品牌</label>
+                                    <input type="text" name="admin_footer_brand"
+                                           value="{{ old('admin_footer_brand', $adminDisplaySettings['admin_footer_brand'] ?? '') }}"
+                                           class="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                </div>
+                                <div>
+                                    <label class="mb-2 block text-sm font-medium text-gray-700">后台版本号</label>
+                                    <input type="text" name="admin_footer_version"
+                                           value="{{ old('admin_footer_version', $adminDisplaySettings['admin_footer_version'] ?? '') }}"
+                                           class="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                </div>
+                            </div>
+
+                            <div class="mt-6 border-t border-blue-100 pt-5">
+                                <div class="mb-4">
+                                    <h5 class="text-sm font-semibold text-gray-900">分发媒体平台名称</h5>
+                                    <p class="mt-1 text-xs text-gray-500">只修改后台页面展示名称，不改变平台编号、接口配置和历史订单数据。</p>
+                                </div>
+                                <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
+                                    <div>
+                                        <label class="mb-2 block text-sm font-medium text-gray-700">平台 1 名称</label>
+                                        <input type="text" name="media_platform_1_label"
+                                               value="{{ old('media_platform_1_label', $adminDisplaySettings['media_platform_1_label'] ?? '') }}"
+                                               class="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                    </div>
+                                    <div>
+                                        <label class="mb-2 block text-sm font-medium text-gray-700">平台 2 名称</label>
+                                        <input type="text" name="media_platform_2_label"
+                                               value="{{ old('media_platform_2_label', $adminDisplaySettings['media_platform_2_label'] ?? '') }}"
+                                               class="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    @endif
+
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">{{ __('admin.site_settings.field_description') }}</label>
                         <textarea name="site_description" rows="3"

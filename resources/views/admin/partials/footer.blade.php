@@ -1,10 +1,12 @@
 @php
-    $appVersion = (string) config('geoflow.app_version', '2.0');
+    $adminDisplaySettings = $adminDisplaySettings ?? [];
+    $footerBrand = (string) ($adminDisplaySettings['admin_footer_brand'] ?? 'GEO');
+    $appVersion = (string) ($adminDisplaySettings['admin_footer_version'] ?? config('geoflow.app_version', '2.0'));
 @endphp
 <footer class="bg-white border-t border-gray-200 mt-12">
     <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
         <div class="flex flex-col md:flex-row md:flex-wrap justify-center items-center gap-3 md:gap-4 text-sm text-gray-500 text-center">
-            <span>{{ __('admin.footer.copyright') }}</span>
+            <span>© {{ date('Y') }} {{ $footerBrand }}</span>
             <span>|</span>
             <span>{{ __('admin.footer.version', ['version' => $appVersion]) }}</span>
         </div>

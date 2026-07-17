@@ -16,6 +16,7 @@ use App\Models\MediaSubmission;
 use App\Models\Site;
 use App\Models\SiteCreditAccount;
 use App\Models\SiteCreditLedger;
+use App\Models\SiteSetting;
 use App\Services\MediaDistribution\MediaResourceSyncService;
 use App\Support\MediaDistribution\MediaPlatform;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
@@ -39,6 +40,43 @@ class AdminMediaDistributionTest extends TestCase
             ->assertSee(route('admin.media-distribution.resources.index'), false)
             ->assertSee('官媒发布')
             ->assertDontSee(route('admin.distribution.index'), false);
+    }
+
+    public function test_media_platform_labels_use_configurable_admin_display_settings(): void
+    {
+        [$superAdmin] = $this->createAdminWithSite('media_label_root_admin', 'super_admin');
+
+        SiteSetting::withoutEvents(function (): void {
+            foreach ([
+                'media_platform_1_label' => 'Authority Plus',
+                'media_platform_2_label' => 'Quality Plus',
+            ] as $key => $value) {
+                SiteSetting::withoutGlobalScope('current_site')->create([
+                    'site_id' => null,
+                    'setting_key' => $key,
+                    'setting_value' => $value,
+                ]);
+            }
+        });
+
+        MediaResource::query()->create([
+            'platform_id' => MediaPlatform::CEYING_MEDIA_1,
+            'source_type' => MediaResource::SOURCE_WEBSITE,
+            'external_resource_id' => 'custom-platform-resource',
+            'title' => 'Custom Platform Resource',
+            'status' => 'active',
+            'cost_price' => '10.00',
+            'sale_price' => '12.00',
+        ]);
+
+        $this->assertSame('Authority Plus', MediaPlatform::label(MediaPlatform::CEYING_MEDIA_1));
+        $this->assertSame('Quality Plus', MediaPlatform::label(MediaPlatform::CEYING_MEDIA_2));
+
+        $this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.media-distribution.resources.index'))
+            ->assertOk()
+            ->assertSee('Authority Plus')
+            ->assertSee('Quality Plus');
     }
 
     public function test_super_admin_can_configure_api_and_sync_media_resources(): void

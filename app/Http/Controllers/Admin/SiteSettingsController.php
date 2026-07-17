@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Site;
 use App\Models\SiteSetting;
 use App\Support\AdminBasePathManager;
+use App\Support\AdminDisplaySettings;
 use App\Support\AdminWeb;
 use App\Support\CurrentSite;
 use App\Support\SiteDomain;
@@ -35,6 +36,7 @@ class SiteSettingsController extends Controller
     {
         $settings = $this->loadSettings();
         $currentSite = app(CurrentSite::class)->get();
+        $canEditAdminDisplaySettings = auth('admin')->user()?->isSuperAdmin() === true;
 
         return view('admin.site-settings.index', [
             'pageTitle' => __('admin.site_settings.page_title'),
@@ -43,6 +45,8 @@ class SiteSettingsController extends Controller
             'settings' => $settings,
             'publicDomain' => (string) ($currentSite?->domain ?? ''),
             'canEditAnalytics' => auth('admin')->user()?->isSuperAdmin() === true,
+            'canEditAdminDisplaySettings' => $canEditAdminDisplaySettings,
+            'adminDisplaySettings' => AdminDisplaySettings::all(),
             'canEditDomainSettings' => $this->canEditDomainSettings(),
             'availableThemes' => $this->siteThemeCatalog->all(),
             'homeCarouselSlides' => $this->parseHomeCarouselSlides((string) ($settings['home_carousel_slides'] ?? '[]')),
@@ -58,7 +62,8 @@ class SiteSettingsController extends Controller
     {
         $currentAdminBasePath = AdminWeb::basePath();
         $canEditDomainSettings = $this->canEditDomainSettings();
-        $payload = $request->validate([
+        $canEditAdminDisplaySettings = auth('admin')->user()?->isSuperAdmin() === true;
+        $rules = [
             'site_name' => ['required', 'string', 'max:120'],
             'site_subtitle' => ['nullable', 'string', 'max:255'],
             'site_description' => ['nullable', 'string'],
@@ -95,7 +100,21 @@ class SiteSettingsController extends Controller
                 'regex:/^[a-z0-9][a-z0-9_-]*[a-z0-9]$/',
                 Rule::notIn(AdminBasePathManager::reservedSegments()),
             ],
-        ], [
+        ];
+
+        if ($canEditAdminDisplaySettings) {
+            $rules = array_merge($rules, [
+                'admin_quick_start_eyebrow' => ['nullable', 'string', 'max:120'],
+                'admin_quick_start_title' => ['nullable', 'string', 'max:200'],
+                'admin_quick_start_subtitle' => ['nullable', 'string', 'max:500'],
+                'admin_footer_brand' => ['nullable', 'string', 'max:120'],
+                'admin_footer_version' => ['nullable', 'string', 'max:60'],
+                'media_platform_1_label' => ['nullable', 'string', 'max:120'],
+                'media_platform_2_label' => ['nullable', 'string', 'max:120'],
+            ]);
+        }
+
+        $payload = $request->validate($rules, [
             'site_name.required' => __('admin.site_settings.error.site_name_required'),
             'admin_base_path.required' => __('admin.site_settings.error.admin_base_path_required'),
             'admin_base_path.min' => __('admin.site_settings.error.admin_base_path_invalid'),
@@ -162,6 +181,10 @@ class SiteSettingsController extends Controller
                 ['setting_key' => $settingKey],
                 ['setting_value' => $settingValue]
             );
+        }
+
+        if ($canEditAdminDisplaySettings) {
+            AdminDisplaySettings::update($payload);
         }
 
         if ($canEditDomainSettings && $currentSite instanceof Site) {

@@ -35,6 +35,112 @@ class AdminSiteSettingsPageTest extends TestCase
             ->assertSee('value="'.AdminWeb::basePath().'"', false);
     }
 
+    public function test_super_admin_can_update_admin_display_settings(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+
+        $admin = Admin::query()->create([
+            'username' => 'site_display_copy_root',
+            'password' => 'secret-123',
+            'email' => 'site-display-copy-root@example.com',
+            'display_name' => 'Site Display Copy Root',
+            'role' => 'super_admin',
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.site-settings.index'))
+            ->assertOk()
+            ->assertSee('后台展示文案')
+            ->assertSee('name="admin_quick_start_title"', false)
+            ->assertSee('name="media_platform_1_label"', false);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.site-settings.update'), [
+                'site_name' => 'Frontend Site',
+                'site_subtitle' => '',
+                'site_description' => '',
+                'site_keywords' => '',
+                'copyright_info' => '',
+                'site_logo' => '',
+                'site_favicon' => '',
+                'analytics_code' => '',
+                'seo_title_template' => '{title} - {site_name}',
+                'seo_description_template' => '{description}',
+                'featured_limit' => 6,
+                'per_page' => 12,
+                'admin_base_path' => AdminWeb::basePath(),
+                'admin_quick_start_eyebrow' => 'Operator Launch',
+                'admin_quick_start_title' => 'Launch custom AI production',
+                'admin_quick_start_subtitle' => 'Prepare model, assets and tasks.',
+                'admin_footer_brand' => 'Acme Console',
+                'admin_footer_version' => '9.9.1',
+                'media_platform_1_label' => 'Authority Plus',
+                'media_platform_2_label' => 'Quality Plus',
+            ])
+            ->assertRedirect(route('admin.site-settings.index'));
+
+        foreach ([
+            'admin_quick_start_eyebrow' => 'Operator Launch',
+            'admin_quick_start_title' => 'Launch custom AI production',
+            'admin_quick_start_subtitle' => 'Prepare model, assets and tasks.',
+            'admin_footer_brand' => 'Acme Console',
+            'admin_footer_version' => '9.9.1',
+            'media_platform_1_label' => 'Authority Plus',
+            'media_platform_2_label' => 'Quality Plus',
+        ] as $key => $value) {
+            $this->assertSame(
+                $value,
+                (string) SiteSetting::withoutGlobalScope('current_site')
+                    ->whereNull('site_id')
+                    ->where('setting_key', $key)
+                    ->value('setting_value')
+            );
+        }
+    }
+
+    public function test_non_super_admin_cannot_view_or_update_admin_display_settings(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+
+        [$admin, $site] = $this->createAdminWithSite('site_display_copy_admin');
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => $site->id])
+            ->get(route('admin.site-settings.index'))
+            ->assertOk()
+            ->assertDontSee('name="admin_quick_start_title"', false)
+            ->assertDontSee('name="media_platform_1_label"', false);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => $site->id])
+            ->post(route('admin.site-settings.update'), [
+                'site_name' => 'Frontend Site',
+                'site_subtitle' => '',
+                'site_description' => '',
+                'site_keywords' => '',
+                'copyright_info' => '',
+                'site_logo' => '',
+                'site_favicon' => '',
+                'analytics_code' => '',
+                'seo_title_template' => '{title} - {site_name}',
+                'seo_description_template' => '{description}',
+                'featured_limit' => 6,
+                'per_page' => 12,
+                'admin_base_path' => AdminWeb::basePath(),
+                'admin_quick_start_title' => 'Should Not Save',
+                'media_platform_1_label' => 'Should Not Save',
+            ])
+            ->assertRedirect(route('admin.site-settings.index'));
+
+        $this->assertFalse(
+            SiteSetting::withoutGlobalScope('current_site')
+                ->whereNull('site_id')
+                ->whereIn('setting_key', ['admin_quick_start_title', 'media_platform_1_label'])
+                ->exists()
+        );
+    }
+
     public function test_admin_can_update_current_site_public_domain(): void
     {
         $this->withoutMiddleware(ValidateCsrfToken::class);

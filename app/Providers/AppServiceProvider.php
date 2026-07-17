@@ -11,6 +11,7 @@ use App\Services\GeoFlow\HorizonMetricsAdapter;
 use App\Services\GeoFlow\JobQueueService;
 use App\Services\GeoFlow\TaskLifecycleService;
 use App\Services\GeoFlow\TaskMonitoringQueryService;
+use App\Support\AdminDisplaySettings;
 use App\Support\CurrentSite;
 use App\View\Composers\SiteLayoutComposer;
 use Illuminate\Support\Facades\View;
@@ -53,6 +54,7 @@ class AppServiceProvider extends ServiceProvider
                     'availableSites' => $admin instanceof Admin
                         ? $this->availableSitesForAdmin($admin)
                         : collect(),
+                    'adminDisplaySettings' => AdminDisplaySettings::all(),
                 ];
             });
 

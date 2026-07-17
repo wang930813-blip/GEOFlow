@@ -19,6 +19,7 @@ use App\Models\TaskRun;
 use App\Models\Title;
 use App\Models\TitleLibrary;
 use App\Models\UrlImportJob;
+use App\Support\AdminDisplaySettings;
 use App\Support\AdminWeb;
 use App\Support\CurrentSite;
 use Illuminate\Support\Carbon;
@@ -37,6 +38,7 @@ class DashboardController extends Controller
             'pageTitle' => __('admin.dashboard.page_title'),
             'activeMenu' => 'dashboard',
             'adminSiteName' => AdminWeb::siteName(),
+            'adminDisplaySettings' => AdminDisplaySettings::all(),
         ]);
     }
 
