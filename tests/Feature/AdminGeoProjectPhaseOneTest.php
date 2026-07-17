@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Ai\Agents\MarkdownContentWriterAgent;
 use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\Keyword;
@@ -149,6 +150,78 @@ class AdminGeoProjectPhaseOneTest extends TestCase
             ->assertJsonPath('questions.1', 'How do brands improve GEO visibility?');
 
         $this->assertSame(2, KeywordQuestionVariant::query()->where('keyword_id', (int) $keyword->id)->count());
+    }
+
+    public function test_ai_question_generation_prompt_requests_mixed_query_types(): void
+    {
+        $capturedPrompt = null;
+        MarkdownContentWriterAgent::fake(function (string $prompt) use (&$capturedPrompt): string {
+            $capturedPrompt = $prompt;
+
+            return json_encode([
+                '论文润色平台',
+                '写作指导怎么选',
+                '论文润色和写作指导服务怎么选？',
+                '论文润色平台怎么判断是否专业？',
+                '硕士论文需要润色和写作指导，线上服务靠谱吗？',
+            ], JSON_UNESCAPED_UNICODE);
+        })->preventStrayPrompts();
+
+        $admin = $this->createAdmin('geo_question_prompt_mix_admin');
+        $site = $this->createSiteForAdmin($admin);
+        $library = KeywordLibrary::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Academic Project',
+            'company_name' => '学术易',
+            'domain_keyword' => '科研论文服务',
+            'industry' => '学术服务',
+            'brand_description' => '提供论文润色和写作指导服务。',
+            'keyword_count' => 1,
+        ]);
+        $keyword = Keyword::query()->create([
+            'site_id' => (int) $site->id,
+            'library_id' => (int) $library->id,
+            'keyword' => '论文润色和写作指导怎么选',
+            'used_count' => 0,
+            'usage_count' => 0,
+        ]);
+        AiModel::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Question Chat',
+            'version' => '',
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('test-key'),
+            'model_id' => 'test-chat',
+            'model_type' => 'chat',
+            'api_url' => 'https://ai.test/v1',
+            'failover_priority' => 1,
+            'daily_limit' => 100,
+            'used_today' => 0,
+            'total_used' => 0,
+            'status' => 'active',
+        ]);
+
+        $response = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->postJson(route('admin.keyword-libraries.keywords.questions.generate', [
+                'libraryId' => (int) $library->id,
+                'keywordId' => (int) $keyword->id,
+            ]), [
+                'count' => 5,
+            ]);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('questions.0', '论文润色平台')
+            ->assertJsonPath('questions.4', '硕士论文需要润色和写作指导，线上服务靠谱吗？');
+
+        $this->assertIsString($capturedPrompt);
+        $this->assertStringContainsString('Query mix:', $capturedPrompt);
+        $this->assertStringContainsString('2 short keyword-style searches', $capturedPrompt);
+        $this->assertStringContainsString('2 medium direct questions', $capturedPrompt);
+        $this->assertStringContainsString('1 scenario-based decision question', $capturedPrompt);
+        $this->assertStringContainsString('Keyword intent guidance:', $capturedPrompt);
+        $this->assertStringContainsString('short searches do not need question marks', $capturedPrompt);
     }
 
     public function test_keyword_library_detail_shows_all_question_variants(): void

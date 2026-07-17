@@ -66,14 +66,19 @@ class GeoQuestionVariantService
     private function buildPrompt(Keyword $keyword, KeywordLibrary $library, int $count): string
     {
         return implode("\n", [
-            'Generate '.$count.' natural user questions for AI search inclusion checks.',
-            'Return only a JSON string array.',
+            'Generate '.$count.' Chinese AI search query variants for AI search inclusion checks.',
+            'Return only a JSON string array. Do not include markdown, numbering, or explanations.',
             'Keyword: '.(string) $keyword->keyword,
             'Company/brand: '.(string) ($library->company_name ?? ''),
             'Domain keyword: '.(string) ($library->domain_keyword ?? ''),
             'Industry: '.(string) ($library->industry ?? ''),
             'Brand description: '.(string) ($library->brand_description ?? $library->description ?? ''),
-            'Rules: questions should be realistic, varied, and likely to make Doubao, Qianwen, or DeepSeek mention relevant brands or solutions.',
+            'Keyword intent guidance: Treat the keyword as the main search intent. Expand around its core phrases, user need, selection criteria, recommendation intent, or comparison intent. Do not drift into unrelated topics.',
+            'Query mix: when generating 5 items, include exactly 2 short keyword-style searches, 2 medium direct questions, and 1 scenario-based decision question. If the requested count is not 5, keep this mix proportionally.',
+            'Short keyword-style searches: concise search phrases, usually 4-14 Chinese characters when possible; short searches do not need question marks.',
+            'Medium direct questions: natural and direct questions around the keyword intent, usually 10-28 Chinese characters.',
+            'Scenario-based decision question: include a concrete user scenario, need, or decision background, but avoid being overly long.',
+            'Rules: variants should be realistic, varied, and likely to make Doubao, Qianwen, DeepSeek, or Wenxin mention relevant brands or solutions. Avoid marketing slogans and duplicate phrasing.',
         ]);
     }
 
