@@ -222,6 +222,9 @@ class AdminGeoProjectPhaseOneTest extends TestCase
         $this->assertStringContainsString('1 scenario-based decision question', $capturedPrompt);
         $this->assertStringContainsString('Keyword intent guidance:', $capturedPrompt);
         $this->assertStringContainsString('short searches do not need question marks', $capturedPrompt);
+        $this->assertStringContainsString('Do not make every variant repeat the keyword verbatim', $capturedPrompt);
+        $this->assertStringContainsString('For brand-name keywords, include about 2 variants with the brand name and about 2 variants without the brand name', $capturedPrompt);
+        $this->assertStringContainsString('Industry or demand variants should use service, recommendation, comparison, and scenario terms', $capturedPrompt);
     }
 
     public function test_keyword_library_detail_shows_all_question_variants(): void
