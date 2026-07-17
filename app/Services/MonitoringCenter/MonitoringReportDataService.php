@@ -15,6 +15,7 @@ use App\Models\KnowledgeBase;
 use App\Models\Site;
 use App\Services\BrandDiagnosis\BrandDiagnosisPlatform;
 use App\Support\CurrentSite;
+use App\Support\MonitoringCenter\VirtualSearchReportSnapshots;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
@@ -49,7 +50,13 @@ class MonitoringReportDataService
         $context = $this->resolveContext($admin, $site);
         $companyName = $this->resolveCompanyName($context);
         $modelCollection = $this->modelCollection($context);
-        $searchRows = $this->searchRows($context, $companyName);
+        $dynamicSearchRows = $this->searchRows($context, $companyName);
+        $isXueshuyiBrand = $this->isXueshuyiBrand($companyName);
+        $xueshuyiStaticSearchRows = $isXueshuyiBrand ? $this->xueshuyiStaticSearchRows() : [];
+        $searchRows = [...$xueshuyiStaticSearchRows, ...$dynamicSearchRows];
+        $searchReportCount = (int) $this->scope(BrandDiagnosisResult::query(), $context)
+            ->where('status', 'success')
+            ->count() + count($xueshuyiStaticSearchRows);
         $distillationWords = $this->distillationWords($context);
         $platformCount = $this->distinctPlatforms($context)->count();
         $articleTrend = $this->articleTrend($context);
@@ -57,7 +64,7 @@ class MonitoringReportDataService
             'model_collection_total' => $this->metric((int) collect($modelCollection)->sum('value'), 12),
             'distillation_word_count' => $this->metric((int) $this->scope(KeywordQuestionVariant::query(), $context)->count(), 20),
             'new_distillation_word_count' => $this->metric((int) $this->scope(KeywordQuestionVariant::query(), $context)->whereDate('created_at', now()->toDateString())->count(), 3),
-            'search_report_count' => $this->metric((int) $this->scope(BrandDiagnosisResult::query(), $context)->where('status', 'success')->count(), 10),
+            'search_report_count' => $this->metric($searchReportCount, 10),
             'platform_count' => $this->metric($platformCount, 5),
             'source_count' => $this->metric((int) $this->scope(BrandDiagnosisSource::query(), $context)->count(), 10),
         ];
@@ -71,6 +78,7 @@ class MonitoringReportDataService
             'platform_filters' => $this->platformFilters($searchRows),
             'trend' => $articleTrend,
             'search_rows' => $searchRows,
+            'has_xueshuyi_static_search_rows' => $isXueshuyiBrand,
         ];
 
         return $this->sanitizeReportPayload($report);
@@ -584,6 +592,51 @@ class MonitoringReportDataService
                 ];
             })
             ->values()
+            ->all();
+    }
+
+    private function isXueshuyiBrand(string $companyName): bool
+    {
+        return str_contains(preg_replace('/\s+/u', '', $companyName) ?? $companyName, '学术易');
+    }
+
+    /**
+     * @return list<array<string,mixed>>
+     */
+    private function xueshuyiStaticSearchRows(): array
+    {
+        $baseTime = now()->startOfDay()->setTime(10, 30);
+
+        return collect(VirtualSearchReportSnapshots::all())
+            ->values()
+            ->map(function (array $snapshot, int $index) use ($baseTime): array {
+                $checkedAt = $baseTime->copy()->addMinutes($index);
+                $snapshotId = (int) $snapshot['id'];
+
+                return [
+                    'id' => $snapshotId,
+                    'question' => (string) $snapshot['question'],
+                    'platform_key' => BrandDiagnosisPlatform::WENXIN,
+                    'platform' => BrandDiagnosisPlatform::label(BrandDiagnosisPlatform::WENXIN),
+                    'platform_url' => BrandDiagnosisPlatform::chatUrl(BrandDiagnosisPlatform::WENXIN),
+                    'terminal' => 'PC',
+                    'date' => $checkedAt->toDateString(),
+                    'time' => $checkedAt->format('Y-m-d H:i:s'),
+                    'target' => '学术易',
+                    'answer' => (string) $snapshot['answer'],
+                    'sources' => collect((array) ($snapshot['sources'] ?? []))
+                        ->map(static fn (array $source): array => [
+                            'title' => (string) ($source['title'] ?? ''),
+                            'url' => (string) ($source['url'] ?? ''),
+                            'domain' => (string) (parse_url((string) ($source['url'] ?? ''), PHP_URL_HOST) ?: ''),
+                        ])
+                        ->values()
+                        ->all(),
+                    'related_articles' => [],
+                    'official_url' => (string) $snapshot['url'],
+                    'snapshot_url' => route('admin.snapshot-voucher.show', ['id' => $snapshotId]),
+                ];
+            })
             ->all();
     }
 

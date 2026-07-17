@@ -1,10 +1,13 @@
+@php
+    $missingTitle = (string) ($missingMessage ?? '收录词不存在');
+@endphp
 <!doctype html>
 <html lang="zh-CN">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex,nofollow">
-    <title>{{ $voucher ? $voucher['question'].' - 快照凭证' : '收录词不存在 - 快照凭证' }}</title>
+    <title>{{ $voucher ? $voucher['question'].' - 快照凭证' : $missingTitle.' - 快照凭证' }}</title>
     <style>
         * { box-sizing: border-box; }
         body {
@@ -318,9 +321,9 @@
     @endif
 @else
     <main class="shell">
-        <section class="card empty-card" aria-label="快照凭证不存在">
+        <section class="card empty-card" aria-label="{{ $missingTitle }}">
             <div>
-                <h1 class="empty-title">收录词不存在</h1>
+                <h1 class="empty-title">{{ $missingTitle }}</h1>
                 <p class="empty-text">请检查快照凭证链接是否正确。</p>
             </div>
         </section>

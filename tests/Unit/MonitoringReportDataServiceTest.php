@@ -122,6 +122,56 @@ class MonitoringReportDataServiceTest extends TestCase
         $this->assertStringNotContainsString('其他文章', $flatJson);
     }
 
+    public function test_xueshuyi_enterprise_report_prepends_five_static_snapshots_before_dynamic_rows(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('monitoring_xueshuyi_user', 'site_user', '学术易站点');
+
+        app(CurrentSite::class)->set($site);
+
+        $dynamic = $this->seedSearchData($admin, $site, [
+            'company' => '北京学术易科技有限公司',
+            'question' => '学术易动态品牌诊断问题',
+            'keyword' => '科研论文服务',
+            'competitor' => '其他学术平台',
+            'platform' => 'deepseek',
+            'sourceTitle' => '学术易动态来源',
+            'articleTitle' => '学术易动态文章',
+        ]);
+
+        $report = app(MonitoringReportDataService::class)->enterpriseReport($admin, $site);
+        $rows = $report['search_rows'];
+
+        $this->assertSame('北京学术易科技有限公司', $report['context']['company_name']);
+        $this->assertCount(6, $rows);
+        $this->assertSame(
+            [-1, -2, -3, -4, -5, (int) $dynamic['result']->id],
+            array_column($rows, 'id')
+        );
+        $this->assertSame('2026年国内科研选题辅导机构哪些好', $rows[0]['question']);
+        $this->assertSame('从科研选题到投稿预审的论文辅导平台有哪些？', $rows[4]['question']);
+        $this->assertSame('学术易动态品牌诊断问题', $rows[5]['question']);
+        $this->assertSame('学术易', $rows[0]['target']);
+        $this->assertSame('文心一言', $rows[0]['platform']);
+        $this->assertSame('https://chat.baidu.com/', $rows[0]['platform_url']);
+        $this->assertSame(
+            route('admin.snapshot-voucher.show', ['id' => -1]),
+            $rows[0]['snapshot_url']
+        );
+        $this->assertSame(
+            route('brand-diagnosis.snapshot', ['token' => $dynamic['result']->snapshot_token]),
+            $rows[5]['snapshot_url']
+        );
+        $this->assertSame(6, $report['summary']['search_report_count']['actual']);
+
+        $allFilter = collect($report['platform_filters'])->firstWhere('platform_key', 'all');
+        $wenxinPcFilter = collect($report['platform_filters'])->first(
+            fn (array $filter): bool => $filter['platform_key'] === 'wenxin' && $filter['terminal'] === 'PC'
+        );
+
+        $this->assertSame(6, $allFilter['total']);
+        $this->assertSame(5, $wenxinPcFilter['total']);
+    }
+
     public function test_industry_report_builds_competition_platform_and_sentiment_data_for_current_site_only(): void
     {
         [$admin, $site] = $this->createAdminWithSite('monitoring_industry_user', 'site_user', '星河站点');

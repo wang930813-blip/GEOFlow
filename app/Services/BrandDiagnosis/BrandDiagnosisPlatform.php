@@ -5,8 +5,11 @@ namespace App\Services\BrandDiagnosis;
 final class BrandDiagnosisPlatform
 {
     public const DOUBAO = 'doubao';
+
     public const DEEPSEEK = 'deepseek';
+
     public const QIANWEN = 'qianwen';
+
     public const WENXIN = 'wenxin';
 
     /**
@@ -92,6 +95,17 @@ final class BrandDiagnosisPlatform
         $path = self::logoPath($platform);
 
         return $path !== '' ? public_path($path) : '';
+    }
+
+    public static function chatUrl(string $platform): string
+    {
+        return match (strtolower(trim($platform))) {
+            self::DOUBAO => 'https://www.doubao.com/chat/',
+            self::DEEPSEEK => 'https://chat.deepseek.com/',
+            self::QIANWEN => 'https://tongyi.aliyun.com/qianwen/',
+            self::WENXIN => 'https://chat.baidu.com/',
+            default => '',
+        };
     }
 
     /**

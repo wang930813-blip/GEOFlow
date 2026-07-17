@@ -2031,7 +2031,8 @@
       'report' => 'enterprise',
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) !!};
     const dynamicReport = window.__MONITORING_REPORT__ || {};
-    const useVirtualSearchReportData = window.__MONITORING_SEARCH_REPORT_USE_VIRTUAL__ === true;
+    const useVirtualSearchReportData = window.__MONITORING_SEARCH_REPORT_USE_VIRTUAL__ === true
+      && dynamicReport.has_xueshuyi_static_search_rows !== true;
     let activeSnapshotRow = null;
     const iconStyles = {
       "DeepSeek": "linear-gradient(135deg,#5e7cff,#8368ff)",

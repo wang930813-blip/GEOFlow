@@ -58,16 +58,36 @@ class BrandDiagnosisAnswerSnapshotTest extends TestCase
 
         $response
             ->assertOk()
+            ->assertSee('class="brand"', false)
+            ->assertSee('class="shell"', false)
+            ->assertSee('class="card"', false)
+            ->assertSee('class="question-bubble"', false)
+            ->assertSee('class="continue-btn"', false)
+            ->assertDontSee('class="voucher"', false)
             ->assertSee('学术易')
             ->assertSee('文心一言')
             ->assertSee('国内科研选题辅导平台哪些好？')
             ->assertSee('学术易提供科研选题、文献梳理和论文写作指导服务。')
             ->assertSee('科研服务参考资料')
             ->assertSee('https://example.com/research-guide', false)
-            ->assertSee('assets/css/brand-diagnosis-snapshot.css', false)
+            ->assertSee('href="https://chat.baidu.com/"', false)
+            ->assertSee('和文心一言继续聊')
             ->assertDontSee('Unsafe source')
             ->assertDontSee('provider-secret-response-id');
         $this->assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
+    }
+
+    public function test_public_snapshot_continue_button_prefers_the_official_conversation_url(): void
+    {
+        $officialUrl = 'https://chat.baidu.com/csaitab/history/share?share_id=snapshot-test';
+        $result = $this->createResult([
+            'official_share_url' => $officialUrl,
+        ]);
+
+        $this->get('/brand-diagnosis/snapshot/'.$result->snapshot_token)
+            ->assertOk()
+            ->assertSee('href="'.$officialUrl.'"', false)
+            ->assertSee('和文心一言继续聊');
     }
 
     public function test_public_snapshot_freezes_answer_and_sources_after_first_capture(): void

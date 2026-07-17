@@ -18,31 +18,37 @@ class BrandDiagnosisSnapshotController extends Controller
             ->first();
 
         if (! $result instanceof BrandDiagnosisResult) {
-            return response()->view('brand-diagnosis.snapshot', [
-                'snapshot' => null,
+            return response()->view('admin.snapshot-voucher.show', [
+                'voucher' => null,
+                'missingMessage' => '快照不存在',
             ], 404);
         }
 
         $payload = $snapshots->captureIfMissing($result);
         if ($payload === []) {
             return response()
-                ->view('brand-diagnosis.snapshot', ['snapshot' => null], 404)
+                ->view('admin.snapshot-voucher.show', [
+                    'voucher' => null,
+                    'missingMessage' => '快照不存在',
+                ], 404)
                 ->header('Cache-Control', 'no-store, max-age=0');
         }
 
         $platform = (string) ($payload['platform'] ?? $result->platform);
         $officialShareUrl = trim((string) ($result->official_share_url ?? ''));
-        $snapshot = [
-            'brand' => (string) ($payload['brand'] ?? ''),
+        $platformUrl = BrandDiagnosisPlatform::isOfficialShareUrl($platform, $officialShareUrl)
+            ? $officialShareUrl
+            : BrandDiagnosisPlatform::chatUrl($platform);
+        $voucher = [
+            'id' => (int) $result->id,
+            'platform_key' => $platform,
+            'platform' => BrandDiagnosisPlatform::label($platform),
+            'platform_icon' => BrandDiagnosisPlatform::logoUrl($platform),
+            'platform_url' => $platformUrl,
             'question' => (string) ($payload['question'] ?? ''),
             'answer_html' => ArticleHtmlPresenter::markdownToHtml((string) ($payload['answer'] ?? '')),
-            'platform' => BrandDiagnosisPlatform::label($platform),
-            'platform_logo' => BrandDiagnosisPlatform::logoUrl($platform),
-            'status' => (string) ($payload['status'] ?? ''),
-            'checked_at' => (string) ($payload['checked_at'] ?? ''),
-            'official_share_url' => BrandDiagnosisPlatform::isOfficialShareUrl($platform, $officialShareUrl)
-                ? $officialShareUrl
-                : '',
+            'time' => (string) ($payload['checked_at'] ?? ''),
+            'target' => (string) ($payload['brand'] ?? ''),
             'sources' => collect((array) ($payload['sources'] ?? []))
                 ->filter(fn ($source): bool => is_array($source) && $snapshots->isHttpUrl((string) ($source['url'] ?? '')))
                 ->map(static fn (array $source): array => [
@@ -55,7 +61,10 @@ class BrandDiagnosisSnapshotController extends Controller
         ];
 
         return response()
-            ->view('brand-diagnosis.snapshot', ['snapshot' => $snapshot])
+            ->view('admin.snapshot-voucher.show', [
+                'voucher' => $voucher,
+                'missingMessage' => '快照不存在',
+            ])
             ->header('Cache-Control', 'no-store, max-age=0');
     }
 }

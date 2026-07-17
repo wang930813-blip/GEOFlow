@@ -229,6 +229,35 @@ class AdminMonitoringCenterPageTest extends TestCase
         $this->assertStringNotContainsString('Array.isArray(dynamicReport.distillation_words) && dynamicReport.distillation_words.length', $html);
     }
 
+    public function test_xueshuyi_report_uses_merged_search_rows_when_virtual_switch_is_enabled(): void
+    {
+        config(['geoflow.monitoring_search_report_virtual_data_enabled' => true]);
+
+        [$admin, $site] = $this->createAdminWithSite('monitoring_xueshuyi_mixed_admin');
+
+        KnowledgeBase::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'name' => '学术易品牌知识库',
+            'content' => '品牌名称：北京学术易科技有限公司',
+            'created_at' => now(),
+        ]);
+
+        $html = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.monitoring-center.index'))
+            ->assertOk()
+            ->assertSee('window.__MONITORING_SEARCH_REPORT_USE_VIRTUAL__ = true;', false)
+            ->assertSee('"has_xueshuyi_static_search_rows":true', false)
+            ->assertSee(route('admin.snapshot-voucher.show', ['id' => -1]), false)
+            ->getContent();
+
+        $this->assertStringContainsString(
+            '&& dynamicReport.has_xueshuyi_static_search_rows !== true',
+            $html
+        );
+    }
+
     public function test_enterprise_trend_axis_labels_are_rendered_from_current_trend_dates(): void
     {
         $admin = $this->createAdmin('monitoring_trend_axis_admin');
@@ -288,12 +317,19 @@ class AdminMonitoringCenterPageTest extends TestCase
 
         $response
             ->assertOk()
+            ->assertSee('class="brand"', false)
+            ->assertSee('class="shell"', false)
+            ->assertSee('class="card"', false)
+            ->assertSee('class="question-bubble"', false)
+            ->assertSee('class="continue-btn"', false)
+            ->assertDontSee('class="voucher"', false)
             ->assertSee('DeepSeek', false)
             ->assertSee('GEO内容优化服务商怎么选？')
             ->assertSee('内容由 Ai 生成，不能完全保障真实')
             ->assertSee('策影GEO')
             ->assertSee('引用资料标题')
             ->assertSee('和DeepSeek继续聊')
+            ->assertSee('href="https://chat.deepseek.com/"', false)
             ->assertSee('<table', false)
             ->assertDontSee('收录词不存在');
     }
@@ -334,6 +370,9 @@ class AdminMonitoringCenterPageTest extends TestCase
             ->assertSee('学术易')
             ->assertSee('1rfMLncTo0YEAHsMeO6uRyOpW9PaSvgPRnzjJTcI5cdFD2fh97q7qPRUriJI0osQ22KzU4arkBVxbrAMkv6nE3aOrJmM', false)
             ->assertSee('https://chat.baidu.com/', false)
+            ->assertSee('class="brand"', false)
+            ->assertSee('class="card"', false)
+            ->assertSee('class="continue-btn"', false)
             ->assertSee('<article class="answer">', false)
             ->assertDontSee('<section class="card empty-card"', false);
     }

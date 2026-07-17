@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\BrandDiagnosisBrandMention;
 use App\Models\BrandDiagnosisResult;
 use App\Models\BrandDiagnosisSource;
+use App\Services\BrandDiagnosis\BrandDiagnosisPlatform;
 use App\Support\MonitoringCenter\VirtualSearchReportSnapshots;
 use App\Support\Site\ArticleHtmlPresenter;
 use Illuminate\Http\Request;
@@ -122,6 +123,7 @@ class SnapshotVoucherController extends Controller
         $raw = (array) ($result->raw_response ?? []);
 
         foreach ([
+            $result->official_share_url,
             data_get($meta, 'original_url'),
             data_get($meta, 'share_url'),
             data_get($meta, 'thread_url'),
@@ -139,12 +141,14 @@ class SnapshotVoucherController extends Controller
 
     private function platformUrl(string $platform): string
     {
-        return match ($this->normalizePlatformKey($platform)) {
-            'deepseek' => 'https://chat.deepseek.com/',
-            'doubao' => 'https://www.doubao.com/chat/',
+        $platform = $this->normalizePlatformKey($platform);
+
+        if (BrandDiagnosisPlatform::isSupported($platform)) {
+            return BrandDiagnosisPlatform::chatUrl($platform);
+        }
+
+        return match ($platform) {
             'yuanbao' => 'https://yuanbao.tencent.com/',
-            'wenxin' => 'https://chat.baidu.com/',
-            'qianwen' => 'https://tongyi.aliyun.com/qianwen/',
             'kimi' => 'https://www.kimi.com/',
             default => '',
         };
