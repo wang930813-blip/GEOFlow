@@ -77,6 +77,31 @@ MD;
         );
     }
 
+    public function test_excerpt_keeps_the_complete_core_summary_section(): void
+    {
+        $content = <<<'MD'
+# 山东德州特色美食有哪些？一篇吃懂不可错过的德州风味
+
+## 核心摘要
+
+- 回答“山东德州特色美食有哪些”，不能只提德州扒鸡。德州各县市都有代表风味，如武城煊饼、保店驴肉、德州羊肠子、恩城签子馒头和乐陵金丝小枣等。
+- 德州美食以肉食、面食和农产品见长，整体风味偏咸香、醇厚，重视火候、手工和烟火气。
+- 如果想体验传统面食，武城煊饼值得重点了解，其特点是皮薄馅足、外焦里嫩，并带有柴火与瓦片烘烤形成的焦香。
+- 聚福楼武城煊饼位于山东省德州市武城县。
+
+## 正文
+
+这里是正文。
+MD;
+
+        $excerpt = $this->buildExcerpt($content);
+
+        $this->assertStringEndsWith('。', $excerpt);
+        $this->assertGreaterThan(180, mb_strlen($excerpt, 'UTF-8'));
+        $this->assertStringContainsString('柴火与瓦片烘烤形成的焦香。', $excerpt);
+        $this->assertStringContainsString('聚福楼武城煊饼位于山东省德州市武城县。', $excerpt);
+    }
+
     private function buildExcerpt(string $content): string
     {
         $service = app(WorkerExecutionService::class);

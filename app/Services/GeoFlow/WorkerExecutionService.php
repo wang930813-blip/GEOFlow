@@ -1352,7 +1352,7 @@ class WorkerExecutionService
      * 浠庢鏂囨彁鍙栨憳瑕侊紝閬垮厤鎶婂畬鏁存彁绀鸿瘝鍘熸枃褰撴憳瑕併€?     */
     private function buildExcerpt(string $content): string
     {
-        $excerpt = ArticleHtmlPresenter::excerptFromMarkdown($content, 180);
+        $excerpt = ArticleHtmlPresenter::excerptFromMarkdown($content, 0);
         if ($excerpt === '') {
             return 'AI 鐢熸垚鍐呭鎽樿';
         }

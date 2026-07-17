@@ -239,9 +239,42 @@ final class ArticleHtmlPresenter
 
     private static function limitPlainText(string $text, int $limit): string
     {
-        $limit = max(1, $limit);
+        $text = trim($text);
+        if ($limit <= 0) {
+            return $text;
+        }
 
-        return mb_strlen($text, 'UTF-8') > $limit ? mb_substr($text, 0, $limit, 'UTF-8') : $text;
+        $limit = max(1, $limit);
+        if (mb_strlen($text, 'UTF-8') <= $limit) {
+            return $text;
+        }
+
+        $candidate = mb_substr($text, 0, $limit, 'UTF-8');
+        $sentence = self::truncateAtSentenceBoundary($candidate, $limit);
+        if ($sentence !== '') {
+            return $sentence;
+        }
+
+        return rtrim($candidate, " \t\n\r\0\x0B，,、：:；;（(");
+    }
+
+    private static function truncateAtSentenceBoundary(string $text, int $limit): string
+    {
+        $bestBoundary = 0;
+        $length = mb_strlen($text, 'UTF-8');
+        for ($index = 0; $index < $length; $index++) {
+            $char = mb_substr($text, $index, 1, 'UTF-8');
+            if (preg_match('/[。！？!?；;]/u', $char) === 1) {
+                $bestBoundary = $index + 1;
+            }
+        }
+
+        $minimumBoundary = min($length, max(40, (int) floor($limit * 0.35)));
+        if ($bestBoundary < $minimumBoundary) {
+            return '';
+        }
+
+        return trim(mb_substr($text, 0, $bestBoundary, 'UTF-8'));
     }
 
     private static function normalizeMarkdownImages(string $markdown): string
