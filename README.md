@@ -162,7 +162,7 @@ GEOFlow 适合这些真实且可落地的场景：
 
 ## 🚀 快速开始
 
-### 方式一：Docker（开发 / 演示）
+### 方式一：Docker（本机开发）
 
 ```bash
 # 1. 克隆仓库
@@ -172,18 +172,18 @@ cd GEOFlow
 # 2. 复制环境变量
 cp .env.example .env
 
-# 3. 按需编辑 .env（数据库、Redis、APP_URL、ADMIN_BASE_PATH、REVERB_* 等）
+# 3. 编辑 .env（外部 PostgreSQL、APP_URL、ADMIN_BASE_PATH、REVERB_*、MCP_* 等）
 vi .env
 
-# 4. 构建并启动（含 postgres、redis、init、app、queue、scheduler、reverb）
-docker compose build
-docker compose up -d
+# 4. 构建并启动本机开发服务
+docker compose --env-file .env -f docker-compose.dev.yml up -d --build
 ```
 
 - 前台默认访问：`http://localhost:18080`（端口由环境变量 **`APP_PORT`** 控制，默认 `18080`）
 - 后台登录：`http://localhost:18080/geo_admin/login`（前缀由 **`ADMIN_BASE_PATH`** 控制，默认 `geo_admin`）
+- GEO MCP Server：`http://localhost:18082/mcp`（端口由 **`MCP_EXPOSE_PORT`** 控制，默认 `18082`）
 
-首次启动会运行 **`init`** 容器：在数据库就绪后执行首次迁移与种子（默认管理员见下文「默认管理员」）。
+`docker-compose.dev.yml` 面向外部 PostgreSQL，不启动本地数据库；`AUTO_MIGRATE` 和 `AUTO_SEED` 均固定关闭，避免开发容器自动修改已有数据库。
 
 ### 方式一补充：Docker（生产）
 
@@ -205,13 +205,14 @@ vi .env.prod
 docker compose --env-file .env.prod -f docker-compose.prod.yml build
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d postgres redis
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d init
-docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web queue scheduler reverb
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d app web queue scheduler reverb mcp
 ```
 
 - 前台 / 后台统一经 `web`（Nginx）访问
 - PHP 由 `app`（php-fpm）解析
 - **默认管理员**：生产 `init` 服务会在迁移后执行一次 `db:seed`，只在目标用户名不存在时写入默认后台账号；重复执行不会覆盖已有账号或密码
 - 详细说明见 `docs/deployment/DEPLOYMENT.md`
+- GEO MCP Server 部署、鉴权、工具和费用规则见 [`docs/mcp-server.md`](docs/mcp-server.md)
 
 ### 方式二：本地 PHP 服务器
 
@@ -306,15 +307,16 @@ php artisan geoflow:admin-unlock admin
 
 | 服务 | 作用 |
 |------|------|
-| `postgres` | PostgreSQL 16 + pgvector |
 | `redis` | Redis 7 |
-| `init` | 一次性初始化（`restart: "no"`） |
+| `init` | 安装 PHP 开发依赖并清理缓存，不执行迁移或种子 |
 | `app` | `php artisan serve`，映射 **`${APP_PORT:-18080}:8080`** |
 | `queue` | `queue:work redis` |
 | `scheduler` | `schedule:work` |
 | `reverb` | WebSocket，映射 **`${REVERB_EXPOSE_PORT:-18081}:8080`** |
+| `vite` | 前端资源热更新，映射 **`${VITE_PORT:-5173}:5173`** |
+| `mcp` | 独立 GEO MCP Server，映射 **`${MCP_EXPOSE_PORT:-18082}:3000`** |
 
-宿主机仅绑定 **127.0.0.1** 暴露数据库 / Redis 端口时，见 `docker-compose.yml` 中的 `DB_EXPOSE_PORT`、`REDIS_EXPOSE_PORT`。
+Redis 仅绑定宿主机 **127.0.0.1**；应用和 MCP 服务通过 Compose 内部网络访问 Redis 与 GEO API。
 
 ### 入口脚本（`docker/entrypoint.sh`）常用变量
 

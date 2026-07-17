@@ -4,11 +4,13 @@ namespace App\Http\Middleware;
 
 use App\Exceptions\ApiException;
 use App\Http\ApiAuthContext;
+use App\Models\Admin;
 use App\Models\Site;
 use App\Services\Api\ApiTokenService;
 use App\Support\CurrentSite;
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Symfony\Component\HttpFoundation\Response;
 
 class AuthenticateApiToken
@@ -38,16 +40,27 @@ class AuthenticateApiToken
             throw new ApiException('unauthorized', 'Token 无效或已过期', 401);
         }
 
-        $this->tokenService->touchToken((int) $token['id']);
-        $auditAdminId = $this->tokenService->resolveAuditAdminId(
-            isset($token['created_by_admin_id']) ? (int) $token['created_by_admin_id'] : null
-        );
+        $tokenAdminId = (int) ($token['created_by_admin_id'] ?? 0);
+        $tokenAdmin = $tokenAdminId > 0
+            ? Admin::query()->whereKey($tokenAdminId)->where('status', 'active')->first()
+            : null;
+        if (! $tokenAdmin instanceof Admin) {
+            throw new ApiException('admin_not_available', 'Token 所属账号不存在或已停用', 403);
+        }
 
         $siteId = isset($token['site_id']) ? (int) $token['site_id'] : null;
         if ($siteId !== null && $siteId > 0) {
-            $site = Site::query()->whereKey($siteId)->where('status', 'active')->first();
+            $requiresSiteMembership = $tokenAdmin->isSiteUser() || $tokenAdmin->isDirectAdmin();
+            $site = Site::query()
+                ->whereKey($siteId)
+                ->where('status', 'active')
+                ->when($requiresSiteMembership, fn ($query) => $query->whereHas(
+                    'members',
+                    fn ($memberQuery) => $memberQuery->where('admins.id', $tokenAdminId)
+                ))
+                ->first();
             if (! $site instanceof Site) {
-                throw new ApiException('site_not_available', 'Token 绑定的站点不存在或已停用', 403);
+                throw new ApiException('site_not_available', 'Token 绑定的站点不可用或账号已无访问权限', 403);
             }
 
             app(CurrentSite::class)->set($site);
@@ -55,8 +68,21 @@ class AuthenticateApiToken
             $siteId = null;
         }
 
-        $request->attributes->set('api_auth', new ApiAuthContext($token, $auditAdminId, $siteId));
+        $this->tokenService->touchToken((int) $token['id']);
+        $request->attributes->set('api_auth', new ApiAuthContext($token, $tokenAdminId, $siteId));
 
-        return $next($request);
+        $guard = Auth::guard('admin');
+        $previousAdmin = $guard->user();
+        $guard->setUser($tokenAdmin);
+
+        try {
+            return $next($request);
+        } finally {
+            if ($previousAdmin instanceof Admin) {
+                $guard->setUser($previousAdmin);
+            } else {
+                $guard->forgetUser();
+            }
+        }
     }
 }

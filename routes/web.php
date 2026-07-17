@@ -5,9 +5,9 @@
 
 use App\Http\Controllers\Admin\AdminActivityLogController;
 use App\Http\Controllers\Admin\AdminAuthController;
-use App\Http\Controllers\Admin\AgentUserController;
 use App\Http\Controllers\Admin\AdminUserController;
 use App\Http\Controllers\Admin\AdminWelcomeController;
+use App\Http\Controllers\Admin\AgentUserController;
 use App\Http\Controllers\Admin\AiModelController;
 use App\Http\Controllers\Admin\AiPromptController;
 use App\Http\Controllers\Admin\AiSpecialPromptController;
@@ -30,6 +30,7 @@ use App\Http\Controllers\Admin\KeywordLibraryController;
 use App\Http\Controllers\Admin\KnowledgeBaseController;
 use App\Http\Controllers\Admin\LegacyController;
 use App\Http\Controllers\Admin\MaterialsController;
+use App\Http\Controllers\Admin\McpServerController;
 use App\Http\Controllers\Admin\MediaDistribution\CreditController as MediaDistributionCreditController;
 use App\Http\Controllers\Admin\MediaDistribution\ReportController as MediaDistributionReportController;
 use App\Http\Controllers\Admin\MediaDistribution\ResourceController as MediaDistributionResourceController;
@@ -387,6 +388,14 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::get('/', [ApiTokenController::class, 'index'])->name('index');
             Route::post('/', [ApiTokenController::class, 'store'])->name('store');
             Route::post('{tokenId}/revoke', [ApiTokenController::class, 'revoke'])->name('revoke');
+        });
+
+        Route::prefix('mcp-server')->name('mcp-server.')->group(function () {
+            Route::get('/', [McpServerController::class, 'index'])->name('index');
+            Route::post('keys', [McpServerController::class, 'store'])->name('keys.store');
+            Route::post('keys/{keyId}/revoke', [McpServerController::class, 'revoke'])
+                ->name('keys.revoke')
+                ->whereNumber('keyId');
         });
         Route::middleware('admin.agent')->prefix('agent-users')->name('agent-users.')->group(function () {
             Route::get('/', [AgentUserController::class, 'index'])->name('index');

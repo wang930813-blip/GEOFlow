@@ -11,6 +11,8 @@ use Laravel\Sanctum\PersonalAccessToken;
 
 class ApiTokenService
 {
+    public const MCP_CONNECT_SCOPE = 'mcp:connect';
+
     /**
      * 拉取 Token 列表（按创建时间倒序）。
      *
@@ -230,7 +232,7 @@ class ApiTokenService
      */
     private function normalizeScopes(array $scopes): array
     {
-        $allowed = $this->getAvailableScopes();
+        $allowed = [...$this->getAvailableScopes(), self::MCP_CONNECT_SCOPE];
         $normalized = [];
         foreach ($scopes as $scope) {
             $scope = trim((string) $scope);

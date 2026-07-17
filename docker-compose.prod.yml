@@ -198,3 +198,29 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+
+  mcp:
+    image: geoflow-mcp-prod:latest
+    build:
+      context: ./mcp-server
+      dockerfile: Dockerfile
+    container_name: geoflow-mcp-prod
+    environment:
+      NODE_ENV: production
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 3000
+      MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-localhost,127.0.0.1}
+      MCP_API_TIMEOUT_MS: ${MCP_API_TIMEOUT_MS:-30000}
+      GEOFLOW_API_BASE_URL: http://web/api/v1/
+    ports:
+      - "${MCP_EXPOSE_PORT:-18082}:3000"
+    depends_on:
+      web:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped

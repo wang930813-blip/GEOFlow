@@ -95,6 +95,8 @@ return [
     'api_login_rate_limit_decay_seconds' => (int) env('GEOFLOW_API_LOGIN_RATE_LIMIT_DECAY', 60),
     // API Token 默认有效期（天）
     'api_token_default_ttl_days' => (int) env('GEOFLOW_API_TOKEN_DEFAULT_TTL_DAYS', 30),
+    // 用户侧展示的独立 GEO MCP Server Streamable HTTP 地址
+    'mcp_server_public_url' => env('MCP_SERVER_PUBLIC_URL', 'http://localhost:18082/mcp'),
     // 会话空闲超时（秒）
     'session_timeout_seconds' => (int) env('GEOFLOW_SESSION_TIMEOUT', 2592000),
 
