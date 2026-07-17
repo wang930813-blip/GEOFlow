@@ -92,6 +92,10 @@ class AdminWelcomeModalService
      */
     private function prepareAutoOpen(Admin $admin, array $welcomeState): bool
     {
+        if (($welcomeState['mode'] ?? 'intro') === 'intro') {
+            return false;
+        }
+
         $versionKey = $this->welcomeVersionKey($welcomeState);
         $seen = (string) ($admin->welcome_seen_version ?? '');
         $shouldAutoOpen = $seen !== $versionKey;
