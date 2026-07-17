@@ -177,6 +177,44 @@ class MonitoringReportDataServiceTest extends TestCase
         $this->assertSame(['核心服务、另一个服务'], $industryReport['brand_profile']['core_services']);
     }
 
+    public function test_report_company_name_uses_company_brand_field_instead_of_keyword_library_name(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('monitoring_company_brand_field_user', 'site_user', '不应兜底到站点名');
+
+        app(CurrentSite::class)->set($site);
+
+        KeywordLibrary::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'name' => '旧关键词库',
+            'company_name' => '旧公司名称',
+            'domain_keyword' => '旧关键词',
+            'status' => 'active',
+            'keyword_count' => 1,
+            'created_at' => now()->subDays(2),
+            'updated_at' => now()->subDays(2),
+        ]);
+        KeywordLibrary::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'name' => '武城煊饼',
+            'company_name' => '聚福楼',
+            'domain_keyword' => '武城非遗?、传统武城煊饼制作',
+            'status' => 'active',
+            'keyword_count' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $enterpriseReport = app(MonitoringReportDataService::class)->enterpriseReport($admin, $site);
+        $industryReport = app(MonitoringReportDataService::class)->industryReport($admin, $site);
+
+        $this->assertSame('聚福楼', $enterpriseReport['context']['company_name']);
+        $this->assertSame('聚福楼', $industryReport['context']['company_name']);
+        $this->assertSame(['聚福楼'], $industryReport['brand_profile']['brand_names']);
+        $this->assertSame(['武城非遗、传统武城煊饼制作'], $industryReport['brand_profile']['core_services']);
+    }
+
     public function test_xueshuyi_enterprise_report_prepends_five_static_snapshots_before_dynamic_rows(): void
     {
         [$admin, $site] = $this->createAdminWithSite('monitoring_xueshuyi_user', 'site_user', '学术易站点');

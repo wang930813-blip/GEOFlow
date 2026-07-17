@@ -175,13 +175,26 @@ class MonitoringReportDataService
             ->cursor();
 
         foreach ($libraryCompanies as $libraryCompany) {
-            $companyName = $this->cleanText((string) $libraryCompany->company_name);
-            if ($companyName !== '') {
+            $rawCompanyName = (string) $libraryCompany->company_name;
+            $companyName = $this->cleanText($rawCompanyName);
+            if ($companyName !== '' && ! $this->isInvalidCompanyNameValue($rawCompanyName, $companyName)) {
                 return $companyName;
             }
         }
 
-        return $this->cleanText($context['admin']->name);
+        return $this->cleanText((string) ($context['admin']->display_name ?: $context['admin']->name));
+    }
+
+    private function isInvalidCompanyNameValue(string $rawValue, string $cleanValue): bool
+    {
+        return $this->containsReplacementMarker($rawValue) && mb_strlen($cleanValue) <= 3;
+    }
+
+    private function containsReplacementMarker(string $value): bool
+    {
+        return str_contains($value, '?')
+            || str_contains($value, '？')
+            || str_contains($value, "\u{FFFD}");
     }
 
     private function cleanText(string $value): string
@@ -190,8 +203,9 @@ class MonitoringReportDataService
         $value = preg_replace('/\x{FFFD}+/u', '', $value) ?? $value;
         $value = preg_replace('/(?<=\p{Han})[?？]+(?=$|[\s,，、。；;:\-]|\p{Han})/u', '', $value) ?? $value;
         $value = trim(preg_replace('/\s+/u', ' ', $value) ?? $value);
+        $value = preg_replace('/^[：:，,。；;?？]+|[：:，,。；;?？]+$/u', '', $value) ?? $value;
 
-        return trim($value, " \t\n\r\0\x0B：:，,。；;?？");
+        return trim($value);
     }
 
     /**
