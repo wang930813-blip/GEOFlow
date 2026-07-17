@@ -143,7 +143,7 @@ class MonitoringReportDataServiceTest extends TestCase
             'site_id' => (int) $site->id,
             'owner_admin_id' => (int) $admin->id,
             'name' => '最新有效关键词库',
-            'company_name' => '最新有效公司名称',
+            'company_name' => '最新有效公司名称？',
             'domain_keyword' => '有效关键词',
             'status' => 'active',
             'keyword_count' => 1,

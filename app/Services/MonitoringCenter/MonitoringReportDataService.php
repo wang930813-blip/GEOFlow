@@ -191,7 +191,7 @@ class MonitoringReportDataService
         $value = preg_replace('/(?<=\p{Han})\?(?=$|[\s,，、。；;:\-]|\p{Han})/u', '', $value) ?? $value;
         $value = trim(preg_replace('/\s+/u', ' ', $value) ?? $value);
 
-        return trim($value, " \t\n\r\0\x0B：:，,。；;");
+        return trim($value, " \t\n\r\0\x0B：:，,。；;?？");
     }
 
     /**
