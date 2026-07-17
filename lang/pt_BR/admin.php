@@ -132,7 +132,7 @@ return array_replace_recursive($base, [
         'not_found_desc' => 'O conteúdo solicitado não existe, foi removido ou o link não é mais válido.',
     ],
     'footer' => [
-        'copyright' => '© 2026 策影GEO',
+        'copyright' => '© 2026 GEO',
         'version' => 'Versão :version',
         'author' => 'Autor: Yao Jingang',
         'author_x_profile' => 'Perfil X do autor',
@@ -879,7 +879,7 @@ return array_replace_recursive($base, [
             'save_failed' => 'Falha ao salvar os espaços de anúncios',
             'saved' => 'Anúncios da página de detalhes do artigo atualizados com sucesso',
         ],
-        'system_name' => '策影GEO',
+        'system_name' => 'GEO',
     ],
     'admin_users' => [
         'page_title' => 'Gerenciamento de Usuários',

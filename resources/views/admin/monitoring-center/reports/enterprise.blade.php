@@ -1891,7 +1891,7 @@
   <main class="page">
     <header class="report-header">
       <div class="brand-strip">
-        <img class="brand-logo" src="ceying-ai-logo.png" alt="策影AI" />
+        <img class="brand-logo" src="ceying-ai-logo.png" alt="AI" />
       </div>
       <h1 class="report-title">企业輿情分析报表</h1>
       <div class="company-box">
