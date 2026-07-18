@@ -123,6 +123,9 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
         Route::post('brand-diagnosis/{run}/confirm', [BrandDiagnosisController::class, 'confirm'])
             ->name('brand-diagnosis.confirm')
             ->whereNumber('run');
+        Route::delete('brand-diagnosis/{run}', [BrandDiagnosisController::class, 'destroy'])
+            ->name('brand-diagnosis.destroy')
+            ->whereNumber('run');
         Route::get('brand-diagnosis/{run}/report', [BrandDiagnosisController::class, 'report'])
             ->name('brand-diagnosis.report')
             ->whereNumber('run');

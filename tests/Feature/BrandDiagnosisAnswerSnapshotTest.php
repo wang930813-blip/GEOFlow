@@ -90,6 +90,28 @@ class BrandDiagnosisAnswerSnapshotTest extends TestCase
             ->assertSee('和文心一言继续聊');
     }
 
+    public function test_public_and_admin_snapshots_hide_internal_brand_mentions_payload_for_all_supported_models(): void
+    {
+        foreach (['doubao', 'deepseek', 'qianwen', 'wenxin'] as $platform) {
+            $result = $this->createResult([
+                'platform' => $platform,
+                'answer' => '{"answer":"学术易在该问题中被模型正常推荐。","brand_mentions":[{"brand":"学术易","mention_count":1,"mention_rank":1,"sentiment":"positive","evidence":"内部提及依据"}]}',
+            ]);
+
+            $this->get('/brand-diagnosis/snapshot/'.$result->snapshot_token)
+                ->assertOk()
+                ->assertSee('学术易在该问题中被模型正常推荐。')
+                ->assertDontSee('"brand_mentions"', false)
+                ->assertDontSee('内部提及依据');
+
+            $this->get(route('admin.snapshot-voucher.show', ['id' => (int) $result->id]))
+                ->assertOk()
+                ->assertSee('学术易在该问题中被模型正常推荐。')
+                ->assertDontSee('"brand_mentions"', false)
+                ->assertDontSee('内部提及依据');
+        }
+    }
+
     public function test_public_snapshot_freezes_answer_and_sources_after_first_capture(): void
     {
         $result = $this->createResult();

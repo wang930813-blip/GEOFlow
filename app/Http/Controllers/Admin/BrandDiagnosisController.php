@@ -161,6 +161,19 @@ class BrandDiagnosisController extends Controller
             ->with('message', '已确认诊断，系统开始调用所选模型抓取数据。');
     }
 
+    public function destroy(int $run): RedirectResponse
+    {
+        $diagnosisRun = $this->diagnosisRunQuery()
+            ->whereKey($run)
+            ->firstOrFail();
+
+        $diagnosisRun->delete();
+
+        return redirect()
+            ->route('admin.brand-diagnosis.index')
+            ->with('message', '品牌诊断记录已删除。');
+    }
+
     public function report(int $run, Request $request): View
     {
         $diagnosisRun = $this->findReportRun($run);

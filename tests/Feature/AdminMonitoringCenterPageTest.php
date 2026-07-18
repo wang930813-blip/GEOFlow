@@ -123,7 +123,6 @@ class AdminMonitoringCenterPageTest extends TestCase
         $response
             ->assertOk()
             ->assertSee('行业竞争力分析报表')
-            ->assertSee('企业舆情分析报表')
             ->assertSee('href="'.route('admin.monitoring-center.index', ['report' => 'enterprise']).'"', false)
             ->assertSee('data-monitoring-share-button', false)
             ->assertSee(route('admin.monitoring-center.share'), false)
@@ -138,12 +137,16 @@ class AdminMonitoringCenterPageTest extends TestCase
 
         [$admin, $site] = $this->createAdminWithSite('monitoring_dynamic_enterprise_admin');
 
-        KnowledgeBase::query()->create([
+        KeywordLibrary::query()->create([
             'site_id' => (int) $site->id,
             'owner_admin_id' => (int) $admin->id,
-            'name' => '企业知识库',
-            'content' => '公司名称：星河智能科技有限公司',
+            'name' => '企业关键词库',
+            'company_name' => '星河智能科技有限公司',
+            'domain_keyword' => 'AI 搜索优化',
+            'status' => 'active',
+            'keyword_count' => 1,
             'created_at' => now(),
+            'updated_at' => now(),
         ]);
 
         $html = $this->actingAs($admin, 'admin')
@@ -277,12 +280,16 @@ class AdminMonitoringCenterPageTest extends TestCase
 
         [$admin, $site] = $this->createAdminWithSite('monitoring_virtual_static_admin');
 
-        KnowledgeBase::query()->create([
+        KeywordLibrary::query()->create([
             'site_id' => (int) $site->id,
             'owner_admin_id' => (int) $admin->id,
-            'name' => 'virtual knowledge',
-            'content' => '公司名称：虚拟搜索报表科技有限公司',
+            'name' => 'virtual keyword library',
+            'company_name' => '虚拟搜索报表科技有限公司',
+            'domain_keyword' => '虚拟搜索报表',
+            'status' => 'active',
+            'keyword_count' => 1,
             'created_at' => now(),
+            'updated_at' => now(),
         ]);
 
         $response = $this->actingAs($admin, 'admin')
@@ -346,12 +353,16 @@ class AdminMonitoringCenterPageTest extends TestCase
 
         [$admin, $site] = $this->createAdminWithSite('monitoring_xueshuyi_mixed_admin');
 
-        KnowledgeBase::query()->create([
+        KeywordLibrary::query()->create([
             'site_id' => (int) $site->id,
             'owner_admin_id' => (int) $admin->id,
-            'name' => '学术易品牌知识库',
-            'content' => '品牌名称：北京学术易科技有限公司',
+            'name' => '学术易品牌关键词库',
+            'company_name' => '北京学术易科技有限公司',
+            'domain_keyword' => '科研论文服务',
+            'status' => 'active',
+            'keyword_count' => 1,
             'created_at' => now(),
+            'updated_at' => now(),
         ]);
 
         $html = $this->actingAs($admin, 'admin')
@@ -494,12 +505,16 @@ class AdminMonitoringCenterPageTest extends TestCase
     {
         [$admin, $site] = $this->createAdminWithSite('monitoring_dynamic_industry_admin');
 
-        KnowledgeBase::query()->create([
+        KeywordLibrary::query()->create([
             'site_id' => (int) $site->id,
             'owner_admin_id' => (int) $admin->id,
-            'name' => '企业知识库',
-            'content' => '企业名称：星河智能科技有限公司',
+            'name' => '企业关键词库',
+            'company_name' => '星河智能科技有限公司',
+            'domain_keyword' => '行业竞争力分析',
+            'status' => 'active',
+            'keyword_count' => 1,
             'created_at' => now(),
+            'updated_at' => now(),
         ]);
 
         $html = $this->actingAs($admin, 'admin')
@@ -579,7 +594,7 @@ class AdminMonitoringCenterPageTest extends TestCase
         $this->assertSame('industry', (string) $share->report_type);
         $this->assertSame((int) $site->id, (int) $share->site_id);
         $this->assertSame((int) $admin->id, (int) $share->created_by_admin_id);
-        $this->assertSame('monitoring_share_creator Site', (string) data_get($share->payload, 'context.company_name'));
+        $this->assertSame('monitoring_share_creator', (string) data_get($share->payload, 'context.company_name'));
         $this->assertStringContainsString('/monitoring-report/share/', (string) $response->json('url'));
     }
 

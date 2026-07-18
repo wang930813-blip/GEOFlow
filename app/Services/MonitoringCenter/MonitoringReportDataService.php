@@ -158,6 +158,15 @@ class MonitoringReportDataService
             $query->whereRaw('1 = 0');
         }
 
+        $model = $query->getModel();
+        if (
+            $model instanceof BrandDiagnosisResult
+            || $model instanceof BrandDiagnosisSource
+            || $model instanceof BrandDiagnosisBrandMention
+        ) {
+            $query->whereHas('run', fn (Builder $runQuery): Builder => $runQuery->withoutGlobalScopes(['current_site', 'admin_owner']));
+        }
+
         return $query;
     }
 

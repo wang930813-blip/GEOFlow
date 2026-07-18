@@ -386,6 +386,49 @@ class AdminBrandDiagnosisPageTest extends TestCase
         $this->assertStringNotContainsString(route('admin.brand-diagnosis.report', ['run' => $pendingRun->id]), $html);
     }
 
+    public function test_brand_diagnosis_record_can_be_soft_deleted_from_the_record_list(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('brand_delete_record_admin', 'site_user');
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => '待删除品牌',
+            'platforms' => ['doubao'],
+            'status' => 'completed',
+            'total_questions' => 1,
+            'completed_questions' => 1,
+            'failed_questions' => 0,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.brand-diagnosis.index'))
+            ->assertOk()
+            ->assertSee('action="'.route('admin.brand-diagnosis.destroy', ['run' => $run->id]).'"', false);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->delete(route('admin.brand-diagnosis.destroy', ['run' => $run->id]))
+            ->assertRedirect(route('admin.brand-diagnosis.index'))
+            ->assertSessionHas('message');
+
+        $this->assertSoftDeleted($run);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.brand-diagnosis.index'))
+            ->assertOk()
+            ->assertDontSee('待删除品牌');
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.brand-diagnosis.report', ['run' => $run->id]))
+            ->assertNotFound();
+    }
+
     public function test_brand_diagnosis_pending_record_does_not_show_display_baseline_metrics(): void
     {
         config([

@@ -22,14 +22,14 @@ class BrandDiagnosisOfficialLinkController extends Controller
         abort_unless($admin instanceof Admin && $admin->isSuperAdmin(), 403);
 
         $diagnosisRun = BrandDiagnosisRun::query()
-            ->withoutGlobalScopes()
+            ->withoutGlobalScopes(['current_site', 'admin_owner'])
             ->with([
                 'questions' => fn ($query) => $query
-                    ->withoutGlobalScopes()
+                    ->withoutGlobalScopes(['current_site', 'admin_owner'])
                     ->select(['id', 'run_id', 'question', 'sort_order'])
                     ->orderBy('sort_order')
                     ->with(['results' => fn ($resultQuery) => $resultQuery
-                        ->withoutGlobalScopes()
+                        ->withoutGlobalScopes(['current_site', 'admin_owner'])
                         ->where('status', 'success')
                         ->whereNotNull('answer')
                         ->where('answer', '<>', '')
@@ -85,7 +85,7 @@ class BrandDiagnosisOfficialLinkController extends Controller
         abort_unless($admin instanceof Admin && $admin->isSuperAdmin(), 403);
 
         BrandDiagnosisRun::query()
-            ->withoutGlobalScopes()
+            ->withoutGlobalScopes(['current_site', 'admin_owner'])
             ->whereKey($run)
             ->firstOrFail();
 

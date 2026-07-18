@@ -281,6 +281,13 @@
                                             aria-expanded="{{ $record['expanded'] ? 'true' : 'false' }}"
                                             class="inline-flex h-9 items-center justify-center rounded-md border border-orange-200 bg-orange-50 px-3 text-xs font-semibold text-orange-700 hover:bg-orange-100"
                                         ><span data-record-toggle-label>{{ $record['expanded'] ? '收起结果' : '查看结果' }}</span></button>
+                                        <form method="POST" action="{{ route('admin.brand-diagnosis.destroy', ['run' => $record['id']]) }}" onsubmit="return confirm('确认删除这条品牌诊断记录吗？删除后监测中心将不再引用这条诊断数据。');">
+                                            @csrf
+                                            @method('DELETE')
+                                            <button type="submit" class="inline-flex h-9 items-center justify-center rounded-md border border-red-200 bg-white px-3 text-xs font-semibold text-red-600 hover:bg-red-50">
+                                                删除
+                                            </button>
+                                        </form>
                                     </div>
                                 </div>
                             </div>

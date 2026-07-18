@@ -7,11 +7,13 @@ use App\Models\Concerns\BelongsToSite;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class BrandDiagnosisRun extends Model
 {
     use BelongsToAdminOwner;
     use BelongsToSite;
+    use SoftDeletes;
 
     protected $fillable = [
         'site_id',
@@ -60,6 +62,7 @@ class BrandDiagnosisRun extends Model
             'usage_date' => 'date',
             'started_at' => 'datetime',
             'completed_at' => 'datetime',
+            'deleted_at' => 'datetime',
         ];
     }
 
