@@ -517,6 +517,7 @@ class MonitoringReportDataService
         return $this->scope(BrandDiagnosisResult::query(), $context)
             ->select([
                 'id',
+                'run_id',
                 'question_id',
                 'platform',
                 'answer',
@@ -529,6 +530,7 @@ class MonitoringReportDataService
             ->with([
                 'brandMentions' => fn ($query) => $query->where('is_target_brand', true)->orderBy('mention_rank'),
                 'question:id,question',
+                'run:id,brand_name',
                 'sources:id,result_id,title,url,domain,platform',
             ])
             ->where('status', 'success')
@@ -541,10 +543,11 @@ class MonitoringReportDataService
             ->map(function (BrandDiagnosisResult $result) use ($articles, $companyName): array {
                 $question = (string) ($result->question?->question ?? '');
                 $relatedArticles = $this->relatedArticles($articles, $question, $companyName);
-                $target = $this->targetBrandName($result);
+                $target = $this->searchRowTargetBrandName($result, $companyName);
                 $checkedAt = $result->checked_at ?? $result->created_at;
                 $officialShareUrl = trim((string) ($result->official_share_url ?? ''));
                 $snapshotToken = trim((string) ($result->snapshot_token ?? ''));
+                $hasTargetBrandMention = $this->hasTargetBrandMention($result, $target);
 
                 return [
                     'id' => (int) $result->id,
@@ -563,11 +566,9 @@ class MonitoringReportDataService
                         'domain' => (string) $source->domain,
                     ])->values()->all(),
                     'related_articles' => $relatedArticles,
-                    'official_url' => BrandDiagnosisPlatform::isOfficialShareUrl((string) $result->platform, $officialShareUrl)
-                        ? $officialShareUrl
-                        : '',
-                    'snapshot_url' => $snapshotToken !== ''
-                        ? route('brand-diagnosis.snapshot', ['token' => $snapshotToken])
+                    'official_url' => $this->httpUrlOrEmpty($officialShareUrl),
+                    'snapshot_url' => $snapshotToken !== '' && $hasTargetBrandMention
+                        ? route('admin.snapshot-voucher.show', ['id' => (int) $result->id])
                         : '',
                 ];
             })
@@ -648,15 +649,64 @@ class MonitoringReportDataService
             ->all();
     }
 
-    private function targetBrandName(BrandDiagnosisResult $result): string
+    private function searchRowTargetBrandName(BrandDiagnosisResult $result, string $fallback): string
     {
-        $mention = $result->brandMentions->first();
+        $brandName = $this->cleanText((string) ($result->run?->brand_name ?? ''));
 
-        if ($mention instanceof BrandDiagnosisBrandMention && trim((string) $mention->brand_name) !== '') {
-            return (string) $mention->brand_name;
+        if ($brandName !== '') {
+            return $brandName;
         }
 
-        return '-';
+        return $fallback !== '' ? $fallback : '-';
+    }
+
+    private function hasTargetBrandMention(BrandDiagnosisResult $result, string $targetBrand): bool
+    {
+        $targetBrand = $this->normalizedBrandText($targetBrand);
+        if ($targetBrand === '') {
+            return false;
+        }
+
+        $answer = $this->normalizedBrandText((string) $result->answer);
+        if ($answer !== '' && str_contains($answer, $targetBrand)) {
+            return true;
+        }
+
+        return $result->relationLoaded('brandMentions')
+            && $result->brandMentions->contains(function (BrandDiagnosisBrandMention $mention) use ($targetBrand): bool {
+                $mentionBrand = $this->normalizedBrandText((string) $mention->brand_name);
+
+                return $mentionBrand !== ''
+                    && (str_contains($mentionBrand, $targetBrand) || str_contains($targetBrand, $mentionBrand));
+            });
+    }
+
+    private function normalizedBrandText(string $value): string
+    {
+        $value = $this->cleanText($value);
+        $value = preg_replace('/\s+/u', '', $value) ?? $value;
+
+        return mb_strtolower($value, 'UTF-8');
+    }
+
+    private function httpUrlOrEmpty(string $url): string
+    {
+        $url = trim($url);
+        if ($url === '') {
+            return '';
+        }
+
+        $parts = parse_url($url);
+        if (! is_array($parts)) {
+            return '';
+        }
+
+        $scheme = strtolower((string) ($parts['scheme'] ?? ''));
+
+        return filter_var($url, FILTER_VALIDATE_URL) !== false
+            && in_array($scheme, ['http', 'https'], true)
+            ? $url
+            : '';
     }
 
     private function articlePublicUrl(Article $article): string

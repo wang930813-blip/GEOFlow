@@ -211,6 +211,56 @@ class BrandDiagnosisAnswerSnapshotTest extends TestCase
             ->assertSee('/brand-diagnosis/snapshot/'.$result->snapshot_token, false);
     }
 
+    public function test_official_link_batch_editor_can_filter_by_model_and_question(): void
+    {
+        $firstResult = $this->createResult();
+        $secondQuestion = BrandDiagnosisQuestion::query()->create([
+            'site_id' => (int) $firstResult->site_id,
+            'owner_admin_id' => (int) $firstResult->owner_admin_id,
+            'run_id' => (int) $firstResult->run_id,
+            'question' => 'How does Doubao answer the second question?',
+            'question_type' => 'brand',
+            'sort_order' => 2,
+            'status' => 'completed',
+        ]);
+        BrandDiagnosisResult::query()->create([
+            'site_id' => (int) $firstResult->site_id,
+            'owner_admin_id' => (int) $firstResult->owner_admin_id,
+            'run_id' => (int) $firstResult->run_id,
+            'question_id' => (int) $secondQuestion->id,
+            'platform' => 'doubao',
+            'answer' => 'Doubao answer for the second question.',
+            'brand_mentioned' => false,
+            'mention_count' => 0,
+            'mention_rank' => 0,
+            'sentiment' => 'neutral',
+            'status' => 'success',
+            'checked_at' => now(),
+        ]);
+        $superAdmin = Admin::query()->create([
+            'username' => 'snapshot_filter_super',
+            'password' => 'secret-123',
+            'email' => 'snapshot-filter-super@example.com',
+            'display_name' => 'Snapshot Filter Super',
+            'role' => 'super_admin',
+            'status' => 'active',
+        ]);
+
+        $html = $this->actingAs($superAdmin, 'admin')
+            ->get('/geo_admin/brand-diagnosis/'.$firstResult->run_id.'/official-links')
+            ->assertOk()
+            ->assertSee('id="official-link-platform-filter"', false)
+            ->assertSee('id="official-link-question-filter"', false)
+            ->assertSee('data-official-link-row', false)
+            ->assertSee('data-platform-key="wenxin"', false)
+            ->assertSee('data-platform-key="doubao"', false)
+            ->assertSee('data-question-text="How does Doubao answer the second question?"', false)
+            ->getContent();
+
+        $this->assertStringContainsString('applyOfficialLinkFilters()', $html);
+        $this->assertStringContainsString('official-link-empty-filter-state', $html);
+    }
+
     public function test_non_super_admin_cannot_update_official_links(): void
     {
         $result = $this->createResult();
