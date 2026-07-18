@@ -149,10 +149,17 @@ class ApiTokenService
 
     /**
      * @param  list<string>  $scopes
+     * @param  bool  $neverExpires  是否明确创建永不过期 Token
      * @return array{token: string, record: array<string, mixed>}
      */
-    public function createToken(string $name, array $scopes, ?int $adminId, ?string $expiresAt = null, ?int $siteId = null): array
-    {
+    public function createToken(
+        string $name,
+        array $scopes,
+        ?int $adminId,
+        ?string $expiresAt = null,
+        ?int $siteId = null,
+        bool $neverExpires = false,
+    ): array {
         $name = trim($name);
         if ($name === '') {
             throw new ApiException('validation_failed', 'Token 名称不能为空', 422, [
@@ -167,7 +174,7 @@ class ApiTokenService
             ]);
         }
 
-        $expires = $this->normalizeExpiresAt($expiresAt);
+        $expires = $neverExpires ? null : $this->normalizeExpiresAt($expiresAt);
         $siteId = $this->normalizeSiteId($siteId);
         $creatorId = $this->normalizeCreatorAdminId($adminId) ?? $this->resolveAuditAdminId($adminId);
         $admin = Admin::query()->whereKey($creatorId)->first();
@@ -178,7 +185,7 @@ class ApiTokenService
         $tokenResult = $admin->createToken(
             $name,
             array_values($scopes),
-            Carbon::parse($expires)
+            $expires !== null ? Carbon::parse($expires) : null
         );
         $model = $tokenResult->accessToken->fresh();
         if (! $model instanceof PersonalAccessToken) {

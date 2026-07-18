@@ -7,7 +7,7 @@
  * @Email: network@iyuanma.net
  *
  * @File： mcp-server.js
- * @Description: 提供 MCP Server 用户页面的安全复制和客户端配置标签切换交互。
+ * @Description: 提供 MCP Server 用户页面的安全复制、有效期切换和客户端配置标签切换交互。
  */
 
 (() => {
@@ -132,8 +132,38 @@
         tabs.find((tab) => tab.getAttribute('aria-selected') === 'true')?.click();
     }
 
+    /**
+     * @Name: bindExpirationMode
+     * @Description: 根据永不过期开关同步过期时间输入框状态，保留已填写时间以便用户取消开关后继续使用。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-07-19 01:17:52
+     * @UpdateTime: 2026-07-19 01:17:52
+     *
+     * @Return: void
+     */
+    function bindExpirationMode() {
+        const toggle = document.querySelector('[data-mcp-never-expires]');
+        const expiresAt = document.querySelector('[data-mcp-expires-at]');
+        const field = document.querySelector('[data-mcp-expires-at-field]');
+        if (!(toggle instanceof HTMLInputElement) || !(expiresAt instanceof HTMLInputElement)) {
+            return;
+        }
+
+        const syncState = () => {
+            const disabled = toggle.checked;
+            expiresAt.disabled = disabled;
+            expiresAt.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+            field?.classList.toggle('opacity-50', disabled);
+        };
+
+        toggle.addEventListener('change', syncState);
+        syncState();
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
         bindCopyButtons();
+        bindExpirationMode();
         bindConfigurationTabs();
     });
 })();

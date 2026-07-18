@@ -87,6 +87,7 @@ class McpServerController extends Controller
      * @Url [POST] /geo_admin/mcp-server/keys
      *      登录 是
      *      name string 必选 MCP Key 名称
+     *      never_expires bool 可选 是否永不过期
      *      expires_at string 可选 过期时间
      *      scopes array 必选 GEO 业务权限列表
      *
@@ -110,7 +111,10 @@ class McpServerController extends Controller
                 $this->site(),
                 (string) $payload['name'],
                 (array) $payload['scopes'],
-                isset($payload['expires_at']) ? (string) $payload['expires_at'] : null,
+                $request->boolean('never_expires')
+                    ? null
+                    : (isset($payload['expires_at']) ? (string) $payload['expires_at'] : null),
+                $request->boolean('never_expires'),
             );
 
             return redirect()

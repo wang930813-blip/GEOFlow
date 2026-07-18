@@ -3,6 +3,7 @@
 @php
     $newMcpKey = (string) session('new_mcp_key', '');
     $displayMcpKey = $newMcpKey !== '' ? $newMcpKey : '<MCP_KEY>';
+    $neverExpires = filter_var(old('never_expires', false), FILTER_VALIDATE_BOOL);
     $httpConfig = json_encode([
         'mcpServers' => [
             'geoflow' => [
@@ -61,7 +62,7 @@
             </section>
         @endif
 
-        <section class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.72fr)]" aria-labelledby="connection-heading">
+        <section class="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(560px,0.9fr)]" aria-labelledby="connection-heading">
             <div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
                 <div class="flex items-center justify-between gap-4">
                     <div>
@@ -95,30 +96,37 @@
                 </dl>
             </div>
 
-            <div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+            <div class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
                 <h2 class="text-base font-semibold text-gray-900">创建 MCP Key</h2>
-                <form action="{{ route('admin.mcp-server.keys.store') }}" method="POST" class="mt-5 space-y-5">
+                <form action="{{ route('admin.mcp-server.keys.store') }}" method="POST" class="mt-4 space-y-4">
                     @csrf
                     <div>
                         <label for="mcp-key-name" class="block text-sm font-medium text-gray-700">名称</label>
                         <input id="mcp-key-name" name="name" type="text" required maxlength="120" value="{{ old('name') }}" placeholder="例如：内容运营助手" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
                     </div>
-                    <div>
-                        <label for="mcp-key-expires-at" class="block text-sm font-medium text-gray-700">过期时间</label>
-                        <input id="mcp-key-expires-at" name="expires_at" type="datetime-local" value="{{ old('expires_at', $defaultExpiresAtInput) }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    <div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                        <div data-mcp-expires-at-field class="transition-opacity {{ $neverExpires ? 'opacity-50' : '' }}">
+                            <label for="mcp-key-expires-at" class="block text-sm font-medium text-gray-700">过期时间</label>
+                            <input id="mcp-key-expires-at" name="expires_at" type="datetime-local" value="{{ old('expires_at', $defaultExpiresAtInput) }}" data-mcp-expires-at @disabled($neverExpires) class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100">
+                        </div>
+                        <label class="flex h-10 cursor-pointer items-center gap-2.5 pb-0.5" for="mcp-key-never-expires">
+                            <input id="mcp-key-never-expires" name="never_expires" type="checkbox" value="1" data-mcp-never-expires @checked($neverExpires) class="peer sr-only">
+                            <span class="relative h-6 w-11 shrink-0 rounded-full bg-gray-200 transition-colors after:absolute after:left-0.5 after:top-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:bg-blue-600 peer-checked:after:translate-x-5 peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500 peer-focus-visible:ring-offset-2" aria-hidden="true"></span>
+                            <span class="whitespace-nowrap text-sm font-medium text-gray-700">永不过期</span>
+                        </label>
                     </div>
                     <fieldset>
                         <legend class="text-sm font-medium text-gray-700">业务权限</legend>
-                        <div class="mt-2 space-y-2">
+                        <div data-mcp-scope-grid class="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
                             @foreach ($scopeCatalog as $scope => $definition)
-                                <label class="flex cursor-pointer items-start gap-3 rounded-md border border-gray-200 px-3 py-2.5 hover:border-blue-300 hover:bg-blue-50/40">
-                                    <input type="checkbox" name="scopes[]" value="{{ $scope }}" @checked(in_array($scope, old('scopes', ['catalog:read', 'tasks:read', 'jobs:read', 'materials:read', 'articles:read', 'media:read']), true)) class="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                                    <span class="min-w-0">
-                                        <span class="flex flex-wrap items-center gap-2 text-sm font-medium text-gray-900">
-                                            {{ $definition['label'] }}
-                                            <span class="rounded-full px-2 py-0.5 text-xs {{ $definition['risk'] === '只读' ? 'bg-gray-100 text-gray-600' : 'bg-amber-100 text-amber-800' }}">{{ $definition['risk'] }}</span>
+                                <label data-mcp-scope-option class="flex min-h-[72px] cursor-pointer items-start gap-2.5 rounded-md border border-gray-200 px-3 py-2 transition-colors hover:border-blue-300 hover:bg-blue-50/40">
+                                    <input type="checkbox" name="scopes[]" value="{{ $scope }}" @checked(in_array($scope, old('scopes', ['catalog:read', 'tasks:read', 'jobs:read', 'materials:read', 'articles:read', 'media:read']), true)) class="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                    <span class="min-w-0 flex-1">
+                                        <span class="flex items-start justify-between gap-2">
+                                            <span class="text-sm font-medium text-gray-900">{{ $definition['label'] }}</span>
+                                            <span class="shrink-0 rounded-full px-2 py-0.5 text-xs {{ $definition['risk'] === '只读' ? 'bg-gray-100 text-gray-600' : 'bg-amber-100 text-amber-800' }}">{{ $definition['risk'] }}</span>
                                         </span>
-                                        <span class="mt-0.5 block text-xs leading-5 text-gray-500">{{ $definition['description'] }}</span>
+                                        <span class="mt-1 block text-xs leading-4 text-gray-500">{{ $definition['description'] }}</span>
                                     </span>
                                 </label>
                             @endforeach
@@ -144,24 +152,47 @@
                 <div class="px-5 py-10 text-center text-sm text-gray-500">尚未创建 MCP Key。</div>
             @else
                 <div class="overflow-x-auto">
-                    <table class="min-w-full divide-y divide-gray-200">
+                    <table class="min-w-[980px] table-fixed divide-y divide-gray-200">
                         <thead class="bg-gray-50">
                             <tr>
-                                <th class="px-5 py-3 text-left text-xs font-medium text-gray-500">名称</th>
-                                <th class="px-5 py-3 text-left text-xs font-medium text-gray-500">权限</th>
-                                <th class="px-5 py-3 text-left text-xs font-medium text-gray-500">最近使用</th>
-                                <th class="px-5 py-3 text-left text-xs font-medium text-gray-500">过期时间</th>
-                                <th class="px-5 py-3 text-left text-xs font-medium text-gray-500">状态</th>
-                                <th class="px-5 py-3 text-right text-xs font-medium text-gray-500">操作</th>
+                                <th class="w-[15%] px-5 py-3 text-left text-xs font-medium text-gray-500">名称</th>
+                                <th class="w-[43%] px-5 py-3 text-left text-xs font-medium text-gray-500">权限</th>
+                                <th class="w-[12%] whitespace-nowrap px-5 py-3 text-left text-xs font-medium text-gray-500">最近使用</th>
+                                <th class="w-[17%] whitespace-nowrap px-5 py-3 text-left text-xs font-medium text-gray-500">过期时间</th>
+                                <th class="w-[8%] px-5 py-3 text-left text-xs font-medium text-gray-500">状态</th>
+                                <th class="w-[5%] px-5 py-3 text-right text-xs font-medium text-gray-500">操作</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-100 bg-white">
                             @foreach ($keys as $key)
-                                <tr>
-                                    <td class="whitespace-nowrap px-5 py-4 text-sm font-medium text-gray-900">{{ $key['name'] }}</td>
-                                    <td class="px-5 py-4 text-xs text-gray-600">{{ implode(', ', $key['scopes']) }}</td>
+                                <tr class="align-top">
+                                    <td class="break-words px-5 py-4 text-sm font-medium text-gray-900">{{ $key['name'] }}</td>
+                                    <td class="px-5 py-4">
+                                        <div class="flex flex-wrap gap-1.5">
+                                            @foreach ($key['scopes'] as $scope)
+                                                @php
+                                                    $scopeDefinition = $scopeCatalog[$scope] ?? null;
+                                                    $scopeLabel = (string) ($scopeDefinition['label'] ?? $scope);
+                                                    $scopeRisk = (string) ($scopeDefinition['risk'] ?? '');
+                                                    $scopeTone = $scopeRisk === '只读'
+                                                        ? 'bg-gray-100 text-gray-700'
+                                                        : ($scopeRisk === '写入数据' ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700');
+                                                @endphp
+                                                <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium {{ $scopeTone }}" title="{{ $scope }}" aria-label="{{ $scopeLabel }}{{ $scopeRisk !== '' ? '，'.$scopeRisk : '' }}" data-mcp-key-scope-label="{{ $scope }}">{{ $scopeLabel }}</span>
+                                            @endforeach
+                                        </div>
+                                    </td>
                                     <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-600">{{ $key['last_used_at'] ?? '未使用' }}</td>
-                                    <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-600">{{ $key['expires_at'] ?? '长期有效' }}</td>
+                                    <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-600">
+                                        @if ($key['expires_at'] === null)
+                                            <span class="inline-flex items-center gap-1.5 font-medium text-gray-700">
+                                                <i data-lucide="infinity" class="h-4 w-4 text-gray-400"></i>
+                                                永不过期
+                                            </span>
+                                        @else
+                                            {{ $key['expires_at'] }}
+                                        @endif
+                                    </td>
                                     <td class="whitespace-nowrap px-5 py-4 text-sm">
                                         <span class="inline-flex rounded-full px-2 py-1 text-xs font-medium {{ $key['status'] === 'active' ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600' }}">
                                             {{ $key['status'] === 'active' ? '有效' : '已过期' }}

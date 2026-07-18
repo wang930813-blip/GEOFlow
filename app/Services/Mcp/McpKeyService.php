@@ -102,6 +102,8 @@ class McpKeyService
      *
      * @Param: string|null $expiresAt 过期时间
      *
+     * @Param: bool $neverExpires 是否明确创建永不过期 Key
+     *
      * @Return: array{token: string, record: array<string, mixed>} 新 MCP Key 明文及元数据
      */
     public function createKey(
@@ -110,8 +112,9 @@ class McpKeyService
         string $name,
         array $scopes,
         ?string $expiresAt,
+        bool $neverExpires = false,
     ): array {
-        return DB::transaction(function () use ($admin, $site, $name, $scopes, $expiresAt): array {
+        return DB::transaction(function () use ($admin, $site, $name, $scopes, $expiresAt, $neverExpires): array {
             $lockedAdmin = Admin::query()
                 ->whereKey((int) $admin->id)
                 ->where('status', 'active')
@@ -134,6 +137,7 @@ class McpKeyService
                 (int) $lockedAdmin->id,
                 $expiresAt,
                 (int) $site->id,
+                $neverExpires,
             );
         });
     }

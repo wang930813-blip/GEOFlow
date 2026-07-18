@@ -59,7 +59,8 @@ class StoreMcpKeyRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:120'],
-            'expires_at' => ['nullable', 'date', 'after:now'],
+            'never_expires' => ['nullable', 'boolean'],
+            'expires_at' => [Rule::excludeIf($this->boolean('never_expires')), 'nullable', 'date', 'after:now'],
             'scopes' => ['required', 'array', 'min:1'],
             'scopes.*' => ['required', 'string', 'distinct', Rule::in(McpKeyService::BUSINESS_SCOPES)],
         ];

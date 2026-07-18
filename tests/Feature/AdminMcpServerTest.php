@@ -58,9 +58,11 @@ class AdminMcpServerTest extends TestCase
     {
         [$admin, $site] = $this->createAccount('mcp_page_user');
 
-        $this->actingAs($admin, 'admin')
+        $response = $this->actingAs($admin, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
-            ->get(route('admin.mcp-server.index'))
+            ->get(route('admin.mcp-server.index'));
+
+        $response
             ->assertOk()
             ->assertSee('MCP Server')
             ->assertSee($site->name)
@@ -71,7 +73,14 @@ class AdminMcpServerTest extends TestCase
             ->assertSee('geo_publish_article_to_media')
             ->assertSee('按渠道实际售价扣费，失败退款')
             ->assertSee('MCP 请求本身不单独计费')
+            ->assertSee('data-mcp-never-expires', false)
+            ->assertSee('data-mcp-scope-grid class="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2"', false)
             ->assertDontSee('媒体投稿消费策略');
+
+        $this->assertSame(
+            count(McpKeyService::BUSINESS_SCOPES),
+            substr_count((string) $response->getContent(), 'data-mcp-scope-option')
+        );
     }
 
     /**
@@ -130,6 +139,47 @@ class AdminMcpServerTest extends TestCase
             ->assertJsonMissingPath('data.token.spending_policy');
         $this->assertContains('materials:read', $authResponse->json('data.token.scopes'));
         $this->assertContains('materials:write', $authResponse->json('data.token.scopes'));
+    }
+
+    /**
+     * @Name: test_user_can_create_never_expiring_mcp_key_with_chinese_scope_labels
+     *
+     * @Description: 验证永不过期开关会忽略过期时间，并在 Key 列表中以中文风险标签展示已授权业务权限。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-07-19 01:17:52
+     *
+     * @UpdateTime: 2026-07-19 01:17:52
+     *
+     * @Return: void
+     */
+    public function test_user_can_create_never_expiring_mcp_key_with_chinese_scope_labels(): void
+    {
+        [$admin, $site] = $this->createAccount('mcp_never_expires_user');
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.mcp-server.keys.store'), [
+                'name' => '长期内容助手',
+                'never_expires' => '1',
+                'expires_at' => now()->subDay()->format('Y-m-d\TH:i'),
+                'scopes' => ['tasks:read', 'materials:write', 'media:submit'],
+            ])
+            ->assertRedirect(route('admin.mcp-server.index'))
+            ->assertSessionHas('new_mcp_key');
+
+        $token = PersonalAccessToken::query()->where('name', '长期内容助手')->firstOrFail();
+        $this->assertNull($token->expires_at);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.mcp-server.index'))
+            ->assertOk()
+            ->assertSee('永不过期')
+            ->assertSee('data-mcp-key-scope-label="tasks:read">任务读取</span>', false)
+            ->assertSee('data-mcp-key-scope-label="materials:write">素材管理</span>', false)
+            ->assertSee('data-mcp-key-scope-label="media:submit">媒体投稿</span>', false);
     }
 
     /**
