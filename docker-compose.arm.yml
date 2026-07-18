@@ -28,6 +28,8 @@ x-app-volumes: &app-volumes
 x-app-common: &app-common
   platform: ${ARM_DOCKER_PLATFORM:-linux/arm64}
   image: ${ARM_APP_IMAGE:-geoflow-app-arm:latest}
+  build: *app-build
+  pull_policy: build
   working_dir: /var/www/html
   env_file:
     - ./.env
@@ -39,7 +41,6 @@ x-app-common: &app-common
 services:
   init:
     <<: *app-common
-    build: *app-build
     container_name: geoflow-arm-init
     command: ["php", "artisan", "optimize:clear"]
     environment:
