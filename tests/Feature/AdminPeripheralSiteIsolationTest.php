@@ -43,14 +43,18 @@ class AdminPeripheralSiteIsolationTest extends TestCase
             ->get(route('admin.ai-models.index'))
             ->assertOk()
             ->assertSee('Platform Default Model')
-            ->assertDontSee('Agent Shared Model');
+            ->assertSee('Agent Shared Model')
+            ->assertSee('所属代理')
+            ->assertSee('平台模型')
+            ->assertSee('ai_agent_admin');
 
         $this->actingAs($agentAdmin, 'admin')
             ->withSession(['current_site_id' => $agentSite->id])
             ->get(route('admin.ai-models.index'))
             ->assertOk()
             ->assertSee('Agent Shared Model')
-            ->assertDontSee('Platform Default Model');
+            ->assertDontSee('Platform Default Model')
+            ->assertDontSee('所属代理');
     }
 
     private function createAdminWithSite(string $username, string $siteName, string $role = 'direct_admin'): array

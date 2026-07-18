@@ -116,6 +116,14 @@
                                         <div class="text-sm text-gray-500">{{ $model['model_id'] }}</div>
                                         <div class="text-xs text-gray-400">{{ __('admin.ai_models.api_key_mask') }}: {{ $model['masked_api_key'] }}</div>
                                         <div class="text-xs text-gray-400">{{ __('admin.ai_models.failover_priority_label', ['priority' => (int) $model['failover_priority']]) }}</div>
+                                        @if ($showOwnerIdentity ?? false)
+                                            <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                                                <span>所属代理</span>
+                                                <span class="inline-flex items-center rounded-full px-2 py-0.5 font-medium {{ ($model['owner_identity_type'] ?? 'platform') === 'platform' ? 'bg-slate-100 text-slate-700' : 'bg-indigo-50 text-indigo-700' }}">
+                                                    {{ $model['owner_identity_label'] ?? '平台模型' }}
+                                                </span>
+                                            </div>
+                                        @endif
                                     </div>
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
