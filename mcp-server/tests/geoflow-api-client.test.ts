@@ -132,6 +132,99 @@ void describe('GeoFlowApiClient', () => {
         assert.deepEqual(result, { id: 88, status: 'pending' });
     });
 
+    void it('完整映射 GEO 素材库和条目接口', async () => {
+        const requests: Array<{
+            path: string;
+            query: string;
+            method: string;
+            idempotencyKey: string | null;
+            body: unknown;
+        }> = [];
+        const fetcher: typeof fetch = (input, init) => {
+            const url = requestUrl(input);
+            requests.push({
+                path: url.pathname,
+                query: url.search,
+                method: init?.method || 'GET',
+                idempotencyKey: new Headers(init?.headers).get('X-Idempotency-Key'),
+                body: typeof init?.body === 'string' ? (JSON.parse(init.body) as unknown) : null,
+            });
+
+            return Promise.resolve(jsonResponse({ success: true, data: { ok: true } }));
+        };
+        const client = new GeoFlowApiClient(baseUrl, 'secret-key', 1_000, fetcher);
+
+        await client.getMaterialSummary();
+        await client.listMaterials('categories', { page: 2, per_page: 30, search: '科技' });
+        await client.getMaterial('authors', 7);
+        await client.createMaterial('keyword-libraries', { name: '品牌词库' }, 'material-create-123');
+        await client.updateMaterial('knowledge-bases', 8, { content: '更新正文' }, 'material-update-123');
+        await client.deleteMaterial('categories', 9, 'material-delete-123');
+        await client.listMaterialItems('knowledge-bases', 10, { page: 1, per_page: 50 });
+        await client.createMaterialItem('title-libraries', 11, { title: 'GEO 标题' }, 'material-item-create-123');
+        await client.deleteMaterialItems('image-libraries', 12, [21, 22], 'material-items-delete-123');
+
+        assert.deepEqual(requests, [
+            { path: '/api/v1/materials', query: '', method: 'GET', idempotencyKey: null, body: null },
+            {
+                path: '/api/v1/materials/categories',
+                query: '?page=2&per_page=30&search=%E7%A7%91%E6%8A%80',
+                method: 'GET',
+                idempotencyKey: null,
+                body: null,
+            },
+            {
+                path: '/api/v1/materials/authors/7',
+                query: '',
+                method: 'GET',
+                idempotencyKey: null,
+                body: null,
+            },
+            {
+                path: '/api/v1/materials/keyword-libraries',
+                query: '',
+                method: 'POST',
+                idempotencyKey: 'material-create-123',
+                body: { name: '品牌词库' },
+            },
+            {
+                path: '/api/v1/materials/knowledge-bases/8',
+                query: '',
+                method: 'PATCH',
+                idempotencyKey: 'material-update-123',
+                body: { content: '更新正文' },
+            },
+            {
+                path: '/api/v1/materials/categories/9',
+                query: '',
+                method: 'DELETE',
+                idempotencyKey: 'material-delete-123',
+                body: null,
+            },
+            {
+                path: '/api/v1/materials/knowledge-bases/10/items',
+                query: '?page=1&per_page=50',
+                method: 'GET',
+                idempotencyKey: null,
+                body: null,
+            },
+            {
+                path: '/api/v1/materials/title-libraries/11/items',
+                query: '',
+                method: 'POST',
+                idempotencyKey: 'material-item-create-123',
+                body: { title: 'GEO 标题' },
+            },
+            {
+                path: '/api/v1/materials/image-libraries/12/items',
+                query: '',
+                method: 'DELETE',
+                idempotencyKey: 'material-items-delete-123',
+                body: { ids: [21, 22] },
+            },
+        ]);
+    });
+
     void it('使用派生幂等键创建 AI 文章并投递指定媒体渠道', async () => {
         const requests: Array<{ path: string; method: string; idempotencyKey: string | null; body: unknown }> = [];
         const fetcher: typeof fetch = (input, init) => {
@@ -175,7 +268,6 @@ void describe('GeoFlowApiClient', () => {
                 keywords: ['GEO', '媒体投递'],
             },
             [8, 9],
-            { max_unit_price: 15.5, max_total_price: 30 },
             '自动投稿',
             'publication-123',
         );
@@ -205,8 +297,6 @@ void describe('GeoFlowApiClient', () => {
                 body: {
                     article_ids: [91],
                     media_resource_ids: [8, 9],
-                    max_unit_price: 15.5,
-                    max_total_price: 30,
                     remark: '自动投稿',
                 },
             },

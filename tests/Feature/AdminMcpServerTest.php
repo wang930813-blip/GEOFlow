@@ -22,6 +22,9 @@ use App\Models\Admin;
 use App\Models\Article;
 use App\Models\Author;
 use App\Models\Category;
+use App\Models\Image;
+use App\Models\ImageLibrary;
+use App\Models\KeywordLibrary;
 use App\Models\PlatformPlan;
 use App\Models\Site;
 use App\Models\Task;
@@ -30,6 +33,7 @@ use App\Services\Api\ApiTokenService;
 use App\Services\Mcp\McpKeyService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\PersonalAccessToken;
 use Tests\TestCase;
 
@@ -62,9 +66,12 @@ class AdminMcpServerTest extends TestCase
             ->assertSee($site->name)
             ->assertSee('Streamable HTTP')
             ->assertSee('geo_run_task')
+            ->assertSee('geo_get_material_summary')
+            ->assertSee('geo_delete_material_items')
             ->assertSee('geo_publish_article_to_media')
             ->assertSee('按渠道实际售价扣费，失败退款')
-            ->assertSee('MCP 请求本身不单独计费');
+            ->assertSee('MCP 请求本身不单独计费')
+            ->assertDontSee('媒体投稿消费策略');
     }
 
     /**
@@ -92,14 +99,13 @@ class AdminMcpServerTest extends TestCase
                 'scopes' => [
                     'catalog:read',
                     'tasks:read',
+                    'materials:read',
+                    'materials:write',
                     'articles:read',
                     'articles:write',
                     'media:read',
                     'media:submit',
                 ],
-                'mcp_max_unit_price' => '100.00',
-                'mcp_max_total_price' => '300.00',
-                'mcp_daily_spend_limit' => '1000.00',
             ]);
 
         $response
@@ -111,20 +117,19 @@ class AdminMcpServerTest extends TestCase
         $this->assertSame((int) $site->id, (int) $token->site_id);
         $this->assertContains(ApiTokenService::MCP_CONNECT_SCOPE, (array) $token->abilities);
         $this->assertContains('tasks:read', (array) $token->abilities);
+        $this->assertContains('materials:read', (array) $token->abilities);
+        $this->assertContains('materials:write', (array) $token->abilities);
         $this->assertContains('articles:write', (array) $token->abilities);
         $this->assertContains('media:read', (array) $token->abilities);
         $this->assertContains('media:submit', (array) $token->abilities);
-        $this->assertSame(100.0, (float) $token->mcp_max_unit_price);
-        $this->assertSame(300.0, (float) $token->mcp_max_total_price);
-        $this->assertSame(1000.0, (float) $token->mcp_daily_spend_limit);
 
         $plainToken = (string) $response->getSession()->get('new_mcp_key');
-        $this->withHeader('Authorization', 'Bearer '.$plainToken)
+        $authResponse = $this->withHeader('Authorization', 'Bearer '.$plainToken)
             ->getJson('/api/v1/auth/me')
             ->assertOk()
-            ->assertJsonPath('data.token.spending_policy.max_unit_price', '100.00')
-            ->assertJsonPath('data.token.spending_policy.max_total_price', '300.00')
-            ->assertJsonPath('data.token.spending_policy.daily_spend_limit', '1000.00');
+            ->assertJsonMissingPath('data.token.spending_policy');
+        $this->assertContains('materials:read', $authResponse->json('data.token.scopes'));
+        $this->assertContains('materials:write', $authResponse->json('data.token.scopes'));
     }
 
     /**
@@ -243,7 +248,7 @@ class AdminMcpServerTest extends TestCase
     /**
      * @Name: test_mcp_key_only_accesses_its_owners_geo_business_data
      *
-     * @Description: 验证同站点不同账号的任务、文章、执行记录和任务投递均按 Token 真实所有者隔离。
+     * @Description: 验证同站点不同账号的任务、文章、素材、执行记录和写操作均按 Token 真实所有者隔离。
      *
      * @Author: cdkay
      *
@@ -332,6 +337,20 @@ class AdminMcpServerTest extends TestCase
             'status' => 'draft',
             'review_status' => 'pending',
         ]);
+        $ownKeywordLibrary = KeywordLibrary::withoutGlobalScopes()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'name' => '当前账号关键词库',
+            'description' => '当前账号素材',
+            'keyword_count' => 0,
+        ]);
+        $otherKeywordLibrary = KeywordLibrary::withoutGlobalScopes()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $otherAdmin->id,
+            'name' => '其他账号关键词库',
+            'description' => '其他账号素材',
+            'keyword_count' => 0,
+        ]);
         $created = app(ApiTokenService::class)->createToken(
             'GEO 业务隔离 MCP Key',
             [
@@ -339,6 +358,8 @@ class AdminMcpServerTest extends TestCase
                 'tasks:read',
                 'tasks:write',
                 'jobs:read',
+                'materials:read',
+                'materials:write',
                 'articles:read',
             ],
             (int) $admin->id,
@@ -376,6 +397,36 @@ class AdminMcpServerTest extends TestCase
             ->assertJsonPath('error.code', 'article_not_found');
 
         $this->withHeaders($authorization)
+            ->getJson('/api/v1/materials/keyword-libraries')
+            ->assertOk()
+            ->assertJsonPath('data.pagination.total', 1)
+            ->assertJsonPath('data.items.0.id', (int) $ownKeywordLibrary->id);
+        $this->withHeaders($authorization)
+            ->getJson('/api/v1/materials/keyword-libraries/'.$otherKeywordLibrary->id)
+            ->assertNotFound()
+            ->assertJsonPath('error.code', 'material_not_found');
+        $this->withHeaders($authorization)
+            ->patchJson('/api/v1/materials/keyword-libraries/'.$otherKeywordLibrary->id, [
+                'description' => '越权更新',
+            ])
+            ->assertNotFound()
+            ->assertJsonPath('error.code', 'material_not_found');
+        $this->withHeaders($authorization)
+            ->deleteJson('/api/v1/materials/keyword-libraries/'.$otherKeywordLibrary->id)
+            ->assertNotFound()
+            ->assertJsonPath('error.code', 'material_not_found');
+        $materialResponse = $this->withHeaders($authorization)
+            ->postJson('/api/v1/materials/keyword-libraries', [
+                'name' => 'MCP 新增关键词库',
+                'description' => '由 MCP 创建',
+            ])
+            ->assertCreated();
+        $createdMaterialId = (int) $materialResponse->json('data.item.id');
+        $createdMaterial = KeywordLibrary::withoutGlobalScopes()->findOrFail($createdMaterialId);
+        $this->assertSame((int) $admin->id, (int) $createdMaterial->owner_admin_id);
+        $this->assertSame((int) $site->id, (int) $createdMaterial->site_id);
+
+        $this->withHeaders($authorization)
             ->postJson('/api/v1/tasks/'.$otherTask->id.'/enqueue')
             ->assertNotFound()
             ->assertJsonPath('error.code', 'task_not_found');
@@ -388,6 +439,223 @@ class AdminMcpServerTest extends TestCase
         $queuedRun = TaskRun::withoutGlobalScopes()->findOrFail((int) $runResponse->json('data.job_id'));
         $this->assertSame((int) $admin->id, (int) $queuedRun->owner_admin_id);
         $this->assertSame((int) $site->id, (int) $queuedRun->site_id);
+    }
+
+    /**
+     * @Name: test_mcp_material_scopes_cover_all_machine_api_capabilities
+     *
+     * @Description: 验证 MCP Key 可通过现有机器 API 完成六类素材的摘要、列表、详情、创建、更新、删除，并管理三类可写条目及读取知识库切块。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-07-18 18:15:00
+     *
+     * @UpdateTime: 2026-07-18 18:15:00
+     *
+     * @Return: void
+     */
+    public function test_mcp_material_scopes_cover_all_machine_api_capabilities(): void
+    {
+        [$admin, $site] = $this->createAccount('mcp_material_capabilities');
+        $created = app(ApiTokenService::class)->createToken(
+            '素材完整能力 MCP Key',
+            [ApiTokenService::MCP_CONNECT_SCOPE, 'materials:read', 'materials:write'],
+            (int) $admin->id,
+            now()->addDay()->format('Y-m-d H:i:s'),
+            (int) $site->id,
+        );
+        $authorization = ['Authorization' => 'Bearer '.$created['token']];
+        $definitions = [
+            'categories' => [
+                'create' => ['name' => 'MCP 分类', 'description' => '分类说明'],
+                'update' => ['description' => '更新分类说明'],
+            ],
+            'authors' => [
+                'create' => ['name' => 'MCP 作者', 'bio' => '作者介绍'],
+                'update' => ['bio' => '更新作者介绍'],
+            ],
+            'keyword-libraries' => [
+                'create' => ['name' => 'MCP 关键词库', 'description' => '关键词说明'],
+                'update' => ['description' => '更新关键词说明'],
+            ],
+            'title-libraries' => [
+                'create' => ['name' => 'MCP 标题库', 'description' => '标题说明'],
+                'update' => ['description' => '更新标题说明'],
+            ],
+            'image-libraries' => [
+                'create' => ['name' => 'MCP 图片库', 'description' => '图片说明'],
+                'update' => ['description' => '更新图片说明'],
+            ],
+            'knowledge-bases' => [
+                'create' => ['name' => 'MCP 知识库', 'description' => '知识说明', 'content' => 'GEO 素材知识库正文。'],
+                'update' => ['description' => '更新知识说明'],
+            ],
+        ];
+
+        $this->withHeaders($authorization)
+            ->getJson('/api/v1/materials')
+            ->assertOk()
+            ->assertJsonCount(6, 'data.types');
+
+        $materialIds = [];
+        foreach ($definitions as $type => $definition) {
+            $materialId = (int) $this->withHeaders($authorization)
+                ->postJson('/api/v1/materials/'.$type, $definition['create'])
+                ->assertCreated()
+                ->assertJsonPath('data.type', $type)
+                ->json('data.item.id');
+            $materialIds[$type] = $materialId;
+
+            $this->withHeaders($authorization)
+                ->getJson('/api/v1/materials/'.$type)
+                ->assertOk()
+                ->assertJsonPath('data.type', $type);
+            $this->withHeaders($authorization)
+                ->getJson('/api/v1/materials/'.$type.'/'.$materialId)
+                ->assertOk()
+                ->assertJsonPath('data.item.id', $materialId);
+            $this->withHeaders($authorization)
+                ->patchJson('/api/v1/materials/'.$type.'/'.$materialId, $definition['update'])
+                ->assertOk()
+                ->assertJsonPath('data.item.id', $materialId);
+        }
+
+        $itemDefinitions = [
+            'keyword-libraries' => ['keyword' => 'GEO 关键词'],
+            'title-libraries' => ['title' => 'GEO 标题', 'keyword' => 'GEO'],
+            'image-libraries' => [
+                'file_path' => 'https://cdn.example.com/material-image.png',
+                'filename' => 'material-image.png',
+            ],
+        ];
+        foreach ($itemDefinitions as $type => $payload) {
+            $materialId = $materialIds[$type];
+            $itemId = (int) $this->withHeaders($authorization)
+                ->postJson('/api/v1/materials/'.$type.'/'.$materialId.'/items', $payload)
+                ->assertCreated()
+                ->json('data.item.id');
+            $this->withHeaders($authorization)
+                ->getJson('/api/v1/materials/'.$type.'/'.$materialId.'/items')
+                ->assertOk()
+                ->assertJsonPath('data.pagination.total', 1);
+            $this->withHeaders($authorization)
+                ->deleteJson('/api/v1/materials/'.$type.'/'.$materialId.'/items', ['ids' => [$itemId]])
+                ->assertOk()
+                ->assertJsonPath('data.deleted_count', 1);
+        }
+
+        $this->withHeaders($authorization)
+            ->getJson('/api/v1/materials/knowledge-bases/'.$materialIds['knowledge-bases'].'/items')
+            ->assertOk()
+            ->assertJsonPath('data.pagination.total', 1);
+
+        foreach (array_reverse($materialIds, true) as $type => $materialId) {
+            $this->withHeaders($authorization)
+                ->deleteJson('/api/v1/materials/'.$type.'/'.$materialId)
+                ->assertOk()
+                ->assertJsonPath('data.deleted', true);
+        }
+    }
+
+    /**
+     * @Name: test_mcp_material_delete_preserves_files_referenced_by_another_account
+     *
+     * @Description: 验证素材写权限不能通过伪造相同 file_path 删除同站点其他账号仍在使用的受控存储文件。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-07-18 18:15:00
+     *
+     * @UpdateTime: 2026-07-18 18:15:00
+     *
+     * @Return: void
+     */
+    public function test_mcp_material_delete_preserves_files_referenced_by_another_account(): void
+    {
+        Storage::fake('public');
+        [$admin, $site] = $this->createAccount('mcp_material_file_owner');
+        $otherAdmin = $this->createSiteMember($site, 'mcp_material_file_other');
+        $sharedPath = 'storage/uploads/images/shared-account-image.png';
+        Storage::disk('public')->put('uploads/images/shared-account-image.png', 'shared image');
+
+        $otherLibrary = ImageLibrary::withoutGlobalScopes()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $otherAdmin->id,
+            'name' => '其他账号图片库',
+            'description' => '',
+            'image_count' => 1,
+            'used_task_count' => 0,
+        ]);
+        $otherImage = Image::withoutGlobalScopes()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $otherAdmin->id,
+            'library_id' => (int) $otherLibrary->id,
+            'filename' => 'shared-account-image.png',
+            'original_name' => 'shared-account-image.png',
+            'file_name' => 'shared-account-image.png',
+            'file_path' => $sharedPath,
+            'file_size' => 12,
+            'mime_type' => 'image/png',
+            'width' => 1,
+            'height' => 1,
+            'tags' => '',
+            'used_count' => 0,
+            'usage_count' => 0,
+        ]);
+        $ownLibrary = ImageLibrary::withoutGlobalScopes()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'name' => '当前账号图片库',
+            'description' => '',
+            'image_count' => 0,
+            'used_task_count' => 0,
+        ]);
+        $created = app(ApiTokenService::class)->createToken(
+            '素材文件隔离 MCP Key',
+            [ApiTokenService::MCP_CONNECT_SCOPE, 'materials:write'],
+            (int) $admin->id,
+            now()->addDay()->format('Y-m-d H:i:s'),
+            (int) $site->id,
+        );
+        $authorization = ['Authorization' => 'Bearer '.$created['token']];
+
+        $ownImageId = (int) $this->withHeaders($authorization)
+            ->postJson('/api/v1/materials/image-libraries/'.$ownLibrary->id.'/items', [
+                'file_path' => $sharedPath,
+                'filename' => 'shared-account-image.png',
+            ])
+            ->assertCreated()
+            ->json('data.item.id');
+        $this->withHeaders($authorization)
+            ->deleteJson('/api/v1/materials/image-libraries/'.$ownLibrary->id.'/items', [
+                'ids' => [$ownImageId],
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.deleted_count', 1);
+
+        Storage::disk('public')->assertExists('uploads/images/shared-account-image.png');
+        $this->assertDatabaseHas('images', [
+            'id' => (int) $otherImage->id,
+            'owner_admin_id' => (int) $otherAdmin->id,
+            'file_path' => $sharedPath,
+        ]);
+
+        $ownOnlyPath = 'storage/uploads/images/own-account-image.png';
+        Storage::disk('public')->put('uploads/images/own-account-image.png', 'own image');
+        $ownOnlyImageId = (int) $this->withHeaders($authorization)
+            ->postJson('/api/v1/materials/image-libraries/'.$ownLibrary->id.'/items', [
+                'file_path' => $ownOnlyPath,
+                'filename' => 'own-account-image.png',
+            ])
+            ->assertCreated()
+            ->json('data.item.id');
+        $this->withHeaders($authorization)
+            ->deleteJson('/api/v1/materials/image-libraries/'.$ownLibrary->id.'/items', [
+                'ids' => [$ownOnlyImageId],
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.deleted_count', 1);
+        Storage::disk('public')->assertMissing('uploads/images/own-account-image.png');
     }
 
     /**

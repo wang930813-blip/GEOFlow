@@ -97,15 +97,6 @@ class AuthController extends BaseApiController
                 'name' => (string) ($context->token['name'] ?? ''),
                 'scopes' => array_values((array) ($context->token['scopes'] ?? [])),
                 'expires_at' => $context->token['expires_at'] ?? null,
-                'spending_policy' => isset(
-                    $context->token['mcp_max_unit_price'],
-                    $context->token['mcp_max_total_price'],
-                    $context->token['mcp_daily_spend_limit'],
-                ) ? [
-                    'max_unit_price' => number_format((float) $context->token['mcp_max_unit_price'], 2, '.', ''),
-                    'max_total_price' => number_format((float) $context->token['mcp_max_total_price'], 2, '.', ''),
-                    'daily_spend_limit' => number_format((float) $context->token['mcp_daily_spend_limit'], 2, '.', ''),
-                ] : null,
             ],
             'admin' => [
                 'id' => (int) $admin->id,

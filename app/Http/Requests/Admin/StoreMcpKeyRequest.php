@@ -62,9 +62,6 @@ class StoreMcpKeyRequest extends FormRequest
             'expires_at' => ['nullable', 'date', 'after:now'],
             'scopes' => ['required', 'array', 'min:1'],
             'scopes.*' => ['required', 'string', 'distinct', Rule::in(McpKeyService::BUSINESS_SCOPES)],
-            'mcp_max_unit_price' => [Rule::requiredIf($this->hasMediaSubmitScope()), 'nullable', 'numeric', 'min:0.01', 'max:999999.99'],
-            'mcp_max_total_price' => [Rule::requiredIf($this->hasMediaSubmitScope()), 'nullable', 'numeric', 'min:0.01', 'max:9999999.99'],
-            'mcp_daily_spend_limit' => [Rule::requiredIf($this->hasMediaSubmitScope()), 'nullable', 'numeric', 'min:0.01', 'max:9999999.99'],
         ];
     }
 
@@ -90,27 +87,6 @@ class StoreMcpKeyRequest extends FormRequest
             'scopes.required' => '至少选择一项 GEO 业务权限',
             'scopes.min' => '至少选择一项 GEO 业务权限',
             'scopes.*.in' => '包含未开放的 GEO 业务权限',
-            'mcp_max_unit_price.required' => '授予媒体投稿权限时必须设置单渠道消费上限',
-            'mcp_max_total_price.required' => '授予媒体投稿权限时必须设置单次消费上限',
-            'mcp_daily_spend_limit.required' => '授予媒体投稿权限时必须设置每日消费上限',
         ];
-    }
-
-    /**
-     * @Name: hasMediaSubmitScope
-     *
-     * @Description: 判断当前创建请求是否包含媒体投稿权限，用于强制启用 Key 级消费策略。
-     *
-     * @Author: cdkay
-     *
-     * @CreateTime: 2026-07-18 17:25:00
-     *
-     * @UpdateTime: 2026-07-18 17:25:00
-     *
-     * @Return: bool 是否包含媒体投稿权限
-     */
-    private function hasMediaSubmitScope(): bool
-    {
-        return in_array('media:submit', (array) $this->input('scopes', []), true);
     }
 }

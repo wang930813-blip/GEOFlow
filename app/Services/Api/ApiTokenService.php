@@ -1,5 +1,21 @@
 <?php
 
+/**
+ * Created by 开发工具.
+ *
+ * @Date: 2026-07-18
+ *
+ * @Time: 18:15
+ *
+ * @Author: cdkay
+ *
+ * @Email: network@iyuanma.net
+ *
+ * @File： ApiTokenService.php
+ *
+ * @Description: 管理机器 API Token 的签发、解析、状态校验、权限范围和使用时间。
+ */
+
 namespace App\Services\Api;
 
 use App\Exceptions\ApiException;
@@ -219,9 +235,6 @@ class ApiTokenService
             'scopes' => $scopes,
             'status' => 'active',
             'site_id' => $row->site_id !== null ? (int) $row->site_id : null,
-            'mcp_max_unit_price' => $row->mcp_max_unit_price !== null ? (string) $row->mcp_max_unit_price : null,
-            'mcp_max_total_price' => $row->mcp_max_total_price !== null ? (string) $row->mcp_max_total_price : null,
-            'mcp_daily_spend_limit' => $row->mcp_daily_spend_limit !== null ? (string) $row->mcp_daily_spend_limit : null,
             'created_by_admin_id' => $row->tokenable_id !== null ? (int) $row->tokenable_id : null,
             'last_used_at' => $row->last_used_at?->format('Y-m-d H:i:s'),
             'expires_at' => $row->expires_at?->format('Y-m-d H:i:s'),

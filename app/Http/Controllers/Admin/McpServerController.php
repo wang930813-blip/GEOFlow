@@ -89,9 +89,6 @@ class McpServerController extends Controller
      *      name string 必选 MCP Key 名称
      *      expires_at string 可选 过期时间
      *      scopes array 必选 GEO 业务权限列表
-     *      mcp_max_unit_price numeric 条件必选 单渠道消费上限
-     *      mcp_max_total_price numeric 条件必选 单次消费上限
-     *      mcp_daily_spend_limit numeric 条件必选 每日消费上限
      *
      * @Author: cdkay
      *
@@ -114,11 +111,6 @@ class McpServerController extends Controller
                 (string) $payload['name'],
                 (array) $payload['scopes'],
                 isset($payload['expires_at']) ? (string) $payload['expires_at'] : null,
-                [
-                    'max_unit_price' => $payload['mcp_max_unit_price'] ?? null,
-                    'max_total_price' => $payload['mcp_max_total_price'] ?? null,
-                    'daily_spend_limit' => $payload['mcp_daily_spend_limit'] ?? null,
-                ],
             );
 
             return redirect()

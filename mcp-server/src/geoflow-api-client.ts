@@ -7,7 +7,7 @@
  * @Email: network@iyuanma.net
  *
  * @File： geoflow-api-client.ts
- * @Description: 封装 GEOFlow REST API 鉴权、超时、错误映射、文章管理、媒体渠道和投稿调用。
+ * @Description: 封装 GEOFlow REST API 鉴权、超时、错误映射、素材管理、文章管理、媒体渠道和投稿调用。
  */
 
 import { randomUUID } from 'node:crypto';
@@ -18,11 +18,6 @@ export interface GeoFlowAuthContext {
         name: string;
         scopes: string[];
         expires_at: string | null;
-        spending_policy?: {
-            max_unit_price: string;
-            max_total_price: string;
-            daily_spend_limit: string;
-        } | null;
     };
     admin: {
         id: number;
@@ -76,10 +71,10 @@ export interface GeoFlowMediaSubmissionResult extends Record<string, unknown> {
     errors: unknown[];
 }
 
-export interface GeoFlowMediaBudget {
-    max_unit_price: number;
-    max_total_price: number;
-}
+export type GeoFlowMaterialType =
+    'categories' | 'authors' | 'keyword-libraries' | 'title-libraries' | 'image-libraries' | 'knowledge-bases';
+
+export type GeoFlowWritableMaterialItemType = 'keyword-libraries' | 'title-libraries' | 'image-libraries';
 
 export interface GeoFlowArticlePublicationResult {
     article: GeoFlowArticleRecord;
@@ -249,6 +244,212 @@ export class GeoFlowApiClient {
     }
 
     /**
+     * @Name: getMaterialSummary
+     * @Description: 查询当前账号和站点下六类 GEO 素材的数量摘要。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-07-18 18:30:00
+     * @UpdateTime: 2026-07-18 18:30:00
+     *
+     * @Return: Promise<unknown> 素材类型和数量摘要
+     * @Throws GeoFlowApiError 权限或上游 API 调用失败
+     */
+    public async getMaterialSummary(): Promise<unknown> {
+        return await this.request<unknown>('GET', 'materials');
+    }
+
+    /**
+     * @Name: listMaterials
+     * @Description: 分页查询指定类型的 GEO 素材，可按名称或描述关键词搜索。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-07-18 18:30:00
+     * @UpdateTime: 2026-07-18 18:30:00
+     *
+     * @Param: GeoFlowMaterialType type 素材类型
+     * @Param: Record<string, string | number | undefined> query 分页和搜索参数
+     * @Return: Promise<unknown> 素材分页结果
+     * @Throws GeoFlowApiError 素材类型、权限或上游 API 调用失败
+     */
+    public async listMaterials(
+        type: GeoFlowMaterialType,
+        query: Record<string, string | number | undefined>,
+    ): Promise<unknown> {
+        return await this.request<unknown>('GET', `materials/${encodeURIComponent(type)}`, { query });
+    }
+
+    /**
+     * @Name: getMaterial
+     * @Description: 查询当前账号和站点下的单个 GEO 素材详情。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-07-18 18:30:00
+     * @UpdateTime: 2026-07-18 18:30:00
+     *
+     * @Param: GeoFlowMaterialType type 素材类型
+     * @Param: number materialId 素材编号
+     * @Return: Promise<unknown> 素材详情
+     * @Throws GeoFlowApiError 素材不存在、权限不足或上游 API 调用失败
+     */
+    public async getMaterial(type: GeoFlowMaterialType, materialId: number): Promise<unknown> {
+        return await this.request<unknown>('GET', `materials/${encodeURIComponent(type)}/${materialId}`);
+    }
+
+    /**
+     * @Name: createMaterial
+     * @Description: 创建分类、作者、关键词库、标题库、图片库或知识库。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-07-18 18:30:00
+     * @UpdateTime: 2026-07-18 18:30:00
+     *
+     * @Param: GeoFlowMaterialType type 素材类型
+     * @Param: Record<string, unknown> data 对应素材类型的字段
+     * @Param: string idempotencyKey 幂等键
+     * @Return: Promise<unknown> 已创建素材
+     * @Throws GeoFlowApiError 参数、权限或上游 API 调用失败
+     */
+    public async createMaterial(
+        type: GeoFlowMaterialType,
+        data: Record<string, unknown>,
+        idempotencyKey: string,
+    ): Promise<unknown> {
+        return await this.request<unknown>('POST', `materials/${encodeURIComponent(type)}`, {
+            body: data,
+            idempotencyKey,
+        });
+    }
+
+    /**
+     * @Name: updateMaterial
+     * @Description: 更新当前账号和站点下的指定 GEO 素材。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-07-18 18:30:00
+     * @UpdateTime: 2026-07-18 18:30:00
+     *
+     * @Param: GeoFlowMaterialType type 素材类型
+     * @Param: number materialId 素材编号
+     * @Param: Record<string, unknown> data 待更新字段
+     * @Param: string idempotencyKey 幂等键
+     * @Return: Promise<unknown> 更新后的素材
+     * @Throws GeoFlowApiError 参数、权限、占用关系或上游 API 调用失败
+     */
+    public async updateMaterial(
+        type: GeoFlowMaterialType,
+        materialId: number,
+        data: Record<string, unknown>,
+        idempotencyKey: string,
+    ): Promise<unknown> {
+        return await this.request<unknown>('PATCH', `materials/${encodeURIComponent(type)}/${materialId}`, {
+            body: data,
+            idempotencyKey,
+        });
+    }
+
+    /**
+     * @Name: deleteMaterial
+     * @Description: 删除当前账号和站点下未被业务数据占用的指定 GEO 素材。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-07-18 18:30:00
+     * @UpdateTime: 2026-07-18 18:30:00
+     *
+     * @Param: GeoFlowMaterialType type 素材类型
+     * @Param: number materialId 素材编号
+     * @Param: string idempotencyKey 幂等键
+     * @Return: Promise<unknown> 删除结果
+     * @Throws GeoFlowApiError 素材不存在、仍被占用或权限不足
+     */
+    public async deleteMaterial(
+        type: GeoFlowMaterialType,
+        materialId: number,
+        idempotencyKey: string,
+    ): Promise<unknown> {
+        return await this.request<unknown>('DELETE', `materials/${encodeURIComponent(type)}/${materialId}`, {
+            idempotencyKey,
+        });
+    }
+
+    /**
+     * @Name: listMaterialItems
+     * @Description: 分页查询关键词、标题、图片条目或知识库自动切块。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-07-18 18:30:00
+     * @UpdateTime: 2026-07-18 18:30:00
+     *
+     * @Param: GeoFlowMaterialType type 素材库类型
+     * @Param: number materialId 素材库编号
+     * @Param: Record<string, number | undefined> query 分页参数
+     * @Return: Promise<unknown> 素材条目分页结果
+     * @Throws GeoFlowApiError 素材类型、素材库或权限校验失败
+     */
+    public async listMaterialItems(
+        type: GeoFlowMaterialType,
+        materialId: number,
+        query: Record<string, number | undefined>,
+    ): Promise<unknown> {
+        return await this.request<unknown>('GET', `materials/${encodeURIComponent(type)}/${materialId}/items`, {
+            query,
+        });
+    }
+
+    /**
+     * @Name: createMaterialItem
+     * @Description: 向关键词库、标题库或图片库新增一个条目。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-07-18 18:30:00
+     * @UpdateTime: 2026-07-18 18:30:00
+     *
+     * @Param: GeoFlowWritableMaterialItemType type 可写素材库类型
+     * @Param: number materialId 素材库编号
+     * @Param: Record<string, unknown> data 条目字段
+     * @Param: string idempotencyKey 幂等键
+     * @Return: Promise<unknown> 已创建素材条目
+     * @Throws GeoFlowApiError 参数、重复条目或权限校验失败
+     */
+    public async createMaterialItem(
+        type: GeoFlowWritableMaterialItemType,
+        materialId: number,
+        data: Record<string, unknown>,
+        idempotencyKey: string,
+    ): Promise<unknown> {
+        return await this.request<unknown>('POST', `materials/${encodeURIComponent(type)}/${materialId}/items`, {
+            body: data,
+            idempotencyKey,
+        });
+    }
+
+    /**
+     * @Name: deleteMaterialItems
+     * @Description: 从关键词库、标题库或图片库批量删除指定条目。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-07-18 18:30:00
+     * @UpdateTime: 2026-07-18 18:30:00
+     *
+     * @Param: GeoFlowWritableMaterialItemType type 可写素材库类型
+     * @Param: number materialId 素材库编号
+     * @Param: number[] itemIds 待删除条目编号
+     * @Param: string idempotencyKey 幂等键
+     * @Return: Promise<unknown> 删除数量
+     * @Throws GeoFlowApiError 素材库、条目或权限校验失败
+     */
+    public async deleteMaterialItems(
+        type: GeoFlowWritableMaterialItemType,
+        materialId: number,
+        itemIds: number[],
+        idempotencyKey: string,
+    ): Promise<unknown> {
+        return await this.request<unknown>('DELETE', `materials/${encodeURIComponent(type)}/${materialId}/items`, {
+            body: { ids: itemIds },
+            idempotencyKey,
+        });
+    }
+
+    /**
      * @Name: createArticle
      * @Description: 将外部 AI 应用生成的最终文章保存到当前 GEO 账号和站点，固定标记为待审核的 AI 内容。
      *
@@ -315,7 +516,6 @@ export class GeoFlowApiClient {
      *
      * @Param: number articleId 当前账号文章编号
      * @Param: number[] mediaResourceIds 目标媒体资源编号
-     * @Param: GeoFlowMediaBudget budget 单渠道最高价格和本次投稿最高总价
      * @Param: string remark 投稿备注
      * @Param: string idempotencyKey 幂等键
      * @Return: Promise<GeoFlowMediaSubmissionResult> 投稿订单和逐渠道错误
@@ -324,7 +524,6 @@ export class GeoFlowApiClient {
     public async submitArticleToMedia(
         articleId: number,
         mediaResourceIds: number[],
-        budget: GeoFlowMediaBudget,
         remark: string,
         idempotencyKey: string,
     ): Promise<GeoFlowMediaSubmissionResult> {
@@ -332,7 +531,6 @@ export class GeoFlowApiClient {
             body: {
                 article_ids: [articleId],
                 media_resource_ids: mediaResourceIds,
-                ...budget,
                 remark,
             },
             idempotencyKey,
@@ -349,7 +547,6 @@ export class GeoFlowApiClient {
      *
      * @Param: GeoFlowArticleInput input 已完成生成的文章内容、作者和分类
      * @Param: number[] mediaResourceIds 目标媒体资源编号
-     * @Param: GeoFlowMediaBudget budget 单渠道最高价格和本次投稿最高总价
      * @Param: string remark 投稿备注
      * @Param: string idempotencyKey 整体操作幂等键
      * @Return: Promise<GeoFlowArticlePublicationResult> 文章、投稿订单和逐渠道错误
@@ -358,7 +555,6 @@ export class GeoFlowApiClient {
     public async publishArticleToMedia(
         input: GeoFlowArticleInput,
         mediaResourceIds: number[],
-        budget: GeoFlowMediaBudget,
         remark: string,
         idempotencyKey: string,
     ): Promise<GeoFlowArticlePublicationResult> {
@@ -368,7 +564,6 @@ export class GeoFlowApiClient {
             const publication = await this.submitArticleToMedia(
                 article.id,
                 mediaResourceIds,
-                budget,
                 remark,
                 `${idempotencyKey}:submission`,
             );

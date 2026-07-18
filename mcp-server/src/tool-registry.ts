@@ -7,7 +7,7 @@
  * @Email: network@iyuanma.net
  *
  * @File： tool-registry.ts
- * @Description: 按 MCP Key scope 动态注册 GEO 目录、任务、文章、媒体渠道和自动投稿工具。
+ * @Description: 按 MCP Key scope 动态注册 GEO 目录、任务、素材、文章、媒体渠道和自动投稿工具。
  */
 
 import { randomUUID } from 'node:crypto';
@@ -33,10 +33,26 @@ const optionalIdempotencyKeySchema = z
     .max(96)
     .optional()
     .describe('可选幂等键，重试同一操作时保持一致');
-const mediaBudgetInputSchema = {
-    max_unit_price: z.number().positive().max(999_999.99).describe('允许单个媒体渠道扣费的最高金额'),
-    max_total_price: z.number().positive().max(9_999_999.99).describe('允许本次全部媒体渠道扣费的最高总金额'),
-};
+const materialTypeSchema = z.enum([
+    'categories',
+    'authors',
+    'keyword-libraries',
+    'title-libraries',
+    'image-libraries',
+    'knowledge-bases',
+]);
+const materialItemTypeSchema = z.enum(['keyword-libraries', 'title-libraries', 'image-libraries', 'knowledge-bases']);
+const writableMaterialItemTypeSchema = z.enum(['keyword-libraries', 'title-libraries', 'image-libraries']);
+const materialDataSchema = z
+    .record(z.string(), z.unknown())
+    .describe(
+        '素材字段。分类使用 name、slug、description、sort_order；作者使用 name、email、bio、avatar、website、social_links；普通素材库使用 name、description；知识库另需 content，可选 file_type、file_path。',
+    );
+const materialItemDataSchema = z
+    .record(z.string(), z.unknown())
+    .describe(
+        '条目字段。关键词使用 keyword；标题使用 title，可选 keyword；图片使用 file_path，可选 filename、original_name、file_name、file_size、mime_type、width、height、tags。',
+    );
 
 /**
  * @Name: hasScope
@@ -156,21 +172,26 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
         hasScope(context, 'articles:write') &&
         hasScope(context, 'media:read') &&
         hasScope(context, 'media:submit');
-    const spendingPolicy = context.token.spending_policy;
-    const spendingPolicyInstruction = spendingPolicy
-        ? `当前 Key 消费上限：单渠道 ${spendingPolicy.max_unit_price}，单次 ${spendingPolicy.max_total_price}，每日 ${spendingPolicy.daily_spend_limit}。`
-        : '当前 Key 未配置消费策略，不能执行付费投稿。';
+    const instructions = ['只调用当前 MCP Key 已授权并实际发现的 GEO 工具，不要尝试调用工具列表中不存在的能力。'];
+    if (hasScope(context, 'materials:read')) {
+        instructions.push(
+            '管理 GEO 素材时先调用 geo_get_material_summary 确认可用类型，再按类型查询或操作；知识库条目由正文自动切块，仅允许读取。',
+        );
+    }
+    if (canPublishToMedia) {
+        instructions.push(
+            '处理 AI 文章媒体投递时，先调用 geo_get_catalog 获取有效作者和分类，再调用 geo_list_media_channels 查询渠道编号与当前售价。由当前 AI 应用完成最终标题和正文后，优先调用 geo_publish_article_to_media 一次创建并投递。未获得明确媒体资源编号时禁止投稿；多渠道部分成功时只重投失败渠道；同一操作重试必须保持 idempotency_key 不变。',
+        );
+    }
 
     const server = new McpServer(
         {
             name: 'geoflow-business-mcp-server',
             title: `GEOFlow - ${context.site?.name || 'GEO'}`,
-            version: '1.1.0',
+            version: '1.2.0',
         },
         {
-            instructions: canPublishToMedia
-                ? `处理 AI 文章媒体投递时，先调用 geo_get_catalog 获取有效作者和分类，再调用 geo_list_media_channels 查询渠道编号与当前售价。${spendingPolicyInstruction}由当前 AI 应用完成最终标题和正文后，优先调用 geo_publish_article_to_media 一次创建并投递。未获得明确媒体资源编号时禁止投稿；多渠道部分成功时只重投失败渠道；同一操作重试必须保持 idempotency_key 不变。`
-                : '只调用当前 MCP Key 已授权并实际发现的 GEO 工具；不要尝试调用工具列表中不存在的写入或投稿能力。',
+            instructions: instructions.join(''),
         },
     );
 
@@ -269,6 +290,185 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
                 annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
             },
             async ({ run_id }) => await executeTool(async () => await client.getTaskRun(run_id)),
+        );
+    }
+
+    if (hasScope(context, 'materials:read')) {
+        server.registerTool(
+            'geo_get_material_summary',
+            {
+                title: '获取 GEO 素材摘要',
+                description: '查询分类、作者、关键词库、标题库、图片库、知识库六类素材的数量。',
+                annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
+            },
+            async () => await executeTool(async () => await client.getMaterialSummary()),
+        );
+
+        server.registerTool(
+            'geo_list_materials',
+            {
+                title: '查询 GEO 素材',
+                description: '分页查询指定类型素材，可按名称、描述、作者信息或分类字段搜索。',
+                inputSchema: {
+                    type: materialTypeSchema.describe('素材类型'),
+                    page: z.number().int().min(1).default(1).describe('页码'),
+                    per_page: z.number().int().min(1).max(100).default(20).describe('每页数量'),
+                    search: z.string().trim().min(1).max(120).optional().describe('搜索关键词'),
+                },
+                annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
+            },
+            async ({ type, page, per_page, search }) =>
+                await executeTool(async () => await client.listMaterials(type, { page, per_page, search })),
+        );
+
+        server.registerTool(
+            'geo_get_material',
+            {
+                title: '获取 GEO 素材详情',
+                description: '查询当前站点指定类型和编号的素材详情。',
+                inputSchema: {
+                    type: materialTypeSchema.describe('素材类型'),
+                    material_id: z.number().int().positive().describe('素材编号'),
+                },
+                annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
+            },
+            async ({ type, material_id }) => await executeTool(async () => await client.getMaterial(type, material_id)),
+        );
+
+        server.registerTool(
+            'geo_list_material_items',
+            {
+                title: '查询 GEO 素材条目',
+                description: '分页查询关键词、标题、图片条目或知识库自动切块。分类和作者没有条目接口。',
+                inputSchema: {
+                    type: materialItemTypeSchema.describe('支持条目的素材库类型'),
+                    material_id: z.number().int().positive().describe('素材库编号'),
+                    page: z.number().int().min(1).default(1).describe('页码'),
+                    per_page: z.number().int().min(1).max(100).default(20).describe('每页数量'),
+                },
+                annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
+            },
+            async ({ type, material_id, page, per_page }) =>
+                await executeTool(async () => await client.listMaterialItems(type, material_id, { page, per_page })),
+        );
+    }
+
+    if (hasScope(context, 'materials:write')) {
+        server.registerTool(
+            'geo_create_material',
+            {
+                title: '创建 GEO 素材',
+                description: '创建分类、作者、关键词库、标题库、图片库或知识库。知识库正文保存后会自动切块。',
+                inputSchema: {
+                    type: materialTypeSchema.describe('素材类型'),
+                    data: materialDataSchema,
+                    idempotency_key: optionalIdempotencyKeySchema,
+                },
+                annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
+            },
+            async ({ type, data, idempotency_key }) =>
+                await executeTool(
+                    async () =>
+                        await client.createMaterial(type, data, idempotency_key || `mcp-material-${randomUUID()}`),
+                ),
+        );
+
+        server.registerTool(
+            'geo_update_material',
+            {
+                title: '更新 GEO 素材',
+                description: '更新指定素材的可写字段；知识库正文变化后会重新生成切块。',
+                inputSchema: {
+                    type: materialTypeSchema.describe('素材类型'),
+                    material_id: z.number().int().positive().describe('素材编号'),
+                    data: materialDataSchema,
+                    idempotency_key: optionalIdempotencyKeySchema,
+                },
+                annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
+            },
+            async ({ type, material_id, data, idempotency_key }) =>
+                await executeTool(
+                    async () =>
+                        await client.updateMaterial(
+                            type,
+                            material_id,
+                            data,
+                            idempotency_key || `mcp-material-update-${randomUUID()}`,
+                        ),
+                ),
+        );
+
+        server.registerTool(
+            'geo_delete_material',
+            {
+                title: '删除 GEO 素材',
+                description: '删除指定素材；仍被文章、任务或其他素材引用时由 GEOFlow 拒绝删除。',
+                inputSchema: {
+                    type: materialTypeSchema.describe('素材类型'),
+                    material_id: z.number().int().positive().describe('素材编号'),
+                    idempotency_key: optionalIdempotencyKeySchema,
+                },
+                annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
+            },
+            async ({ type, material_id, idempotency_key }) =>
+                await executeTool(
+                    async () =>
+                        await client.deleteMaterial(
+                            type,
+                            material_id,
+                            idempotency_key || `mcp-material-delete-${randomUUID()}`,
+                        ),
+                ),
+        );
+
+        server.registerTool(
+            'geo_create_material_item',
+            {
+                title: '新增 GEO 素材条目',
+                description: '向关键词库、标题库或图片库新增条目。知识库切块由正文自动生成，不能直接新增。',
+                inputSchema: {
+                    type: writableMaterialItemTypeSchema.describe('可写素材库类型'),
+                    material_id: z.number().int().positive().describe('素材库编号'),
+                    data: materialItemDataSchema,
+                    idempotency_key: optionalIdempotencyKeySchema,
+                },
+                annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
+            },
+            async ({ type, material_id, data, idempotency_key }) =>
+                await executeTool(
+                    async () =>
+                        await client.createMaterialItem(
+                            type,
+                            material_id,
+                            data,
+                            idempotency_key || `mcp-material-item-${randomUUID()}`,
+                        ),
+                ),
+        );
+
+        server.registerTool(
+            'geo_delete_material_items',
+            {
+                title: '批量删除 GEO 素材条目',
+                description: '从关键词库、标题库或图片库批量删除指定条目。',
+                inputSchema: {
+                    type: writableMaterialItemTypeSchema.describe('可写素材库类型'),
+                    material_id: z.number().int().positive().describe('素材库编号'),
+                    item_ids: z.array(z.number().int().positive()).min(1).max(1000).describe('待删除条目编号列表'),
+                    idempotency_key: optionalIdempotencyKeySchema,
+                },
+                annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
+            },
+            async ({ type, material_id, item_ids, idempotency_key }) =>
+                await executeTool(
+                    async () =>
+                        await client.deleteMaterialItems(
+                            type,
+                            material_id,
+                            item_ids,
+                            idempotency_key || `mcp-material-items-delete-${randomUUID()}`,
+                        ),
+                ),
         );
     }
 
@@ -429,19 +629,17 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
                         .min(1)
                         .max(20)
                         .describe('目标媒体资源编号列表'),
-                    ...mediaBudgetInputSchema,
                     remark: z.string().trim().max(1000).default('').describe('投稿备注'),
                     idempotency_key: optionalIdempotencyKeySchema,
                 },
                 annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
             },
-            async ({ article_id, media_resource_ids, max_unit_price, max_total_price, remark, idempotency_key }) =>
+            async ({ article_id, media_resource_ids, remark, idempotency_key }) =>
                 await executeTool(
                     async () =>
                         await client.submitArticleToMedia(
                             article_id,
                             media_resource_ids,
-                            { max_unit_price, max_total_price },
                             remark,
                             idempotency_key || `mcp-submission-${randomUUID()}`,
                         ),
@@ -463,19 +661,17 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
                         .min(1)
                         .max(20)
                         .describe('通过 geo_list_media_channels 选定的媒体资源编号列表'),
-                    ...mediaBudgetInputSchema,
                     remark: z.string().trim().max(1000).default('').describe('投稿备注'),
                     idempotency_key: optionalIdempotencyKeySchema,
                 },
                 annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
             },
-            async ({ media_resource_ids, max_unit_price, max_total_price, remark, idempotency_key, ...article }) =>
+            async ({ media_resource_ids, remark, idempotency_key, ...article }) =>
                 await executeTool(
                     async () =>
                         await client.publishArticleToMedia(
                             article,
                             media_resource_ids,
-                            { max_unit_price, max_total_price },
                             remark,
                             idempotency_key || `mcp-publication-${randomUUID()}`,
                         ),

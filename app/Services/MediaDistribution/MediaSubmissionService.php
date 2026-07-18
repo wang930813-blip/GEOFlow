@@ -1,5 +1,21 @@
 <?php
 
+/**
+ * Created by 开发工具.
+ *
+ * @Date: 2026-07-18
+ *
+ * @Time: 18:15
+ *
+ * @Author: cdkay
+ *
+ * @Email: network@iyuanma.net
+ *
+ * @File： MediaSubmissionService.php
+ *
+ * @Description: 执行媒体投稿、站点售价结算、账号积分扣退和第三方订单状态同步。
+ */
+
 namespace App\Services\MediaDistribution;
 
 use App\Models\Admin;
@@ -22,7 +38,6 @@ class MediaSubmissionService
         private readonly AdminCreditService $credits,
         private readonly AdminResourceQuotaService $quotaService,
         private readonly MediaSubmissionHtmlSanitizer $htmlSanitizer,
-        private readonly MediaSubmissionBudgetGuard $budgetGuard,
     ) {}
 
     public function submit(
@@ -31,7 +46,6 @@ class MediaSubmissionService
         Admin $admin,
         string $remark = '',
         ?int $mcpTokenId = null,
-        ?string $mcpConfirmedSalePrice = null,
     ): MediaSubmission {
         if ($article->site_id === null || (int) $article->site_id <= 0) {
             throw new RuntimeException('文章缺少站点归属');
@@ -45,14 +59,7 @@ class MediaSubmissionService
 
         $this->quotaService->assertSubscriptionActive((int) $admin->id, (int) $article->site_id, $admin);
 
-        if ($mcpTokenId !== null && $mcpTokenId > 0 && $mcpConfirmedSalePrice === null) {
-            throw new RuntimeException('MCP 投稿缺少已确认的渠道价格');
-        }
-
-        // MCP 投稿必须使用预算预检时的价格快照，避免预检后价格变化导致实际扣费越过调用方确认上限。
-        $salePrice = $mcpTokenId !== null && $mcpTokenId > 0
-            ? number_format((float) $mcpConfirmedSalePrice, 2, '.', '')
-            : $this->salePriceForSite($resource, (int) $article->site_id);
+        $salePrice = $this->salePriceForSite($resource, (int) $article->site_id);
         $usesUnlimitedCredits = $this->usesUnlimitedCredits($admin, (int) $article->site_id);
         if (! $usesUnlimitedCredits) {
             $this->credits->ensureSufficient((int) $admin->id, (int) $article->site_id, $salePrice);
@@ -60,14 +67,6 @@ class MediaSubmissionService
 
         $submission = DB::transaction(function () use ($article, $resource, $admin, $remark, $salePrice, $mcpTokenId): MediaSubmission {
             $platformId = (int) ($resource->platform_id ?: MediaPlatform::CEYING_MEDIA_1);
-            if ($mcpTokenId !== null && $mcpTokenId > 0) {
-                $this->budgetGuard->assertDailyBudgetForSubmission(
-                    $mcpTokenId,
-                    (int) $admin->id,
-                    (int) $article->site_id,
-                    $salePrice,
-                );
-            }
 
             return MediaSubmission::query()->create([
                 'site_id' => (int) $article->site_id,

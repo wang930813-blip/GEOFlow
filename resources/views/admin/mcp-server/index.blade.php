@@ -107,30 +107,12 @@
                         <label for="mcp-key-expires-at" class="block text-sm font-medium text-gray-700">过期时间</label>
                         <input id="mcp-key-expires-at" name="expires_at" type="datetime-local" value="{{ old('expires_at', $defaultExpiresAtInput) }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
                     </div>
-                    <fieldset class="space-y-3 border-l-2 border-amber-400 pl-4">
-                        <legend class="text-sm font-medium text-gray-700">媒体投稿消费策略</legend>
-                        <p class="text-xs leading-5 text-gray-500">授予媒体投稿权限时必须填写，且单渠道上限不得高于单次上限，单次上限不得高于每日上限。</p>
-                        <div class="grid gap-3 sm:grid-cols-3">
-                            <label class="block text-sm text-gray-700">
-                                单渠道上限
-                                <input name="mcp_max_unit_price" type="number" min="0.01" max="999999.99" step="0.01" value="{{ old('mcp_max_unit_price') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
-                            </label>
-                            <label class="block text-sm text-gray-700">
-                                单次总额上限
-                                <input name="mcp_max_total_price" type="number" min="0.01" max="9999999.99" step="0.01" value="{{ old('mcp_max_total_price') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
-                            </label>
-                            <label class="block text-sm text-gray-700">
-                                每日上限
-                                <input name="mcp_daily_spend_limit" type="number" min="0.01" max="9999999.99" step="0.01" value="{{ old('mcp_daily_spend_limit') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
-                            </label>
-                        </div>
-                    </fieldset>
                     <fieldset>
                         <legend class="text-sm font-medium text-gray-700">业务权限</legend>
                         <div class="mt-2 space-y-2">
                             @foreach ($scopeCatalog as $scope => $definition)
                                 <label class="flex cursor-pointer items-start gap-3 rounded-md border border-gray-200 px-3 py-2.5 hover:border-blue-300 hover:bg-blue-50/40">
-                                    <input type="checkbox" name="scopes[]" value="{{ $scope }}" @checked(in_array($scope, old('scopes', ['catalog:read', 'tasks:read', 'jobs:read', 'articles:read', 'media:read']), true)) class="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                    <input type="checkbox" name="scopes[]" value="{{ $scope }}" @checked(in_array($scope, old('scopes', ['catalog:read', 'tasks:read', 'jobs:read', 'materials:read', 'articles:read', 'media:read']), true)) class="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
                                     <span class="min-w-0">
                                         <span class="flex flex-wrap items-center gap-2 text-sm font-medium text-gray-900">
                                             {{ $definition['label'] }}
@@ -167,7 +149,6 @@
                             <tr>
                                 <th class="px-5 py-3 text-left text-xs font-medium text-gray-500">名称</th>
                                 <th class="px-5 py-3 text-left text-xs font-medium text-gray-500">权限</th>
-                                <th class="px-5 py-3 text-left text-xs font-medium text-gray-500">消费策略</th>
                                 <th class="px-5 py-3 text-left text-xs font-medium text-gray-500">最近使用</th>
                                 <th class="px-5 py-3 text-left text-xs font-medium text-gray-500">过期时间</th>
                                 <th class="px-5 py-3 text-left text-xs font-medium text-gray-500">状态</th>
@@ -179,13 +160,6 @@
                                 <tr>
                                     <td class="whitespace-nowrap px-5 py-4 text-sm font-medium text-gray-900">{{ $key['name'] }}</td>
                                     <td class="px-5 py-4 text-xs text-gray-600">{{ implode(', ', $key['scopes']) }}</td>
-                                    <td class="whitespace-nowrap px-5 py-4 text-xs text-gray-600">
-                                        @if ($key['mcp_daily_spend_limit'] !== null)
-                                            单渠道 {{ $key['mcp_max_unit_price'] }} / 单次 {{ $key['mcp_max_total_price'] }} / 每日 {{ $key['mcp_daily_spend_limit'] }}
-                                        @else
-                                            不允许付费投稿
-                                        @endif
-                                    </td>
                                     <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-600">{{ $key['last_used_at'] ?? '未使用' }}</td>
                                     <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-600">{{ $key['expires_at'] ?? '长期有效' }}</td>
                                     <td class="whitespace-nowrap px-5 py-4 text-sm">
@@ -275,9 +249,9 @@
             <ol class="grid gap-5 md:grid-cols-2 xl:grid-cols-5">
                 @foreach ([
                     ['1', '读取目录', 'geo_get_catalog', '取得当前站点有效的作者编号和分类编号。'],
-                    ['2', '筛选渠道', 'geo_list_media_channels', '按媒体名称、分类和预算筛选渠道，记录媒体资源编号与售价。'],
+                    ['2', '筛选渠道', 'geo_list_media_channels', '按媒体名称和分类筛选渠道，记录媒体资源编号与实时售价。'],
                     ['3', '生成文章', 'AI 应用内部能力', '根据用户目标完成标题、正文、摘要、关键词和 SEO 描述。'],
-                    ['4', '确认预算并投稿', 'geo_publish_article_to_media', '提交 max_unit_price 和 max_total_price 后保存文章并投递，最多选择 20 个渠道。'],
+                    ['4', '保存并投稿', 'geo_publish_article_to_media', '保存文章并投递到指定渠道，单次最多选择 20 个渠道。'],
                     ['5', '跟踪结果', 'geo_get_media_submission', '查询待安排、发布中、已发布、退稿等状态及最终发布链接。'],
                 ] as [$step, $title, $tool, $description])
                     <li class="border-l-2 border-blue-500 pl-4">
@@ -291,13 +265,13 @@
 
             <div class="border-l-2 border-emerald-500 bg-emerald-50 px-4 py-3">
                 <h3 class="text-sm font-semibold text-emerald-900">可直接发送给 AI Agent 的任务</h3>
-                <p class="mt-2 text-sm leading-6 text-emerald-900">查询名称或分类符合要求的媒体渠道并汇总实时售价，向我确认最高单渠道价格和本次总预算；确认后将这两个金额分别作为 <code>max_unit_price</code>、<code>max_total_price</code>，围绕目标主题编写完整文章并调用 <code>geo_publish_article_to_media</code>。返回文章编号、投稿订单编号、实际扣费和当前状态；未得到明确渠道编号及预算前不要投稿。</p>
+                <p class="mt-2 text-sm leading-6 text-emerald-900">查询名称或分类符合要求的媒体渠道并展示实时售价，使用我明确指定的媒体资源编号，围绕目标主题编写完整文章并调用 <code>geo_publish_article_to_media</code>。返回文章编号、投稿订单编号、实际扣费和当前状态；未得到明确渠道编号前不要投稿。</p>
             </div>
 
             <div class="grid gap-4 md:grid-cols-3">
                 <div class="border-l-2 border-gray-300 pl-4">
                     <h3 class="text-sm font-semibold text-gray-900">已有文章</h3>
-                    <p class="mt-1 text-sm leading-6 text-gray-600">使用 <code>geo_submit_article_to_media</code> 将已有文章投递到新渠道，同样必须提交单渠道和总预算。</p>
+                    <p class="mt-1 text-sm leading-6 text-gray-600">使用 <code>geo_submit_article_to_media</code> 将已有文章投递到一个或多个明确指定的渠道。</p>
                 </div>
                 <div class="border-l-2 border-gray-300 pl-4">
                     <h3 class="text-sm font-semibold text-gray-900">部分成功</h3>
@@ -307,6 +281,46 @@
                     <h3 class="text-sm font-semibold text-gray-900">安全重试</h3>
                     <p class="mt-1 text-sm leading-6 text-gray-600">同一次操作重试时保持 <code>idempotency_key</code> 不变，防止网络超时导致文章或订单重复创建。</p>
                 </div>
+            </div>
+        </section>
+
+        <section class="space-y-4 border-t border-gray-200 pt-8" aria-labelledby="materials-heading">
+            <div>
+                <h2 id="materials-heading" class="text-xl font-semibold text-gray-900">GEO 素材管理</h2>
+                <p class="mt-1 text-sm leading-6 text-gray-600">授予素材读取或素材管理权限后，AI 应用可以管理当前账号和站点下的完整素材 API 能力。</p>
+            </div>
+
+            <div class="overflow-x-auto border-y border-gray-200">
+                <table class="min-w-full divide-y divide-gray-200 text-sm">
+                    <thead class="bg-gray-50 text-left text-xs font-medium text-gray-500">
+                        <tr>
+                            <th class="px-4 py-3">素材类型</th>
+                            <th class="px-4 py-3">类型参数</th>
+                            <th class="px-4 py-3">支持能力</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100 bg-white text-gray-700">
+                        @foreach ([
+                            ['分类', 'categories', '摘要、查询、详情、创建、更新、删除'],
+                            ['作者', 'authors', '摘要、查询、详情、创建、更新、删除'],
+                            ['关键词库', 'keyword-libraries', '素材库 CRUD、关键词查询/新增/批量删除'],
+                            ['标题库', 'title-libraries', '素材库 CRUD、标题查询/新增/批量删除'],
+                            ['图片库', 'image-libraries', '素材库 CRUD、图片元数据查询/新增/批量删除'],
+                            ['知识库', 'knowledge-bases', '素材库 CRUD、正文自动切块、切块只读'],
+                        ] as [$label, $type, $capability])
+                            <tr>
+                                <td class="whitespace-nowrap px-4 py-3 font-medium text-gray-900">{{ $label }}</td>
+                                <td class="px-4 py-3"><code class="text-blue-700">{{ $type }}</code></td>
+                                <td class="px-4 py-3">{{ $capability }}</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="border-l-2 border-blue-500 bg-blue-50 px-4 py-3">
+                <h3 class="text-sm font-semibold text-blue-900">可直接发送给 AI Agent 的素材任务</h3>
+                <p class="mt-2 text-sm leading-6 text-blue-900">调用 <code>geo_get_material_summary</code> 查看当前素材规模，查询关键词库和标题库，按我的主题新增关键词与标题；需要删除或覆盖素材前，先返回目标素材编号和影响范围，得到确认后再调用对应写工具。</p>
             </div>
         </section>
 

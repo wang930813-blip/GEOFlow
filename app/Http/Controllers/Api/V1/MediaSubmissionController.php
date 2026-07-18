@@ -1,5 +1,21 @@
 <?php
 
+/**
+ * Created by 开发工具.
+ *
+ * @Date: 2026-07-18
+ *
+ * @Time: 18:15
+ *
+ * @Author: cdkay
+ *
+ * @Email: network@iyuanma.net
+ *
+ * @File： MediaSubmissionController.php
+ *
+ * @Description: 提供媒体投稿记录查询、创建、状态同步及投稿结果序列化接口。
+ */
+
 namespace App\Http\Controllers\Api\V1;
 
 use App\Exceptions\ApiException;
@@ -9,11 +25,9 @@ use App\Models\MediaResource;
 use App\Models\MediaSubmission;
 use App\Services\Api\ApiTokenService;
 use App\Services\Api\IdempotencyService;
-use App\Services\MediaDistribution\MediaSubmissionBudgetGuard;
 use App\Services\MediaDistribution\MediaSubmissionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
 use Throwable;
 
 class MediaSubmissionController extends BaseApiController
@@ -53,11 +67,8 @@ class MediaSubmissionController extends BaseApiController
         ]);
     }
 
-    public function store(
-        Request $request,
-        MediaSubmissionService $submissionService,
-        MediaSubmissionBudgetGuard $budgetGuard,
-    ): JsonResponse {
+    public function store(Request $request, MediaSubmissionService $submissionService): JsonResponse
+    {
         $cached = IdempotencyService::maybeReplayJson($request, 'POST /media/submissions');
         if ($cached !== null) {
             return $cached;
@@ -72,8 +83,6 @@ class MediaSubmissionController extends BaseApiController
             'media_resource_ids' => ['required', 'array', 'min:1', 'max:'.$maxResources],
             'media_resource_ids.*' => ['integer', 'min:1'],
             'remark' => ['nullable', 'string', 'max:1000'],
-            'max_unit_price' => [Rule::requiredIf($isMcpKey), 'nullable', 'numeric', 'min:0.01', 'max:999999.99'],
-            'max_total_price' => [Rule::requiredIf($isMcpKey), 'nullable', 'numeric', 'min:0.01', 'max:9999999.99'],
         ]);
 
         $admin = Admin::query()->whereKey($this->auth($request)->auditAdminId)->first();
@@ -103,29 +112,6 @@ class MediaSubmissionController extends BaseApiController
             }
         }
 
-        $budget = null;
-        $confirmedResourcePrices = [];
-        if ($isMcpKey && $articles->isNotEmpty() && $resources->isNotEmpty()) {
-            $siteId = (int) ($this->auth($request)->siteId ?? 0);
-            if ($siteId <= 0) {
-                throw new ApiException('mcp_site_required', 'MCP Key 必须绑定有效站点', 403);
-            }
-            $budgetCheck = $budgetGuard->assertWithinBudget(
-                $resources->values(),
-                $siteId,
-                $articles->count(),
-                (string) $payload['max_unit_price'],
-                (string) $payload['max_total_price'],
-                $this->auth($request)->token,
-            );
-            $confirmedResourcePrices = $budgetCheck['resource_prices'];
-            $budget = [
-                'actual_total_price' => $budgetCheck['actual_total_price'],
-                'max_unit_price' => $budgetCheck['max_unit_price'],
-                'max_total_price' => $budgetCheck['max_total_price'],
-            ];
-        }
-
         foreach ($articleIds as $articleId) {
             $article = $articles->get($articleId);
             if (! $article instanceof Article) {
@@ -145,7 +131,6 @@ class MediaSubmissionController extends BaseApiController
                         $admin,
                         trim((string) ($payload['remark'] ?? '')),
                         $isMcpKey ? (int) ($this->auth($request)->token['id'] ?? 0) : null,
-                        $isMcpKey ? ($confirmedResourcePrices[(int) $resource->id] ?? null) : null,
                     );
                     $created[] = $this->submissionPayload($submission->load(['article:id,title', 'resource:id,title,platform_id,source_type,sale_price', 'site:id,name']));
                 } catch (Throwable $e) {
@@ -166,7 +151,6 @@ class MediaSubmissionController extends BaseApiController
         return $this->success($request, [
             'submissions' => $created,
             'errors' => $errors,
-            'budget' => $budget,
         ], 201, 'POST /media/submissions');
     }
 

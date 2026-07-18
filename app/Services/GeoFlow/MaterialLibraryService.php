@@ -1,5 +1,21 @@
 <?php
 
+/**
+ * Created by 开发工具.
+ *
+ * @Date: 2026-07-18
+ *
+ * @Time: 18:15
+ *
+ * @Author: cdkay
+ *
+ * @Email: network@iyuanma.net
+ *
+ * @File： MaterialLibraryService.php
+ *
+ * @Description: 提供六类 GEO 素材及库内条目的隔离查询、写入、删除和文件安全清理能力。
+ */
+
 namespace App\Services\GeoFlow;
 
 use App\Exceptions\ApiException;
@@ -977,16 +993,109 @@ class MaterialLibraryService
     private function cleanupFiles(array $paths): void
     {
         foreach ($paths as $path) {
-            $path = trim($path);
-            if ($path === '' || str_starts_with($path, '/') || str_contains($path, '..')) {
+            $target = $this->managedFileTarget($path);
+            if ($target === null || $this->isFilePathReferenced($target['aliases'])) {
                 continue;
             }
-            foreach (['public', 'local'] as $disk) {
-                if (Storage::disk($disk)->exists($path)) {
-                    Storage::disk($disk)->delete($path);
-                }
+
+            if (Storage::disk($target['disk'])->exists($target['path'])) {
+                Storage::disk($target['disk'])->delete($target['path']);
             }
         }
+    }
+
+    /**
+     * @Name: managedFileTarget
+     *
+     * @Description: 将素材路径限制到项目实际管理的图片和知识文件目录，并统一为对应 Storage 磁盘路径。外部 URL、绝对路径、目录穿越及其他共享目录一律不参与删除。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-07-18 18:15:00
+     *
+     * @UpdateTime: 2026-07-18 18:15:00
+     *
+     * @Param: string $path 素材记录中的原始文件路径
+     *
+     * @Return: array{disk:string,path:string,aliases:list<string>}|null 受控文件目标及等价引用路径，非受控路径返回 null
+     */
+    private function managedFileTarget(string $path): ?array
+    {
+        $originalPath = trim($path);
+        $normalizedPath = str_replace('\\', '/', $originalPath);
+        if ($normalizedPath === ''
+            || str_starts_with($normalizedPath, '/')
+            || str_contains($normalizedPath, '..')
+            || preg_match('#^[a-z][a-z0-9+.-]*://#i', $normalizedPath) === 1) {
+            return null;
+        }
+
+        $normalizedPath = preg_replace('#/+#', '/', $normalizedPath) ?: '';
+        if (str_starts_with($normalizedPath, 'storage/uploads/images/')) {
+            $relativePath = substr($normalizedPath, strlen('storage/'));
+
+            return [
+                'disk' => 'public',
+                'path' => $relativePath,
+                'aliases' => array_values(array_unique([
+                    $originalPath,
+                    $relativePath,
+                    '/'.$relativePath,
+                    'storage/'.$relativePath,
+                    '/storage/'.$relativePath,
+                ])),
+            ];
+        }
+
+        if (str_starts_with($normalizedPath, 'uploads/images/')) {
+            return [
+                'disk' => 'public',
+                'path' => $normalizedPath,
+                'aliases' => array_values(array_unique([
+                    $originalPath,
+                    $normalizedPath,
+                    '/'.$normalizedPath,
+                    'storage/'.$normalizedPath,
+                    '/storage/'.$normalizedPath,
+                ])),
+            ];
+        }
+
+        if (str_starts_with($normalizedPath, 'uploads/knowledge/')) {
+            return [
+                'disk' => 'local',
+                'path' => $normalizedPath,
+                'aliases' => array_values(array_unique([
+                    $originalPath,
+                    $normalizedPath,
+                    '/'.$normalizedPath,
+                ])),
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * @Name: isFilePathReferenced
+     *
+     * @Description: 跨站点、跨账号检查图片、知识库和文章封面对同一受控文件的剩余引用，防止删除当前素材时移除其他租户仍在使用的共享文件。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-07-18 18:15:00
+     *
+     * @UpdateTime: 2026-07-18 18:15:00
+     *
+     * @Param: list<string> $aliases 同一文件可能使用的数据库路径表示
+     *
+     * @Return: bool 是否仍存在任何业务引用
+     */
+    private function isFilePathReferenced(array $aliases): bool
+    {
+        return Image::withoutGlobalScopes()->whereIn('file_path', $aliases)->exists()
+            || KnowledgeBase::withoutGlobalScopes()->whereIn('file_path', $aliases)->exists()
+            || Article::withoutGlobalScopes()->whereIn('cover_image', $aliases)->exists();
     }
 
     private function formatDate(mixed $value): ?string

@@ -9,7 +9,7 @@ GEO MCP Server 是独立 Node 服务，用于把 GEOFlow 已有用户侧业务�
 - 只通过 GEOFlow `/api/v1` 调用现有业务服务。
 - 使用专用 MCP Key 鉴权，Key 由 GEOFlow 用户侧创建并哈希保存。
 - 所有数据请求受 Key 绑定站点、创建账号和 scope 约束。
-- 不开放删除和审核能力；文章写入与媒体投稿必须由 Key 显式授权。
+- 不开放文章删除和审核能力；素材写入、素材删除、文章写入与媒体投稿必须由 Key 显式授权。
 
 ## 2. 工具清单
 
@@ -21,6 +21,15 @@ GEO MCP Server 是独立 Node 服务，用于把 GEOFlow 已有用户侧业务�
 | `geo_run_task` | `tasks:write` | 向现有任务投递一次文章生成执行 | 成功生成后扣文章生成额度 |
 | `geo_list_task_runs` | `tasks:read` | 查询任务执行记录 | 不扣费 |
 | `geo_get_task_run` | `jobs:read` | 查询单次执行详情 | 不扣费 |
+| `geo_get_material_summary` | `materials:read` | 查询六类素材数量摘要 | 不扣费 |
+| `geo_list_materials` | `materials:read` | 分页查询指定类型素材 | 不扣费 |
+| `geo_get_material` | `materials:read` | 查询单个素材详情 | 不扣费 |
+| `geo_list_material_items` | `materials:read` | 查询关键词、标题、图片条目或知识库切块 | 不扣费 |
+| `geo_create_material` | `materials:write` | 创建分类、作者或素材库 | 不扣费 |
+| `geo_update_material` | `materials:write` | 更新指定素材 | 不扣费 |
+| `geo_delete_material` | `materials:write` | 删除未被业务数据占用的素材 | 不扣费 |
+| `geo_create_material_item` | `materials:write` | 新增关键词、标题或图片条目 | 不扣费 |
+| `geo_delete_material_items` | `materials:write` | 批量删除关键词、标题或图片条目 | 不扣费 |
 | `geo_list_articles` | `articles:read` | 分页查询文章 | 不扣费 |
 | `geo_get_article` | `articles:read` | 查询文章完整内容 | 不扣费 |
 | `geo_create_article` | `articles:write` | 保存外部 AI 已完成编写的文章 | 不扣费 |
@@ -39,7 +48,7 @@ GEO MCP Server 是独立 Node 服务，用于把 GEOFlow 已有用户侧业务�
 2. 切换到需要接入的站点。
 3. 进入“账号与权益 > MCP Server”。
 4. 输入 Key 名称和过期时间。
-5. 按最小权限原则选择业务 scope；授予 `media:submit` 时必须设置单渠道、单次总额和每日消费上限。
+5. 按最小权限原则选择业务 scope；素材读取和素材管理、媒体读取和媒体投稿分别授权。
 6. 创建后立即复制 Key，明文只显示一次。
 7. 客户端使用请求头：`Authorization: Bearer <MCP_KEY>`。
 
@@ -96,10 +105,8 @@ MCP 不建立新的费用体系，全部复用 GEOFlow 现有账号级套餐和�
 - Worker 成功创建文章后，扣减一次 `article_generations`。
 - 任务启用 AI 配图时，按实际成功生成图片数量扣减 `ai_image_generations`。
 - 生成失败且未创建文章时，不扣文章生成额度。
-- 两个媒体投稿工具都必须提交 `max_unit_price` 和 `max_total_price`，Laravel 会使用当前站点实时售价在创建订单前核验。
-- 请求预算不得超过创建 Key 时保存的单渠道和单次上限；当日有效投稿累计金额不得超过该 Key 的每日上限。
-- 历史 Key 没有消费策略，升级后不能继续执行付费投稿；撤销后按实际预算重新创建 Key。
-- 单次 MCP 投稿最多选择 20 个渠道；任一渠道单价或请求总价超过确认预算时不会创建订单，也不会扣费。
+- 素材查询和素材管理不扣减业务额度。
+- 单次 MCP 投稿最多选择 20 个渠道。
 - 每篇文章按渠道实时售价逐笔扣费，提交失败按现有媒体结算规则自动退款。
 
 费用记录仍写入项目现有账号资源使用表和流水表，可在“规格使用情况”中查看。
@@ -191,7 +198,7 @@ location /mcp {
 | `403` | 不是专用 MCP Key、缺少 scope、站点停用 | 检查 Key 权限和绑定站点 |
 | `404` | 任务、执行记录或文章不属于当前站点 | 确认资源编号和 Key 绑定站点 |
 | `409` | 相同幂等操作仍在处理中或同键载荷不一致 | 保持原幂等键并等待当前请求完成，不要创建新键重投 |
-| `422` | 参数、预算校验失败或套餐额度不足 | 按错误信息修正参数、预算或升级规格 |
+| `422` | 参数校验失败、素材仍被占用或套餐额度不足 | 按错误信息修正参数、解除占用或升级规格 |
 | `426` | 使用了非 HTTPS 连接 | 修正公网 TLS 和 `X-Forwarded-Proto` 配置 |
 | `429` | IP 或 Token 请求超过限流 | 按响应头等待后重试，降低并发调用频率 |
 | `502` | MCP 服务无法访问 GEO API | 检查 `GEOFLOW_API_BASE_URL` 和应用容器状态 |
@@ -199,4 +206,24 @@ location /mcp {
 
 执行任务后应保存返回的执行记录编号，并通过 `geo_get_task_run` 查询最终状态。不要在未确认状态前重复投递相同任务。
 
-媒体投稿前必须先读取渠道实时售价。调用投稿工具时，`max_unit_price` 填写用户允许的最高单渠道价格，`max_total_price` 填写本次所有渠道合计上限；重试同一操作时必须保持正文、渠道、预算和 `idempotency_key` 全部不变。
+媒体投稿前必须先读取渠道实时售价，并且只使用用户明确指定的媒体资源编号；重试同一操作时必须保持正文、渠道和 `idempotency_key` 不变。
+
+## 9. 素材字段与操作边界
+
+素材类型固定为：
+
+- `categories`：分类，创建字段为 `name`，可选 `slug`、`description`、`sort_order`。
+- `authors`：作者，创建字段为 `name`，可选 `email`、`bio`、`avatar`、`website`、`social_links`。
+- `keyword-libraries`：关键词库，字段为 `name`、`description`；条目字段为 `keyword`。
+- `title-libraries`：标题库，字段为 `name`、`description`；条目字段为 `title`，可选 `keyword`。
+- `image-libraries`：图片库，字段为 `name`、`description`；图片条目必须提供 `file_path`，可选文件名、尺寸、类型和标签元数据。
+- `knowledge-bases`：知识库，创建字段为 `name`、`content`，可选 `description`、`file_type`、`file_path`；正文保存后由 GEOFlow 自动切块。
+
+推荐操作顺序：
+
+1. 使用 `geo_get_material_summary` 确认素材类型和数量。
+2. 使用 `geo_list_materials` 查找素材编号，必要时使用 `geo_get_material` 获取完整内容。
+3. 使用 `geo_list_material_items` 查询库内条目；分类和作者没有条目接口。
+4. 使用写工具创建或更新素材。知识库切块只能读取，不能直接新增或删除。
+5. 删除素材或素材条目前先确认编号和引用关系；仍被文章、任务或其他素材引用时，GEOFlow 会拒绝删除。
+6. 所有写操作重试必须保持 `idempotency_key` 和请求内容不变。

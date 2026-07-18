@@ -36,6 +36,8 @@ class McpKeyService
         'tasks:read',
         'tasks:write',
         'jobs:read',
+        'materials:read',
+        'materials:write',
         'articles:read',
         'articles:write',
         'media:read',
@@ -108,9 +110,8 @@ class McpKeyService
         string $name,
         array $scopes,
         ?string $expiresAt,
-        array $spendingPolicy = [],
     ): array {
-        return DB::transaction(function () use ($admin, $site, $name, $scopes, $expiresAt, $spendingPolicy): array {
+        return DB::transaction(function () use ($admin, $site, $name, $scopes, $expiresAt): array {
             $lockedAdmin = Admin::query()
                 ->whereKey((int) $admin->id)
                 ->where('status', 'active')
@@ -127,35 +128,13 @@ class McpKeyService
                 throw new ApiException('validation_failed', '至少选择一项 GEO 业务权限', 422);
             }
 
-            $created = $this->apiTokenService->createToken(
+            return $this->apiTokenService->createToken(
                 trim($name),
                 [ApiTokenService::MCP_CONNECT_SCOPE, ...$normalizedScopes],
                 (int) $lockedAdmin->id,
                 $expiresAt,
                 (int) $site->id,
             );
-
-            if (in_array('media:submit', $normalizedScopes, true)) {
-                $policy = $this->normalizeSpendingPolicy($spendingPolicy);
-                PersonalAccessToken::query()
-                    ->where('tokenable_type', Admin::class)
-                    ->where('tokenable_id', (int) $lockedAdmin->id)
-                    ->where('site_id', (int) $site->id)
-                    ->whereKey((int) $created['record']['id'])
-                    ->update([
-                        'mcp_max_unit_price' => $policy['max_unit_price'],
-                        'mcp_max_total_price' => $policy['max_total_price'],
-                        'mcp_daily_spend_limit' => $policy['daily_spend_limit'],
-                        'updated_at' => now(),
-                    ]);
-                $created['record'] = array_merge($created['record'], [
-                    'mcp_max_unit_price' => $policy['max_unit_price'],
-                    'mcp_max_total_price' => $policy['max_total_price'],
-                    'mcp_daily_spend_limit' => $policy['daily_spend_limit'],
-                ]);
-            }
-
-            return $created;
         });
     }
 
@@ -230,6 +209,16 @@ class McpKeyService
                 'description' => '查询单次任务执行的状态、结果和错误信息。',
                 'risk' => '只读',
             ],
+            'materials:read' => [
+                'label' => '素材读取',
+                'description' => '读取分类、作者、关键词库、标题库、图片库、知识库及其条目。',
+                'risk' => '只读',
+            ],
+            'materials:write' => [
+                'label' => '素材管理',
+                'description' => '创建、更新、删除素材库，以及新增和批量删除素材条目。',
+                'risk' => '写入数据',
+            ],
             'articles:read' => [
                 'label' => '文章读取',
                 'description' => '查询当前站点文章列表和文章详情。',
@@ -247,7 +236,7 @@ class McpKeyService
             ],
             'media:submit' => [
                 'label' => '媒体投稿',
-                'description' => '允许将当前账号文章投递到指定媒体渠道，创建 Key 时必须设置消费上限。',
+                'description' => '允许将当前账号文章投递到指定媒体渠道。',
                 'risk' => '会扣除余额',
             ],
         ];
@@ -275,6 +264,15 @@ class McpKeyService
             ['name' => 'geo_run_task', 'scope' => 'tasks:write', 'description' => '向现有任务投递一次文章生成执行', 'billing' => '成功生成后扣文章生成额度'],
             ['name' => 'geo_list_task_runs', 'scope' => 'tasks:read', 'description' => '查询任务的执行记录', 'billing' => '不扣费'],
             ['name' => 'geo_get_task_run', 'scope' => 'jobs:read', 'description' => '查询单次执行状态和结果', 'billing' => '不扣费'],
+            ['name' => 'geo_get_material_summary', 'scope' => 'materials:read', 'description' => '查询六类 GEO 素材数量摘要', 'billing' => '不扣费'],
+            ['name' => 'geo_list_materials', 'scope' => 'materials:read', 'description' => '分页查询指定类型素材', 'billing' => '不扣费'],
+            ['name' => 'geo_get_material', 'scope' => 'materials:read', 'description' => '查询单个素材详情', 'billing' => '不扣费'],
+            ['name' => 'geo_list_material_items', 'scope' => 'materials:read', 'description' => '分页查询素材库条目或知识库切块', 'billing' => '不扣费'],
+            ['name' => 'geo_create_material', 'scope' => 'materials:write', 'description' => '创建分类、作者或素材库', 'billing' => '不扣费'],
+            ['name' => 'geo_update_material', 'scope' => 'materials:write', 'description' => '更新指定素材', 'billing' => '不扣费'],
+            ['name' => 'geo_delete_material', 'scope' => 'materials:write', 'description' => '删除未被业务数据占用的素材', 'billing' => '不扣费'],
+            ['name' => 'geo_create_material_item', 'scope' => 'materials:write', 'description' => '新增关键词、标题或图片条目', 'billing' => '不扣费'],
+            ['name' => 'geo_delete_material_items', 'scope' => 'materials:write', 'description' => '批量删除关键词、标题或图片条目', 'billing' => '不扣费'],
             ['name' => 'geo_list_articles', 'scope' => 'articles:read', 'description' => '分页查询当前站点文章', 'billing' => '不扣费'],
             ['name' => 'geo_get_article', 'scope' => 'articles:read', 'description' => '查询单篇文章完整内容', 'billing' => '不扣费'],
             ['name' => 'geo_create_article', 'scope' => 'articles:write', 'description' => '保存外部 AI 已完成编写的文章', 'billing' => '不扣费'],
@@ -380,45 +378,6 @@ class McpKeyService
             'last_used_at' => $token->last_used_at?->format('Y-m-d H:i:s'),
             'expires_at' => $expiresAt?->format('Y-m-d H:i:s'),
             'created_at' => $token->created_at?->format('Y-m-d H:i:s'),
-            'mcp_max_unit_price' => $token->mcp_max_unit_price !== null ? number_format((float) $token->mcp_max_unit_price, 2, '.', '') : null,
-            'mcp_max_total_price' => $token->mcp_max_total_price !== null ? number_format((float) $token->mcp_max_total_price, 2, '.', '') : null,
-            'mcp_daily_spend_limit' => $token->mcp_daily_spend_limit !== null ? number_format((float) $token->mcp_daily_spend_limit, 2, '.', '') : null,
-        ];
-    }
-
-    /**
-     * @Name: normalizeSpendingPolicy
-     *
-     * @Description: 对媒体投稿 Key 的服务器端消费上限执行防御性校验并统一金额格式。
-     *
-     * @Author: cdkay
-     *
-     * @CreateTime: 2026-07-18 17:25:00
-     *
-     * @UpdateTime: 2026-07-18 17:25:00
-     *
-     * @Param: array<string, mixed> $policy 创建请求中的消费策略
-     *
-     * @Return: array{max_unit_price: string, max_total_price: string, daily_spend_limit: string} 标准消费策略
-     *
-     * @Throws: ApiException 消费策略缺失、非正数或上限关系无效
-     */
-    private function normalizeSpendingPolicy(array $policy): array
-    {
-        $maxUnit = round((float) ($policy['max_unit_price'] ?? 0), 2);
-        $maxTotal = round((float) ($policy['max_total_price'] ?? 0), 2);
-        $dailyLimit = round((float) ($policy['daily_spend_limit'] ?? 0), 2);
-        if ($maxUnit <= 0 || $maxTotal <= 0 || $dailyLimit <= 0) {
-            throw new ApiException('mcp_spending_policy_required', '媒体投稿 MCP Key 必须配置完整消费上限', 422);
-        }
-        if ($maxUnit > $maxTotal || $maxTotal > $dailyLimit) {
-            throw new ApiException('mcp_spending_policy_invalid', '消费上限必须满足单渠道不高于单次、单次不高于每日', 422);
-        }
-
-        return [
-            'max_unit_price' => number_format($maxUnit, 2, '.', ''),
-            'max_total_price' => number_format($maxTotal, 2, '.', ''),
-            'daily_spend_limit' => number_format($dailyLimit, 2, '.', ''),
         ];
     }
 }

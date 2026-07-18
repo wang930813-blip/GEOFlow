@@ -74,8 +74,8 @@ function createClient(customFetcher?: typeof fetch): GeoFlowApiClient {
 }
 
 /**
- * @Name: assertPaidToolSchema
- * @Description: 校验付费投稿工具的预算字段为必填，并限制单次最多选择二十个媒体渠道。
+ * @Name: assertMediaToolSchema
+ * @Description: 校验投稿工具不包含消费策略字段，并限制单次最多选择二十个媒体渠道。
  *
  * @Author: cdkay
  * @CreateTime: 2026-07-18 15:37:25
@@ -84,7 +84,7 @@ function createClient(customFetcher?: typeof fetch): GeoFlowApiClient {
  * @Param: unknown schema MCP 工具输入 JSON Schema
  * @Return: void
  */
-function assertPaidToolSchema(schema: unknown): void {
+function assertMediaToolSchema(schema: unknown): void {
     assert.equal(typeof schema, 'object');
     assert.notEqual(schema, null);
     const schemaRecord = schema as Record<string, unknown>;
@@ -92,12 +92,14 @@ function assertPaidToolSchema(schema: unknown): void {
     const properties = schemaRecord.properties;
 
     assert.equal(Array.isArray(required), true);
-    assert.equal((required as unknown[]).includes('max_unit_price'), true);
-    assert.equal((required as unknown[]).includes('max_total_price'), true);
+    assert.equal((required as unknown[]).includes('max_unit_price'), false);
+    assert.equal((required as unknown[]).includes('max_total_price'), false);
     assert.equal(typeof properties, 'object');
     assert.notEqual(properties, null);
 
     const mediaResourceIds = (properties as Record<string, unknown>).media_resource_ids;
+    assert.equal('max_unit_price' in (properties as Record<string, unknown>), false);
+    assert.equal('max_total_price' in (properties as Record<string, unknown>), false);
     assert.equal(typeof mediaResourceIds, 'object');
     assert.notEqual(mediaResourceIds, null);
     assert.equal((mediaResourceIds as Record<string, unknown>).maxItems, 20);
@@ -185,8 +187,8 @@ void describe('GEO MCP 工具注册', () => {
 
             const submitTool = tools.tools.find((tool) => tool.name === 'geo_submit_article_to_media');
             const publishTool = tools.tools.find((tool) => tool.name === 'geo_publish_article_to_media');
-            assertPaidToolSchema(submitTool?.inputSchema);
-            assertPaidToolSchema(publishTool?.inputSchema);
+            assertMediaToolSchema(submitTool?.inputSchema);
+            assertMediaToolSchema(publishTool?.inputSchema);
 
             const result = await client.callTool({
                 name: 'geo_list_media_channels',
@@ -196,6 +198,70 @@ void describe('GEO MCP 工具注册', () => {
             assert.deepEqual(result.structuredContent, {
                 result: {
                     path: '/api/v1/media/resources',
+                },
+            });
+        } finally {
+            await client.close();
+            await server.close();
+        }
+    });
+
+    void it('具备素材读写权限时发现全部 GEO 素材工具', async () => {
+        const materialContext: GeoFlowAuthContext = {
+            ...context,
+            token: {
+                ...context.token,
+                scopes: ['mcp:connect', 'materials:read', 'materials:write'],
+            },
+        };
+        const server = createGeoMcpServer(createClient(), materialContext);
+        const client = new Client({ name: 'material-tool-registry-check', version: '1.0.0' });
+        const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+
+        await server.connect(serverTransport);
+        await client.connect(clientTransport);
+
+        try {
+            assert.match(client.getInstructions() || '', /geo_get_material_summary/u);
+            const tools = await client.listTools();
+            const names = tools.tools.map((tool) => tool.name).sort();
+
+            assert.deepEqual(names, [
+                'geo_create_material',
+                'geo_create_material_item',
+                'geo_delete_material',
+                'geo_delete_material_items',
+                'geo_get_material',
+                'geo_get_material_summary',
+                'geo_list_material_items',
+                'geo_list_materials',
+                'geo_update_material',
+            ]);
+
+            for (const toolName of [
+                'geo_create_material',
+                'geo_update_material',
+                'geo_delete_material',
+                'geo_create_material_item',
+                'geo_delete_material_items',
+            ]) {
+                const tool = tools.tools.find((candidate) => candidate.name === toolName);
+                assert.equal(tool?.annotations?.readOnlyHint, false);
+                assert.equal(tool?.annotations?.destructiveHint, true);
+            }
+
+            const result = await client.callTool({
+                name: 'geo_create_material',
+                arguments: {
+                    type: 'keyword-libraries',
+                    data: { name: '品牌关键词' },
+                    idempotency_key: 'material-create-123',
+                },
+            });
+            assert.equal(result.isError, undefined);
+            assert.deepEqual(result.structuredContent, {
+                result: {
+                    path: '/api/v1/materials/keyword-libraries',
                 },
             });
         } finally {
