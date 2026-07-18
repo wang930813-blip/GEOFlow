@@ -112,6 +112,54 @@ class BrandDiagnosisAnswerSnapshotTest extends TestCase
         }
     }
 
+    public function test_snapshot_strips_brand_mentions_json_suffix_after_plain_answer_text(): void
+    {
+        $result = $this->createResult([
+            'platform' => 'deepseek',
+            'answer' => '根据榜单，三角洲双人协作陪玩可以优先考虑青锋护航组，综合评分9.7/10，适合需要路线教学和协作配合的玩家。", "brand_mentions": [{"brand":"青锋护航组","mention_count":1,"mention_rank":1,"sentiment":"positive","evidence":"内部提及依据"}]}',
+        ]);
+
+        $this->get(route('admin.snapshot-voucher.show', ['id' => (int) $result->id]))
+            ->assertOk()
+            ->assertSee('根据榜单，三角洲双人协作陪玩可以优先考虑青锋护航组')
+            ->assertSee('综合评分9.7/10')
+            ->assertDontSee('"brand_mentions"', false)
+            ->assertDontSee('内部提及依据');
+    }
+
+    public function test_snapshot_strips_malformed_brand_mentions_json_suffix_after_plain_answer_text(): void
+    {
+        $result = $this->createResult([
+            'platform' => 'deepseek',
+            'answer' => '根据榜单，三角洲双人协作陪玩可以优先考虑青锋护航组，综合评分9.7/10。", "brand_mentions": [{"brand":"青锋护航组","mention_count":1,"mention_rank":1,"sentiment":"positive","evidence":"内部提及依据"',
+        ]);
+
+        $this->get(route('admin.snapshot-voucher.show', ['id' => (int) $result->id]))
+            ->assertOk()
+            ->assertSee('根据榜单，三角洲双人协作陪玩可以优先考虑青锋护航组')
+            ->assertSee('综合评分9.7/10')
+            ->assertDontSee('"brand_mentions"', false)
+            ->assertDontSee('内部提及依据');
+    }
+
+    public function test_snapshot_strips_generic_internal_json_suffix_fields_after_plain_answer_text(): void
+    {
+        $result = $this->createResult([
+            'platform' => 'qianwen',
+            'answer' => '快照应该只展示这段自然语言回答，保留用户能读懂的结论。", "sources": [{"title":"内部来源","url":"https://internal.example"}], "meta": {"debug":"不要展示"}, "sentiment": "positive"',
+        ]);
+
+        $this->get(route('admin.snapshot-voucher.show', ['id' => (int) $result->id]))
+            ->assertOk()
+            ->assertSee('快照应该只展示这段自然语言回答')
+            ->assertSee('保留用户能读懂的结论')
+            ->assertDontSee('"sources"', false)
+            ->assertDontSee('内部来源')
+            ->assertDontSee('不要展示')
+            ->assertDontSee('debug')
+            ->assertDontSee('"sentiment"', false);
+    }
+
     public function test_public_snapshot_freezes_answer_and_sources_after_first_capture(): void
     {
         $result = $this->createResult();

@@ -6,6 +6,25 @@ use App\Models\BrandDiagnosisResult;
 
 final class BrandDiagnosisSnapshotPayload
 {
+    private const INTERNAL_PAYLOAD_KEYS = [
+        'brand_mentions',
+        'brand_mentions_payload',
+        'brands',
+        'competitors',
+        'competitor_brands',
+        'citations',
+        'references',
+        'sources',
+        'source_count',
+        'mention_count',
+        'mention_rank',
+        'sentiment',
+        'evidence',
+        'meta',
+        'metadata',
+        'raw_response',
+    ];
+
     /**
      * @return array<string,mixed>
      */
@@ -81,7 +100,7 @@ final class BrandDiagnosisSnapshotPayload
             return $this->normalizeDisplayAnswer($looseAnswer);
         }
 
-        return $this->normalizeDisplayAnswer($this->stripInternalBrandMentionsPayload($answer));
+        return $this->normalizeDisplayAnswer($this->stripInternalStructuredPayload($answer));
     }
 
     public function isHttpUrl(string $url): bool
@@ -95,7 +114,7 @@ final class BrandDiagnosisSnapshotPayload
 
     private function jsonFromMarkdownFence(string $text): string
     {
-        if (preg_match('/```(?:json)?\s*(.*?)```/is', trim($text), $matches) !== 1) {
+        if (preg_match('/^```(?:json)?\s*(.*?)```\s*$/is', trim($text), $matches) !== 1) {
             return trim($text);
         }
 
@@ -114,12 +133,12 @@ final class BrandDiagnosisSnapshotPayload
         }
 
         $start = (int) $matches[0][1] + strlen((string) $matches[0][0]);
-        $markers = [
-            '","brand_mentions"',
-            '" , "brand_mentions"',
-            '","sources"',
-            '","brands"',
-        ];
+        $markers = collect(self::INTERNAL_PAYLOAD_KEYS)
+            ->flatMap(static fn (string $key): array => [
+                '","'.$key.'"',
+                '" , "'.$key.'"',
+            ])
+            ->all();
         $end = false;
         foreach ($markers as $marker) {
             $position = strpos($json, $marker, $start);
@@ -138,51 +157,57 @@ final class BrandDiagnosisSnapshotPayload
         return $this->unescapeJsonStringFragment(substr($json, $start, $end - $start));
     }
 
-    private function stripInternalBrandMentionsPayload(string $answer): string
+    private function stripInternalStructuredPayload(string $answer): string
     {
-        if (mb_stripos($answer, '"brand_mentions"', 0, 'UTF-8') === false) {
+        $markerStart = $this->firstInternalPayloadFieldOffset($answer);
+        if ($markerStart === null) {
             return $answer;
         }
 
-        if (preg_match('/"brand_mentions"\s*:\s*\[/u', $answer, $matches, PREG_OFFSET_CAPTURE) !== 1) {
-            return $answer;
-        }
-
-        $markerStart = (int) $matches[0][1];
-        $arrayStart = $markerStart + strlen((string) $matches[0][0]) - 1;
-        $arrayJson = $this->extractJsonArrayAt($answer, $arrayStart);
-        if ($arrayJson === '') {
-            return $answer;
-        }
-
-        $removeStart = $markerStart;
-        for ($index = $markerStart - 1; $index >= 0; $index--) {
-            $char = $answer[$index];
-            if (trim($char) === '') {
-                continue;
-            }
-
-            if ($char === ',' || $char === '{') {
-                $removeStart = $index;
-            }
-            break;
-        }
-
-        $removeEnd = $arrayStart + strlen($arrayJson);
-        while ($removeEnd < strlen($answer) && trim($answer[$removeEnd]) === '') {
-            $removeEnd++;
-        }
-        if ($removeEnd < strlen($answer) && $answer[$removeEnd] === '}') {
-            $removeEnd++;
-        }
-
-        $cleaned = substr($answer, 0, $removeStart).substr($answer, $removeEnd);
+        $cleaned = substr($answer, 0, $markerStart);
         $cleaned = trim($cleaned);
+        $cleaned = preg_replace('/[,\s]*["\']?[,\s]*$/u', '', $cleaned) ?? $cleaned;
         $cleaned = trim($cleaned, " \t\n\r\0\x0B,{}");
         $cleaned = preg_replace('/^"answer"\s*:\s*"/u', '', $cleaned) ?? $cleaned;
+        $cleaned = preg_replace('/^answer"\s*:\s*"/u', '', $cleaned) ?? $cleaned;
         $cleaned = preg_replace('/^"|"$/u', '', $cleaned) ?? $cleaned;
 
         return $this->unescapeJsonStringFragment($cleaned);
+    }
+
+    private function firstInternalPayloadFieldOffset(string $answer): ?int
+    {
+        $keys = implode('|', array_map(static fn (string $key): string => preg_quote($key, '/'), self::INTERNAL_PAYLOAD_KEYS));
+        $pattern = '/"('.$keys.')"\s*:\s*(?:\[|\{|"|-?\d|true|false|null)/iu';
+        if (preg_match_all($pattern, $answer, $matches, PREG_OFFSET_CAPTURE) <= 0) {
+            return null;
+        }
+
+        $offsets = collect($matches[0])
+            ->map(static fn (array $match): int => (int) $match[1])
+            ->filter(fn (int $offset): bool => $this->looksLikeStructuredPayloadBoundary($answer, $offset))
+            ->values();
+
+        return $offsets->isEmpty() ? null : (int) $offsets->min();
+    }
+
+    private function looksLikeStructuredPayloadBoundary(string $answer, int $offset): bool
+    {
+        $prefix = substr($answer, 0, $offset);
+        $trimmedPrefix = rtrim($prefix);
+        if ($trimmedPrefix === '') {
+            return true;
+        }
+
+        $previous = substr($trimmedPrefix, -1);
+
+        return in_array($previous, [',', '{', '['], true)
+            || str_ends_with($trimmedPrefix, '",')
+            || str_ends_with($trimmedPrefix, '。",')
+            || str_ends_with($trimmedPrefix, '！",')
+            || str_ends_with($trimmedPrefix, '？",')
+            || str_ends_with($trimmedPrefix, '.',)
+            || str_ends_with($trimmedPrefix, '."',);
     }
 
     private function extractJsonArrayAt(string $text, int $start): string
