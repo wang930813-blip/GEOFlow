@@ -837,7 +837,6 @@ class BrandDiagnosisController extends Controller
     private function topRowsWithTargetLast(Collection $rows, array $targetRow, string $sortKey): Collection
     {
         $topRows = $rows
-            ->reject(static fn (array $row): bool => (bool) $row['is_target_brand'])
             ->take(10)
             ->values();
         $rankedTargetRow = $rows->firstWhere('is_target_brand', true) ?? $targetRow;
@@ -848,7 +847,9 @@ class BrandDiagnosisController extends Controller
                 : 1;
         }
 
-        return $topRows->push($rankedTargetRow);
+        $targetAlreadyVisible = $topRows->contains(static fn (array $row): bool => (bool) ($row['is_target_brand'] ?? false));
+
+        return $targetAlreadyVisible ? $topRows : $topRows->push($rankedTargetRow);
     }
 
     private function platformLabel(string $platform): string
