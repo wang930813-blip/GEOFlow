@@ -7,7 +7,7 @@
  * @Email: network@iyuanma.net
  *
  * @File： geoflow-api-client.ts
- * @Description: 封装 GEOFlow REST API 鉴权、超时、错误映射、查询和任务执行调用。
+ * @Description: 封装 GEOFlow REST API 鉴权、超时、错误映射、文章管理、媒体渠道和投稿调用。
  */
 
 import { randomUUID } from 'node:crypto';
@@ -50,6 +50,31 @@ interface RequestOptions {
     query?: Record<string, string | number | boolean | undefined>;
     body?: Record<string, unknown>;
     idempotencyKey?: string;
+}
+
+export interface GeoFlowArticleInput {
+    title: string;
+    content: string;
+    category_id: number;
+    author_id: number;
+    excerpt?: string;
+    keywords?: string[];
+    meta_description?: string;
+}
+
+export interface GeoFlowArticleRecord extends Record<string, unknown> {
+    id: number;
+}
+
+export interface GeoFlowMediaSubmissionResult extends Record<string, unknown> {
+    submissions: unknown[];
+    errors: unknown[];
+}
+
+export interface GeoFlowArticlePublicationResult {
+    article: GeoFlowArticleRecord;
+    submissions: unknown[];
+    errors: unknown[];
 }
 
 export class GeoFlowApiError extends Error {
@@ -211,6 +236,174 @@ export class GeoFlowApiClient {
      */
     public async getArticle(articleId: number): Promise<unknown> {
         return await this.request<unknown>('GET', `articles/${articleId}`);
+    }
+
+    /**
+     * @Name: createArticle
+     * @Description: 将外部 AI 应用生成的最终文章保存到当前 GEO 账号和站点，固定标记为待审核的 AI 内容。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-07-18 13:58:43
+     * @UpdateTime: 2026-07-18 13:58:43
+     *
+     * @Param: GeoFlowArticleInput input 已完成生成的文章内容、作者和分类
+     * @Param: string idempotencyKey 幂等键
+     * @Return: Promise<GeoFlowArticleRecord> 已创建文章
+     * @Throws GeoFlowApiError 文章参数、权限或上游 API 调用失败
+     */
+    public async createArticle(input: GeoFlowArticleInput, idempotencyKey: string): Promise<GeoFlowArticleRecord> {
+        return await this.request<GeoFlowArticleRecord>('POST', 'articles', {
+            body: {
+                ...input,
+                status: 'draft',
+                review_status: 'pending',
+                is_ai_generated: 1,
+            },
+            idempotencyKey,
+        });
+    }
+
+    /**
+     * @Name: listMediaChannels
+     * @Description: 查询当前站点可用于文章投稿的媒体渠道和实际销售价格。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-07-18 13:58:43
+     * @UpdateTime: 2026-07-18 13:58:43
+     *
+     * @Param: Record<string, string | number | undefined> query 渠道分页和筛选参数
+     * @Return: Promise<unknown> 媒体渠道分页结果
+     * @Throws GeoFlowApiError 权限或上游 API 调用失败
+     */
+    public async listMediaChannels(query: Record<string, string | number | undefined>): Promise<unknown> {
+        return await this.request<unknown>('GET', 'media/resources', { query });
+    }
+
+    /**
+     * @Name: getMediaChannel
+     * @Description: 查询单个媒体渠道的来源、类型、状态和当前站点实际销售价格。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-07-18 13:58:43
+     * @UpdateTime: 2026-07-18 13:58:43
+     *
+     * @Param: number mediaResourceId 媒体资源编号
+     * @Return: Promise<unknown> 媒体渠道详情
+     * @Throws GeoFlowApiError 渠道不存在、权限不足或上游 API 调用失败
+     */
+    public async getMediaChannel(mediaResourceId: number): Promise<unknown> {
+        return await this.request<unknown>('GET', `media/resources/${mediaResourceId}`);
+    }
+
+    /**
+     * @Name: submitArticleToMedia
+     * @Description: 将当前账号已有文章投递到一个或多个指定媒体渠道，费用由既有投稿服务逐渠道结算。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-07-18 13:58:43
+     * @UpdateTime: 2026-07-18 13:58:43
+     *
+     * @Param: number articleId 当前账号文章编号
+     * @Param: number[] mediaResourceIds 目标媒体资源编号
+     * @Param: string remark 投稿备注
+     * @Param: string idempotencyKey 幂等键
+     * @Return: Promise<GeoFlowMediaSubmissionResult> 投稿订单和逐渠道错误
+     * @Throws GeoFlowApiError 文章、渠道、余额、订阅或上游媒体接口校验失败
+     */
+    public async submitArticleToMedia(
+        articleId: number,
+        mediaResourceIds: number[],
+        remark: string,
+        idempotencyKey: string,
+    ): Promise<GeoFlowMediaSubmissionResult> {
+        return await this.request<GeoFlowMediaSubmissionResult>('POST', 'media/submissions', {
+            body: {
+                article_ids: [articleId],
+                media_resource_ids: mediaResourceIds,
+                remark,
+            },
+            idempotencyKey,
+        });
+    }
+
+    /**
+     * @Name: publishArticleToMedia
+     * @Description: 先幂等创建外部 AI 编写的文章，再将同一文章投递到指定媒体渠道；投稿失败时保留文章供后续修正重投。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-07-18 13:58:43
+     * @UpdateTime: 2026-07-18 13:58:43
+     *
+     * @Param: GeoFlowArticleInput input 已完成生成的文章内容、作者和分类
+     * @Param: number[] mediaResourceIds 目标媒体资源编号
+     * @Param: string remark 投稿备注
+     * @Param: string idempotencyKey 整体操作幂等键
+     * @Return: Promise<GeoFlowArticlePublicationResult> 文章、投稿订单和逐渠道错误
+     * @Throws GeoFlowApiError 文章创建或媒体投稿失败
+     */
+    public async publishArticleToMedia(
+        input: GeoFlowArticleInput,
+        mediaResourceIds: number[],
+        remark: string,
+        idempotencyKey: string,
+    ): Promise<GeoFlowArticlePublicationResult> {
+        const article = await this.createArticle(input, `${idempotencyKey}:article`);
+
+        try {
+            const publication = await this.submitArticleToMedia(
+                article.id,
+                mediaResourceIds,
+                remark,
+                `${idempotencyKey}:submission`,
+            );
+
+            return {
+                article,
+                submissions: publication.submissions,
+                errors: publication.errors,
+            };
+        } catch (error) {
+            if (error instanceof GeoFlowApiError) {
+                throw new GeoFlowApiError(error.message, error.status, error.code, {
+                    article,
+                    submission_error: error.details,
+                });
+            }
+
+            throw error;
+        }
+    }
+
+    /**
+     * @Name: listMediaSubmissions
+     * @Description: 查询当前账号在当前站点的媒体投稿订单，并触发可见订单状态同步。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-07-18 13:58:43
+     * @UpdateTime: 2026-07-18 13:58:43
+     *
+     * @Param: Record<string, string | number | undefined> query 投稿分页和筛选参数
+     * @Return: Promise<unknown> 媒体投稿分页结果
+     * @Throws GeoFlowApiError 权限或上游 API 调用失败
+     */
+    public async listMediaSubmissions(query: Record<string, string | number | undefined>): Promise<unknown> {
+        return await this.request<unknown>('GET', 'media/submissions', { query });
+    }
+
+    /**
+     * @Name: getMediaSubmission
+     * @Description: 查询单个媒体投稿订单并同步最新发布状态和发布链接。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-07-18 13:58:43
+     * @UpdateTime: 2026-07-18 13:58:43
+     *
+     * @Param: number submissionId 媒体投稿订单编号
+     * @Return: Promise<unknown> 投稿订单详情
+     * @Throws GeoFlowApiError 订单不存在、权限不足或上游 API 调用失败
+     */
+    public async getMediaSubmission(submissionId: number): Promise<unknown> {
+        return await this.request<unknown>('GET', `media/submissions/${submissionId}`);
     }
 
     /**

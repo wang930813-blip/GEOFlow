@@ -62,6 +62,8 @@ class AdminMcpServerTest extends TestCase
             ->assertSee($site->name)
             ->assertSee('Streamable HTTP')
             ->assertSee('geo_run_task')
+            ->assertSee('geo_publish_article_to_media')
+            ->assertSee('按渠道实际售价扣费，失败退款')
             ->assertSee('MCP 请求本身不单独计费');
     }
 
@@ -87,7 +89,14 @@ class AdminMcpServerTest extends TestCase
             ->post(route('admin.mcp-server.keys.store'), [
                 'name' => '内容运营助手',
                 'expires_at' => now()->addDay()->format('Y-m-d\TH:i'),
-                'scopes' => ['catalog:read', 'tasks:read', 'articles:read'],
+                'scopes' => [
+                    'catalog:read',
+                    'tasks:read',
+                    'articles:read',
+                    'articles:write',
+                    'media:read',
+                    'media:submit',
+                ],
             ]);
 
         $response
@@ -99,6 +108,9 @@ class AdminMcpServerTest extends TestCase
         $this->assertSame((int) $site->id, (int) $token->site_id);
         $this->assertContains(ApiTokenService::MCP_CONNECT_SCOPE, (array) $token->abilities);
         $this->assertContains('tasks:read', (array) $token->abilities);
+        $this->assertContains('articles:write', (array) $token->abilities);
+        $this->assertContains('media:read', (array) $token->abilities);
+        $this->assertContains('media:submit', (array) $token->abilities);
     }
 
     /**

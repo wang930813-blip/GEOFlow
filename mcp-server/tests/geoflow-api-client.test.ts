@@ -131,4 +131,82 @@ void describe('GeoFlowApiClient', () => {
 
         assert.deepEqual(result, { id: 88, status: 'pending' });
     });
+
+    void it('使用派生幂等键创建 AI 文章并投递指定媒体渠道', async () => {
+        const requests: Array<{ path: string; method: string; idempotencyKey: string | null; body: unknown }> = [];
+        const fetcher: typeof fetch = (input, init) => {
+            const url = requestUrl(input);
+            const headers = new Headers(init?.headers);
+            const body = typeof init?.body === 'string' ? (JSON.parse(init.body) as unknown) : null;
+            requests.push({
+                path: url.pathname,
+                method: init?.method || 'GET',
+                idempotencyKey: headers.get('X-Idempotency-Key'),
+                body,
+            });
+
+            if (url.pathname === '/api/v1/articles') {
+                return Promise.resolve(
+                    jsonResponse({ success: true, data: { id: 91, title: 'AI 渠道文章', status: 'draft' } }, 201),
+                );
+            }
+
+            return Promise.resolve(
+                jsonResponse(
+                    {
+                        success: true,
+                        data: {
+                            submissions: [{ id: 301, media_resource_id: 8, points_amount: '12.00' }],
+                            errors: [],
+                        },
+                    },
+                    201,
+                ),
+            );
+        };
+        const client = new GeoFlowApiClient(baseUrl, 'secret-key', 1_000, fetcher);
+
+        const result = await client.publishArticleToMedia(
+            {
+                title: 'AI 渠道文章',
+                content: '# 正文',
+                category_id: 5,
+                author_id: 6,
+                keywords: ['GEO', '媒体投递'],
+            },
+            [8, 9],
+            '自动投稿',
+            'publication-123',
+        );
+
+        assert.equal(result.article.id, 91);
+        assert.equal(result.submissions.length, 1);
+        assert.deepEqual(requests, [
+            {
+                path: '/api/v1/articles',
+                method: 'POST',
+                idempotencyKey: 'publication-123:article',
+                body: {
+                    title: 'AI 渠道文章',
+                    content: '# 正文',
+                    category_id: 5,
+                    author_id: 6,
+                    keywords: ['GEO', '媒体投递'],
+                    status: 'draft',
+                    review_status: 'pending',
+                    is_ai_generated: 1,
+                },
+            },
+            {
+                path: '/api/v1/media/submissions',
+                method: 'POST',
+                idempotencyKey: 'publication-123:submission',
+                body: {
+                    article_ids: [91],
+                    media_resource_ids: [8, 9],
+                    remark: '自动投稿',
+                },
+            },
+        ]);
+    });
 });

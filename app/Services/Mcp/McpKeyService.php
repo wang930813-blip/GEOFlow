@@ -37,6 +37,9 @@ class McpKeyService
         'tasks:write',
         'jobs:read',
         'articles:read',
+        'articles:write',
+        'media:read',
+        'media:submit',
     ];
 
     public function __construct(
@@ -166,13 +169,13 @@ class McpKeyService
     /**
      * @Name: scopeCatalog
      *
-     * @Description: 返回首版 GEO MCP 可授权权限及其业务说明，作为用户侧权限选择的唯一来源。
+     * @Description: 返回 GEO MCP 可授权权限及其业务说明，作为用户侧权限选择的唯一来源。
      *
      * @Author: cdkay
      *
      * @CreateTime: 2026-07-13 16:38:47
      *
-     * @UpdateTime: 2026-07-13 16:38:47
+     * @UpdateTime: 2026-07-18 13:58:43
      *
      * @Return: array<string, array{label: string, description: string, risk: string}> 权限目录
      */
@@ -204,19 +207,34 @@ class McpKeyService
                 'description' => '查询当前站点文章列表和文章详情。',
                 'risk' => '只读',
             ],
+            'articles:write' => [
+                'label' => '文章写入',
+                'description' => '允许外部 AI 应用将已完成编写的文章保存到当前站点。',
+                'risk' => '写入数据',
+            ],
+            'media:read' => [
+                'label' => '媒体渠道读取',
+                'description' => '查询可投递媒体渠道、当前站点售价和投稿状态。',
+                'risk' => '只读',
+            ],
+            'media:submit' => [
+                'label' => '媒体投稿',
+                'description' => '允许将当前账号文章投递到指定媒体渠道。',
+                'risk' => '会扣除余额',
+            ],
         ];
     }
 
     /**
      * @Name: toolCatalog
      *
-     * @Description: 返回 GEO MCP 首版工具清单，用于用户侧说明并与独立 MCP 服务保持同一业务边界。
+     * @Description: 返回 GEO MCP 工具清单，用于用户侧说明并与独立 MCP 服务保持同一业务边界。
      *
      * @Author: cdkay
      *
      * @CreateTime: 2026-07-13 16:38:47
      *
-     * @UpdateTime: 2026-07-13 16:38:47
+     * @UpdateTime: 2026-07-18 13:58:43
      *
      * @Return: array<int, array{name: string, scope: string, description: string, billing: string}> 工具目录
      */
@@ -231,6 +249,13 @@ class McpKeyService
             ['name' => 'geo_get_task_run', 'scope' => 'jobs:read', 'description' => '查询单次执行状态和结果', 'billing' => '不扣费'],
             ['name' => 'geo_list_articles', 'scope' => 'articles:read', 'description' => '分页查询当前站点文章', 'billing' => '不扣费'],
             ['name' => 'geo_get_article', 'scope' => 'articles:read', 'description' => '查询单篇文章完整内容', 'billing' => '不扣费'],
+            ['name' => 'geo_create_article', 'scope' => 'articles:write', 'description' => '保存外部 AI 已完成编写的文章', 'billing' => '不扣费'],
+            ['name' => 'geo_list_media_channels', 'scope' => 'media:read', 'description' => '查询可投稿媒体渠道和当前站点售价', 'billing' => '不扣费'],
+            ['name' => 'geo_get_media_channel', 'scope' => 'media:read', 'description' => '查询单个媒体渠道详情和售价', 'billing' => '不扣费'],
+            ['name' => 'geo_list_media_submissions', 'scope' => 'media:read', 'description' => '查询媒体投稿记录和最新状态', 'billing' => '不扣费'],
+            ['name' => 'geo_get_media_submission', 'scope' => 'media:read', 'description' => '查询单个投稿订单和发布链接', 'billing' => '不扣费'],
+            ['name' => 'geo_submit_article_to_media', 'scope' => 'media:submit', 'description' => '将当前账号已有文章投递到指定媒体渠道', 'billing' => '按渠道实际售价扣费，失败退款'],
+            ['name' => 'geo_publish_article_to_media', 'scope' => 'articles:write + media:submit', 'description' => '保存 AI 文章并立即投递到指定媒体渠道', 'billing' => '按渠道实际售价扣费，失败退款'],
         ];
     }
 

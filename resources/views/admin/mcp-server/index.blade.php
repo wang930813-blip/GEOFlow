@@ -112,7 +112,7 @@
                         <div class="mt-2 space-y-2">
                             @foreach ($scopeCatalog as $scope => $definition)
                                 <label class="flex cursor-pointer items-start gap-3 rounded-md border border-gray-200 px-3 py-2.5 hover:border-blue-300 hover:bg-blue-50/40">
-                                    <input type="checkbox" name="scopes[]" value="{{ $scope }}" @checked(in_array($scope, old('scopes', ['catalog:read', 'tasks:read', 'jobs:read', 'articles:read']), true)) class="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                    <input type="checkbox" name="scopes[]" value="{{ $scope }}" @checked(in_array($scope, old('scopes', ['catalog:read', 'tasks:read', 'jobs:read', 'articles:read', 'media:read']), true)) class="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
                                     <span class="min-w-0">
                                         <span class="flex flex-wrap items-center gap-2 text-sm font-medium text-gray-900">
                                             {{ $definition['label'] }}
@@ -191,10 +191,10 @@
 
             <ol class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 @foreach ([
-                    ['创建 Key', '确认当前站点，按最小权限原则创建 MCP Key，并立即复制明文。'],
+                    ['创建 Key', '自动写作与投稿需要目录读取、文章写入、媒体渠道读取和媒体投稿权限。'],
                     ['配置客户端', '选择客户端支持的 Streamable HTTP 配置；仅支持 stdio 时使用桥接配置。'],
-                    ['验证工具', '重新加载客户端，确认工具列表出现 geo_get_catalog 等已授权工具。'],
-                    ['执行与查询', '执行任务后保存返回的 run_id，再用执行详情工具查询最终状态。'],
+                    ['查询资源', '让 AI 先查询作者、分类和媒体渠道，确认渠道售价后再生成最终文章。'],
+                    ['自动投递', 'AI 调用完整发布工具后，保存文章编号和投稿订单编号并持续查询状态。'],
                 ] as $index => [$title, $description])
                     <li class="border-l-2 border-blue-500 pl-4">
                         <div class="text-xs font-semibold text-blue-600">步骤 {{ $index + 1 }}</div>
@@ -240,6 +240,50 @@
             </div>
         </section>
 
+        <section class="space-y-5 border-t border-gray-200 pt-8" aria-labelledby="agent-workflow-heading">
+            <div>
+                <h2 id="agent-workflow-heading" class="text-xl font-semibold text-gray-900">AI Agent 自动写作与媒体投递</h2>
+                <p class="mt-1 text-sm leading-6 text-gray-600">文章由已安装本 MCP 的 AI 应用生成，GEO MCP 负责资源查询、文章保存、指定渠道投稿、费用结算和状态跟踪。</p>
+            </div>
+
+            <ol class="grid gap-5 md:grid-cols-2 xl:grid-cols-5">
+                @foreach ([
+                    ['1', '读取目录', 'geo_get_catalog', '取得当前站点有效的作者编号和分类编号。'],
+                    ['2', '筛选渠道', 'geo_list_media_channels', '按媒体名称、分类和预算筛选渠道，记录媒体资源编号与售价。'],
+                    ['3', '生成文章', 'AI 应用内部能力', '根据用户目标完成标题、正文、摘要、关键词和 SEO 描述。'],
+                    ['4', '创建并投稿', 'geo_publish_article_to_media', '一次保存文章并投递多个指定渠道，返回文章和投稿订单。'],
+                    ['5', '跟踪结果', 'geo_get_media_submission', '查询待安排、发布中、已发布、退稿等状态及最终发布链接。'],
+                ] as [$step, $title, $tool, $description])
+                    <li class="border-l-2 border-blue-500 pl-4">
+                        <div class="text-xs font-semibold text-blue-600">步骤 {{ $step }}</div>
+                        <h3 class="mt-1 text-sm font-semibold text-gray-900">{{ $title }}</h3>
+                        <code class="mt-2 block break-all text-xs text-blue-700">{{ $tool }}</code>
+                        <p class="mt-2 text-sm leading-6 text-gray-600">{{ $description }}</p>
+                    </li>
+                @endforeach
+            </ol>
+
+            <div class="border-l-2 border-emerald-500 bg-emerald-50 px-4 py-3">
+                <h3 class="text-sm font-semibold text-emerald-900">可直接发送给 AI Agent 的任务</h3>
+                <p class="mt-2 text-sm leading-6 text-emerald-900">查询名称或分类符合要求且单价不超过预算的媒体渠道，选择指定作者和分类，围绕目标主题编写完整文章，然后调用 <code>geo_publish_article_to_media</code> 投递到选定渠道。返回文章编号、每个投稿订单编号、实际扣费、当前状态和失败原因；未得到明确渠道编号前不要投稿。</p>
+            </div>
+
+            <div class="grid gap-4 md:grid-cols-3">
+                <div class="border-l-2 border-gray-300 pl-4">
+                    <h3 class="text-sm font-semibold text-gray-900">已有文章</h3>
+                    <p class="mt-1 text-sm leading-6 text-gray-600">使用 <code>geo_submit_article_to_media</code> 将已有文章投递到新渠道，不会重复创建文章。</p>
+                </div>
+                <div class="border-l-2 border-gray-300 pl-4">
+                    <h3 class="text-sm font-semibold text-gray-900">部分成功</h3>
+                    <p class="mt-1 text-sm leading-6 text-gray-600">多渠道投稿会分别返回成功订单和失败项。只处理失败渠道，不要重复提交已经成功的订单。</p>
+                </div>
+                <div class="border-l-2 border-gray-300 pl-4">
+                    <h3 class="text-sm font-semibold text-gray-900">安全重试</h3>
+                    <p class="mt-1 text-sm leading-6 text-gray-600">同一次操作重试时保持 <code>idempotency_key</code> 不变，防止网络超时导致文章或订单重复创建。</p>
+                </div>
+            </div>
+        </section>
+
         <section class="space-y-4" aria-labelledby="tools-heading">
             <div>
                 <h2 id="tools-heading" class="text-xl font-semibold text-gray-900">工具与费用</h2>
@@ -267,7 +311,7 @@
                     </tbody>
                 </table>
             </div>
-            <div class="grid gap-4 md:grid-cols-3">
+            <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <div class="border-l-2 border-gray-300 pl-4">
                     <h3 class="text-sm font-semibold text-gray-900">Key 数量</h3>
                     <p class="mt-1 text-sm leading-6 text-gray-600">每个有效 MCP Key 计入当前账号规格的 API Token 数量上限，不产生调用次数费用。</p>
@@ -280,6 +324,10 @@
                     <h3 class="text-sm font-semibold text-gray-900">任务配图</h3>
                     <p class="mt-1 text-sm leading-6 text-gray-600">任务启用 AI 配图时，按实际成功生成的图片数量扣减 AI 图片生成额度。</p>
                 </div>
+                <div class="border-l-2 border-emerald-500 pl-4">
+                    <h3 class="text-sm font-semibold text-gray-900">媒体投稿</h3>
+                    <p class="mt-1 text-sm leading-6 text-gray-600">每篇文章按选定渠道的当前站点实际售价逐笔扣费；提交失败自动退款，渠道成功接单后以订单价格快照为准。</p>
+                </div>
             </div>
         </section>
 
@@ -288,7 +336,7 @@
                 <h2 id="security-heading" class="text-base font-semibold text-gray-900">安全要求</h2>
                 <ul class="mt-3 space-y-2 text-sm leading-6 text-gray-600">
                     <li>Key 只放在 Authorization 请求头，不要写入提示词、URL、公开仓库或日志。</li>
-                    <li>按客户端用途拆分 Key，并只授予实际需要的 scope；自动化客户端谨慎授予 tasks:write。</li>
+                    <li>按客户端用途拆分 Key，并只授予实际需要的 scope；自动投稿 Key 才授予 articles:write 和 media:submit。</li>
                     <li>建议设置明确过期时间。设备丢失、配置泄露或人员变动时立即撤销 Key。</li>
                     <li>所有数据访问都受当前站点隔离约束，切换后台站点不会改变已创建 Key 的绑定站点。</li>
                 </ul>
@@ -311,6 +359,10 @@
                     <div>
                         <dt class="font-medium text-gray-900">任务长时间处理中</dt>
                         <dd class="mt-1 text-gray-600">使用 geo_list_task_runs 或 geo_get_task_run 查询队列状态和错误信息，不要重复投递同一任务。</dd>
+                    </div>
+                    <div>
+                        <dt class="font-medium text-gray-900">媒体投稿失败</dt>
+                        <dd class="mt-1 text-gray-600">检查订阅状态、账户余额、渠道状态和文章正文。多渠道部分成功时只重投返回 errors 中的渠道。</dd>
                     </div>
                 </dl>
             </div>

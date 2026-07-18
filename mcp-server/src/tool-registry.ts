@@ -7,7 +7,7 @@
  * @Email: network@iyuanma.net
  *
  * @File： tool-registry.ts
- * @Description: 按 MCP Key scope 动态注册 GEO 目录、任务、执行记录和文章工具。
+ * @Description: 按 MCP Key scope 动态注册 GEO 目录、任务、文章、媒体渠道和自动投稿工具。
  */
 
 import { randomUUID } from 'node:crypto';
@@ -17,6 +17,22 @@ import * as z from 'zod/v4';
 import { GeoFlowApiClient, GeoFlowApiError, type GeoFlowAuthContext } from './geoflow-api-client.js';
 
 const MCP_CONNECT_SCOPE = 'mcp:connect';
+const articleInputSchema = {
+    title: z.string().trim().min(1).max(255).describe('AI 已完成编写的文章标题'),
+    content: z.string().trim().min(1).describe('AI 已完成编写的 Markdown 或 HTML 正文'),
+    category_id: z.number().int().positive().describe('通过 geo_get_catalog 获取的分类编号'),
+    author_id: z.number().int().positive().describe('通过 geo_get_catalog 获取的作者编号'),
+    excerpt: z.string().trim().optional().describe('文章摘要，留空时由系统从正文提取'),
+    keywords: z.array(z.string().trim().min(1)).optional().describe('文章关键词列表'),
+    meta_description: z.string().trim().optional().describe('SEO 描述'),
+};
+const optionalIdempotencyKeySchema = z
+    .string()
+    .trim()
+    .min(8)
+    .max(96)
+    .optional()
+    .describe('可选幂等键，重试同一操作时保持一致');
 
 /**
  * @Name: hasScope
@@ -24,7 +40,7 @@ const MCP_CONNECT_SCOPE = 'mcp:connect';
  *
  * @Author: cdkay
  * @CreateTime: 2026-07-13 16:38:47
- * @UpdateTime: 2026-07-13 16:38:47
+ * @UpdateTime: 2026-07-18 13:58:43
  *
  * @Param: GeoFlowAuthContext context 已验证 GEO 上下文
  * @Param: string scope 所需业务权限
@@ -97,14 +113,23 @@ async function executeTool(operation: () => Promise<unknown>): Promise<CallToolR
         const apiError =
             error instanceof GeoFlowApiError ? error : new GeoFlowApiError('GEO 工具执行失败', 500, 'geo_tool_error');
 
+        const errorPayload = {
+            code: apiError.code,
+            message: apiError.message,
+            details: apiError.details,
+        };
+
         return {
             isError: true,
             content: [
                 {
                     type: 'text',
-                    text: `${apiError.message}（${apiError.code}）`,
+                    text: JSON.stringify(errorPayload, null, 2),
                 },
             ],
+            structuredContent: {
+                error: errorPayload,
+            },
         };
     }
 }
@@ -123,12 +148,24 @@ async function executeTool(operation: () => Promise<unknown>): Promise<CallToolR
  */
 export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAuthContext): McpServer {
     assertMcpContext(context);
+    const canPublishToMedia =
+        hasScope(context, 'catalog:read') &&
+        hasScope(context, 'articles:write') &&
+        hasScope(context, 'media:read') &&
+        hasScope(context, 'media:submit');
 
-    const server = new McpServer({
-        name: 'geoflow-business-mcp-server',
-        title: `GEOFlow - ${context.site?.name || 'GEO'}`,
-        version: '1.0.0',
-    });
+    const server = new McpServer(
+        {
+            name: 'geoflow-business-mcp-server',
+            title: `GEOFlow - ${context.site?.name || 'GEO'}`,
+            version: '1.1.0',
+        },
+        {
+            instructions: canPublishToMedia
+                ? '处理 AI 文章媒体投递时，先调用 geo_get_catalog 获取有效作者和分类，再调用 geo_list_media_channels 查询渠道编号与当前售价。由当前 AI 应用完成最终标题和正文后，优先调用 geo_publish_article_to_media 一次创建并投递。未获得明确媒体资源编号时禁止投稿；多渠道部分成功时只重投失败渠道；同一操作重试必须保持 idempotency_key 不变。'
+                : '只调用当前 MCP Key 已授权并实际发现的 GEO 工具；不要尝试调用工具列表中不存在的写入或投稿能力。',
+        },
+    );
 
     if (hasScope(context, 'catalog:read')) {
         server.registerTool(
@@ -271,6 +308,167 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
                 annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
             },
             async ({ article_id }) => await executeTool(async () => await client.getArticle(article_id)),
+        );
+    }
+
+    if (hasScope(context, 'articles:write')) {
+        server.registerTool(
+            'geo_create_article',
+            {
+                title: '保存 AI 编写的文章',
+                description:
+                    '保存外部 AI 应用已经完成编写的文章。调用前必须先用 geo_get_catalog 取得当前站点有效的作者和分类编号。',
+                inputSchema: {
+                    ...articleInputSchema,
+                    idempotency_key: optionalIdempotencyKeySchema,
+                },
+                annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
+            },
+            async ({ idempotency_key, ...article }) =>
+                await executeTool(
+                    async () => await client.createArticle(article, idempotency_key || `mcp-article-${randomUUID()}`),
+                ),
+        );
+    }
+
+    if (hasScope(context, 'media:read')) {
+        server.registerTool(
+            'geo_list_media_channels',
+            {
+                title: '查询文章投递渠道',
+                description:
+                    '分页查询可投稿媒体渠道，返回渠道编号、媒体名称、媒体类型、来源平台和当前站点实际售价。可按媒体名称或分类搜索。',
+                inputSchema: {
+                    page: z.number().int().min(1).default(1).describe('页码'),
+                    per_page: z.number().int().min(1).max(100).default(50).describe('每页数量'),
+                    platform_id: z.number().int().positive().optional().describe('来源平台编号'),
+                    source_type: z.string().trim().min(1).max(32).optional().describe('媒体类型'),
+                    search: z.string().trim().min(1).max(120).optional().describe('媒体名称、分类或备注关键词'),
+                },
+                annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
+            },
+            async ({ page, per_page, platform_id, source_type, search }) =>
+                await executeTool(
+                    async () => await client.listMediaChannels({ page, per_page, platform_id, source_type, search }),
+                ),
+        );
+
+        server.registerTool(
+            'geo_get_media_channel',
+            {
+                title: '获取文章投递渠道详情',
+                description: '查询单个媒体渠道的状态、分类、来源平台、案例链接和当前站点实际售价。',
+                inputSchema: {
+                    media_resource_id: z.number().int().positive().describe('媒体资源编号'),
+                },
+                annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
+            },
+            async ({ media_resource_id }) =>
+                await executeTool(async () => await client.getMediaChannel(media_resource_id)),
+        );
+
+        server.registerTool(
+            'geo_list_media_submissions',
+            {
+                title: '查询媒体投稿记录',
+                description: '分页查询当前账号的媒体投稿记录，并同步可见订单的最新状态和发布链接。',
+                inputSchema: {
+                    page: z.number().int().min(1).default(1).describe('页码'),
+                    per_page: z.number().int().min(1).max(100).default(20).describe('每页数量'),
+                    article_id: z.number().int().positive().optional().describe('文章编号'),
+                    media_resource_id: z.number().int().positive().optional().describe('媒体资源编号'),
+                    status: z.string().trim().min(1).max(32).optional().describe('投稿状态'),
+                },
+                annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
+            },
+            async ({ page, per_page, article_id, media_resource_id, status }) =>
+                await executeTool(
+                    async () =>
+                        await client.listMediaSubmissions({
+                            page,
+                            per_page,
+                            article_id,
+                            media_resource_id,
+                            status,
+                        }),
+                ),
+        );
+
+        server.registerTool(
+            'geo_get_media_submission',
+            {
+                title: '获取媒体投稿详情',
+                description: '查询单个媒体投稿订单，并同步最新状态、发布链接和失败原因。',
+                inputSchema: {
+                    submission_id: z.number().int().positive().describe('媒体投稿订单编号'),
+                },
+                annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
+            },
+            async ({ submission_id }) => await executeTool(async () => await client.getMediaSubmission(submission_id)),
+        );
+    }
+
+    if (hasScope(context, 'media:submit')) {
+        server.registerTool(
+            'geo_submit_article_to_media',
+            {
+                title: '将已有文章投递到媒体',
+                description:
+                    '将当前账号已有文章投递到一个或多个指定媒体渠道。每个成功提交的渠道按查询结果中的实际售价扣费，提交失败自动退款。',
+                inputSchema: {
+                    article_id: z.number().int().positive().describe('当前账号已有文章编号'),
+                    media_resource_ids: z
+                        .array(z.number().int().positive())
+                        .min(1)
+                        .max(50)
+                        .describe('目标媒体资源编号列表'),
+                    remark: z.string().trim().max(1000).default('').describe('投稿备注'),
+                    idempotency_key: optionalIdempotencyKeySchema,
+                },
+                annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
+            },
+            async ({ article_id, media_resource_ids, remark, idempotency_key }) =>
+                await executeTool(
+                    async () =>
+                        await client.submitArticleToMedia(
+                            article_id,
+                            media_resource_ids,
+                            remark,
+                            idempotency_key || `mcp-submission-${randomUUID()}`,
+                        ),
+                ),
+        );
+    }
+
+    if (hasScope(context, 'articles:write') && hasScope(context, 'media:submit')) {
+        server.registerTool(
+            'geo_publish_article_to_media',
+            {
+                title: '发布 AI 文章到指定媒体',
+                description:
+                    '面向 AI Agent 的完整发布工具：保存已经生成完成的文章，并立即投递到一个或多个指定媒体渠道。文章与投稿分别幂等，投稿失败时保留文章供修正后重投。',
+                inputSchema: {
+                    ...articleInputSchema,
+                    media_resource_ids: z
+                        .array(z.number().int().positive())
+                        .min(1)
+                        .max(50)
+                        .describe('通过 geo_list_media_channels 选定的媒体资源编号列表'),
+                    remark: z.string().trim().max(1000).default('').describe('投稿备注'),
+                    idempotency_key: optionalIdempotencyKeySchema,
+                },
+                annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
+            },
+            async ({ media_resource_ids, remark, idempotency_key, ...article }) =>
+                await executeTool(
+                    async () =>
+                        await client.publishArticleToMedia(
+                            article,
+                            media_resource_ids,
+                            remark,
+                            idempotency_key || `mcp-publication-${randomUUID()}`,
+                        ),
+                ),
         );
     }
 

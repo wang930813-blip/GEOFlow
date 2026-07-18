@@ -80,6 +80,7 @@ void describe('GEO MCP 工具注册', () => {
         await client.connect(clientTransport);
 
         try {
+            assert.doesNotMatch(client.getInstructions() || '', /geo_publish_article_to_media/);
             const tools = await client.listTools();
             const names = tools.tools.map((tool) => tool.name).sort();
 
@@ -97,6 +98,53 @@ void describe('GEO MCP 工具注册', () => {
             assert.deepEqual(result.structuredContent, {
                 result: {
                     path: '/api/v1/tasks/12',
+                },
+            });
+        } finally {
+            await client.close();
+            await server.close();
+        }
+    });
+
+    void it('具备文章写入和媒体权限时发现 AI 自动投稿工具', async () => {
+        const publicationContext: GeoFlowAuthContext = {
+            ...context,
+            token: {
+                ...context.token,
+                scopes: ['mcp:connect', 'catalog:read', 'articles:write', 'media:read', 'media:submit'],
+            },
+        };
+        const server = createGeoMcpServer(createClient(), publicationContext);
+        const client = new Client({ name: 'publication-tool-registry-check', version: '1.0.0' });
+        const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+
+        await server.connect(serverTransport);
+        await client.connect(clientTransport);
+
+        try {
+            assert.match(client.getInstructions() || '', /geo_publish_article_to_media/);
+            const tools = await client.listTools();
+            const names = tools.tools.map((tool) => tool.name).sort();
+
+            assert.deepEqual(names, [
+                'geo_create_article',
+                'geo_get_catalog',
+                'geo_get_media_channel',
+                'geo_get_media_submission',
+                'geo_list_media_channels',
+                'geo_list_media_submissions',
+                'geo_publish_article_to_media',
+                'geo_submit_article_to_media',
+            ]);
+
+            const result = await client.callTool({
+                name: 'geo_list_media_channels',
+                arguments: { page: 1, per_page: 20, search: '科技' },
+            });
+            assert.equal(result.isError, undefined);
+            assert.deepEqual(result.structuredContent, {
+                result: {
+                    path: '/api/v1/media/resources',
                 },
             });
         } finally {
