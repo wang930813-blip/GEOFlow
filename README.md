@@ -185,6 +185,16 @@ docker compose --env-file .env -f docker-compose.dev.yml up -d --build
 
 `docker-compose.dev.yml` 面向外部 PostgreSQL，不启动本地数据库；`AUTO_MIGRATE` 和 `AUTO_SEED` 均固定关闭，避免开发容器自动修改已有数据库。
 
+### 方式一补充：Docker（ARM64 开发环境）
+
+ARM64 Linux、Apple Silicon 或支持 ARM64 模拟的 Buildx 环境使用独立 Compose：
+
+```bash
+docker compose --env-file .env -f docker-compose.arm.yml up -d --build
+```
+
+该配置默认平台为 `linux/arm64`，使用独立的 `geoflow-arm-*` 容器、镜像和数据卷，避免复用 AMD64 的 `vendor` 与 `node_modules`。ARM Compose 不创建 Redis 容器，启动前必须在 `.env` 中将 `REDIS_HOST`、`REDIS_PORT` 和 `REDIS_PASSWORD` 配置为可从容器网络访问的外部 Redis 服务。需要使用私有镜像仓库时，通过 `ARM_PHP_CLI_IMAGE`、`ARM_NODE_IMAGE` 和 `ARM_APP_IMAGE` 覆盖镜像地址。
+
 ### 方式一补充：Docker（生产）
 
 生产环境建议使用 **`docker-compose.prod.yml`**，改为 **`Nginx + php-fpm`**，而不是 `php artisan serve`。
