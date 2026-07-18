@@ -18,6 +18,8 @@ class ApiIdempotencyKey extends Model
         'request_hash',
         'response_body',
         'response_status',
+        'state',
+        'processing_started_at',
     ];
 
     protected function casts(): array
@@ -25,6 +27,7 @@ class ApiIdempotencyKey extends Model
         return [
             'response_status' => 'integer',
             'site_id' => 'integer',
+            'processing_started_at' => 'datetime',
         ];
     }
 }

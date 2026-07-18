@@ -7,15 +7,16 @@
  * @Email: network@iyuanma.net
  *
  * @File： server.ts
- * @Description: 启动独立 GEO MCP Streamable HTTP 服务并完成 Key 鉴权、工具注册和优雅退出。
+ * @Description: 启动独立 GEO MCP Streamable HTTP 服务并完成请求限流、Key 鉴权、工具注册和优雅退出。
  */
 
 import type { Server as HttpServer } from 'node:http';
 import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import type { Request, Response } from 'express';
+import type { NextFunction, Request, Response } from 'express';
 import { loadConfig } from './config.js';
 import { GeoFlowApiClient, GeoFlowApiError } from './geoflow-api-client.js';
+import { createMcpRateLimiters, extractBearerTokenValue } from './rate-limit.js';
 import { assertMcpContext, createGeoMcpServer } from './tool-registry.js';
 
 const config = loadConfig();
@@ -23,6 +24,8 @@ const app = createMcpExpressApp({
     host: config.host,
     allowedHosts: config.allowedHosts,
 });
+app.set('trust proxy', config.trustedProxies.length > 0 ? config.trustedProxies : false);
+const mcpRateLimiters = createMcpRateLimiters(config.rateLimit);
 
 /**
  * @Name: extractBearerToken
@@ -30,16 +33,14 @@ const app = createMcpExpressApp({
  *
  * @Author: cdkay
  * @CreateTime: 2026-07-13 16:38:47
- * @UpdateTime: 2026-07-13 16:38:47
+ * @UpdateTime: 2026-07-18 15:37:25
  *
  * @Param: Request request Express 请求
  * @Return: string MCP Key 明文，仅在当前请求内存中使用
  */
 function extractBearerToken(request: Request): string {
-    const authorization = request.header('Authorization')?.trim() || '';
-    const match = authorization.match(/^Bearer\s+(.+)$/iu);
-    const token = match?.[1]?.trim() || '';
-    if (token === '') {
+    const token = extractBearerTokenValue(request);
+    if (token === null) {
         throw new GeoFlowApiError('缺少有效的 Authorization Bearer MCP Key', 401, 'mcp_unauthorized');
     }
 
@@ -72,6 +73,28 @@ function sendJsonRpcError(response: Response, error: GeoFlowApiError): void {
     });
 }
 
+/**
+ * @Name: enforceHttps
+ * @Description: 生产配置启用时拒绝非 HTTPS MCP 请求，防止 Bearer Key 通过公网明文传输。
+ *
+ * @Author: cdkay
+ * @CreateTime: 2026-07-18 17:15:00
+ * @UpdateTime: 2026-07-18 17:15:00
+ *
+ * @Param: Request request Express 请求
+ * @Param: Response response Express 响应
+ * @Param: NextFunction next 后续请求处理器
+ * @Return: void
+ */
+function enforceHttps(request: Request, response: Response, next: NextFunction): void {
+    if (!config.requireHttps || request.secure) {
+        next();
+        return;
+    }
+
+    sendJsonRpcError(response, new GeoFlowApiError('MCP Server 仅允许 HTTPS 连接', 426, 'https_required'));
+}
+
 app.get('/health', (_request: Request, response: Response) => {
     response.json({
         status: 'ok',
@@ -80,7 +103,22 @@ app.get('/health', (_request: Request, response: Response) => {
     });
 });
 
-app.post('/mcp', async (request: Request, response: Response) => {
+/**
+ * 处理 MCP Streamable HTTP 请求
+ * 对请求执行 IP 与 Token 指纹限流、Bearer 鉴权、站点上下文校验和 MCP 工具调用。
+ * @Url [POST] [/mcp]
+ *      登录 [是]
+ *      Authorization string 必选 Bearer MCP Key 请求头
+ *      body JSON-RPC 2.0 object 必选 MCP 协议请求体
+ *
+ * @Author: cdkay
+ * @CreateTime: 2026-07-13 16:38:47
+ * @UpdateTime: 2026-07-18 15:37:25
+ *
+ * @Return JSON-RPC 2.0 object MCP 协议结果或安全错误响应
+ * @Throws GeoFlowApiError 凭据无效、权限不足、触发限流或内部 API 调用失败
+ */
+app.post('/mcp', enforceHttps, ...mcpRateLimiters, async (request: Request, response: Response) => {
     try {
         const token = extractBearerToken(request);
         const client = new GeoFlowApiClient(config.geoFlowApiBaseUrl, token, config.apiTimeoutMs);

@@ -18,6 +18,11 @@ export interface GeoFlowAuthContext {
         name: string;
         scopes: string[];
         expires_at: string | null;
+        spending_policy?: {
+            max_unit_price: string;
+            max_total_price: string;
+            daily_spend_limit: string;
+        } | null;
     };
     admin: {
         id: number;
@@ -69,6 +74,11 @@ export interface GeoFlowArticleRecord extends Record<string, unknown> {
 export interface GeoFlowMediaSubmissionResult extends Record<string, unknown> {
     submissions: unknown[];
     errors: unknown[];
+}
+
+export interface GeoFlowMediaBudget {
+    max_unit_price: number;
+    max_total_price: number;
 }
 
 export interface GeoFlowArticlePublicationResult {
@@ -301,10 +311,11 @@ export class GeoFlowApiClient {
      *
      * @Author: cdkay
      * @CreateTime: 2026-07-18 13:58:43
-     * @UpdateTime: 2026-07-18 13:58:43
+     * @UpdateTime: 2026-07-18 15:37:25
      *
      * @Param: number articleId 当前账号文章编号
      * @Param: number[] mediaResourceIds 目标媒体资源编号
+     * @Param: GeoFlowMediaBudget budget 单渠道最高价格和本次投稿最高总价
      * @Param: string remark 投稿备注
      * @Param: string idempotencyKey 幂等键
      * @Return: Promise<GeoFlowMediaSubmissionResult> 投稿订单和逐渠道错误
@@ -313,6 +324,7 @@ export class GeoFlowApiClient {
     public async submitArticleToMedia(
         articleId: number,
         mediaResourceIds: number[],
+        budget: GeoFlowMediaBudget,
         remark: string,
         idempotencyKey: string,
     ): Promise<GeoFlowMediaSubmissionResult> {
@@ -320,6 +332,7 @@ export class GeoFlowApiClient {
             body: {
                 article_ids: [articleId],
                 media_resource_ids: mediaResourceIds,
+                ...budget,
                 remark,
             },
             idempotencyKey,
@@ -332,10 +345,11 @@ export class GeoFlowApiClient {
      *
      * @Author: cdkay
      * @CreateTime: 2026-07-18 13:58:43
-     * @UpdateTime: 2026-07-18 13:58:43
+     * @UpdateTime: 2026-07-18 15:37:25
      *
      * @Param: GeoFlowArticleInput input 已完成生成的文章内容、作者和分类
      * @Param: number[] mediaResourceIds 目标媒体资源编号
+     * @Param: GeoFlowMediaBudget budget 单渠道最高价格和本次投稿最高总价
      * @Param: string remark 投稿备注
      * @Param: string idempotencyKey 整体操作幂等键
      * @Return: Promise<GeoFlowArticlePublicationResult> 文章、投稿订单和逐渠道错误
@@ -344,6 +358,7 @@ export class GeoFlowApiClient {
     public async publishArticleToMedia(
         input: GeoFlowArticleInput,
         mediaResourceIds: number[],
+        budget: GeoFlowMediaBudget,
         remark: string,
         idempotencyKey: string,
     ): Promise<GeoFlowArticlePublicationResult> {
@@ -353,6 +368,7 @@ export class GeoFlowApiClient {
             const publication = await this.submitArticleToMedia(
                 article.id,
                 mediaResourceIds,
+                budget,
                 remark,
                 `${idempotencyKey}:submission`,
             );

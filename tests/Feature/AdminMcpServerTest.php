@@ -97,6 +97,9 @@ class AdminMcpServerTest extends TestCase
                     'media:read',
                     'media:submit',
                 ],
+                'mcp_max_unit_price' => '100.00',
+                'mcp_max_total_price' => '300.00',
+                'mcp_daily_spend_limit' => '1000.00',
             ]);
 
         $response
@@ -111,6 +114,17 @@ class AdminMcpServerTest extends TestCase
         $this->assertContains('articles:write', (array) $token->abilities);
         $this->assertContains('media:read', (array) $token->abilities);
         $this->assertContains('media:submit', (array) $token->abilities);
+        $this->assertSame(100.0, (float) $token->mcp_max_unit_price);
+        $this->assertSame(300.0, (float) $token->mcp_max_total_price);
+        $this->assertSame(1000.0, (float) $token->mcp_daily_spend_limit);
+
+        $plainToken = (string) $response->getSession()->get('new_mcp_key');
+        $this->withHeader('Authorization', 'Bearer '.$plainToken)
+            ->getJson('/api/v1/auth/me')
+            ->assertOk()
+            ->assertJsonPath('data.token.spending_policy.max_unit_price', '100.00')
+            ->assertJsonPath('data.token.spending_policy.max_total_price', '300.00')
+            ->assertJsonPath('data.token.spending_policy.daily_spend_limit', '1000.00');
     }
 
     /**

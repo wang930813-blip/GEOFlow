@@ -28,7 +28,7 @@ Route::prefix('v1')
         Route::post('auth/login', [AuthController::class, 'login']);
 
         // 需有效 Token + 对应 scope
-        Route::middleware(['api.auth'])->group(function (): void {
+        Route::middleware(['throttle:machine-api', 'api.auth', 'throttle:api-token'])->group(function (): void {
             // 机器凭证自检：独立 GEO MCP 服务使用，不要求额外业务 scope
             Route::get('auth/me', [AuthController::class, 'me'])->middleware('api.scope:mcp:connect');
 
@@ -112,7 +112,8 @@ Route::prefix('v1')
                 ->whereNumber('resource')
                 ->middleware('api.scope:media:read');
             Route::get('media/submissions', [MediaSubmissionController::class, 'index'])->middleware('api.scope:media:read');
-            Route::post('media/submissions', [MediaSubmissionController::class, 'store'])->middleware('api.scope:media:submit');
+            Route::post('media/submissions', [MediaSubmissionController::class, 'store'])
+                ->middleware(['api.scope:media:submit', 'throttle:mcp-paid-write']);
             Route::get('media/submissions/{submission}', [MediaSubmissionController::class, 'show'])
                 ->whereNumber('submission')
                 ->middleware('api.scope:media:read');

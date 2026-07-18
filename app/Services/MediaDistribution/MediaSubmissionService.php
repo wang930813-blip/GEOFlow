@@ -11,7 +11,6 @@ use App\Models\MediaSubmission;
 use App\Models\PlatformPlan;
 use App\Services\Billing\AdminResourceQuotaService;
 use App\Support\MediaDistribution\MediaPlatform;
-use App\Support\Site\ArticleHtmlPresenter;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -22,10 +21,18 @@ class MediaSubmissionService
         private readonly MediaPlatformClientManager $clients,
         private readonly AdminCreditService $credits,
         private readonly AdminResourceQuotaService $quotaService,
+        private readonly MediaSubmissionHtmlSanitizer $htmlSanitizer,
+        private readonly MediaSubmissionBudgetGuard $budgetGuard,
     ) {}
 
-    public function submit(Article $article, MediaResource $resource, Admin $admin, string $remark = ''): MediaSubmission
-    {
+    public function submit(
+        Article $article,
+        MediaResource $resource,
+        Admin $admin,
+        string $remark = '',
+        ?int $mcpTokenId = null,
+        ?string $mcpConfirmedSalePrice = null,
+    ): MediaSubmission {
         if ($article->site_id === null || (int) $article->site_id <= 0) {
             throw new RuntimeException('文章缺少站点归属');
         }
@@ -38,18 +45,34 @@ class MediaSubmissionService
 
         $this->quotaService->assertSubscriptionActive((int) $admin->id, (int) $article->site_id, $admin);
 
-        $salePrice = $this->salePriceForSite($resource, (int) $article->site_id);
+        if ($mcpTokenId !== null && $mcpTokenId > 0 && $mcpConfirmedSalePrice === null) {
+            throw new RuntimeException('MCP 投稿缺少已确认的渠道价格');
+        }
+
+        // MCP 投稿必须使用预算预检时的价格快照，避免预检后价格变化导致实际扣费越过调用方确认上限。
+        $salePrice = $mcpTokenId !== null && $mcpTokenId > 0
+            ? number_format((float) $mcpConfirmedSalePrice, 2, '.', '')
+            : $this->salePriceForSite($resource, (int) $article->site_id);
         $usesUnlimitedCredits = $this->usesUnlimitedCredits($admin, (int) $article->site_id);
         if (! $usesUnlimitedCredits) {
             $this->credits->ensureSufficient((int) $admin->id, (int) $article->site_id, $salePrice);
         }
 
-        $submission = DB::transaction(function () use ($article, $resource, $admin, $remark, $salePrice): MediaSubmission {
+        $submission = DB::transaction(function () use ($article, $resource, $admin, $remark, $salePrice, $mcpTokenId): MediaSubmission {
             $platformId = (int) ($resource->platform_id ?: MediaPlatform::CEYING_MEDIA_1);
+            if ($mcpTokenId !== null && $mcpTokenId > 0) {
+                $this->budgetGuard->assertDailyBudgetForSubmission(
+                    $mcpTokenId,
+                    (int) $admin->id,
+                    (int) $article->site_id,
+                    $salePrice,
+                );
+            }
 
             return MediaSubmission::query()->create([
                 'site_id' => (int) $article->site_id,
                 'owner_admin_id' => (int) $admin->id,
+                'mcp_token_id' => $mcpTokenId,
                 'article_id' => (int) $article->id,
                 'media_resource_id' => (int) $resource->id,
                 'platform_id' => $platformId,
@@ -57,7 +80,7 @@ class MediaSubmissionService
                 'agent_order_sn' => $this->agentOrderSn($platformId, (int) $article->site_id),
                 'preview_token' => Str::random(48),
                 'title_snapshot' => (string) $article->title,
-                'content_snapshot' => $this->contentAsHtml((string) $article->content),
+                'content_snapshot' => $this->htmlSanitizer->sanitize((string) $article->content),
                 'cost_price_snapshot' => $resource->cost_price,
                 'sale_price_snapshot' => $salePrice,
                 'points_amount' => $salePrice,
@@ -236,18 +259,6 @@ class MediaSubmissionService
     private function submissionOwnerAdminId(MediaSubmission $submission): int
     {
         return (int) ($submission->owner_admin_id ?: $submission->submitted_by_admin_id);
-    }
-
-    private function contentAsHtml(string $content): string
-    {
-        $content = trim($content);
-        if ($content === '') {
-            return '';
-        }
-
-        return preg_match('/<\/?(?:p|h[1-6]|ul|ol|li|blockquote|pre|table|div|section|article|img|figure|strong|em)\b/i', $content) === 1
-            ? $content
-            : ArticleHtmlPresenter::markdownToHtml($content);
     }
 
     private function salePriceForSite(MediaResource $resource, int $siteId): string

@@ -1,4 +1,5 @@
 ARG COMPOSER_IMAGE=composer:2
+ARG NODE_IMAGE=node:22-alpine
 ARG PHP_FPM_IMAGE=php:8.4-fpm-bookworm
 ARG PHPREDIS_VERSION=6.3.0
 
@@ -32,6 +33,18 @@ RUN composer dump-autoload \
     --classmap-authoritative \
     --no-scripts \
  && BROADCAST_CONNECTION=null php artisan package:discover --ansi
+
+FROM ${NODE_IMAGE} AS assets
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
+
+COPY vite.config.js ./
+COPY resources ./resources
+COPY public ./public
+RUN npm run build
 
 FROM ${PHP_FPM_IMAGE}
 
@@ -90,6 +103,7 @@ COPY docker/entrypoint.prod.sh /usr/local/bin/geoflow-entrypoint-prod
 RUN chmod +x /usr/local/bin/geoflow-entrypoint-prod
 
 COPY --from=vendor /app /var/www/html
+COPY --from=assets /app/public/build /var/www/html/public/build
 
 ENTRYPOINT ["/usr/local/bin/geoflow-entrypoint-prod"]
 CMD ["php-fpm", "-F"]

@@ -107,6 +107,24 @@
                         <label for="mcp-key-expires-at" class="block text-sm font-medium text-gray-700">过期时间</label>
                         <input id="mcp-key-expires-at" name="expires_at" type="datetime-local" value="{{ old('expires_at', $defaultExpiresAtInput) }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
                     </div>
+                    <fieldset class="space-y-3 border-l-2 border-amber-400 pl-4">
+                        <legend class="text-sm font-medium text-gray-700">媒体投稿消费策略</legend>
+                        <p class="text-xs leading-5 text-gray-500">授予媒体投稿权限时必须填写，且单渠道上限不得高于单次上限，单次上限不得高于每日上限。</p>
+                        <div class="grid gap-3 sm:grid-cols-3">
+                            <label class="block text-sm text-gray-700">
+                                单渠道上限
+                                <input name="mcp_max_unit_price" type="number" min="0.01" max="999999.99" step="0.01" value="{{ old('mcp_max_unit_price') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                            </label>
+                            <label class="block text-sm text-gray-700">
+                                单次总额上限
+                                <input name="mcp_max_total_price" type="number" min="0.01" max="9999999.99" step="0.01" value="{{ old('mcp_max_total_price') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                            </label>
+                            <label class="block text-sm text-gray-700">
+                                每日上限
+                                <input name="mcp_daily_spend_limit" type="number" min="0.01" max="9999999.99" step="0.01" value="{{ old('mcp_daily_spend_limit') }}" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                            </label>
+                        </div>
+                    </fieldset>
                     <fieldset>
                         <legend class="text-sm font-medium text-gray-700">业务权限</legend>
                         <div class="mt-2 space-y-2">
@@ -149,6 +167,7 @@
                             <tr>
                                 <th class="px-5 py-3 text-left text-xs font-medium text-gray-500">名称</th>
                                 <th class="px-5 py-3 text-left text-xs font-medium text-gray-500">权限</th>
+                                <th class="px-5 py-3 text-left text-xs font-medium text-gray-500">消费策略</th>
                                 <th class="px-5 py-3 text-left text-xs font-medium text-gray-500">最近使用</th>
                                 <th class="px-5 py-3 text-left text-xs font-medium text-gray-500">过期时间</th>
                                 <th class="px-5 py-3 text-left text-xs font-medium text-gray-500">状态</th>
@@ -160,6 +179,13 @@
                                 <tr>
                                     <td class="whitespace-nowrap px-5 py-4 text-sm font-medium text-gray-900">{{ $key['name'] }}</td>
                                     <td class="px-5 py-4 text-xs text-gray-600">{{ implode(', ', $key['scopes']) }}</td>
+                                    <td class="whitespace-nowrap px-5 py-4 text-xs text-gray-600">
+                                        @if ($key['mcp_daily_spend_limit'] !== null)
+                                            单渠道 {{ $key['mcp_max_unit_price'] }} / 单次 {{ $key['mcp_max_total_price'] }} / 每日 {{ $key['mcp_daily_spend_limit'] }}
+                                        @else
+                                            不允许付费投稿
+                                        @endif
+                                    </td>
                                     <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-600">{{ $key['last_used_at'] ?? '未使用' }}</td>
                                     <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-600">{{ $key['expires_at'] ?? '长期有效' }}</td>
                                     <td class="whitespace-nowrap px-5 py-4 text-sm">
@@ -194,7 +220,7 @@
                     ['创建 Key', '自动写作与投稿需要目录读取、文章写入、媒体渠道读取和媒体投稿权限。'],
                     ['配置客户端', '选择客户端支持的 Streamable HTTP 配置；仅支持 stdio 时使用桥接配置。'],
                     ['查询资源', '让 AI 先查询作者、分类和媒体渠道，确认渠道售价后再生成最终文章。'],
-                    ['自动投递', 'AI 调用完整发布工具后，保存文章编号和投稿订单编号并持续查询状态。'],
+                    ['自动投递', '明确单渠道和本次总预算后调用完整发布工具，保存文章编号和投稿订单编号并持续查询状态。'],
                 ] as $index => [$title, $description])
                     <li class="border-l-2 border-blue-500 pl-4">
                         <div class="text-xs font-semibold text-blue-600">步骤 {{ $index + 1 }}</div>
@@ -251,7 +277,7 @@
                     ['1', '读取目录', 'geo_get_catalog', '取得当前站点有效的作者编号和分类编号。'],
                     ['2', '筛选渠道', 'geo_list_media_channels', '按媒体名称、分类和预算筛选渠道，记录媒体资源编号与售价。'],
                     ['3', '生成文章', 'AI 应用内部能力', '根据用户目标完成标题、正文、摘要、关键词和 SEO 描述。'],
-                    ['4', '创建并投稿', 'geo_publish_article_to_media', '一次保存文章并投递多个指定渠道，返回文章和投稿订单。'],
+                    ['4', '确认预算并投稿', 'geo_publish_article_to_media', '提交 max_unit_price 和 max_total_price 后保存文章并投递，最多选择 20 个渠道。'],
                     ['5', '跟踪结果', 'geo_get_media_submission', '查询待安排、发布中、已发布、退稿等状态及最终发布链接。'],
                 ] as [$step, $title, $tool, $description])
                     <li class="border-l-2 border-blue-500 pl-4">
@@ -265,13 +291,13 @@
 
             <div class="border-l-2 border-emerald-500 bg-emerald-50 px-4 py-3">
                 <h3 class="text-sm font-semibold text-emerald-900">可直接发送给 AI Agent 的任务</h3>
-                <p class="mt-2 text-sm leading-6 text-emerald-900">查询名称或分类符合要求且单价不超过预算的媒体渠道，选择指定作者和分类，围绕目标主题编写完整文章，然后调用 <code>geo_publish_article_to_media</code> 投递到选定渠道。返回文章编号、每个投稿订单编号、实际扣费、当前状态和失败原因；未得到明确渠道编号前不要投稿。</p>
+                <p class="mt-2 text-sm leading-6 text-emerald-900">查询名称或分类符合要求的媒体渠道并汇总实时售价，向我确认最高单渠道价格和本次总预算；确认后将这两个金额分别作为 <code>max_unit_price</code>、<code>max_total_price</code>，围绕目标主题编写完整文章并调用 <code>geo_publish_article_to_media</code>。返回文章编号、投稿订单编号、实际扣费和当前状态；未得到明确渠道编号及预算前不要投稿。</p>
             </div>
 
             <div class="grid gap-4 md:grid-cols-3">
                 <div class="border-l-2 border-gray-300 pl-4">
                     <h3 class="text-sm font-semibold text-gray-900">已有文章</h3>
-                    <p class="mt-1 text-sm leading-6 text-gray-600">使用 <code>geo_submit_article_to_media</code> 将已有文章投递到新渠道，不会重复创建文章。</p>
+                    <p class="mt-1 text-sm leading-6 text-gray-600">使用 <code>geo_submit_article_to_media</code> 将已有文章投递到新渠道，同样必须提交单渠道和总预算。</p>
                 </div>
                 <div class="border-l-2 border-gray-300 pl-4">
                     <h3 class="text-sm font-semibold text-gray-900">部分成功</h3>
@@ -326,7 +352,7 @@
                 </div>
                 <div class="border-l-2 border-emerald-500 pl-4">
                     <h3 class="text-sm font-semibold text-gray-900">媒体投稿</h3>
-                    <p class="mt-1 text-sm leading-6 text-gray-600">每篇文章按选定渠道的当前站点实际售价逐笔扣费；提交失败自动退款，渠道成功接单后以订单价格快照为准。</p>
+                    <p class="mt-1 text-sm leading-6 text-gray-600">投稿前按实时售价强制校验单渠道和本次总预算；通过后逐笔扣费，提交失败自动退款，渠道成功接单后以订单价格快照为准。</p>
                 </div>
             </div>
         </section>
@@ -336,6 +362,7 @@
                 <h2 id="security-heading" class="text-base font-semibold text-gray-900">安全要求</h2>
                 <ul class="mt-3 space-y-2 text-sm leading-6 text-gray-600">
                     <li>Key 只放在 Authorization 请求头，不要写入提示词、URL、公开仓库或日志。</li>
+                    <li>公网 MCP 地址必须使用 HTTPS；HTTP 请求会被服务端拒绝。</li>
                     <li>按客户端用途拆分 Key，并只授予实际需要的 scope；自动投稿 Key 才授予 articles:write 和 media:submit。</li>
                     <li>建议设置明确过期时间。设备丢失、配置泄露或人员变动时立即撤销 Key。</li>
                     <li>所有数据访问都受当前站点隔离约束，切换后台站点不会改变已创建 Key 的绑定站点。</li>
@@ -362,7 +389,7 @@
                     </div>
                     <div>
                         <dt class="font-medium text-gray-900">媒体投稿失败</dt>
-                        <dd class="mt-1 text-gray-600">检查订阅状态、账户余额、渠道状态和文章正文。多渠道部分成功时只重投返回 errors 中的渠道。</dd>
+                        <dd class="mt-1 text-gray-600">检查预算、订阅状态、账户余额、渠道状态和文章正文。多渠道部分成功时只重投返回 errors 中的渠道。</dd>
                     </div>
                 </dl>
             </div>

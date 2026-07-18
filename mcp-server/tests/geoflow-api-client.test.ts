@@ -175,6 +175,7 @@ void describe('GeoFlowApiClient', () => {
                 keywords: ['GEO', '媒体投递'],
             },
             [8, 9],
+            { max_unit_price: 15.5, max_total_price: 30 },
             '自动投稿',
             'publication-123',
         );
@@ -204,6 +205,8 @@ void describe('GeoFlowApiClient', () => {
                 body: {
                     article_ids: [91],
                     media_resource_ids: [8, 9],
+                    max_unit_price: 15.5,
+                    max_total_price: 30,
                     remark: '自动投稿',
                 },
             },

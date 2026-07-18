@@ -33,6 +33,10 @@ const optionalIdempotencyKeySchema = z
     .max(96)
     .optional()
     .describe('可选幂等键，重试同一操作时保持一致');
+const mediaBudgetInputSchema = {
+    max_unit_price: z.number().positive().max(999_999.99).describe('允许单个媒体渠道扣费的最高金额'),
+    max_total_price: z.number().positive().max(9_999_999.99).describe('允许本次全部媒体渠道扣费的最高总金额'),
+};
 
 /**
  * @Name: hasScope
@@ -101,7 +105,7 @@ function successResult(data: unknown): CallToolResult {
  *
  * @Author: cdkay
  * @CreateTime: 2026-07-13 16:38:47
- * @UpdateTime: 2026-07-13 16:38:47
+ * @UpdateTime: 2026-07-18 15:37:25
  *
  * @Param: () => Promise<unknown> operation GEO API 调用
  * @Return: Promise<CallToolResult> MCP 工具结果
@@ -116,7 +120,6 @@ async function executeTool(operation: () => Promise<unknown>): Promise<CallToolR
         const errorPayload = {
             code: apiError.code,
             message: apiError.message,
-            details: apiError.details,
         };
 
         return {
@@ -140,7 +143,7 @@ async function executeTool(operation: () => Promise<unknown>): Promise<CallToolR
  *
  * @Author: cdkay
  * @CreateTime: 2026-07-13 16:38:47
- * @UpdateTime: 2026-07-13 16:38:47
+ * @UpdateTime: 2026-07-18 15:37:25
  *
  * @Param: GeoFlowApiClient client 当前请求专用 GEO API 客户端
  * @Param: GeoFlowAuthContext context 已验证 GEO 账号和站点上下文
@@ -153,6 +156,10 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
         hasScope(context, 'articles:write') &&
         hasScope(context, 'media:read') &&
         hasScope(context, 'media:submit');
+    const spendingPolicy = context.token.spending_policy;
+    const spendingPolicyInstruction = spendingPolicy
+        ? `当前 Key 消费上限：单渠道 ${spendingPolicy.max_unit_price}，单次 ${spendingPolicy.max_total_price}，每日 ${spendingPolicy.daily_spend_limit}。`
+        : '当前 Key 未配置消费策略，不能执行付费投稿。';
 
     const server = new McpServer(
         {
@@ -162,7 +169,7 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
         },
         {
             instructions: canPublishToMedia
-                ? '处理 AI 文章媒体投递时，先调用 geo_get_catalog 获取有效作者和分类，再调用 geo_list_media_channels 查询渠道编号与当前售价。由当前 AI 应用完成最终标题和正文后，优先调用 geo_publish_article_to_media 一次创建并投递。未获得明确媒体资源编号时禁止投稿；多渠道部分成功时只重投失败渠道；同一操作重试必须保持 idempotency_key 不变。'
+                ? `处理 AI 文章媒体投递时，先调用 geo_get_catalog 获取有效作者和分类，再调用 geo_list_media_channels 查询渠道编号与当前售价。${spendingPolicyInstruction}由当前 AI 应用完成最终标题和正文后，优先调用 geo_publish_article_to_media 一次创建并投递。未获得明确媒体资源编号时禁止投稿；多渠道部分成功时只重投失败渠道；同一操作重试必须保持 idempotency_key 不变。`
                 : '只调用当前 MCP Key 已授权并实际发现的 GEO 工具；不要尝试调用工具列表中不存在的写入或投稿能力。',
         },
     );
@@ -239,11 +246,11 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
                         .string()
                         .trim()
                         .min(8)
-                        .max(128)
+                        .max(120)
                         .optional()
                         .describe('可选幂等键，重试同一操作时保持一致'),
                 },
-                annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
+                annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
             },
             async ({ task_id, idempotency_key }) =>
                 await executeTool(async () => await client.runTask(task_id, idempotency_key || `mcp-${randomUUID()}`)),
@@ -322,7 +329,7 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
                     ...articleInputSchema,
                     idempotency_key: optionalIdempotencyKeySchema,
                 },
-                annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
+                annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
             },
             async ({ idempotency_key, ...article }) =>
                 await executeTool(
@@ -420,19 +427,21 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
                     media_resource_ids: z
                         .array(z.number().int().positive())
                         .min(1)
-                        .max(50)
+                        .max(20)
                         .describe('目标媒体资源编号列表'),
+                    ...mediaBudgetInputSchema,
                     remark: z.string().trim().max(1000).default('').describe('投稿备注'),
                     idempotency_key: optionalIdempotencyKeySchema,
                 },
-                annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
+                annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
             },
-            async ({ article_id, media_resource_ids, remark, idempotency_key }) =>
+            async ({ article_id, media_resource_ids, max_unit_price, max_total_price, remark, idempotency_key }) =>
                 await executeTool(
                     async () =>
                         await client.submitArticleToMedia(
                             article_id,
                             media_resource_ids,
+                            { max_unit_price, max_total_price },
                             remark,
                             idempotency_key || `mcp-submission-${randomUUID()}`,
                         ),
@@ -452,19 +461,21 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
                     media_resource_ids: z
                         .array(z.number().int().positive())
                         .min(1)
-                        .max(50)
+                        .max(20)
                         .describe('通过 geo_list_media_channels 选定的媒体资源编号列表'),
+                    ...mediaBudgetInputSchema,
                     remark: z.string().trim().max(1000).default('').describe('投稿备注'),
                     idempotency_key: optionalIdempotencyKeySchema,
                 },
-                annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
+                annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
             },
-            async ({ media_resource_ids, remark, idempotency_key, ...article }) =>
+            async ({ media_resource_ids, max_unit_price, max_total_price, remark, idempotency_key, ...article }) =>
                 await executeTool(
                     async () =>
                         await client.publishArticleToMedia(
                             article,
                             media_resource_ids,
+                            { max_unit_price, max_total_price },
                             remark,
                             idempotency_key || `mcp-publication-${randomUUID()}`,
                         ),

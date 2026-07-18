@@ -102,9 +102,15 @@ class McpKeyService
      *
      * @Return: array{token: string, record: array<string, mixed>} 新 MCP Key 明文及元数据
      */
-    public function createKey(Admin $admin, Site $site, string $name, array $scopes, ?string $expiresAt): array
-    {
-        return DB::transaction(function () use ($admin, $site, $name, $scopes, $expiresAt): array {
+    public function createKey(
+        Admin $admin,
+        Site $site,
+        string $name,
+        array $scopes,
+        ?string $expiresAt,
+        array $spendingPolicy = [],
+    ): array {
+        return DB::transaction(function () use ($admin, $site, $name, $scopes, $expiresAt, $spendingPolicy): array {
             $lockedAdmin = Admin::query()
                 ->whereKey((int) $admin->id)
                 ->where('status', 'active')
@@ -121,13 +127,35 @@ class McpKeyService
                 throw new ApiException('validation_failed', '至少选择一项 GEO 业务权限', 422);
             }
 
-            return $this->apiTokenService->createToken(
+            $created = $this->apiTokenService->createToken(
                 trim($name),
                 [ApiTokenService::MCP_CONNECT_SCOPE, ...$normalizedScopes],
                 (int) $lockedAdmin->id,
                 $expiresAt,
                 (int) $site->id,
             );
+
+            if (in_array('media:submit', $normalizedScopes, true)) {
+                $policy = $this->normalizeSpendingPolicy($spendingPolicy);
+                PersonalAccessToken::query()
+                    ->where('tokenable_type', Admin::class)
+                    ->where('tokenable_id', (int) $lockedAdmin->id)
+                    ->where('site_id', (int) $site->id)
+                    ->whereKey((int) $created['record']['id'])
+                    ->update([
+                        'mcp_max_unit_price' => $policy['max_unit_price'],
+                        'mcp_max_total_price' => $policy['max_total_price'],
+                        'mcp_daily_spend_limit' => $policy['daily_spend_limit'],
+                        'updated_at' => now(),
+                    ]);
+                $created['record'] = array_merge($created['record'], [
+                    'mcp_max_unit_price' => $policy['max_unit_price'],
+                    'mcp_max_total_price' => $policy['max_total_price'],
+                    'mcp_daily_spend_limit' => $policy['daily_spend_limit'],
+                ]);
+            }
+
+            return $created;
         });
     }
 
@@ -219,7 +247,7 @@ class McpKeyService
             ],
             'media:submit' => [
                 'label' => '媒体投稿',
-                'description' => '允许将当前账号文章投递到指定媒体渠道。',
+                'description' => '允许将当前账号文章投递到指定媒体渠道，创建 Key 时必须设置消费上限。',
                 'risk' => '会扣除余额',
             ],
         ];
@@ -352,6 +380,45 @@ class McpKeyService
             'last_used_at' => $token->last_used_at?->format('Y-m-d H:i:s'),
             'expires_at' => $expiresAt?->format('Y-m-d H:i:s'),
             'created_at' => $token->created_at?->format('Y-m-d H:i:s'),
+            'mcp_max_unit_price' => $token->mcp_max_unit_price !== null ? number_format((float) $token->mcp_max_unit_price, 2, '.', '') : null,
+            'mcp_max_total_price' => $token->mcp_max_total_price !== null ? number_format((float) $token->mcp_max_total_price, 2, '.', '') : null,
+            'mcp_daily_spend_limit' => $token->mcp_daily_spend_limit !== null ? number_format((float) $token->mcp_daily_spend_limit, 2, '.', '') : null,
+        ];
+    }
+
+    /**
+     * @Name: normalizeSpendingPolicy
+     *
+     * @Description: 对媒体投稿 Key 的服务器端消费上限执行防御性校验并统一金额格式。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-07-18 17:25:00
+     *
+     * @UpdateTime: 2026-07-18 17:25:00
+     *
+     * @Param: array<string, mixed> $policy 创建请求中的消费策略
+     *
+     * @Return: array{max_unit_price: string, max_total_price: string, daily_spend_limit: string} 标准消费策略
+     *
+     * @Throws: ApiException 消费策略缺失、非正数或上限关系无效
+     */
+    private function normalizeSpendingPolicy(array $policy): array
+    {
+        $maxUnit = round((float) ($policy['max_unit_price'] ?? 0), 2);
+        $maxTotal = round((float) ($policy['max_total_price'] ?? 0), 2);
+        $dailyLimit = round((float) ($policy['daily_spend_limit'] ?? 0), 2);
+        if ($maxUnit <= 0 || $maxTotal <= 0 || $dailyLimit <= 0) {
+            throw new ApiException('mcp_spending_policy_required', '媒体投稿 MCP Key 必须配置完整消费上限', 422);
+        }
+        if ($maxUnit > $maxTotal || $maxTotal > $dailyLimit) {
+            throw new ApiException('mcp_spending_policy_invalid', '消费上限必须满足单渠道不高于单次、单次不高于每日', 422);
+        }
+
+        return [
+            'max_unit_price' => number_format($maxUnit, 2, '.', ''),
+            'max_total_price' => number_format($maxTotal, 2, '.', ''),
+            'daily_spend_limit' => number_format($dailyLimit, 2, '.', ''),
         ];
     }
 }

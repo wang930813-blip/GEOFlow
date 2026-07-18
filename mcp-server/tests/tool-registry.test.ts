@@ -41,33 +41,66 @@ const context: GeoFlowAuthContext = {
  *
  * @Author: cdkay
  * @CreateTime: 2026-07-13 16:38:47
- * @UpdateTime: 2026-07-13 16:38:47
+ * @UpdateTime: 2026-07-18 15:37:25
  *
+ * @Param: typeof fetch | undefined customFetcher 可选的请求实现
  * @Return: GeoFlowApiClient 内存 GEO API 客户端
  */
-function createClient(): GeoFlowApiClient {
-    const fetcher: typeof fetch = (input) => {
-        const url = input instanceof URL ? input : input instanceof Request ? new URL(input.url) : new URL(input);
+function createClient(customFetcher?: typeof fetch): GeoFlowApiClient {
+    const fetcher: typeof fetch =
+        customFetcher ??
+        ((input) => {
+            const url = input instanceof URL ? input : input instanceof Request ? new URL(input.url) : new URL(input);
 
-        return Promise.resolve(
-            new Response(
-                JSON.stringify({
-                    success: true,
-                    data: {
-                        path: url.pathname,
+            return Promise.resolve(
+                new Response(
+                    JSON.stringify({
+                        success: true,
+                        data: {
+                            path: url.pathname,
+                        },
+                    }),
+                    {
+                        status: 200,
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
                     },
-                }),
-                {
-                    status: 200,
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                },
-            ),
-        );
-    };
+                ),
+            );
+        });
 
     return new GeoFlowApiClient(new URL('https://geo.example.com/api/v1/'), 'secret-key', 1_000, fetcher);
+}
+
+/**
+ * @Name: assertPaidToolSchema
+ * @Description: 校验付费投稿工具的预算字段为必填，并限制单次最多选择二十个媒体渠道。
+ *
+ * @Author: cdkay
+ * @CreateTime: 2026-07-18 15:37:25
+ * @UpdateTime: 2026-07-18 15:37:25
+ *
+ * @Param: unknown schema MCP 工具输入 JSON Schema
+ * @Return: void
+ */
+function assertPaidToolSchema(schema: unknown): void {
+    assert.equal(typeof schema, 'object');
+    assert.notEqual(schema, null);
+    const schemaRecord = schema as Record<string, unknown>;
+    const required = schemaRecord.required;
+    const properties = schemaRecord.properties;
+
+    assert.equal(Array.isArray(required), true);
+    assert.equal((required as unknown[]).includes('max_unit_price'), true);
+    assert.equal((required as unknown[]).includes('max_total_price'), true);
+    assert.equal(typeof properties, 'object');
+    assert.notEqual(properties, null);
+
+    const mediaResourceIds = (properties as Record<string, unknown>).media_resource_ids;
+    assert.equal(typeof mediaResourceIds, 'object');
+    assert.notEqual(mediaResourceIds, null);
+    assert.equal((mediaResourceIds as Record<string, unknown>).maxItems, 20);
 }
 
 void describe('GEO MCP 工具注册', () => {
@@ -111,7 +144,7 @@ void describe('GEO MCP 工具注册', () => {
             ...context,
             token: {
                 ...context.token,
-                scopes: ['mcp:connect', 'catalog:read', 'articles:write', 'media:read', 'media:submit'],
+                scopes: ['mcp:connect', 'catalog:read', 'tasks:write', 'articles:write', 'media:read', 'media:submit'],
             },
         };
         const server = createGeoMcpServer(createClient(), publicationContext);
@@ -134,8 +167,26 @@ void describe('GEO MCP 工具注册', () => {
                 'geo_list_media_channels',
                 'geo_list_media_submissions',
                 'geo_publish_article_to_media',
+                'geo_run_task',
                 'geo_submit_article_to_media',
             ]);
+
+            const writeToolNames = [
+                'geo_run_task',
+                'geo_create_article',
+                'geo_submit_article_to_media',
+                'geo_publish_article_to_media',
+            ];
+            for (const toolName of writeToolNames) {
+                const tool = tools.tools.find((candidate) => candidate.name === toolName);
+                assert.equal(tool?.annotations?.readOnlyHint, false);
+                assert.equal(tool?.annotations?.destructiveHint, true);
+            }
+
+            const submitTool = tools.tools.find((tool) => tool.name === 'geo_submit_article_to_media');
+            const publishTool = tools.tools.find((tool) => tool.name === 'geo_publish_article_to_media');
+            assertPaidToolSchema(submitTool?.inputSchema);
+            assertPaidToolSchema(publishTool?.inputSchema);
 
             const result = await client.callTool({
                 name: 'geo_list_media_channels',
@@ -147,6 +198,53 @@ void describe('GEO MCP 工具注册', () => {
                     path: '/api/v1/media/resources',
                 },
             });
+        } finally {
+            await client.close();
+            await server.close();
+        }
+    });
+
+    void it('工具错误响应不返回上游 details', async () => {
+        const fetcher: typeof fetch = () =>
+            Promise.resolve(
+                new Response(
+                    JSON.stringify({
+                        success: false,
+                        error: {
+                            code: 'upstream_rejected',
+                            message: '上游拒绝请求',
+                            details: {
+                                internal_reason: 'sensitive-upstream-detail',
+                            },
+                        },
+                    }),
+                    {
+                        status: 422,
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                    },
+                ),
+            );
+        const server = createGeoMcpServer(createClient(fetcher), context);
+        const client = new Client({ name: 'tool-error-check', version: '1.0.0' });
+        const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+
+        await server.connect(serverTransport);
+        await client.connect(clientTransport);
+
+        try {
+            const result = await client.callTool({ name: 'geo_get_task', arguments: { task_id: 12 } });
+            const serializedResult = JSON.stringify(result);
+
+            assert.equal(result.isError, true);
+            assert.deepEqual(result.structuredContent, {
+                error: {
+                    code: 'upstream_rejected',
+                    message: '上游拒绝请求',
+                },
+            });
+            assert.doesNotMatch(serializedResult, /details|sensitive-upstream-detail/u);
         } finally {
             await client.close();
             await server.close();
