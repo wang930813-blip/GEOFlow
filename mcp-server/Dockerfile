@@ -1,4 +1,4 @@
-ARG NODE_IMAGE=node:22-alpine
+ARG NODE_IMAGE=m.daocloud.io/docker.io/library/node:22-alpine
 
 FROM ${NODE_IMAGE} AS build
 
