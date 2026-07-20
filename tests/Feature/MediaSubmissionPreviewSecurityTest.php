@@ -131,6 +131,7 @@ class MediaSubmissionPreviewSecurityTest extends TestCase
             ->assertOk()
             ->assertHeader('X-Content-Type-Options', 'nosniff')
             ->assertHeader('Referrer-Policy', 'no-referrer')
+            ->assertHeader('Content-Security-Policy', "default-src 'none'; img-src 'self' http: https:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'self' https://vip.chaojimeijie.com")
             ->assertSee('<p>预览正文&lt;script&gt;alert(3)&lt;/script&gt;<a>危险链接</a></p>', false)
             ->assertDontSee('<script', false)
             ->assertDontSee('onload=', false)

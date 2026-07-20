@@ -78,7 +78,7 @@ class MediaSubmissionPreviewController extends Controller
             ])
             ->withHeaders([
                 'Cache-Control' => 'no-store, private',
-                'Content-Security-Policy' => "default-src 'none'; img-src 'self' http: https:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+                'Content-Security-Policy' => "default-src 'none'; img-src 'self' http: https:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'self' https://vip.chaojimeijie.com",
                 'Referrer-Policy' => 'no-referrer',
                 'X-Content-Type-Options' => 'nosniff',
             ]);
