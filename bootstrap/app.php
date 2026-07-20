@@ -13,15 +13,16 @@ use App\Http\Middleware\AuthenticateAdminWeb;
 use App\Http\Middleware\AuthenticateApiToken;
 use App\Http\Middleware\AuthenticateCrebeeAgent;
 use App\Http\Middleware\AutoFollowRedirectBody;
+use App\Http\Middleware\EnsureAgentAdmin;
 use App\Http\Middleware\EnsureAiConfigurationManager;
 use App\Http\Middleware\EnsureApiScope;
-use App\Http\Middleware\EnsureAgentAdmin;
 use App\Http\Middleware\EnsureCurrentSite;
 use App\Http\Middleware\EnsureSuperAdmin;
 use App\Http\Middleware\LogAdminActivity;
 use App\Http\Middleware\RecordSiteViewLog;
 use App\Http\Middleware\ResolveFrontendSiteByDomain;
 use App\Http\Middleware\SiteWebLocale;
+use App\Services\Api\IdempotencyService;
 use App\Support\ApiResponse;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Application;
@@ -30,6 +31,7 @@ use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -117,17 +119,36 @@ return Application::configure(basePath: dirname(__DIR__))
 
             $rid = (string) ($request->attributes->get('request_id') ?? Str::uuid()->toString());
 
-            return ApiResponse::error(
+            $response = ApiResponse::error(
                 $e->getErrorCode(),
                 $e->getMessage(),
                 $rid,
                 $e->getHttpStatus(),
                 $e->getDetails()
             )->withHeaders(['X-Request-Id' => $rid]);
+
+            try {
+                IdempotencyService::rememberApiException($request, $response);
+            } catch (Throwable $idempotencyException) {
+                Log::error('幂等异常响应保存失败', [
+                    'exception' => $idempotencyException::class,
+                    'request_id' => $rid,
+                ]);
+            }
+
+            return $response;
+        });
+
+        $exceptions->render(function (ValidationException $e, Request $request) {
+            if ($request->is('api/*')) {
+                IdempotencyService::releaseValidationReservation($request);
+            }
+
+            return null;
         });
 
         $exceptions->render(function (Throwable $e, Request $request) {
-            if (! $request->is('api/*') || $e instanceof ApiException) {
+            if (! $request->is('api/*') || $e instanceof ApiException || $e instanceof ValidationException) {
                 return null;
             }
 

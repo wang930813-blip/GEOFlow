@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Http\ApiAuthContext;
 use App\Models\Admin;
 use App\Models\Site;
 use App\Services\Admin\AdminUpdateMetadataService;
@@ -14,6 +15,9 @@ use App\Services\GeoFlow\TaskMonitoringQueryService;
 use App\Support\AdminDisplaySettings;
 use App\Support\CurrentSite;
 use App\View\Composers\SiteLayoutComposer;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 
@@ -37,6 +41,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        $this->configureApiRateLimiters();
         View::composer(['site.layout', 'theme.*.layout'], SiteLayoutComposer::class);
 
         View::composer('admin.layouts.app', function ($view): void {
@@ -59,6 +64,42 @@ class AppServiceProvider extends ServiceProvider
             });
 
             $view->with($payload);
+        });
+    }
+
+    /**
+     * @Name: configureApiRateLimiters
+     *
+     * @Description: 分别按来源 IP、API Token 和付费写操作限制机器接口频率，防止 Key 探测及自动投稿滥用。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-07-18 17:05:00
+     *
+     * @UpdateTime: 2026-07-18 17:05:00
+     *
+     * @Return: void
+     */
+    private function configureApiRateLimiters(): void
+    {
+        RateLimiter::for('machine-api', static fn (Request $request): Limit => Limit::perMinute(
+            max(1, (int) config('geoflow.machine_api_ip_rate_limit_per_minute', 300))
+        )->by('machine-api-ip:'.($request->ip() ?? 'unknown')));
+
+        RateLimiter::for('api-token', static function (Request $request): Limit {
+            $context = $request->attributes->get('api_auth');
+            $tokenId = $context instanceof ApiAuthContext ? (int) ($context->token['id'] ?? 0) : 0;
+
+            return Limit::perMinute(max(1, (int) config('geoflow.api_token_rate_limit_per_minute', 120)))
+                ->by('api-token:'.($tokenId > 0 ? $tokenId : ($request->ip() ?? 'unknown')));
+        });
+
+        RateLimiter::for('mcp-paid-write', static function (Request $request): Limit {
+            $context = $request->attributes->get('api_auth');
+            $tokenId = $context instanceof ApiAuthContext ? (int) ($context->token['id'] ?? 0) : 0;
+
+            return Limit::perMinute(max(1, (int) config('geoflow.mcp_paid_write_rate_limit_per_minute', 10)))
+                ->by('mcp-paid-write:'.($tokenId > 0 ? $tokenId : ($request->ip() ?? 'unknown')));
         });
     }
 

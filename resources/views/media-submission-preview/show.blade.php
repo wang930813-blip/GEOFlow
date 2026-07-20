@@ -32,7 +32,7 @@
     <main>
         <h1>{{ $submission->title_snapshot }}</h1>
         <article>
-            {!! $contentHtml !!}
+            {!! $sanitizedContentHtml !!}
         </article>
     </main>
 </body>

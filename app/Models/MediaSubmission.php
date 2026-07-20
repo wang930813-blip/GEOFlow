@@ -16,6 +16,7 @@ class MediaSubmission extends Model
     protected $fillable = [
         'site_id',
         'owner_admin_id',
+        'mcp_token_id',
         'article_id',
         'media_resource_id',
         'platform_id',
@@ -50,6 +51,7 @@ class MediaSubmission extends Model
         return [
             'site_id' => 'integer',
             'owner_admin_id' => 'integer',
+            'mcp_token_id' => 'integer',
             'article_id' => 'integer',
             'media_resource_id' => 'integer',
             'platform_id' => 'integer',

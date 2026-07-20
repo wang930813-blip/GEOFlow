@@ -1,5 +1,21 @@
 <?php
 
+/**
+ * Created by 开发工具.
+ *
+ * @Date: 2026-07-18
+ *
+ * @Time: 18:15
+ *
+ * @Author: cdkay
+ *
+ * @Email: network@iyuanma.net
+ *
+ * @File： MediaSubmissionController.php
+ *
+ * @Description: 提供媒体投稿记录查询、创建、状态同步及投稿结果序列化接口。
+ */
+
 namespace App\Http\Controllers\Api\V1;
 
 use App\Exceptions\ApiException;
@@ -7,6 +23,7 @@ use App\Models\Admin;
 use App\Models\Article;
 use App\Models\MediaResource;
 use App\Models\MediaSubmission;
+use App\Services\Api\ApiTokenService;
 use App\Services\Api\IdempotencyService;
 use App\Services\MediaDistribution\MediaSubmissionService;
 use Illuminate\Http\JsonResponse;
@@ -57,10 +74,13 @@ class MediaSubmissionController extends BaseApiController
             return $cached;
         }
 
+        $isMcpKey = in_array(ApiTokenService::MCP_CONNECT_SCOPE, (array) ($this->auth($request)->token['scopes'] ?? []), true);
+        $maxArticles = $isMcpKey ? 1 : 50;
+        $maxResources = $isMcpKey ? 20 : 50;
         $payload = $request->validate([
-            'article_ids' => ['required', 'array', 'min:1', 'max:50'],
+            'article_ids' => ['required', 'array', 'min:1', 'max:'.$maxArticles],
             'article_ids.*' => ['integer', 'min:1'],
-            'media_resource_ids' => ['required', 'array', 'min:1', 'max:50'],
+            'media_resource_ids' => ['required', 'array', 'min:1', 'max:'.$maxResources],
             'media_resource_ids.*' => ['integer', 'min:1'],
             'remark' => ['nullable', 'string', 'max:1000'],
         ]);
@@ -74,31 +94,52 @@ class MediaSubmissionController extends BaseApiController
         $errors = [];
         $articleIds = collect($payload['article_ids'])->map(fn ($id): int => (int) $id)->unique()->values();
         $resourceIds = collect($payload['media_resource_ids'])->map(fn ($id): int => (int) $id)->unique()->values();
+        $articles = Article::withoutGlobalScope('current_site')
+            ->when($this->auth($request)->siteId !== null, fn ($query) => $query->where('site_id', $this->auth($request)->siteId))
+            ->whereIn('id', $articleIds)
+            ->get()
+            ->keyBy('id');
+        $resources = MediaResource::query()->whereIn('id', $resourceIds)->get()->keyBy('id');
 
         foreach ($articleIds as $articleId) {
-            $article = Article::withoutGlobalScope('current_site')
-                ->when($this->auth($request)->siteId !== null, fn ($q) => $q->where('site_id', $this->auth($request)->siteId))
-                ->whereKey($articleId)
-                ->first();
-            if (! $article instanceof Article) {
+            if (! $articles->has($articleId)) {
                 $errors[] = ['article_id' => $articleId, 'message' => '文章不存在'];
+            }
+        }
+        foreach ($resourceIds as $resourceId) {
+            if (! $resources->has($resourceId)) {
+                $errors[] = ['media_resource_id' => $resourceId, 'message' => '媒体资源不存在'];
+            }
+        }
 
+        foreach ($articleIds as $articleId) {
+            $article = $articles->get($articleId);
+            if (! $article instanceof Article) {
                 continue;
             }
 
             foreach ($resourceIds as $resourceId) {
-                $resource = MediaResource::query()->whereKey($resourceId)->first();
+                $resource = $resources->get($resourceId);
                 if (! $resource instanceof MediaResource) {
-                    $errors[] = ['article_id' => $articleId, 'media_resource_id' => $resourceId, 'message' => '媒体资源不存在'];
-
                     continue;
                 }
 
                 try {
-                    $submission = $submissionService->submit($article, $resource, $admin, trim((string) ($payload['remark'] ?? '')));
+                    $submission = $submissionService->submit(
+                        $article,
+                        $resource,
+                        $admin,
+                        trim((string) ($payload['remark'] ?? '')),
+                        $isMcpKey ? (int) ($this->auth($request)->token['id'] ?? 0) : null,
+                    );
                     $created[] = $this->submissionPayload($submission->load(['article:id,title', 'resource:id,title,platform_id,source_type,sale_price', 'site:id,name']));
                 } catch (Throwable $e) {
-                    $errors[] = ['article_id' => $articleId, 'media_resource_id' => $resourceId, 'message' => $e->getMessage()];
+                    report($e);
+                    $errors[] = [
+                        'article_id' => $articleId,
+                        'media_resource_id' => $resourceId,
+                        'message' => $this->publicErrorMessage($e->getMessage()),
+                    ];
                 }
             }
         }
@@ -134,7 +175,8 @@ class MediaSubmissionController extends BaseApiController
                 'last_synced_at' => now(),
             ])->save();
 
-            throw new ApiException('media_submission_sync_failed', $e->getMessage(), 422);
+            report($e);
+            throw new ApiException('media_submission_sync_failed', '媒体投稿状态同步失败', 422);
         }
 
         $mediaSubmission->refresh()->load(['article:id,title', 'resource:id,title,platform_id,source_type,sale_price', 'site:id,name']);
@@ -152,7 +194,8 @@ class MediaSubmissionController extends BaseApiController
         try {
             $submissionService->cancel($mediaSubmission, trim((string) $payload['reason']));
         } catch (Throwable $e) {
-            throw new ApiException('media_submission_cancel_failed', $e->getMessage(), 422);
+            report($e);
+            throw new ApiException('media_submission_cancel_failed', '媒体投稿取消失败', 422);
         }
 
         $mediaSubmission->refresh()->load(['article:id,title', 'resource:id,title,platform_id,source_type,sale_price', 'site:id,name']);
@@ -170,7 +213,8 @@ class MediaSubmissionController extends BaseApiController
         try {
             $submissionService->appeal($mediaSubmission, trim((string) $payload['content']));
         } catch (Throwable $e) {
-            throw new ApiException('media_submission_appeal_failed', $e->getMessage(), 422);
+            report($e);
+            throw new ApiException('media_submission_appeal_failed', '媒体投稿申诉失败', 422);
         }
 
         $mediaSubmission->refresh()->load(['article:id,title', 'resource:id,title,platform_id,source_type,sale_price', 'site:id,name']);
@@ -230,11 +274,27 @@ class MediaSubmissionController extends BaseApiController
             'status_label' => $submission->statusLabel(),
             'points_amount' => (string) $submission->points_amount,
             'published_url' => (string) $submission->published_url,
-            'last_error_message' => (string) ($submission->last_error_message ?? ''),
+            'last_error_message' => $this->publicErrorMessage((string) ($submission->last_error_message ?? '')),
             'submitted_at' => $submission->submitted_at?->format('Y-m-d H:i:s'),
             'last_synced_at' => $submission->last_synced_at?->format('Y-m-d H:i:s'),
             'created_at' => $submission->created_at?->format('Y-m-d H:i:s'),
             'updated_at' => $submission->updated_at?->format('Y-m-d H:i:s'),
         ];
+    }
+
+    private function publicErrorMessage(string $message): string
+    {
+        $message = trim($message);
+        if ($message === '') {
+            return '';
+        }
+
+        foreach (['当前账号积分不足', '媒体资源不可投稿', '文章内容不能为空', '文章缺少站点归属'] as $publicMessage) {
+            if ($message === $publicMessage) {
+                return $publicMessage;
+            }
+        }
+
+        return '媒体平台暂时不可用，请稍后重试';
     }
 }

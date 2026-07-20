@@ -53,6 +53,7 @@ services:
       dockerfile: docker/Dockerfile.prod
       args:
         COMPOSER_IMAGE: ${COMPOSER_IMAGE:-composer:2}
+        NODE_IMAGE: ${NODE_IMAGE:-node:22-alpine}
         PHP_FPM_IMAGE: ${PHP_FPM_IMAGE:-php:8.4-fpm-bookworm}
         COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}
     container_name: geoflow-init-prod
@@ -82,6 +83,7 @@ services:
       dockerfile: docker/Dockerfile.prod
       args:
         COMPOSER_IMAGE: ${COMPOSER_IMAGE:-composer:2}
+        NODE_IMAGE: ${NODE_IMAGE:-node:22-alpine}
         PHP_FPM_IMAGE: ${PHP_FPM_IMAGE:-php:8.4-fpm-bookworm}
         COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}
     container_name: geoflow-app-prod
@@ -109,16 +111,17 @@ services:
       dockerfile: docker/nginx/Dockerfile.prod
       args:
         NGINX_IMAGE: ${NGINX_IMAGE:-nginx:1.27-alpine}
+        NODE_IMAGE: ${NODE_IMAGE:-node:22-alpine}
     container_name: geoflow-web-prod
     ports:
-      - "${WEB_PORT:-18080}:80"
+      - "127.0.0.1:${WEB_PORT:-18080}:80"
     volumes:
       - ./storage:/var/www/html/storage:ro
     depends_on:
       app:
         condition: service_started
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/up || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -131,6 +134,7 @@ services:
       dockerfile: docker/Dockerfile.prod
       args:
         COMPOSER_IMAGE: ${COMPOSER_IMAGE:-composer:2}
+        NODE_IMAGE: ${NODE_IMAGE:-node:22-alpine}
         PHP_FPM_IMAGE: ${PHP_FPM_IMAGE:-php:8.4-fpm-bookworm}
         COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}
     container_name: geoflow-queue-prod
@@ -156,6 +160,7 @@ services:
       dockerfile: docker/Dockerfile.prod
       args:
         COMPOSER_IMAGE: ${COMPOSER_IMAGE:-composer:2}
+        NODE_IMAGE: ${NODE_IMAGE:-node:22-alpine}
         PHP_FPM_IMAGE: ${PHP_FPM_IMAGE:-php:8.4-fpm-bookworm}
         COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}
     container_name: geoflow-scheduler-prod
@@ -179,6 +184,7 @@ services:
       dockerfile: docker/Dockerfile.prod
       args:
         COMPOSER_IMAGE: ${COMPOSER_IMAGE:-composer:2}
+        NODE_IMAGE: ${NODE_IMAGE:-node:22-alpine}
         PHP_FPM_IMAGE: ${PHP_FPM_IMAGE:-php:8.4-fpm-bookworm}
         COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}
     container_name: geoflow-reverb-prod
@@ -188,7 +194,7 @@ services:
     dns: *app-dns
     command: ["php", "artisan", "reverb:start", "--host=0.0.0.0", "--port=8080"]
     ports:
-      - "${REVERB_EXPOSE_PORT:-18081}:8080"
+      - "127.0.0.1:${REVERB_EXPOSE_PORT:-18081}:8080"
     volumes:
       - ./.env.prod:/var/www/html/.env
       - ./storage:/var/www/html/storage
@@ -197,4 +203,38 @@ services:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
+    restart: unless-stopped
+
+  mcp:
+    image: geoflow-mcp-prod:latest
+    build:
+      context: ./mcp-server
+      dockerfile: Dockerfile
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:22-alpine}
+    container_name: geoflow-mcp-prod
+    environment:
+      NODE_ENV: production
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 3000
+      MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-localhost,127.0.0.1}
+      MCP_HEALTHCHECK_HOST: ${MCP_HEALTHCHECK_HOST:-localhost}
+      MCP_API_TIMEOUT_MS: ${MCP_API_TIMEOUT_MS:-30000}
+      MCP_TRUSTED_PROXIES: ${MCP_TRUSTED_PROXIES:-uniquelocal}
+      MCP_RATE_LIMIT_WINDOW_MS: ${MCP_RATE_LIMIT_WINDOW_MS:-60000}
+      MCP_RATE_LIMIT_IP_MAX: ${MCP_RATE_LIMIT_IP_MAX:-120}
+      MCP_RATE_LIMIT_TOKEN_MAX: ${MCP_RATE_LIMIT_TOKEN_MAX:-60}
+      MCP_REQUIRE_HTTPS: "true"
+      GEOFLOW_API_BASE_URL: http://web/api/v1/
+    ports:
+      - "127.0.0.1:${MCP_EXPOSE_PORT:-18082}:3000"
+    depends_on:
+      web:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --spider --header=\"Host: $${MCP_HEALTHCHECK_HOST}\" http://127.0.0.1:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
     restart: unless-stopped

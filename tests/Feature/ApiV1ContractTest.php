@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Admin;
+use App\Models\AdminCreditAccount;
 use App\Models\AiModel;
 use App\Models\Article;
 use App\Models\Author;
@@ -14,7 +15,6 @@ use App\Models\MediaResourceSitePrice;
 use App\Models\MediaSubmission;
 use App\Models\Prompt;
 use App\Models\Site;
-use App\Models\SiteCreditAccount;
 use App\Models\Task;
 use App\Models\TitleLibrary;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -420,11 +420,12 @@ class ApiV1ContractTest extends TestCase
         $admin = $this->createActiveAdmin('media_submit_api_admin', 'p');
         $bearer = $this->createBearerToken($admin, ['media:submit']);
         [$article, $resource] = $this->createArticleAndMediaResource($admin);
-        SiteCreditAccount::query()->create([
+        AdminCreditAccount::query()->create([
+            'admin_id' => $admin->id,
             'site_id' => $article->site_id,
             'balance' => '50.00',
             'frozen_balance' => '0.00',
-            'total_recharged' => '50.00',
+            'total_granted' => '50.00',
             'total_consumed' => '0.00',
         ]);
         Http::fake([
@@ -444,12 +445,19 @@ class ApiV1ContractTest extends TestCase
             ->assertCreated()
             ->assertJsonPath('success', true)
             ->assertJsonPath('data.submissions.0.external_order_nid', 'api-submit-order')
-            ->assertJsonPath('data.submissions.0.status_label', '待安排');
+            ->assertJsonPath('data.submissions.0.status_label', '待安排')
+            ->assertJsonPath('data.submissions.0.points_amount', '3.00');
 
         $this->assertDatabaseHas('media_submissions', [
             'article_id' => $article->id,
             'media_resource_id' => $resource->id,
             'external_order_nid' => 'api-submit-order',
+        ]);
+        $this->assertDatabaseHas('admin_credit_accounts', [
+            'admin_id' => $admin->id,
+            'site_id' => $article->site_id,
+            'balance' => '47.00',
+            'total_consumed' => '3.00',
         ]);
     }
 
