@@ -11,6 +11,36 @@
     $singleReportPrintUrl = count($reportOptions) === 1
         ? route('admin.brand-diagnosis.report.download', ['run' => $reportOptions[0]['id']])
         : '';
+    $rankingTargetRow = static function (array $rows, array $fallback): array {
+        foreach ($rows as $row) {
+            if (!empty($row['is_target_brand'])) {
+                return $row;
+            }
+        }
+
+        return $rows[count($rows) - 1] ?? $fallback;
+    };
+    $rankingTargetIsInline = static function (array $row): bool {
+        if (empty($row['is_target_brand']) || !is_numeric($row['display_rank'] ?? null)) {
+            return false;
+        }
+
+        return (int) $row['display_rank'] <= 10;
+    };
+    $rankingVisibleRows = static function (array $rows) use ($rankingTargetIsInline): array {
+        return array_slice(array_values(array_filter($rows, static function (array $row) use ($rankingTargetIsInline): bool {
+            return empty($row['is_target_brand']) || $rankingTargetIsInline($row);
+        })), 0, 10);
+    };
+    $rankingHasInlineTarget = static function (array $rows) use ($rankingTargetIsInline): bool {
+        foreach ($rows as $row) {
+            if ($rankingTargetIsInline($row)) {
+                return true;
+            }
+        }
+
+        return false;
+    };
     $sourceMinPageSize = 5;
     $metricDefinitions = [
         'score' => [
@@ -199,12 +229,15 @@
                             $recordMentionRateRanking = $record['rankings']['mention_rate'] ?? [];
                             $recordMentionCountRanking = $record['rankings']['mention_count'] ?? [];
                             $recordAverageRankings = $record['rankings']['average_rank'] ?? [];
-                            $recordMentionRateRows = array_slice(array_values(array_filter($recordMentionRateRanking, static fn ($row) => empty($row['is_target_brand']))), 0, 10);
-                            $recordMentionCountRows = array_slice(array_values(array_filter($recordMentionCountRanking, static fn ($row) => empty($row['is_target_brand']))), 0, 10);
-                            $recordAverageRankRows = array_slice(array_values(array_filter($recordAverageRankings, static fn ($row) => empty($row['is_target_brand']))), 0, 10);
-                            $recordMentionRateTarget = $recordMentionRateRanking[count($recordMentionRateRanking) - 1] ?? ['brand' => $record['brand'], 'rate' => (int) $record['metrics']['mention_rate'], 'display_rank' => '99+'];
-                            $recordMentionCountTarget = $recordMentionCountRanking[count($recordMentionCountRanking) - 1] ?? ['brand' => $record['brand'], 'count' => (int) $record['metrics']['mention_count'], 'display_rank' => '99+'];
-                            $recordAverageRankTarget = $recordAverageRankings[count($recordAverageRankings) - 1] ?? ['brand' => $record['brand'], 'rate' => (int) $record['metrics']['mention_rate'], 'rank' => $record['metrics']['average_rank'].'名', 'display_rank' => '99+'];
+                            $recordMentionRateRows = $rankingVisibleRows($recordMentionRateRanking);
+                            $recordMentionCountRows = $rankingVisibleRows($recordMentionCountRanking);
+                            $recordAverageRankRows = $rankingVisibleRows($recordAverageRankings);
+                            $recordMentionRateTarget = $rankingTargetRow($recordMentionRateRanking, ['brand' => $record['brand'], 'rate' => (int) $record['metrics']['mention_rate'], 'display_rank' => '99+']);
+                            $recordMentionCountTarget = $rankingTargetRow($recordMentionCountRanking, ['brand' => $record['brand'], 'count' => (int) $record['metrics']['mention_count'], 'display_rank' => '99+']);
+                            $recordAverageRankTarget = $rankingTargetRow($recordAverageRankings, ['brand' => $record['brand'], 'rate' => (int) $record['metrics']['mention_rate'], 'rank' => (string) ($record['metrics']['average_rank'] ?? '0'), 'display_rank' => '99+']);
+                            $recordMentionRateTargetInline = $rankingHasInlineTarget($recordMentionRateRows);
+                            $recordMentionCountTargetInline = $rankingHasInlineTarget($recordMentionCountRows);
+                            $recordAverageRankTargetInline = $rankingHasInlineTarget($recordAverageRankRows);
                             $recordMaxRate = max([1, ...array_map(static fn ($row) => (int) $row['rate'], $recordMentionRateRows)]);
                             $recordMaxCount = max([1, ...array_map(static fn ($row) => (int) $row['count'], $recordMentionCountRows)]);
                             $recordMetricCards = [
@@ -248,6 +281,13 @@
                                             aria-expanded="{{ $record['expanded'] ? 'true' : 'false' }}"
                                             class="inline-flex h-9 items-center justify-center rounded-md border border-orange-200 bg-orange-50 px-3 text-xs font-semibold text-orange-700 hover:bg-orange-100"
                                         ><span data-record-toggle-label>{{ $record['expanded'] ? '收起结果' : '查看结果' }}</span></button>
+                                        <form method="POST" action="{{ route('admin.brand-diagnosis.destroy', ['run' => $record['id']]) }}" onsubmit="return confirm('确认删除这条品牌诊断记录吗？删除后监测中心将不再引用这条诊断数据。');">
+                                            @csrf
+                                            @method('DELETE')
+                                            <button type="submit" class="inline-flex h-9 items-center justify-center rounded-md border border-red-200 bg-white px-3 text-xs font-semibold text-red-600 hover:bg-red-50">
+                                                删除
+                                            </button>
+                                        </form>
                                     </div>
                                 </div>
                             </div>
@@ -310,20 +350,26 @@
                             <h3 class="mb-4 text-base font-semibold text-gray-900">品牌提及率</h3>
                             <div class="space-y-3" data-ranking-list="mention_rate">
                                 @foreach ($recordMentionRateRows as $index => $row)
-                                    <div class="grid grid-cols-[24px_88px_1fr_40px] items-center gap-2 text-sm">
-                                        <span class="text-xs text-gray-500">{{ $index + 1 }}</span>
-                                        <span class="truncate font-medium text-gray-700 transition-colors hover:text-orange-700" data-ranking-brand title="{{ $row['title'] ?? $row['brand'] }}">{{ $row['brand'] }}</span>
+                                    @php
+                                        $isTargetRow = !empty($row['is_target_brand']);
+                                    @endphp
+                                    <div @class([
+                                        'grid grid-cols-[24px_88px_1fr_40px] items-center gap-2 text-sm',
+                                        'rounded-md border border-orange-200 bg-orange-50 px-2 py-1 font-semibold text-orange-700' => $isTargetRow,
+                                    ]) @if ($isTargetRow) data-ranking-row-target="mention_rate" @endif>
+                                        <span @class(['text-xs', 'text-orange-600' => $isTargetRow, 'text-gray-500' => ! $isTargetRow])>{{ $row['display_rank'] ?? $index + 1 }}</span>
+                                        <span @class(['truncate font-medium transition-colors hover:text-orange-700', 'text-orange-700' => $isTargetRow, 'text-gray-700' => ! $isTargetRow]) data-ranking-brand title="{{ $row['title'] ?? $row['brand'] }}">{{ $row['brand'] }}</span>
                                         <span class="h-2 rounded-full bg-slate-100">
                                             @php
                                                 $rateWidth = (int) round(((int) $row['rate'] / $recordMaxRate) * 100);
                                             @endphp
-                                            <span class="block h-2 rounded-full bg-blue-600 w-[{{ max(4, $rateWidth) }}%]"></span>
+                                            <span @class(['block h-2 rounded-full w-['.max(4, $rateWidth).'%]', 'bg-orange-500' => $isTargetRow, 'bg-blue-600' => ! $isTargetRow])></span>
                                         </span>
-                                        <span class="text-right text-xs font-semibold text-blue-700">{{ $row['rate'] }}%</span>
+                                        <span @class(['text-right text-xs font-semibold', 'text-orange-700' => $isTargetRow, 'text-blue-700' => ! $isTargetRow])>{{ $row['rate'] }}%</span>
                                     </div>
                                 @endforeach
                             </div>
-                            <div class="mt-auto flex items-center gap-2 rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700" data-ranking-target="mention_rate" title="{{ $recordMentionRateTarget['title'] ?? $recordMentionRateTarget['brand'] ?? $record['brand'] }}">
+                            <div @class(['mt-auto flex items-center gap-2 rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700', 'hidden' => $recordMentionRateTargetInline]) data-ranking-target="mention_rate" title="{{ $recordMentionRateTarget['title'] ?? $recordMentionRateTarget['brand'] ?? $record['brand'] }}">
                                 <span class="rounded bg-orange-600 px-1.5 py-0.5 text-white">{{ $recordMentionRateTarget['display_rank'] ?? '99+' }}</span>
                                 <span class="truncate transition-colors hover:text-orange-800" data-ranking-brand title="{{ $recordMentionRateTarget['title'] ?? $recordMentionRateTarget['brand'] ?? $record['brand'] }}">{{ $recordMentionRateTarget['brand'] }}</span>
                                 <span class="shrink-0">{{ $recordMentionRateTarget['rate'] }}%</span>
@@ -334,20 +380,26 @@
                             <h3 class="mb-4 text-base font-semibold text-gray-900">品牌提及次数</h3>
                             <div class="space-y-3" data-ranking-list="mention_count">
                                 @foreach ($recordMentionCountRows as $index => $row)
-                                    <div class="grid grid-cols-[24px_88px_1fr_32px] items-center gap-2 text-sm">
-                                        <span class="text-xs text-gray-500">{{ $index + 1 }}</span>
-                                        <span class="truncate font-medium text-gray-700 transition-colors hover:text-orange-700" data-ranking-brand title="{{ $row['title'] ?? $row['brand'] }}">{{ $row['brand'] }}</span>
+                                    @php
+                                        $isTargetRow = !empty($row['is_target_brand']);
+                                    @endphp
+                                    <div @class([
+                                        'grid grid-cols-[24px_88px_1fr_32px] items-center gap-2 text-sm',
+                                        'rounded-md border border-orange-200 bg-orange-50 px-2 py-1 font-semibold text-orange-700' => $isTargetRow,
+                                    ]) @if ($isTargetRow) data-ranking-row-target="mention_count" @endif>
+                                        <span @class(['text-xs', 'text-orange-600' => $isTargetRow, 'text-gray-500' => ! $isTargetRow])>{{ $row['display_rank'] ?? $index + 1 }}</span>
+                                        <span @class(['truncate font-medium transition-colors hover:text-orange-700', 'text-orange-700' => $isTargetRow, 'text-gray-700' => ! $isTargetRow]) data-ranking-brand title="{{ $row['title'] ?? $row['brand'] }}">{{ $row['brand'] }}</span>
                                         <span class="h-2 rounded-full bg-slate-100">
                                             @php
                                                 $countWidth = (int) round(((int) $row['count'] / $recordMaxCount) * 100);
                                             @endphp
-                                            <span class="block h-2 rounded-full bg-blue-600 w-[{{ max(4, $countWidth) }}%]"></span>
+                                            <span @class(['block h-2 rounded-full w-['.max(4, $countWidth).'%]', 'bg-orange-500' => $isTargetRow, 'bg-blue-600' => ! $isTargetRow])></span>
                                         </span>
-                                        <span class="text-right text-xs font-semibold text-blue-700">{{ $row['count'] }}</span>
+                                        <span @class(['text-right text-xs font-semibold', 'text-orange-700' => $isTargetRow, 'text-blue-700' => ! $isTargetRow])>{{ $row['count'] }}</span>
                                     </div>
                                 @endforeach
                             </div>
-                            <div class="mt-auto flex items-center gap-2 rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700" data-ranking-target="mention_count" title="{{ $recordMentionCountTarget['title'] ?? $recordMentionCountTarget['brand'] ?? $record['brand'] }}">
+                            <div @class(['mt-auto flex items-center gap-2 rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700', 'hidden' => $recordMentionCountTargetInline]) data-ranking-target="mention_count" title="{{ $recordMentionCountTarget['title'] ?? $recordMentionCountTarget['brand'] ?? $record['brand'] }}">
                                 <span class="rounded bg-orange-600 px-1.5 py-0.5 text-white">{{ $recordMentionCountTarget['display_rank'] ?? '99+' }}</span>
                                 <span class="truncate transition-colors hover:text-orange-800" data-ranking-brand title="{{ $recordMentionCountTarget['title'] ?? $recordMentionCountTarget['brand'] ?? $record['brand'] }}">{{ $recordMentionCountTarget['brand'] }}</span>
                                 <span class="shrink-0">{{ $recordMentionCountTarget['count'] }}</span>
@@ -367,18 +419,21 @@
                                     </thead>
                                     <tbody class="divide-y divide-slate-100" data-ranking-list="average_rank">
                                         @foreach ($recordAverageRankRows as $index => $row)
-                                            <tr>
+                                            @php
+                                                $isTargetRow = !empty($row['is_target_brand']);
+                                            @endphp
+                                            <tr @class(['bg-orange-50 text-orange-700' => $isTargetRow]) @if ($isTargetRow) data-ranking-row-target="average_rank" @endif>
                                                 <td class="px-3 py-2">
-                                                    <span class="mr-2 text-xs text-gray-500">{{ $index + 1 }}</span><span class="font-medium transition-colors hover:text-orange-700" data-ranking-brand title="{{ $row['title'] ?? $row['brand'] }}">{{ $row['brand'] }}</span>
+                                                    <span @class(['mr-2 text-xs', 'text-orange-600' => $isTargetRow, 'text-gray-500' => ! $isTargetRow])>{{ $row['display_rank'] ?? $index + 1 }}</span><span @class(['font-medium transition-colors hover:text-orange-700', 'text-orange-700' => $isTargetRow]) data-ranking-brand title="{{ $row['title'] ?? $row['brand'] }}">{{ $row['brand'] }}</span>
                                                 </td>
-                                                <td class="px-3 py-2 text-right font-medium text-gray-700">{{ $row['rate'] }}%</td>
-                                                <td class="px-3 py-2 text-right font-medium text-gray-700">{{ $row['rank'] }}</td>
+                                                <td @class(['px-3 py-2 text-right font-medium', 'text-orange-700' => $isTargetRow, 'text-gray-700' => ! $isTargetRow])>{{ $row['rate'] }}%</td>
+                                                <td @class(['px-3 py-2 text-right font-medium', 'text-orange-700' => $isTargetRow, 'text-gray-700' => ! $isTargetRow])>{{ $row['rank'] }}</td>
                                             </tr>
                                         @endforeach
                                     </tbody>
                                 </table>
                             </div>
-                            <div class="mt-auto flex items-center gap-2 rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700" data-ranking-target="average_rank" title="{{ $recordAverageRankTarget['title'] ?? $recordAverageRankTarget['brand'] ?? $record['brand'] }}">
+                            <div @class(['mt-auto flex items-center gap-2 rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700', 'hidden' => $recordAverageRankTargetInline]) data-ranking-target="average_rank" title="{{ $recordAverageRankTarget['title'] ?? $recordAverageRankTarget['brand'] ?? $record['brand'] }}">
                                 <span class="rounded bg-orange-600 px-1.5 py-0.5 text-white">{{ $recordAverageRankTarget['display_rank'] ?? '99+' }}</span>
                                 <span class="truncate transition-colors hover:text-orange-800" data-ranking-brand title="{{ $recordAverageRankTarget['title'] ?? $recordAverageRankTarget['brand'] ?? $record['brand'] }}">{{ $recordAverageRankTarget['brand'] }}</span>
                                 <span class="shrink-0">{{ $recordAverageRankTarget['rank'] }}</span>
@@ -993,57 +1048,77 @@
                 container.append(brand, value);
             };
 
+            const isInlineTargetRow = (row) => {
+                const rank = Number(row?.display_rank);
+
+                return Boolean(row?.is_target_brand) && Number.isFinite(rank) && rank <= 10;
+            };
+
+            const visibleRankingRows = (rows) => rows
+                .filter((row) => !row?.is_target_brand || isInlineTargetRow(row))
+                .slice(0, 10);
+
             const renderMentionRanking = (record, key) => {
                 const data = readRecordPlatformData(record);
                 const payload = data[record.dataset.activePlatform || 'all'] || data.all || {};
                 const rows = payload.rankings?.[key] || [];
                 const list = record.querySelector(`[data-ranking-list="${key}"]`);
                 const target = rows.find((row) => row.is_target_brand) || rows[rows.length - 1] || {};
-                const nonTargetRows = rows.filter((row) => !row.is_target_brand).slice(0, 10);
+                const displayRows = visibleRankingRows(rows);
+                const targetInline = displayRows.some((row) => row.is_target_brand);
                 const valueKey = key === 'mention_count' ? 'count' : 'rate';
-                const maxValue = Math.max(1, ...nonTargetRows.map((row) => Number(row[valueKey] || 0)));
+                const maxValue = Math.max(1, ...displayRows.map((row) => Number(row[valueKey] || 0)));
                 if (!list) return;
 
                 list.innerHTML = '';
-                nonTargetRows.forEach((row, index) => {
+                displayRows.forEach((row, index) => {
+                    const isTarget = Boolean(row.is_target_brand);
                     const item = document.createElement('div');
-                    item.className = key === 'mention_count'
+                    item.className = (key === 'mention_count'
                         ? 'grid grid-cols-[24px_88px_1fr_32px] items-center gap-2 text-sm'
-                        : 'grid grid-cols-[24px_88px_1fr_40px] items-center gap-2 text-sm';
+                        : 'grid grid-cols-[24px_88px_1fr_40px] items-center gap-2 text-sm')
+                        + (isTarget ? ' rounded-md border border-orange-200 bg-orange-50 px-2 py-1 font-semibold text-orange-700' : '');
+                    if (isTarget) {
+                        item.dataset.rankingRowTarget = key;
+                    }
 
                     const order = document.createElement('span');
-                    order.className = 'text-xs text-gray-500';
+                    order.className = isTarget ? 'text-xs text-orange-600' : 'text-xs text-gray-500';
                     order.textContent = String(row.display_rank || index + 1);
                     const brand = document.createElement('span');
-                    brand.className = 'truncate font-medium text-gray-700 transition-colors hover:text-orange-700';
+                    brand.className = `truncate font-medium transition-colors hover:text-orange-700 ${isTarget ? 'text-orange-700' : 'text-gray-700'}`;
                     brand.dataset.rankingBrand = '';
                     brand.title = row.title || row.brand || '-';
                     brand.textContent = row.brand || '-';
                     const bar = document.createElement('span');
                     bar.className = 'h-2 rounded-full bg-slate-100';
                     const fill = document.createElement('span');
-                    fill.className = `block h-2 rounded-full bg-blue-600 ${widthClass(row[valueKey], maxValue)}`;
+                    fill.className = `block h-2 rounded-full ${isTarget ? 'bg-orange-500' : 'bg-blue-600'} ${widthClass(row[valueKey], maxValue)}`;
                     bar.appendChild(fill);
                     const value = document.createElement('span');
-                    value.className = 'text-right text-xs font-semibold text-blue-700';
+                    value.className = `text-right text-xs font-semibold ${isTarget ? 'text-orange-700' : 'text-blue-700'}`;
                     value.textContent = key === 'mention_count' ? String(row.count || 0) : `${row.rate || 0}%`;
 
                     item.append(order, brand, bar, value);
                     list.appendChild(item);
                 });
 
-                if (nonTargetRows.length === 0) {
+                if (displayRows.length === 0) {
                     const empty = document.createElement('div');
                     empty.className = 'rounded-md border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-center text-xs text-gray-500';
                     empty.textContent = '暂无竞品提及数据';
                     list.appendChild(empty);
                 }
 
-                renderTarget(
-                    record.querySelector(`[data-ranking-target="${key}"]`),
-                    target,
-                    key === 'mention_count' ? { key: 'count', fallback: 0, text: '' } : { key: 'rate', fallback: 0, text: '%' }
-                );
+                const targetContainer = record.querySelector(`[data-ranking-target="${key}"]`);
+                targetContainer?.classList.toggle('hidden', targetInline);
+                if (!targetInline) {
+                    renderTarget(
+                        targetContainer,
+                        target,
+                        key === 'mention_count' ? { key: 'count', fallback: 0, text: '' } : { key: 'rate', fallback: 0, text: '%' }
+                    );
+                }
             };
 
             const renderAverageRanking = (record) => {
@@ -1052,35 +1127,41 @@
                 const rows = payload.rankings?.average_rank || [];
                 const list = record.querySelector('[data-ranking-list="average_rank"]');
                 const target = rows.find((row) => row.is_target_brand) || rows[rows.length - 1] || {};
-                const nonTargetRows = rows.filter((row) => !row.is_target_brand).slice(0, 10);
+                const displayRows = visibleRankingRows(rows);
+                const targetInline = displayRows.some((row) => row.is_target_brand);
                 if (!list) return;
 
                 list.innerHTML = '';
-                nonTargetRows.forEach((row, index) => {
+                displayRows.forEach((row, index) => {
+                    const isTarget = Boolean(row.is_target_brand);
                     const tr = document.createElement('tr');
+                    if (isTarget) {
+                        tr.className = 'bg-orange-50 text-orange-700';
+                        tr.dataset.rankingRowTarget = 'average_rank';
+                    }
                     const brand = document.createElement('td');
                     brand.className = 'px-3 py-2';
                     const order = document.createElement('span');
-                    order.className = 'mr-2 text-xs text-gray-500';
+                    order.className = isTarget ? 'mr-2 text-xs text-orange-600' : 'mr-2 text-xs text-gray-500';
                     order.textContent = String(row.display_rank || index + 1);
                     const brandName = document.createElement('span');
-                    brandName.className = 'font-medium transition-colors hover:text-orange-700';
+                    brandName.className = `font-medium transition-colors hover:text-orange-700 ${isTarget ? 'text-orange-700' : ''}`;
                     brandName.dataset.rankingBrand = '';
                     brandName.title = row.title || row.brand || '-';
                     brandName.textContent = row.brand || '-';
                     brand.appendChild(order);
                     brand.appendChild(brandName);
                     const rate = document.createElement('td');
-                    rate.className = 'px-3 py-2 text-right font-medium text-gray-700';
+                    rate.className = `px-3 py-2 text-right font-medium ${isTarget ? 'text-orange-700' : 'text-gray-700'}`;
                     rate.textContent = `${row.rate || 0}%`;
                     const rank = document.createElement('td');
-                    rank.className = 'px-3 py-2 text-right font-medium text-gray-700';
+                    rank.className = `px-3 py-2 text-right font-medium ${isTarget ? 'text-orange-700' : 'text-gray-700'}`;
                     rank.textContent = row.rank || '0';
                     tr.append(brand, rate, rank);
                     list.appendChild(tr);
                 });
 
-                if (nonTargetRows.length === 0) {
+                if (displayRows.length === 0) {
                     const tr = document.createElement('tr');
                     const td = document.createElement('td');
                     td.className = 'px-3 py-6 text-center text-xs text-gray-500';
@@ -1090,7 +1171,11 @@
                     list.appendChild(tr);
                 }
 
-                renderTarget(record.querySelector('[data-ranking-target="average_rank"]'), target, { key: 'rank', fallback: '0', text: '' });
+                const targetContainer = record.querySelector('[data-ranking-target="average_rank"]');
+                targetContainer?.classList.toggle('hidden', targetInline);
+                if (!targetInline) {
+                    renderTarget(targetContainer, target, { key: 'rank', fallback: '0', text: '' });
+                }
             };
 
             const renderRecordPlatform = (record, platform) => {

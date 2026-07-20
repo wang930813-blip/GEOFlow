@@ -22,14 +22,14 @@ class BrandDiagnosisOfficialLinkController extends Controller
         abort_unless($admin instanceof Admin && $admin->isSuperAdmin(), 403);
 
         $diagnosisRun = BrandDiagnosisRun::query()
-            ->withoutGlobalScopes()
+            ->withoutGlobalScopes(['current_site', 'admin_owner'])
             ->with([
                 'questions' => fn ($query) => $query
-                    ->withoutGlobalScopes()
+                    ->withoutGlobalScopes(['current_site', 'admin_owner'])
                     ->select(['id', 'run_id', 'question', 'sort_order'])
                     ->orderBy('sort_order')
                     ->with(['results' => fn ($resultQuery) => $resultQuery
-                        ->withoutGlobalScopes()
+                        ->withoutGlobalScopes(['current_site', 'admin_owner'])
                         ->where('status', 'success')
                         ->whereNotNull('answer')
                         ->where('answer', '<>', '')
@@ -41,18 +41,32 @@ class BrandDiagnosisOfficialLinkController extends Controller
 
         $results = $diagnosisRun->questions
             ->flatMap(function ($question) {
-                return $question->results->map(fn ($result): array => [
-                    'id' => (int) $result->id,
-                    'question_order' => (int) $question->sort_order,
-                    'question' => (string) $question->question,
-                    'platform' => BrandDiagnosisPlatform::label((string) $result->platform),
-                    'platform_logo' => BrandDiagnosisPlatform::logoUrl((string) $result->platform),
-                    'status' => (string) $result->status,
-                    'snapshot_url' => route('brand-diagnosis.snapshot', ['token' => $result->snapshot_token]),
-                    'official_share_url' => (string) ($result->official_share_url ?? ''),
-                    'official_domains' => implode(' / ', BrandDiagnosisPlatform::officialShareDomains((string) $result->platform)),
-                ]);
+                return $question->results->map(function ($result) use ($question): array {
+                    $platformKey = strtolower(trim((string) $result->platform));
+
+                    return [
+                        'id' => (int) $result->id,
+                        'question_order' => (int) $question->sort_order,
+                        'question' => (string) $question->question,
+                        'platform_key' => $platformKey,
+                        'platform' => BrandDiagnosisPlatform::label($platformKey),
+                        'platform_logo' => BrandDiagnosisPlatform::logoUrl($platformKey),
+                        'status' => (string) $result->status,
+                        'snapshot_url' => route('brand-diagnosis.snapshot', ['token' => $result->snapshot_token]),
+                        'official_share_url' => (string) ($result->official_share_url ?? ''),
+                        'official_domains' => implode(' / ', BrandDiagnosisPlatform::officialShareDomains($platformKey)),
+                    ];
+                });
             })
+            ->values();
+        $platformOptions = $results
+            ->groupBy('platform_key')
+            ->map(fn ($items, string $platformKey): array => [
+                'key' => $platformKey,
+                'label' => (string) $items->first()['platform'],
+                'count' => $items->count(),
+            ])
+            ->sortBy('label')
             ->values();
 
         return view('admin.brand-diagnosis.official-links', [
@@ -61,6 +75,7 @@ class BrandDiagnosisOfficialLinkController extends Controller
             'adminSiteName' => AdminWeb::siteName(),
             'run' => $diagnosisRun,
             'results' => $results,
+            'platformOptions' => $platformOptions,
         ]);
     }
 
@@ -70,7 +85,7 @@ class BrandDiagnosisOfficialLinkController extends Controller
         abort_unless($admin instanceof Admin && $admin->isSuperAdmin(), 403);
 
         BrandDiagnosisRun::query()
-            ->withoutGlobalScopes()
+            ->withoutGlobalScopes(['current_site', 'admin_owner'])
             ->whereKey($run)
             ->firstOrFail();
 

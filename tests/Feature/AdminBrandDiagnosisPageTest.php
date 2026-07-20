@@ -386,6 +386,49 @@ class AdminBrandDiagnosisPageTest extends TestCase
         $this->assertStringNotContainsString(route('admin.brand-diagnosis.report', ['run' => $pendingRun->id]), $html);
     }
 
+    public function test_brand_diagnosis_record_can_be_soft_deleted_from_the_record_list(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('brand_delete_record_admin', 'site_user');
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => '待删除品牌',
+            'platforms' => ['doubao'],
+            'status' => 'completed',
+            'total_questions' => 1,
+            'completed_questions' => 1,
+            'failed_questions' => 0,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.brand-diagnosis.index'))
+            ->assertOk()
+            ->assertSee('action="'.route('admin.brand-diagnosis.destroy', ['run' => $run->id]).'"', false);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->delete(route('admin.brand-diagnosis.destroy', ['run' => $run->id]))
+            ->assertRedirect(route('admin.brand-diagnosis.index'))
+            ->assertSessionHas('message');
+
+        $this->assertSoftDeleted($run);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.brand-diagnosis.index'))
+            ->assertOk()
+            ->assertDontSee('待删除品牌');
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.brand-diagnosis.report', ['run' => $run->id]))
+            ->assertNotFound();
+    }
+
     public function test_brand_diagnosis_pending_record_does_not_show_display_baseline_metrics(): void
     {
         config([
@@ -674,7 +717,7 @@ class AdminBrandDiagnosisPageTest extends TestCase
         $this->assertStringNotContainsString('$this->pdf->Circle($scoreX', $serviceSource);
     }
 
-    public function test_materials_entry_moves_from_top_nav_to_user_menu_after_admin_management(): void
+    public function test_super_admin_can_access_materials_entry_from_geo_materials_top_nav(): void
     {
         $admin = Admin::query()->create([
             'username' => 'brand_materials_nav_admin',
@@ -694,19 +737,11 @@ class AdminBrandDiagnosisPageTest extends TestCase
         $desktopNavEnd = strpos($html, '</nav>', $desktopNavStart);
         $desktopNav = substr($html, $desktopNavStart, $desktopNavEnd - $desktopNavStart);
 
-        $this->assertStringNotContainsString(route('admin.materials.index'), $desktopNav);
-        $this->assertStringContainsString(route('admin.materials.index'), $html);
-        $this->assertLessThan(
-            strpos($html, route('admin.materials.index')),
-            strpos($html, route('admin.admin-users.index'))
-        );
-        $this->assertGreaterThan(
-            strpos($html, route('admin.admin-users.index')),
-            strpos($html, route('admin.materials.index'))
-        );
+        $this->assertStringContainsString('GEO 素材', $desktopNav);
+        $this->assertStringContainsString(route('admin.materials.index'), $desktopNav);
     }
 
-    public function test_standard_admin_can_access_materials_entry_from_user_menu(): void
+    public function test_standard_admin_can_access_materials_entry_from_geo_materials_top_nav(): void
     {
         $admin = Admin::query()->create([
             'username' => 'brand_standard_materials_admin',
@@ -725,12 +760,9 @@ class AdminBrandDiagnosisPageTest extends TestCase
         $desktopNavStart = strpos($html, '<nav class="hidden md:flex flex-1 min-w-0 items-center">');
         $desktopNavEnd = strpos($html, '</nav>', $desktopNavStart);
         $desktopNav = substr($html, $desktopNavStart, $desktopNavEnd - $desktopNavStart);
-        $userMenuStart = strpos($html, '<div id="user-menu"');
-        $userMenuEnd = strpos($html, '<form method="POST" action="'.route('admin.logout').'"', $userMenuStart);
-        $userMenu = substr($html, $userMenuStart, $userMenuEnd - $userMenuStart);
 
-        $this->assertStringNotContainsString(route('admin.materials.index'), $desktopNav);
-        $this->assertStringContainsString(route('admin.materials.index'), $userMenu);
+        $this->assertStringContainsString('GEO 素材', $desktopNav);
+        $this->assertStringContainsString(route('admin.materials.index'), $desktopNav);
     }
 
     public function test_brand_diagnosis_sources_are_paginated_with_five_visible_by_default(): void
@@ -1386,6 +1418,52 @@ class AdminBrandDiagnosisPageTest extends TestCase
         $this->assertStringContainsString('"platform_key":"wenxin"', $html);
     }
 
+    public function test_brand_performance_rankings_highlight_target_inline_and_sink_only_after_top_ten(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('brand_ranking_inline_admin');
+
+        $this->createRankingRunWithFrequencies($site, $admin, 'Inline Brand', [
+            'Inline Competitor 1' => 12,
+            'Inline Competitor 2' => 10,
+            'Inline Brand' => 8,
+            'Inline Competitor 4' => 7,
+            'Inline Competitor 5' => 6,
+            'Inline Competitor 6' => 5,
+            'Inline Competitor 7' => 4,
+            'Inline Competitor 8' => 3,
+            'Inline Competitor 9' => 2,
+            'Inline Competitor 10' => 1,
+            'Inline Competitor 11' => 1,
+        ]);
+        $this->createRankingRunWithFrequencies($site, $admin, 'Sunk Brand', [
+            'Sunk Competitor 1' => 12,
+            'Sunk Competitor 2' => 11,
+            'Sunk Competitor 3' => 10,
+            'Sunk Competitor 4' => 9,
+            'Sunk Competitor 5' => 8,
+            'Sunk Competitor 6' => 7,
+            'Sunk Competitor 7' => 6,
+            'Sunk Competitor 8' => 5,
+            'Sunk Competitor 9' => 4,
+            'Sunk Competitor 10' => 3,
+            'Sunk Brand' => 2,
+        ]);
+
+        $html = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.brand-diagnosis.index'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('data-ranking-row-target="mention_rate"', $html);
+        $this->assertStringContainsString('data-ranking-row-target="mention_count"', $html);
+        $this->assertStringContainsString('data-ranking-row-target="average_rank"', $html);
+        $this->assertMatchesRegularExpression('/class="[^"]*\bhidden\b[^"]*" data-ranking-target="mention_rate" title="Inline Brand"/', $html);
+        $this->assertMatchesRegularExpression('/class="[^"]*\bhidden\b[^"]*" data-ranking-target="mention_count" title="Inline Brand"/', $html);
+        $this->assertMatchesRegularExpression('/class="[^"]*\bhidden\b[^"]*" data-ranking-target="average_rank" title="Inline Brand"/', $html);
+        $this->assertMatchesRegularExpression('/class="(?![^"]*\bhidden\b)[^"]*" data-ranking-target="mention_rate" title="Sunk Brand"/', $html);
+    }
+
     /**
      * @return array{0:Admin,1:Site}
      */
@@ -1408,5 +1486,70 @@ class AdminBrandDiagnosisPageTest extends TestCase
         $site->members()->attach((int) $admin->id, ['role' => 'owner']);
 
         return [$admin, $site];
+    }
+
+    /**
+     * @param  array<string,int>  $frequencies
+     */
+    private function createRankingRunWithFrequencies(Site $site, Admin $admin, string $targetBrand, array $frequencies): BrandDiagnosisRun
+    {
+        $total = max($frequencies);
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => $targetBrand,
+            'platforms' => ['doubao'],
+            'status' => 'completed',
+            'total_questions' => $total,
+            'completed_questions' => $total,
+            'failed_questions' => 0,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+        ]);
+
+        $brands = array_keys($frequencies);
+        for ($index = 1; $index <= $total; $index++) {
+            $question = $run->questions()->create([
+                'site_id' => (int) $site->id,
+                'question' => 'Ranking question '.$index.' for '.$targetBrand,
+                'question_type' => 'choice',
+                'sort_order' => $index,
+                'status' => 'completed',
+            ]);
+            $result = $question->results()->create([
+                'site_id' => (int) $site->id,
+                'run_id' => (int) $run->id,
+                'platform' => 'doubao',
+                'answer' => 'Ranking answer '.$index.' for '.$targetBrand,
+                'brand_mentioned' => $index <= (int) ($frequencies[$targetBrand] ?? 0),
+                'mention_count' => $index <= (int) ($frequencies[$targetBrand] ?? 0) ? 1 : 0,
+                'mention_rank' => $index <= (int) ($frequencies[$targetBrand] ?? 0) ? array_search($targetBrand, $brands, true) + 1 : 0,
+                'sentiment' => 'positive',
+                'status' => 'success',
+                'checked_at' => now(),
+            ]);
+
+            foreach ($brands as $rank => $brand) {
+                if ($index > (int) $frequencies[$brand]) {
+                    continue;
+                }
+
+                $result->brandMentions()->create([
+                    'site_id' => (int) $site->id,
+                    'run_id' => (int) $run->id,
+                    'question_id' => (int) $question->id,
+                    'platform' => 'doubao',
+                    'brand_name' => $brand,
+                    'mention_count' => 1,
+                    'mention_rank' => $rank + 1,
+                    'sentiment' => 'positive',
+                    'source_count' => 0,
+                    'is_target_brand' => $brand === $targetBrand,
+                    'evidence' => 'Ranking answer mentions '.$brand,
+                ]);
+            }
+        }
+
+        return $run;
     }
 }

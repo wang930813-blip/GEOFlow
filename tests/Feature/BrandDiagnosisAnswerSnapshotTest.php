@@ -90,6 +90,76 @@ class BrandDiagnosisAnswerSnapshotTest extends TestCase
             ->assertSee('和文心一言继续聊');
     }
 
+    public function test_public_and_admin_snapshots_hide_internal_brand_mentions_payload_for_all_supported_models(): void
+    {
+        foreach (['doubao', 'deepseek', 'qianwen', 'wenxin'] as $platform) {
+            $result = $this->createResult([
+                'platform' => $platform,
+                'answer' => '{"answer":"学术易在该问题中被模型正常推荐。","brand_mentions":[{"brand":"学术易","mention_count":1,"mention_rank":1,"sentiment":"positive","evidence":"内部提及依据"}]}',
+            ]);
+
+            $this->get('/brand-diagnosis/snapshot/'.$result->snapshot_token)
+                ->assertOk()
+                ->assertSee('学术易在该问题中被模型正常推荐。')
+                ->assertDontSee('"brand_mentions"', false)
+                ->assertDontSee('内部提及依据');
+
+            $this->get(route('admin.snapshot-voucher.show', ['id' => (int) $result->id]))
+                ->assertOk()
+                ->assertSee('学术易在该问题中被模型正常推荐。')
+                ->assertDontSee('"brand_mentions"', false)
+                ->assertDontSee('内部提及依据');
+        }
+    }
+
+    public function test_snapshot_strips_brand_mentions_json_suffix_after_plain_answer_text(): void
+    {
+        $result = $this->createResult([
+            'platform' => 'deepseek',
+            'answer' => '根据榜单，三角洲双人协作陪玩可以优先考虑青锋护航组，综合评分9.7/10，适合需要路线教学和协作配合的玩家。", "brand_mentions": [{"brand":"青锋护航组","mention_count":1,"mention_rank":1,"sentiment":"positive","evidence":"内部提及依据"}]}',
+        ]);
+
+        $this->get(route('admin.snapshot-voucher.show', ['id' => (int) $result->id]))
+            ->assertOk()
+            ->assertSee('根据榜单，三角洲双人协作陪玩可以优先考虑青锋护航组')
+            ->assertSee('综合评分9.7/10')
+            ->assertDontSee('"brand_mentions"', false)
+            ->assertDontSee('内部提及依据');
+    }
+
+    public function test_snapshot_strips_malformed_brand_mentions_json_suffix_after_plain_answer_text(): void
+    {
+        $result = $this->createResult([
+            'platform' => 'deepseek',
+            'answer' => '根据榜单，三角洲双人协作陪玩可以优先考虑青锋护航组，综合评分9.7/10。", "brand_mentions": [{"brand":"青锋护航组","mention_count":1,"mention_rank":1,"sentiment":"positive","evidence":"内部提及依据"',
+        ]);
+
+        $this->get(route('admin.snapshot-voucher.show', ['id' => (int) $result->id]))
+            ->assertOk()
+            ->assertSee('根据榜单，三角洲双人协作陪玩可以优先考虑青锋护航组')
+            ->assertSee('综合评分9.7/10')
+            ->assertDontSee('"brand_mentions"', false)
+            ->assertDontSee('内部提及依据');
+    }
+
+    public function test_snapshot_strips_generic_internal_json_suffix_fields_after_plain_answer_text(): void
+    {
+        $result = $this->createResult([
+            'platform' => 'qianwen',
+            'answer' => '快照应该只展示这段自然语言回答，保留用户能读懂的结论。", "sources": [{"title":"内部来源","url":"https://internal.example"}], "meta": {"debug":"不要展示"}, "sentiment": "positive"',
+        ]);
+
+        $this->get(route('admin.snapshot-voucher.show', ['id' => (int) $result->id]))
+            ->assertOk()
+            ->assertSee('快照应该只展示这段自然语言回答')
+            ->assertSee('保留用户能读懂的结论')
+            ->assertDontSee('"sources"', false)
+            ->assertDontSee('内部来源')
+            ->assertDontSee('不要展示')
+            ->assertDontSee('debug')
+            ->assertDontSee('"sentiment"', false);
+    }
+
     public function test_public_snapshot_freezes_answer_and_sources_after_first_capture(): void
     {
         $result = $this->createResult();
@@ -209,6 +279,56 @@ class BrandDiagnosisAnswerSnapshotTest extends TestCase
             ->assertSee('国内科研选题辅导平台哪些好？')
             ->assertSee('name="official_links['.$result->id.']"', false)
             ->assertSee('/brand-diagnosis/snapshot/'.$result->snapshot_token, false);
+    }
+
+    public function test_official_link_batch_editor_can_filter_by_model_and_question(): void
+    {
+        $firstResult = $this->createResult();
+        $secondQuestion = BrandDiagnosisQuestion::query()->create([
+            'site_id' => (int) $firstResult->site_id,
+            'owner_admin_id' => (int) $firstResult->owner_admin_id,
+            'run_id' => (int) $firstResult->run_id,
+            'question' => 'How does Doubao answer the second question?',
+            'question_type' => 'brand',
+            'sort_order' => 2,
+            'status' => 'completed',
+        ]);
+        BrandDiagnosisResult::query()->create([
+            'site_id' => (int) $firstResult->site_id,
+            'owner_admin_id' => (int) $firstResult->owner_admin_id,
+            'run_id' => (int) $firstResult->run_id,
+            'question_id' => (int) $secondQuestion->id,
+            'platform' => 'doubao',
+            'answer' => 'Doubao answer for the second question.',
+            'brand_mentioned' => false,
+            'mention_count' => 0,
+            'mention_rank' => 0,
+            'sentiment' => 'neutral',
+            'status' => 'success',
+            'checked_at' => now(),
+        ]);
+        $superAdmin = Admin::query()->create([
+            'username' => 'snapshot_filter_super',
+            'password' => 'secret-123',
+            'email' => 'snapshot-filter-super@example.com',
+            'display_name' => 'Snapshot Filter Super',
+            'role' => 'super_admin',
+            'status' => 'active',
+        ]);
+
+        $html = $this->actingAs($superAdmin, 'admin')
+            ->get('/geo_admin/brand-diagnosis/'.$firstResult->run_id.'/official-links')
+            ->assertOk()
+            ->assertSee('id="official-link-platform-filter"', false)
+            ->assertSee('id="official-link-question-filter"', false)
+            ->assertSee('data-official-link-row', false)
+            ->assertSee('data-platform-key="wenxin"', false)
+            ->assertSee('data-platform-key="doubao"', false)
+            ->assertSee('data-question-text="How does Doubao answer the second question?"', false)
+            ->getContent();
+
+        $this->assertStringContainsString('applyOfficialLinkFilters()', $html);
+        $this->assertStringContainsString('official-link-empty-filter-state', $html);
     }
 
     public function test_non_super_admin_cannot_update_official_links(): void

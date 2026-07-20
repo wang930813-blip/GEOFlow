@@ -7,6 +7,7 @@ use App\Models\BrandDiagnosisBrandMention;
 use App\Models\BrandDiagnosisResult;
 use App\Models\BrandDiagnosisSource;
 use App\Services\BrandDiagnosis\BrandDiagnosisPlatform;
+use App\Services\BrandDiagnosis\BrandDiagnosisSnapshotPayload;
 use App\Support\MonitoringCenter\VirtualSearchReportSnapshots;
 use App\Support\Site\ArticleHtmlPresenter;
 use Illuminate\Http\Request;
@@ -14,12 +15,13 @@ use Illuminate\Http\Response;
 
 class SnapshotVoucherController extends Controller
 {
-    public function show(Request $request): Response
+    public function show(Request $request, BrandDiagnosisSnapshotPayload $snapshots): Response
     {
         $id = $request->integer('id');
         $result = $id > 0
             ? BrandDiagnosisResult::query()
                 ->withoutGlobalScope('current_site')
+                ->whereHas('run', fn ($query) => $query->withoutGlobalScopes(['current_site', 'admin_owner']))
                 ->with([
                     'question:id,question',
                     'sources:id,result_id,title,url,domain',
@@ -31,21 +33,21 @@ class SnapshotVoucherController extends Controller
         $virtualVoucher = $id < 0 ? $this->virtualVoucher($id) : null;
 
         return response()->view('admin.snapshot-voucher.show', [
-            'voucher' => $virtualVoucher ?? ($result instanceof BrandDiagnosisResult ? $this->voucher($result) : null),
+            'voucher' => $virtualVoucher ?? ($result instanceof BrandDiagnosisResult ? $this->voucher($result, $snapshots) : null),
         ]);
     }
 
     /**
      * @return array<string,mixed>
      */
-    private function voucher(BrandDiagnosisResult $result): array
+    private function voucher(BrandDiagnosisResult $result, BrandDiagnosisSnapshotPayload $snapshots): array
     {
         $platformKey = $this->normalizePlatformKey((string) $result->platform);
         $platformName = $this->platformLabel($platformKey);
         $question = trim((string) ($result->question?->question ?? ''));
         $checkedAt = $result->checked_at ?? $result->created_at;
         $target = $this->targetBrandName($result);
-        $answer = trim((string) $result->answer);
+        $answer = $snapshots->displayAnswer((string) $result->answer);
 
         return [
             'id' => (int) $result->id,

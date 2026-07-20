@@ -2702,7 +2702,7 @@
       const url = safeUrl(row.officialUrl);
       return url
         ? `<a class="link-btn" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">官方链接</a>`
-        : `<button class="link-btn" type="button" onclick="showToast('暂无官方对话链接')">官方链接</button>`;
+        : "";
     }
 
     function platformLink(row) {
@@ -2718,9 +2718,7 @@
         return `<a class="link-btn" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">快照凭证</a>`;
       }
 
-      return row.snapshotAvailable === false
-        ? `<button class="link-btn" type="button" onclick="showToast('暂无快照凭证')">快照凭证</button>`
-        : `<button class="link-btn" type="button" onclick="openSnapshot(${row.id})">快照凭证</button>`;
+      return "";
     }
 
     function renderTable() {

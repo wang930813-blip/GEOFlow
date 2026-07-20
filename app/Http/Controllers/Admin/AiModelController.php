@@ -47,6 +47,8 @@ class AiModelController extends Controller
      */
     public function index(): View
     {
+        $admin = $this->currentAdmin();
+
         return view('admin.ai-models.index', [
             'pageTitle' => __('admin.ai_models.page_title'),
             'activeMenu' => 'ai_config',
@@ -55,6 +57,7 @@ class AiModelController extends Controller
             'embeddingModels' => $this->loadActiveEmbeddingModels(),
             'defaultEmbeddingModelId' => $this->getDefaultEmbeddingModelId(),
             'pgvectorEnabled' => $this->isPgvectorEnabled(),
+            'showOwnerIdentity' => $admin->isSuperAdmin(),
         ]);
     }
 
@@ -304,6 +307,7 @@ class AiModelController extends Controller
                 'created_at',
                 'updated_at',
             ])
+            ->with('ownerAdmin:id,username,display_name,role')
             ->withCount('tasks as task_count')
             ->addSelect([
                 'article_count' => Article::query()
@@ -339,6 +343,9 @@ class AiModelController extends Controller
                 'article_count' => (int) ($model->article_count ?? 0),
                 'masked_api_key' => $this->maskApiKey((string) ($model->getRawOriginal('api_key') ?? '')),
                 'is_default_embedding' => $modelType === 'embedding' && $defaultEmbeddingModelId === (int) $model->id,
+                'owner_admin_id' => (int) ($model->owner_admin_id ?? 0) ?: null,
+                'owner_identity_type' => empty($model->owner_admin_id) ? 'platform' : 'agent',
+                'owner_identity_label' => $this->aiModelOwnerLabel($model),
             ];
         })->all();
     }
@@ -428,8 +435,11 @@ class AiModelController extends Controller
     private function managerModelsQuery(): \Illuminate\Database\Eloquent\Builder
     {
         $query = AiModel::query()->withoutGlobalScope('current_site');
-        $admin = request()->user('admin');
-        abort_unless($admin instanceof Admin, 403);
+        $admin = $this->currentAdmin();
+
+        if ($admin->isSuperAdmin()) {
+            return $query;
+        }
 
         return $this->aiConfigurationScope->applyManagerScope($query, $admin, 'ai_models.owner_admin_id');
     }
@@ -445,10 +455,38 @@ class AiModelController extends Controller
 
     private function managerOwnerAdminId(): ?int
     {
+        $admin = $this->currentAdmin();
+
+        return $this->aiConfigurationScope->ownerAdminIdForManager($admin);
+    }
+
+    private function currentAdmin(): Admin
+    {
         $admin = request()->user('admin');
         abort_unless($admin instanceof Admin, 403);
 
-        return $this->aiConfigurationScope->ownerAdminIdForManager($admin);
+        return $admin;
+    }
+
+    private function aiModelOwnerLabel(AiModel $model): string
+    {
+        if (empty($model->owner_admin_id)) {
+            return '平台模型';
+        }
+
+        $owner = $model->getRelationValue('ownerAdmin');
+        if (! $owner instanceof Admin) {
+            return '代理 #'.(int) $model->owner_admin_id;
+        }
+
+        $name = trim((string) $owner->name);
+        $username = trim((string) $owner->username);
+
+        if ($name !== '' && $username !== '' && $name !== $username) {
+            return $name.'（'.$username.'）';
+        }
+
+        return $name !== '' ? $name : ($username !== '' ? $username : '代理 #'.(int) $model->owner_admin_id);
     }
 
     /**

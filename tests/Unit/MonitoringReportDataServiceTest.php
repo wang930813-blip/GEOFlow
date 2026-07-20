@@ -108,7 +108,7 @@ class MonitoringReportDataServiceTest extends TestCase
         $this->assertSame('https://www.doubao.com/chat/', $report['search_rows'][0]['platform_url']);
         $this->assertSame($officialShareUrl, $report['search_rows'][0]['official_url']);
         $this->assertSame(
-            route('brand-diagnosis.snapshot', ['token' => $current['result']->snapshot_token]),
+            route('admin.snapshot-voucher.show', ['id' => (int) $current['result']->id]),
             $report['search_rows'][0]['snapshot_url']
         );
         $this->assertSame($current['result']->checked_at?->format('Y-m-d H:i:s'), $report['search_rows'][0]['time']);
@@ -251,7 +251,7 @@ class MonitoringReportDataServiceTest extends TestCase
             $rows[0]['snapshot_url']
         );
         $this->assertSame(
-            route('brand-diagnosis.snapshot', ['token' => $dynamic['result']->snapshot_token]),
+            route('admin.snapshot-voucher.show', ['id' => (int) $dynamic['result']->id]),
             $rows[5]['snapshot_url']
         );
         $this->assertSame(6, $report['summary']['search_report_count']['actual']);
@@ -325,6 +325,40 @@ class MonitoringReportDataServiceTest extends TestCase
         $flatJson = json_encode($report, JSON_UNESCAPED_UNICODE);
         $this->assertStringNotContainsString('不应出现的竞品', $flatJson);
         $this->assertStringNotContainsString('其他行业问题', $flatJson);
+    }
+
+    public function test_monitoring_reports_ignore_soft_deleted_brand_diagnosis_runs_but_keep_child_rows(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('monitoring_deleted_diagnosis_user', 'site_user', '删除诊断站点');
+
+        app(CurrentSite::class)->set($site);
+
+        $dynamic = $this->seedSearchData($admin, $site, [
+            'company' => '删除测试品牌',
+            'question' => '删除测试品牌适合做 AI 搜索优化吗？',
+            'keyword' => 'AI 搜索优化',
+            'competitor' => '删除测试竞品',
+            'platform' => 'doubao',
+            'sourceTitle' => '删除测试来源',
+            'articleTitle' => '删除测试文章',
+        ]);
+        $resultId = (int) $dynamic['result']->id;
+        $run = BrandDiagnosisRun::query()->findOrFail((int) $dynamic['result']->run_id);
+
+        $run->delete();
+
+        $this->assertTrue(BrandDiagnosisResult::query()->withoutGlobalScopes()->whereKey($resultId)->exists());
+
+        $enterpriseReport = app(MonitoringReportDataService::class)->enterpriseReport($admin, $site);
+        $industryReport = app(MonitoringReportDataService::class)->industryReport($admin, $site);
+        $flatIndustryJson = json_encode($industryReport, JSON_UNESCAPED_UNICODE);
+
+        $this->assertSame(0, $enterpriseReport['summary']['search_report_count']['actual']);
+        $this->assertSame(0, $enterpriseReport['summary']['source_count']['actual']);
+        $this->assertSame([], $enterpriseReport['search_rows']);
+        $this->assertSame(0, $industryReport['summary'][1]['actual']);
+        $this->assertSame(0, $industryReport['summary'][3]['actual']);
+        $this->assertStringNotContainsString('删除测试竞品', (string) $flatIndustryJson);
     }
 
     public function test_industry_report_cleans_invalid_encoding_from_brand_profile_text(): void
@@ -487,7 +521,7 @@ class MonitoringReportDataServiceTest extends TestCase
         $this->assertSame(0, $totals['wenxin|移动']);
     }
 
-    public function test_enterprise_search_report_uses_result_checked_time_and_dash_when_target_brand_is_not_mentioned(): void
+    public function test_enterprise_search_report_uses_result_checked_time_and_hides_snapshot_when_target_brand_is_not_mentioned(): void
     {
         [$admin, $site] = $this->createAdminWithSite('monitoring_search_no_brand_target', 'site_user', 'search no brand site');
 
@@ -538,7 +572,8 @@ class MonitoringReportDataServiceTest extends TestCase
 
         $report = app(MonitoringReportDataService::class)->enterpriseReport($admin, $site);
 
-        $this->assertSame('-', $report['search_rows'][0]['target']);
+        $this->assertSame('Search Report Brand', $report['search_rows'][0]['target']);
+        $this->assertSame('', $report['search_rows'][0]['snapshot_url']);
         $this->assertSame($checkedAt->toDateString(), $report['search_rows'][0]['date']);
         $this->assertSame($checkedAt->format('Y-m-d H:i:s'), $report['search_rows'][0]['time']);
     }

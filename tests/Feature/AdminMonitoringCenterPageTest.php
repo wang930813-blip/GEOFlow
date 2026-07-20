@@ -9,6 +9,7 @@ use App\Models\BrandDiagnosisResult;
 use App\Models\BrandDiagnosisRun;
 use App\Models\BrandDiagnosisSource;
 use App\Models\KnowledgeBase;
+use App\Models\KeywordLibrary;
 use App\Models\MonitoringReportShare;
 use App\Models\Site;
 use App\Services\MonitoringCenter\MonitoringReportRenderer;
@@ -122,7 +123,6 @@ class AdminMonitoringCenterPageTest extends TestCase
         $response
             ->assertOk()
             ->assertSee('行业竞争力分析报表')
-            ->assertSee('企业舆情分析报表')
             ->assertSee('href="'.route('admin.monitoring-center.index', ['report' => 'enterprise']).'"', false)
             ->assertSee('data-monitoring-share-button', false)
             ->assertSee(route('admin.monitoring-center.share'), false)
@@ -137,12 +137,16 @@ class AdminMonitoringCenterPageTest extends TestCase
 
         [$admin, $site] = $this->createAdminWithSite('monitoring_dynamic_enterprise_admin');
 
-        KnowledgeBase::query()->create([
+        KeywordLibrary::query()->create([
             'site_id' => (int) $site->id,
             'owner_admin_id' => (int) $admin->id,
-            'name' => '企业知识库',
-            'content' => '公司名称：星河智能科技有限公司',
+            'name' => '企业关键词库',
+            'company_name' => '星河智能科技有限公司',
+            'domain_keyword' => 'AI 搜索优化',
+            'status' => 'active',
+            'keyword_count' => 1,
             'created_at' => now(),
+            'updated_at' => now(),
         ]);
 
         $html = $this->actingAs($admin, 'admin')
@@ -160,18 +164,132 @@ class AdminMonitoringCenterPageTest extends TestCase
         $this->assertStringNotContainsString('026-06-17', $headerMeta);
     }
 
+    public function test_enterprise_search_report_uses_diagnosis_brand_and_hides_unavailable_links(): void
+    {
+        config(['geoflow.monitoring_search_report_virtual_data_enabled' => false]);
+
+        [$admin, $site] = $this->createAdminWithSite('monitoring_search_report_links_admin');
+
+        KeywordLibrary::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'Acme keyword library',
+            'company_name' => 'Report Context Brand',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => 'Acme Brand',
+            'platforms' => ['doubao', 'wenxin'],
+            'status' => 'completed',
+            'total_questions' => 2,
+            'completed_questions' => 2,
+            'failed_questions' => 0,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+            'completed_at' => now(),
+        ]);
+
+        $matchedQuestion = BrandDiagnosisQuestion::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'run_id' => (int) $run->id,
+            'question' => 'How is Acme Brand ranked?',
+            'question_type' => 'brand',
+            'sort_order' => 1,
+            'status' => 'completed',
+        ]);
+        $matchedResult = BrandDiagnosisResult::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'run_id' => (int) $run->id,
+            'question_id' => (int) $matchedQuestion->id,
+            'platform' => 'doubao',
+            'answer' => 'Acme Brand appears in this answer.',
+            'brand_mentioned' => true,
+            'mention_count' => 1,
+            'mention_rank' => 1,
+            'sentiment' => 'positive',
+            'status' => 'success',
+            'official_share_url' => 'https://www.doubao.com/thread/acme-share',
+            'checked_at' => now(),
+        ]);
+        BrandDiagnosisBrandMention::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'run_id' => (int) $run->id,
+            'question_id' => (int) $matchedQuestion->id,
+            'result_id' => (int) $matchedResult->id,
+            'platform' => 'doubao',
+            'brand_name' => 'Acme Brand',
+            'mention_count' => 1,
+            'mention_rank' => 1,
+            'sentiment' => 'positive',
+            'source_count' => 0,
+            'is_target_brand' => true,
+        ]);
+
+        $unmatchedQuestion = BrandDiagnosisQuestion::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'run_id' => (int) $run->id,
+            'question' => 'Which service is suitable?',
+            'question_type' => 'brand',
+            'sort_order' => 2,
+            'status' => 'completed',
+        ]);
+        $unmatchedResult = BrandDiagnosisResult::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'run_id' => (int) $run->id,
+            'question_id' => (int) $unmatchedQuestion->id,
+            'platform' => 'wenxin',
+            'answer' => 'This answer does not include the target brand.',
+            'brand_mentioned' => false,
+            'mention_count' => 0,
+            'mention_rank' => 0,
+            'sentiment' => 'neutral',
+            'status' => 'success',
+            'checked_at' => now()->subMinute(),
+        ]);
+
+        $html = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.monitoring-center.index'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertMatchesRegularExpression(
+            '#"id":'.$matchedResult->id.'.*?"question":"How is Acme Brand ranked\\?".*?"target":"Acme Brand".*?"official_url":"https://www.doubao.com/thread/acme-share".*?"snapshot_url":"'.preg_quote(route('admin.snapshot-voucher.show', ['id' => (int) $matchedResult->id]), '#').'"#s',
+            $html
+        );
+        $this->assertMatchesRegularExpression(
+            '#"id":'.$unmatchedResult->id.'.*?"question":"Which service is suitable\\?".*?"target":"Acme Brand".*?"official_url":"".*?"snapshot_url":""#s',
+            $html
+        );
+        $this->assertStringNotContainsString('/brand-diagnosis/snapshot/'.$matchedResult->snapshot_token, $html);
+    }
+
     public function test_monitoring_center_virtual_switch_only_keeps_search_report_static(): void
     {
         config(['geoflow.monitoring_search_report_virtual_data_enabled' => true]);
 
         [$admin, $site] = $this->createAdminWithSite('monitoring_virtual_static_admin');
 
-        KnowledgeBase::query()->create([
+        KeywordLibrary::query()->create([
             'site_id' => (int) $site->id,
             'owner_admin_id' => (int) $admin->id,
-            'name' => 'virtual knowledge',
-            'content' => '公司名称：虚拟搜索报表科技有限公司',
+            'name' => 'virtual keyword library',
+            'company_name' => '虚拟搜索报表科技有限公司',
+            'domain_keyword' => '虚拟搜索报表',
+            'status' => 'active',
+            'keyword_count' => 1,
             'created_at' => now(),
+            'updated_at' => now(),
         ]);
 
         $response = $this->actingAs($admin, 'admin')
@@ -235,12 +353,16 @@ class AdminMonitoringCenterPageTest extends TestCase
 
         [$admin, $site] = $this->createAdminWithSite('monitoring_xueshuyi_mixed_admin');
 
-        KnowledgeBase::query()->create([
+        KeywordLibrary::query()->create([
             'site_id' => (int) $site->id,
             'owner_admin_id' => (int) $admin->id,
-            'name' => '学术易品牌知识库',
-            'content' => '品牌名称：北京学术易科技有限公司',
+            'name' => '学术易品牌关键词库',
+            'company_name' => '北京学术易科技有限公司',
+            'domain_keyword' => '科研论文服务',
+            'status' => 'active',
+            'keyword_count' => 1,
             'created_at' => now(),
+            'updated_at' => now(),
         ]);
 
         $html = $this->actingAs($admin, 'admin')
@@ -292,6 +414,8 @@ class AdminMonitoringCenterPageTest extends TestCase
         $this->assertStringContainsString('snapshotUrl: row.snapshot_url || ""', $html);
         $this->assertStringContainsString('const url = safeUrl(row.snapshotUrl)', $html);
         $this->assertStringContainsString('officialUrl: row.official_url || ""', $html);
+        $this->assertMatchesRegularExpression('/function officialLink\(row\)\s*\{.*?return url\s*\?\s*`<a class="link-btn".*?`\s*:\s*"";/s', $html);
+        $this->assertMatchesRegularExpression('/function snapshotLink\(row\)\s*\{.*?if \(url\) \{.*?return "";/s', $html);
         $this->assertStringNotContainsString('row.related_articles?.[0]?.url', $html);
         $this->assertStringContainsString('officialLink(row)', $html);
         $this->assertStringContainsString('platformLink(row)', $html);
@@ -381,12 +505,16 @@ class AdminMonitoringCenterPageTest extends TestCase
     {
         [$admin, $site] = $this->createAdminWithSite('monitoring_dynamic_industry_admin');
 
-        KnowledgeBase::query()->create([
+        KeywordLibrary::query()->create([
             'site_id' => (int) $site->id,
             'owner_admin_id' => (int) $admin->id,
-            'name' => '企业知识库',
-            'content' => '企业名称：星河智能科技有限公司',
+            'name' => '企业关键词库',
+            'company_name' => '星河智能科技有限公司',
+            'domain_keyword' => '行业竞争力分析',
+            'status' => 'active',
+            'keyword_count' => 1,
             'created_at' => now(),
+            'updated_at' => now(),
         ]);
 
         $html = $this->actingAs($admin, 'admin')
@@ -466,7 +594,7 @@ class AdminMonitoringCenterPageTest extends TestCase
         $this->assertSame('industry', (string) $share->report_type);
         $this->assertSame((int) $site->id, (int) $share->site_id);
         $this->assertSame((int) $admin->id, (int) $share->created_by_admin_id);
-        $this->assertSame('monitoring_share_creator Site', (string) data_get($share->payload, 'context.company_name'));
+        $this->assertSame('monitoring_share_creator', (string) data_get($share->payload, 'context.company_name'));
         $this->assertStringContainsString('/monitoring-report/share/', (string) $response->json('url'));
     }
 

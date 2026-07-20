@@ -161,6 +161,19 @@ class BrandDiagnosisController extends Controller
             ->with('message', '已确认诊断，系统开始调用所选模型抓取数据。');
     }
 
+    public function destroy(int $run): RedirectResponse
+    {
+        $diagnosisRun = $this->diagnosisRunQuery()
+            ->whereKey($run)
+            ->firstOrFail();
+
+        $diagnosisRun->delete();
+
+        return redirect()
+            ->route('admin.brand-diagnosis.index')
+            ->with('message', '品牌诊断记录已删除。');
+    }
+
     public function report(int $run, Request $request): View
     {
         $diagnosisRun = $this->findReportRun($run);
@@ -837,7 +850,6 @@ class BrandDiagnosisController extends Controller
     private function topRowsWithTargetLast(Collection $rows, array $targetRow, string $sortKey): Collection
     {
         $topRows = $rows
-            ->reject(static fn (array $row): bool => (bool) $row['is_target_brand'])
             ->take(10)
             ->values();
         $rankedTargetRow = $rows->firstWhere('is_target_brand', true) ?? $targetRow;
@@ -848,7 +860,9 @@ class BrandDiagnosisController extends Controller
                 : 1;
         }
 
-        return $topRows->push($rankedTargetRow);
+        $targetAlreadyVisible = $topRows->contains(static fn (array $row): bool => (bool) ($row['is_target_brand'] ?? false));
+
+        return $targetAlreadyVisible ? $topRows : $topRows->push($rankedTargetRow);
     }
 
     private function platformLabel(string $platform): string

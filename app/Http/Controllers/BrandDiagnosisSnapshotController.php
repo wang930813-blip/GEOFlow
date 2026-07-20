@@ -14,6 +14,7 @@ class BrandDiagnosisSnapshotController extends Controller
     {
         $result = BrandDiagnosisResult::query()
             ->withoutGlobalScopes(['current_site', 'admin_owner'])
+            ->whereHas('run', fn ($query) => $query->withoutGlobalScopes(['current_site', 'admin_owner']))
             ->where('snapshot_token', $token)
             ->first();
 
@@ -46,7 +47,7 @@ class BrandDiagnosisSnapshotController extends Controller
             'platform_icon' => BrandDiagnosisPlatform::logoUrl($platform),
             'platform_url' => $platformUrl,
             'question' => (string) ($payload['question'] ?? ''),
-            'answer_html' => ArticleHtmlPresenter::markdownToHtml((string) ($payload['answer'] ?? '')),
+            'answer_html' => ArticleHtmlPresenter::markdownToHtml($snapshots->displayAnswer((string) ($payload['answer'] ?? ''))),
             'time' => (string) ($payload['checked_at'] ?? ''),
             'target' => (string) ($payload['brand'] ?? ''),
             'sources' => collect((array) ($payload['sources'] ?? []))
