@@ -375,6 +375,8 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
         Route::prefix('site-settings')->name('site-settings.')->group(function () {
             Route::get('/', [SiteSettingsController::class, 'index'])->name('index');
             Route::post('/', [SiteSettingsController::class, 'update'])->name('update');
+            Route::post('admin-display', [SiteSettingsController::class, 'updateAdminDisplay'])->name('admin-display');
+            Route::post('registration', [SiteSettingsController::class, 'updateRegistration'])->name('registration');
             Route::post('theme', [SiteSettingsController::class, 'updateTheme'])->name('theme');
             Route::post('article-detail-ads', [SiteSettingsController::class, 'updateArticleDetailAds'])->name('ads');
             Route::get('sensitive-words', [SecuritySettingsController::class, 'index'])->name('sensitive-words');

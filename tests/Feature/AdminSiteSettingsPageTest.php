@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Admin;
+use App\Models\PlatformPlan;
 use App\Models\SensitiveWord;
 use App\Models\Site;
 use App\Models\SiteSetting;
@@ -35,7 +36,7 @@ class AdminSiteSettingsPageTest extends TestCase
             ->assertSee('value="'.AdminWeb::basePath().'"', false);
     }
 
-    public function test_super_admin_can_update_admin_display_settings(): void
+    public function test_super_admin_can_update_admin_display_settings_independently(): void
     {
         $this->withoutMiddleware(ValidateCsrfToken::class);
 
@@ -48,15 +49,23 @@ class AdminSiteSettingsPageTest extends TestCase
             'status' => 'active',
         ]);
 
-        $this->actingAs($admin, 'admin')
-            ->get(route('admin.site-settings.index'))
+        $response = $this->actingAs($admin, 'admin')
+            ->get(route('admin.site-settings.index'));
+
+        $response
             ->assertOk()
-            ->assertSee('后台展示文案')
+            ->assertSee('data-open-admin-display-settings', false)
+            ->assertSee('data-open-admin-registration-settings', false)
             ->assertSee('name="admin_quick_start_title"', false)
             ->assertSee('name="media_platform_1_label"', false);
 
+        $this->assertSame(1, substr_count($response->getContent(), 'name="admin_quick_start_title"'));
+        $this->assertSame(1, substr_count($response->getContent(), 'name="media_platform_1_label"'));
+        $this->assertSame(1, substr_count($response->getContent(), 'name="admin_registration_enabled"'));
+        $this->assertSame(1, substr_count($response->getContent(), 'name="admin_registration_experience_plan_id"'));
+
         $this->actingAs($admin, 'admin')
-            ->post(route('admin.site-settings.update'), [
+            ->post(route('admin.site-settings.admin-display'), [
                 'site_name' => 'Frontend Site',
                 'site_subtitle' => '',
                 'site_description' => '',
@@ -137,6 +146,91 @@ class AdminSiteSettingsPageTest extends TestCase
             SiteSetting::withoutGlobalScope('current_site')
                 ->whereNull('site_id')
                 ->whereIn('setting_key', ['admin_quick_start_title', 'media_platform_1_label'])
+                ->exists()
+        );
+    }
+
+    public function test_super_admin_can_update_registration_settings_independently(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+
+        $admin = Admin::query()->create([
+            'username' => 'site_registration_settings_root',
+            'password' => 'secret-123',
+            'email' => 'site-registration-settings-root@example.com',
+            'display_name' => 'Site Registration Settings Root',
+            'role' => 'super_admin',
+            'status' => 'active',
+        ]);
+        $plan = PlatformPlan::query()->create([
+            'name' => 'Registration Trial Plan',
+            'code' => 'registration-trial',
+            'audience' => 'direct',
+            'status' => 'active',
+            'duration_days' => 30,
+            'sort_order' => 10,
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.site-settings.registration'), [
+                'admin_registration_enabled' => '1',
+                'admin_registration_experience_plan_id' => (string) $plan->id,
+            ])
+            ->assertRedirect(route('admin.site-settings.index'));
+
+        $this->assertSame(
+            '1',
+            (string) SiteSetting::withoutGlobalScope('current_site')
+                ->whereNull('site_id')
+                ->where('setting_key', 'admin_registration_enabled')
+                ->value('setting_value')
+        );
+        $this->assertSame(
+            (string) $plan->id,
+            (string) SiteSetting::withoutGlobalScope('current_site')
+                ->whereNull('site_id')
+                ->where('setting_key', 'admin_registration_experience_plan_id')
+                ->value('setting_value')
+        );
+    }
+
+    public function test_site_settings_main_save_does_not_update_admin_display_or_registration_settings(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+
+        $admin = Admin::query()->create([
+            'username' => 'site_settings_root_main_save',
+            'password' => 'secret-123',
+            'email' => 'site-settings-root-main-save@example.com',
+            'display_name' => 'Site Settings Root Main Save',
+            'role' => 'super_admin',
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.site-settings.update'), [
+                'site_name' => 'Frontend Site',
+                'site_subtitle' => '',
+                'site_description' => '',
+                'site_keywords' => '',
+                'copyright_info' => '',
+                'site_logo' => '',
+                'site_favicon' => '',
+                'analytics_code' => '',
+                'seo_title_template' => '{title} - {site_name}',
+                'seo_description_template' => '{description}',
+                'featured_limit' => 6,
+                'per_page' => 12,
+                'admin_base_path' => AdminWeb::basePath(),
+                'admin_quick_start_title' => 'Should Not Save From Main Form',
+                'admin_registration_enabled' => '1',
+            ])
+            ->assertRedirect(route('admin.site-settings.index'));
+
+        $this->assertFalse(
+            SiteSetting::withoutGlobalScope('current_site')
+                ->whereNull('site_id')
+                ->whereIn('setting_key', ['admin_quick_start_title', 'admin_registration_enabled'])
                 ->exists()
         );
     }

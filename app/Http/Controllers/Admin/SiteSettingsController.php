@@ -76,7 +76,6 @@ class SiteSettingsController extends Controller
     {
         $currentAdminBasePath = AdminWeb::basePath();
         $canEditDomainSettings = $this->canEditDomainSettings();
-        $canEditAdminDisplaySettings = auth('admin')->user()?->isSuperAdmin() === true;
         $rules = [
             'site_name' => ['required', 'string', 'max:120'],
             'site_subtitle' => ['nullable', 'string', 'max:255'],
@@ -115,27 +114,6 @@ class SiteSettingsController extends Controller
                 Rule::notIn(AdminBasePathManager::reservedSegments()),
             ],
         ];
-
-        if ($canEditAdminDisplaySettings) {
-            $rules = array_merge($rules, [
-                'admin_quick_start_eyebrow' => ['nullable', 'string', 'max:120'],
-                'admin_quick_start_title' => ['nullable', 'string', 'max:200'],
-                'admin_quick_start_subtitle' => ['nullable', 'string', 'max:500'],
-                'admin_footer_brand' => ['nullable', 'string', 'max:120'],
-                'admin_footer_version' => ['nullable', 'string', 'max:60'],
-                'media_platform_1_label' => ['nullable', 'string', 'max:120'],
-                'media_platform_2_label' => ['nullable', 'string', 'max:120'],
-                'admin_registration_enabled' => ['nullable'],
-                'admin_registration_experience_plan_id' => [
-                    Rule::requiredIf($request->boolean('admin_registration_enabled')),
-                    'nullable',
-                    'integer',
-                    Rule::exists('platform_plans', 'id')->where(function ($query): void {
-                        $query->where('status', 'active')->whereIn('audience', ['direct', 'both']);
-                    }),
-                ],
-            ]);
-        }
 
         $payload = $request->validate($rules, [
             'site_name.required' => __('admin.site_settings.error.site_name_required'),
@@ -206,14 +184,6 @@ class SiteSettingsController extends Controller
             );
         }
 
-        if ($canEditAdminDisplaySettings) {
-            AdminDisplaySettings::update($payload);
-            $this->adminRegistrationSettings->update([
-                'enabled' => $request->boolean('admin_registration_enabled'),
-                'experience_plan_id' => (int) ($payload['admin_registration_experience_plan_id'] ?? 0),
-            ]);
-        }
-
         if ($canEditDomainSettings && $currentSite instanceof Site) {
             Site::query()->whereKey($currentSite->id)->update(['domain' => $publicDomain]);
             $currentSite->forceFill(['domain' => $publicDomain]);
@@ -241,6 +211,49 @@ class SiteSettingsController extends Controller
     /**
      * 保存模板设置。
      */
+    public function updateAdminDisplay(Request $request): RedirectResponse
+    {
+        abort_unless(auth('admin')->user()?->isSuperAdmin() === true, 403);
+
+        $payload = $request->validate([
+            'admin_quick_start_eyebrow' => ['nullable', 'string', 'max:120'],
+            'admin_quick_start_title' => ['nullable', 'string', 'max:200'],
+            'admin_quick_start_subtitle' => ['nullable', 'string', 'max:500'],
+            'admin_footer_brand' => ['nullable', 'string', 'max:120'],
+            'admin_footer_version' => ['nullable', 'string', 'max:60'],
+            'media_platform_1_label' => ['nullable', 'string', 'max:120'],
+            'media_platform_2_label' => ['nullable', 'string', 'max:120'],
+        ]);
+
+        AdminDisplaySettings::update($payload);
+
+        return redirect()->route('admin.site-settings.index')->with('message', __('admin.site_settings.message.saved'));
+    }
+
+    public function updateRegistration(Request $request): RedirectResponse
+    {
+        abort_unless(auth('admin')->user()?->isSuperAdmin() === true, 403);
+
+        $payload = $request->validate([
+            'admin_registration_enabled' => ['nullable'],
+            'admin_registration_experience_plan_id' => [
+                Rule::requiredIf($request->boolean('admin_registration_enabled')),
+                'nullable',
+                'integer',
+                Rule::exists('platform_plans', 'id')->where(function ($query): void {
+                    $query->where('status', 'active')->whereIn('audience', ['direct', 'both']);
+                }),
+            ],
+        ]);
+
+        $this->adminRegistrationSettings->update([
+            'enabled' => $request->boolean('admin_registration_enabled'),
+            'experience_plan_id' => (int) ($payload['admin_registration_experience_plan_id'] ?? 0),
+        ]);
+
+        return redirect()->route('admin.site-settings.index')->with('message', __('admin.site_settings.message.saved'));
+    }
+
     public function updateTheme(Request $request): RedirectResponse
     {
         $selectedTheme = trim((string) $request->input('active_theme', ''));
