@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Admin;
 use App\Support\AdminActivityLogger;
+use App\Support\AdminRegistrationSettings;
 use App\Support\AdminWeb;
 use App\Support\GeoFlow\AdminLoginLockService;
 use Illuminate\Http\RedirectResponse;
@@ -29,6 +30,7 @@ class AdminAuthController extends Controller
 
         return view('admin.auth.login', [
             'adminSiteName' => AdminWeb::siteName(),
+            'registrationAvailable' => app(AdminRegistrationSettings::class)->canRegister(),
         ]);
     }
 

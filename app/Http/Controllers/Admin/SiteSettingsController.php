@@ -3,15 +3,17 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\PlatformPlan;
 use App\Models\Site;
 use App\Models\SiteSetting;
 use App\Support\AdminBasePathManager;
 use App\Support\AdminDisplaySettings;
+use App\Support\AdminRegistrationSettings;
 use App\Support\AdminWeb;
 use App\Support\CurrentSite;
-use App\Support\SiteDomain;
 use App\Support\Site\SiteSettingsBag;
 use App\Support\Site\SiteThemeCatalog;
+use App\Support\SiteDomain;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -27,7 +29,10 @@ use Illuminate\View\View;
  */
 class SiteSettingsController extends Controller
 {
-    public function __construct(private readonly SiteThemeCatalog $siteThemeCatalog) {}
+    public function __construct(
+        private readonly SiteThemeCatalog $siteThemeCatalog,
+        private readonly AdminRegistrationSettings $adminRegistrationSettings
+    ) {}
 
     /**
      * 网站设置页面。
@@ -47,6 +52,15 @@ class SiteSettingsController extends Controller
             'canEditAnalytics' => auth('admin')->user()?->isSuperAdmin() === true,
             'canEditAdminDisplaySettings' => $canEditAdminDisplaySettings,
             'adminDisplaySettings' => AdminDisplaySettings::all(),
+            'registrationSettings' => $this->adminRegistrationSettings->all(),
+            'registrationPlans' => $canEditAdminDisplaySettings
+                ? PlatformPlan::query()
+                    ->where('status', 'active')
+                    ->whereIn('audience', ['direct', 'both'])
+                    ->orderBy('sort_order')
+                    ->orderByDesc('id')
+                    ->get(['id', 'name', 'code', 'duration_days', 'audience'])
+                : collect(),
             'canEditDomainSettings' => $this->canEditDomainSettings(),
             'availableThemes' => $this->siteThemeCatalog->all(),
             'homeCarouselSlides' => $this->parseHomeCarouselSlides((string) ($settings['home_carousel_slides'] ?? '[]')),
@@ -111,6 +125,15 @@ class SiteSettingsController extends Controller
                 'admin_footer_version' => ['nullable', 'string', 'max:60'],
                 'media_platform_1_label' => ['nullable', 'string', 'max:120'],
                 'media_platform_2_label' => ['nullable', 'string', 'max:120'],
+                'admin_registration_enabled' => ['nullable'],
+                'admin_registration_experience_plan_id' => [
+                    Rule::requiredIf($request->boolean('admin_registration_enabled')),
+                    'nullable',
+                    'integer',
+                    Rule::exists('platform_plans', 'id')->where(function ($query): void {
+                        $query->where('status', 'active')->whereIn('audience', ['direct', 'both']);
+                    }),
+                ],
             ]);
         }
 
@@ -185,6 +208,10 @@ class SiteSettingsController extends Controller
 
         if ($canEditAdminDisplaySettings) {
             AdminDisplaySettings::update($payload);
+            $this->adminRegistrationSettings->update([
+                'enabled' => $request->boolean('admin_registration_enabled'),
+                'experience_plan_id' => (int) ($payload['admin_registration_experience_plan_id'] ?? 0),
+            ]);
         }
 
         if ($canEditDomainSettings && $currentSite instanceof Site) {

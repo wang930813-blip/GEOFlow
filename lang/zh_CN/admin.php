@@ -140,9 +140,9 @@ return [
     'login' => [
         'title' => '管理员登录',
         'subtitle' => ':site_name 后台管理系统',
-        'username' => '用户名',
+        'username' => '手机号/账号',
         'password' => '密码',
-        'username_placeholder' => '请输入用户名',
+        'username_placeholder' => '请输入手机号或账号',
         'password_placeholder' => '请输入密码',
         'submit' => '登录',
         'submitting' => '登录中...',

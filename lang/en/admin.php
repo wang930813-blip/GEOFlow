@@ -140,9 +140,9 @@ return [
     'login' => [
         'title' => 'Admin Login',
         'subtitle' => ':site_name Admin Console',
-        'username' => 'Username',
+        'username' => 'Mobile / Account',
         'password' => 'Password',
-        'username_placeholder' => 'Enter username',
+        'username_placeholder' => 'Enter mobile number or account',
         'password_placeholder' => 'Enter password',
         'submit' => 'Sign In',
         'submitting' => 'Signing in...',

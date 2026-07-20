@@ -74,6 +74,12 @@
                 {{ __('admin.login.submit') }}
             </button>
         </form>
+        @if ($registrationAvailable ?? false)
+            <div class="mt-6 border-t border-gray-200 pt-5 text-center text-sm text-gray-600">
+                <span>还没有账号？</span>
+                <a href="{{ route('admin.register') }}" class="font-medium text-blue-600 hover:text-blue-700">注册账号</a>
+            </div>
+        @endif
     </div>
     <div class="text-center mt-6">
         <a href="{{ url('/') }}" class="text-gray-600 hover:text-gray-900 text-sm">{{ __('admin.login.back_home') }}</a>

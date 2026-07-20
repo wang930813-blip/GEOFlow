@@ -5,9 +5,10 @@
 
 use App\Http\Controllers\Admin\AdminActivityLogController;
 use App\Http\Controllers\Admin\AdminAuthController;
-use App\Http\Controllers\Admin\AgentUserController;
+use App\Http\Controllers\Admin\AdminRegistrationController;
 use App\Http\Controllers\Admin\AdminUserController;
 use App\Http\Controllers\Admin\AdminWelcomeController;
+use App\Http\Controllers\Admin\AgentUserController;
 use App\Http\Controllers\Admin\AiModelController;
 use App\Http\Controllers\Admin\AiPromptController;
 use App\Http\Controllers\Admin\AiSpecialPromptController;
@@ -99,6 +100,9 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
     Route::middleware('guest:admin')->group(function () {
         Route::get('login', [AdminAuthController::class, 'showLoginForm'])->name('login');
         Route::post('login', [AdminAuthController::class, 'login'])->name('login.attempt');
+        Route::get('register', [AdminRegistrationController::class, 'show'])->name('register');
+        Route::post('register', [AdminRegistrationController::class, 'store'])->middleware('throttle:5,1')->name('register.store');
+        Route::get('register/captcha', [AdminRegistrationController::class, 'captcha'])->middleware('throttle:20,1')->name('register.captcha');
     });
 
     // Protected admin routes

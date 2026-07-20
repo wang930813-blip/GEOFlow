@@ -153,6 +153,49 @@
                         </div>
                     @endif
 
+                    @if ($canEditAdminDisplaySettings ?? false)
+                        @php
+                            $selectedRegistrationPlanId = (int) old('admin_registration_experience_plan_id', $registrationSettings['experience_plan_id'] ?? 0);
+                            $registrationEnabled = (bool) old('admin_registration_enabled', ($registrationSettings['enabled'] ?? false) ? '1' : '');
+                        @endphp
+                        <div class="rounded-lg border border-emerald-100 bg-emerald-50/60 p-5">
+                            <div class="mb-5">
+                                <h4 class="text-lg font-medium text-gray-900">注册设置</h4>
+                                <p class="mt-1 text-sm text-gray-600">控制后台登录页是否开放用户注册，并指定注册后自动开通的直客体验规格。</p>
+                            </div>
+
+                            <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
+                                <label class="flex min-h-12 items-center gap-3 rounded-lg border border-emerald-100 bg-white px-4 py-3">
+                                    <input type="checkbox" name="admin_registration_enabled" value="1"
+                                           class="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                                           @checked($registrationEnabled)>
+                                    <span>
+                                        <span class="block text-sm font-medium text-gray-900">开放用户注册</span>
+                                        <span class="mt-0.5 block text-xs text-gray-500">关闭后登录页不显示注册入口，注册地址也不能提交。</span>
+                                    </span>
+                                </label>
+
+                                <div>
+                                    <label class="mb-2 block text-sm font-medium text-gray-700">注册体验规格</label>
+                                    <select name="admin_registration_experience_plan_id"
+                                            class="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-emerald-500 focus:ring-emerald-500">
+                                        <option value="">请选择体验规格</option>
+                                        @foreach ($registrationPlans as $plan)
+                                            <option value="{{ $plan->id }}" @selected($selectedRegistrationPlanId === (int) $plan->id)>
+                                                {{ $plan->name }} / {{ $plan->duration_days }} 天
+                                            </option>
+                                        @endforeach
+                                    </select>
+                                    @error('admin_registration_experience_plan_id')
+                                        <p class="mt-1 text-xs text-red-600">{{ $message }}</p>
+                                    @else
+                                        <p class="mt-1 text-xs text-gray-500">只展示启用状态且适用于直客的规格。</p>
+                                    @enderror
+                                </div>
+                            </div>
+                        </div>
+                    @endif
+
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">{{ __('admin.site_settings.field_description') }}</label>
                         <textarea name="site_description" rows="3"
