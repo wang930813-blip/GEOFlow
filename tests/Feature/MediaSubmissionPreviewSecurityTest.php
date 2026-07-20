@@ -188,6 +188,26 @@ class MediaSubmissionPreviewSecurityTest extends TestCase
         $this->get($this->previewUrl($cancelled))->assertNotFound();
     }
 
+    public function test_published_submission_preview_remains_accessible_after_capture_window(): void
+    {
+        config()->set('media_distribution.preview_ttl_minutes', 60);
+        $this->travelTo(now()->startOfMinute());
+        [$article, $resource] = $this->createPreviewContext();
+
+        $published = $this->createPreviewSubmission(
+            $article,
+            $resource,
+            'published',
+            'published-preview-token',
+            '<p>发布后仍可打开的正文</p>',
+            now()->subDays(2)
+        );
+
+        $this->get($this->previewUrl($published))
+            ->assertOk()
+            ->assertSee('发布后仍可打开的正文');
+    }
+
     /**
      * @Name: createSubmissionContext
      *

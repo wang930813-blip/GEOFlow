@@ -26,7 +26,7 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 class MediaSubmissionPreviewController extends Controller
 {
     /** @var list<string> */
-    private const PREVIEWABLE_STATUSES = ['submitting', 'submitted', 'publishing'];
+    private const PREVIEWABLE_STATUSES = ['submitting', 'submitted', 'publishing', 'published'];
 
     /**
      * show
@@ -101,6 +101,10 @@ class MediaSubmissionPreviewController extends Controller
      */
     private function previewExpired(MediaSubmission $submission): bool
     {
+        if ((string) $submission->status === 'published') {
+            return false;
+        }
+
         $referenceTime = $submission->submitted_at ?? $submission->created_at;
         if ($referenceTime === null) {
             return true;
