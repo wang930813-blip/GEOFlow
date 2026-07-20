@@ -1,5 +1,21 @@
 <?php
 
+/**
+ * Created by 开发工具.
+ *
+ * @Date: 2026-07-18
+ *
+ * @Time: 18:15
+ *
+ * @Author: cdkay
+ *
+ * @Email: network@iyuanma.net
+ *
+ * @File： ApiTokenService.php
+ *
+ * @Description: 管理机器 API Token 的签发、解析、状态校验、权限范围和使用时间。
+ */
+
 namespace App\Services\Api;
 
 use App\Exceptions\ApiException;
@@ -11,6 +27,8 @@ use Laravel\Sanctum\PersonalAccessToken;
 
 class ApiTokenService
 {
+    public const MCP_CONNECT_SCOPE = 'mcp:connect';
+
     /**
      * 拉取 Token 列表（按创建时间倒序）。
      *
@@ -131,10 +149,17 @@ class ApiTokenService
 
     /**
      * @param  list<string>  $scopes
+     * @param  bool  $neverExpires  是否明确创建永不过期 Token
      * @return array{token: string, record: array<string, mixed>}
      */
-    public function createToken(string $name, array $scopes, ?int $adminId, ?string $expiresAt = null, ?int $siteId = null): array
-    {
+    public function createToken(
+        string $name,
+        array $scopes,
+        ?int $adminId,
+        ?string $expiresAt = null,
+        ?int $siteId = null,
+        bool $neverExpires = false,
+    ): array {
         $name = trim($name);
         if ($name === '') {
             throw new ApiException('validation_failed', 'Token 名称不能为空', 422, [
@@ -149,7 +174,7 @@ class ApiTokenService
             ]);
         }
 
-        $expires = $this->normalizeExpiresAt($expiresAt);
+        $expires = $neverExpires ? null : $this->normalizeExpiresAt($expiresAt);
         $siteId = $this->normalizeSiteId($siteId);
         $creatorId = $this->normalizeCreatorAdminId($adminId) ?? $this->resolveAuditAdminId($adminId);
         $admin = Admin::query()->whereKey($creatorId)->first();
@@ -160,7 +185,7 @@ class ApiTokenService
         $tokenResult = $admin->createToken(
             $name,
             array_values($scopes),
-            Carbon::parse($expires)
+            $expires !== null ? Carbon::parse($expires) : null
         );
         $model = $tokenResult->accessToken->fresh();
         if (! $model instanceof PersonalAccessToken) {
@@ -230,7 +255,7 @@ class ApiTokenService
      */
     private function normalizeScopes(array $scopes): array
     {
-        $allowed = $this->getAvailableScopes();
+        $allowed = [...$this->getAvailableScopes(), self::MCP_CONNECT_SCOPE];
         $normalized = [];
         foreach ($scopes as $scope) {
             $scope = trim((string) $scope);

@@ -1,0 +1,152 @@
+# GEOFlow ARM production stack. PostgreSQL and Redis are provided by external services.
+name: geoflow-laravel-arm
+
+x-app-dns: &app-dns
+  - ${DOCKER_DNS_1:-223.5.5.5}
+  - ${DOCKER_DNS_2:-119.29.29.29}
+
+x-app-build: &app-build
+  context: .
+  dockerfile: docker/Dockerfile.prod
+  args:
+    COMPOSER_IMAGE: ${ARM_COMPOSER_IMAGE:-composer:2}
+    NODE_IMAGE: ${ARM_NODE_IMAGE:-node:22-alpine}
+    PHP_FPM_IMAGE: ${ARM_PHP_FPM_IMAGE:-php:8.4-fpm-bookworm}
+    COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}
+
+x-app-environment: &app-environment
+  APP_ENV: production
+  APP_DEBUG: "false"
+  AUTO_WAIT_FOR_DB: "true"
+  AUTO_MIGRATE: "false"
+  AUTO_SEED: "false"
+  AUTO_OPTIMIZE: "true"
+
+x-app-volumes: &app-volumes
+  - ./.env:/var/www/html/.env
+  - ./storage:/var/www/html/storage
+
+x-app-common: &app-common
+  platform: ${ARM_DOCKER_PLATFORM:-linux/arm64}
+  image: ${ARM_APP_IMAGE:-geoflow-app-arm:latest}
+  build: *app-build
+  pull_policy: build
+  working_dir: /var/www/html
+  env_file:
+    - ./.env
+  environment: *app-environment
+  dns: *app-dns
+  volumes: *app-volumes
+  extra_hosts:
+    - host.docker.internal:host-gateway
+
+services:
+  init:
+    <<: *app-common
+    container_name: geoflow-arm-init
+    command: ["php", "artisan", "about"]
+    environment:
+      <<: *app-environment
+      AUTO_MIGRATE: "true"
+      AUTO_OPTIMIZE: "false"
+    restart: "no"
+
+  app:
+    <<: *app-common
+    container_name: geoflow-arm-app
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "php-fpm -t"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  web:
+    platform: ${ARM_DOCKER_PLATFORM:-linux/arm64}
+    image: ${ARM_WEB_IMAGE:-geoflow-web-arm:latest}
+    build:
+      context: .
+      dockerfile: docker/nginx/Dockerfile.prod
+      args:
+        NGINX_IMAGE: ${ARM_NGINX_IMAGE:-nginx:1.27-alpine}
+        NODE_IMAGE: ${ARM_NODE_IMAGE:-node:22-alpine}
+    pull_policy: build
+    container_name: geoflow-arm-web
+    ports:
+      - "127.0.0.1:${APP_PORT:-18080}:80"
+    volumes:
+      - ./storage:/var/www/html/storage:ro
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/up || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  queue:
+    <<: *app-common
+    container_name: geoflow-arm-queue
+    command: ["php", "artisan", "queue:work", "redis", "--queue=geoflow,distribution,default", "--sleep=1", "--tries=3", "--timeout=${QUEUE_WORKER_TIMEOUT:-1200}"]
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  scheduler:
+    <<: *app-common
+    container_name: geoflow-arm-scheduler
+    command: ["php", "artisan", "schedule:work"]
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  reverb:
+    <<: *app-common
+    container_name: geoflow-arm-reverb
+    command: ["php", "artisan", "reverb:start", "--host=0.0.0.0", "--port=8080"]
+    ports:
+      - "127.0.0.1:${REVERB_EXPOSE_PORT:-18081}:8080"
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  mcp:
+    platform: ${ARM_DOCKER_PLATFORM:-linux/arm64}
+    image: ${ARM_MCP_IMAGE:-geoflow-mcp-arm:latest}
+    build:
+      context: ./mcp-server
+      dockerfile: Dockerfile
+    pull_policy: build
+    container_name: geoflow-arm-mcp
+    environment:
+      NODE_ENV: production
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 3000
+      MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-localhost,127.0.0.1}
+      MCP_API_TIMEOUT_MS: ${MCP_API_TIMEOUT_MS:-30000}
+      MCP_TRUSTED_PROXIES: ${MCP_TRUSTED_PROXIES:-uniquelocal}
+      MCP_RATE_LIMIT_WINDOW_MS: ${MCP_RATE_LIMIT_WINDOW_MS:-60000}
+      MCP_RATE_LIMIT_IP_MAX: ${MCP_RATE_LIMIT_IP_MAX:-120}
+      MCP_RATE_LIMIT_TOKEN_MAX: ${MCP_RATE_LIMIT_TOKEN_MAX:-60}
+      MCP_REQUIRE_HTTPS: "true"
+      GEOFLOW_API_BASE_URL: http://web/api/v1/
+    ports:
+      - "127.0.0.1:${MCP_EXPOSE_PORT:-18082}:3000"
+    depends_on:
+      web:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped

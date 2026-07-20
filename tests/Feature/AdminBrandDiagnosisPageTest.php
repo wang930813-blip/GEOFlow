@@ -717,7 +717,7 @@ class AdminBrandDiagnosisPageTest extends TestCase
         $this->assertStringNotContainsString('$this->pdf->Circle($scoreX', $serviceSource);
     }
 
-    public function test_materials_entry_moves_from_top_nav_to_user_menu_after_admin_management(): void
+    public function test_super_admin_can_access_materials_entry_from_geo_materials_top_nav(): void
     {
         $admin = Admin::query()->create([
             'username' => 'brand_materials_nav_admin',
@@ -737,19 +737,11 @@ class AdminBrandDiagnosisPageTest extends TestCase
         $desktopNavEnd = strpos($html, '</nav>', $desktopNavStart);
         $desktopNav = substr($html, $desktopNavStart, $desktopNavEnd - $desktopNavStart);
 
-        $this->assertStringNotContainsString(route('admin.materials.index'), $desktopNav);
-        $this->assertStringContainsString(route('admin.materials.index'), $html);
-        $this->assertLessThan(
-            strpos($html, route('admin.materials.index')),
-            strpos($html, route('admin.admin-users.index'))
-        );
-        $this->assertGreaterThan(
-            strpos($html, route('admin.admin-users.index')),
-            strpos($html, route('admin.materials.index'))
-        );
+        $this->assertStringContainsString('GEO 素材', $desktopNav);
+        $this->assertStringContainsString(route('admin.materials.index'), $desktopNav);
     }
 
-    public function test_standard_admin_can_access_materials_entry_from_user_menu(): void
+    public function test_standard_admin_can_access_materials_entry_from_geo_materials_top_nav(): void
     {
         $admin = Admin::query()->create([
             'username' => 'brand_standard_materials_admin',
@@ -768,12 +760,9 @@ class AdminBrandDiagnosisPageTest extends TestCase
         $desktopNavStart = strpos($html, '<nav class="hidden md:flex flex-1 min-w-0 items-center">');
         $desktopNavEnd = strpos($html, '</nav>', $desktopNavStart);
         $desktopNav = substr($html, $desktopNavStart, $desktopNavEnd - $desktopNavStart);
-        $userMenuStart = strpos($html, '<div id="user-menu"');
-        $userMenuEnd = strpos($html, '<form method="POST" action="'.route('admin.logout').'"', $userMenuStart);
-        $userMenu = substr($html, $userMenuStart, $userMenuEnd - $userMenuStart);
 
-        $this->assertStringNotContainsString(route('admin.materials.index'), $desktopNav);
-        $this->assertStringContainsString(route('admin.materials.index'), $userMenu);
+        $this->assertStringContainsString('GEO 素材', $desktopNav);
+        $this->assertStringContainsString(route('admin.materials.index'), $desktopNav);
     }
 
     public function test_brand_diagnosis_sources_are_paginated_with_five_visible_by_default(): void

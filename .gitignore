@@ -18,6 +18,8 @@
 /.zed
 /auth.json
 /node_modules
+/mcp-server/dist
+/mcp-server/node_modules
 /public/build
 /public/hot
 /public/storage

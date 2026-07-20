@@ -10,6 +10,7 @@ return [
     'page_delay_ms' => (int) env('MEDIA_DISTRIBUTION_PAGE_DELAY_MS', 800),
     'page_size' => (int) env('MEDIA_DISTRIBUTION_PAGE_SIZE', 200),
     'max_pages' => (int) env('MEDIA_DISTRIBUTION_MAX_PAGES', 200),
+    'preview_ttl_minutes' => max(1, (int) env('MEDIA_DISTRIBUTION_PREVIEW_TTL_MINUTES', 1440)),
     'package' => [
         'platform_id' => (int) env('MEDIA_DISTRIBUTION_PACKAGE_PLATFORM_ID', 2),
         'title' => (string) env('MEDIA_DISTRIBUTION_PACKAGE_TITLE', '100家特价媒体套餐'),
