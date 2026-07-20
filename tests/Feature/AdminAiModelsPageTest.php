@@ -6,6 +6,8 @@ use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\Prompt;
 use App\Models\Site;
+use App\Models\Task;
+use App\Models\TitleLibrary;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -168,6 +170,49 @@ class AdminAiModelsPageTest extends TestCase
             ->assertSee(__('admin.ai_models.test'));
     }
 
+    public function test_admin_can_delete_model_even_when_tasks_or_title_libraries_reference_it(): void
+    {
+        $admin = $this->createAdmin('ai_model_delete_admin');
+        $site = $this->createSiteForAdmin($admin);
+        $model = $this->createAiModel('chat', $site);
+        $imageModel = $this->createAiModel('image', $site);
+
+        $task = Task::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Task using deleted model',
+            'ai_model_id' => (int) $model->id,
+            'ai_image_model_id' => (int) $imageModel->id,
+            'status' => 'active',
+            'schedule_enabled' => 1,
+        ]);
+        $library = TitleLibrary::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Library using deleted model',
+            'ai_model_id' => (int) $model->id,
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.ai-models.delete', ['modelId' => (int) $model->id]))
+            ->assertRedirect(route('admin.ai-models.index'))
+            ->assertSessionDoesntHaveErrors();
+
+        $this->assertDatabaseMissing('ai_models', [
+            'id' => (int) $model->id,
+        ]);
+        $this->assertNull(Task::query()->whereKey((int) $task->id)->value('ai_model_id'));
+        $this->assertSame((int) $imageModel->id, (int) Task::query()->whereKey((int) $task->id)->value('ai_image_model_id'));
+        $this->assertNull(TitleLibrary::query()->whereKey((int) $library->id)->value('ai_model_id'));
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.ai-models.delete', ['modelId' => (int) $imageModel->id]))
+            ->assertRedirect(route('admin.ai-models.index'))
+            ->assertSessionDoesntHaveErrors();
+
+        $this->assertNull(Task::query()->whereKey((int) $task->id)->value('ai_image_model_id'));
+    }
+
     public function test_admin_can_test_embedding_model_connection(): void
     {
         Http::fake([
@@ -221,8 +266,7 @@ class AdminAiModelsPageTest extends TestCase
         string $username = 'ai_model_admin',
         string $role = 'super_admin',
         ?Admin $creator = null
-    ): Admin
-    {
+    ): Admin {
         return Admin::query()->create([
             'username' => $username,
             'password' => 'secret-123',

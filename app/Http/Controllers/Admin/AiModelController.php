@@ -3,15 +3,17 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\AiModel;
 use App\Models\Admin;
+use App\Models\AiModel;
 use App\Models\Article;
 use App\Models\SiteSetting;
 use App\Models\Task;
+use App\Models\TitleLibrary;
 use App\Support\AdminWeb;
 use App\Support\AiConfigurationScope;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -162,18 +164,31 @@ class AiModelController extends Controller
     public function destroy(int $modelId): RedirectResponse
     {
         $model = $this->managerModelsQuery()->whereKey($modelId)->firstOrFail();
-        $taskCount = Task::query()->withoutGlobalScope('current_site')
-            ->where('ai_model_id', (int) $model->id)
-            ->orWhere('ai_image_model_id', (int) $model->id)
-            ->count();
-        if ($taskCount > 0) {
-            return back()->withErrors(__('admin.ai_models.error.in_use', ['count' => $taskCount]));
-        }
 
-        $model->delete();
-        if ($this->getDefaultEmbeddingModelId() === (int) $model->id) {
-            $this->setDefaultEmbeddingModelId(0);
-        }
+        DB::transaction(function () use ($model): void {
+            $modelId = (int) $model->id;
+
+            Task::query()
+                ->withoutGlobalScope('current_site')
+                ->where('ai_model_id', $modelId)
+                ->update(['ai_model_id' => null]);
+
+            Task::query()
+                ->withoutGlobalScope('current_site')
+                ->where('ai_image_model_id', $modelId)
+                ->update(['ai_image_model_id' => null]);
+
+            TitleLibrary::query()
+                ->withoutGlobalScope('current_site')
+                ->where('ai_model_id', $modelId)
+                ->update(['ai_model_id' => null]);
+
+            $model->delete();
+
+            if ($this->getDefaultEmbeddingModelId() === $modelId) {
+                $this->setDefaultEmbeddingModelId(0);
+            }
+        });
 
         return redirect()->route('admin.ai-models.index')->with('message', __('admin.ai_models.message.delete_success'));
     }
@@ -432,7 +447,7 @@ class AiModelController extends Controller
         ));
     }
 
-    private function managerModelsQuery(): \Illuminate\Database\Eloquent\Builder
+    private function managerModelsQuery(): Builder
     {
         $query = AiModel::query()->withoutGlobalScope('current_site');
         $admin = $this->currentAdmin();
@@ -444,7 +459,7 @@ class AiModelController extends Controller
         return $this->aiConfigurationScope->applyManagerScope($query, $admin, 'ai_models.owner_admin_id');
     }
 
-    private function managerSiteSettingsQuery(): \Illuminate\Database\Eloquent\Builder
+    private function managerSiteSettingsQuery(): Builder
     {
         $query = SiteSetting::query()->withoutGlobalScope('current_site');
         $admin = request()->user('admin');

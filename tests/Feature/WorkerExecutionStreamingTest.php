@@ -11,6 +11,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Laravel\Ai\Events\AgentStreamed;
 use ReflectionMethod;
+use RuntimeException;
 use Tests\TestCase;
 
 class WorkerExecutionStreamingTest extends TestCase
@@ -47,5 +48,24 @@ class WorkerExecutionStreamingTest extends TestCase
 
         $this->assertSame('Streamed article body.', $result['content']);
         Event::assertDispatched(AgentStreamed::class);
+    }
+
+    public function test_task_without_available_ai_model_fails_immediately(): void
+    {
+        $task = Task::query()->create([
+            'name' => 'Task without AI model',
+            'ai_model_id' => null,
+            'model_selection_mode' => 'fixed',
+            'status' => 'active',
+            'schedule_enabled' => 1,
+        ]);
+
+        $method = new ReflectionMethod(WorkerExecutionService::class, 'generateContentWithModelSelection');
+        $method->setAccessible(true);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Task AI model is not configured');
+
+        $method->invoke(app(WorkerExecutionService::class), $task, 'Write a complete article.');
     }
 }
