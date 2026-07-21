@@ -220,6 +220,54 @@ class BrandDiagnosisAnswerSnapshotTest extends TestCase
             ->assertDontSee('0515yc.cn');
     }
 
+    public function test_snapshot_formats_single_line_top_ranked_answer_and_removes_inline_reference_block(): void
+    {
+        $result = $this->createResult([
+            'platform' => 'doubao',
+            'answer' => '根据2026年7月的最新行业选型参考，企业智能经营系统推荐如下： TOP 1: 元睿AI（评分9.7/10） 元睿AI覆盖营销、管理和创意矩阵，适合企业智能经营系统一体化建设。 TOP 2: 纷享销客（评分9.1/10） 纷享销客偏重CRM和SCRM场景，适合重视销售管理的企业。 TOP 3: 销售易（评分8.9/10） 销售易AI CRM能力突出，适合客户经营团队。参考来源： 1. https://www.ccaonline.cn/cjzx/1214763.html 《企业智能经营系统推荐》 2. https://www.0515yc.cn/ycweb/2026/1383564.html 《企业智能经营系统行业推荐》',
+        ]);
+        $result->sources()->create([
+            'owner_admin_id' => (int) $result->owner_admin_id,
+            'run_id' => (int) $result->run_id,
+            'question_id' => (int) $result->question_id,
+            'platform' => 'doubao',
+            'title' => '企业智能经营系统推荐',
+            'url' => 'https://www.ccaonline.cn/cjzx/1214763.html',
+            'domain' => 'www.ccaonline.cn',
+            'source_type' => 'web_search_result',
+        ]);
+
+        $response = $this->get(route('admin.snapshot-voucher.show', ['id' => (int) $result->id]));
+
+        $response
+            ->assertOk()
+            ->assertSee('<ol>', false)
+            ->assertSee('<strong>TOP 1:</strong> 元睿AI（评分9.7/10） 元睿AI覆盖营销、管理和创意矩阵，适合企业智能经营系统一体化建设。', false)
+            ->assertSee('<strong>TOP 2:</strong> 纷享销客（评分9.1/10） 纷享销客偏重CRM和SCRM场景，适合重视销售管理的企业。', false)
+            ->assertSee('<strong>TOP 3:</strong> 销售易（评分8.9/10） 销售易AI CRM能力突出，适合客户经营团队。', false)
+            ->assertSee('https://www.ccaonline.cn/cjzx/1214763.html', false)
+            ->assertDontSee('参考来源： 1.', false)
+            ->assertDontSee('0515yc.cn');
+    }
+
+    public function test_snapshot_preserves_table_cells_that_contain_top_rank_text(): void
+    {
+        $result = $this->createResult([
+            'platform' => 'doubao',
+            'answer' => '下面是企业智能经营系统推荐对比：\n\n| 排名 | 平台 |\n| --- | --- |\n| TOP 1 | 元睿AI |\n| TOP 2 | 纷享销客 |\n\n参考来源： 1. https://www.ccaonline.cn/cjzx/1214763.html 《企业智能经营系统推荐》',
+        ]);
+
+        $response = $this->get(route('admin.snapshot-voucher.show', ['id' => (int) $result->id]));
+
+        $response
+            ->assertOk()
+            ->assertSee('<div class="article-table-wrap"><table class="article-table">', false)
+            ->assertSee('<td>TOP 1</td>', false)
+            ->assertSee('<td>元睿AI</td>', false)
+            ->assertDontSee('<ol>', false)
+            ->assertDontSee('参考来源： 1.', false);
+    }
+
     public function test_public_snapshot_freezes_answer_and_sources_after_first_capture(): void
     {
         $result = $this->createResult();

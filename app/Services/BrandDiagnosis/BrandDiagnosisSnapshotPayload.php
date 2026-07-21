@@ -269,6 +269,7 @@ final class BrandDiagnosisSnapshotPayload
         $answer = $this->stripInlineReferenceBlock($answer);
         $answer = preg_replace("/\n{3,}/", "\n\n", $answer) ?? $answer;
         $answer = $this->formatSingleLineNumberedAnswer($answer);
+        $answer = $this->formatSingleLineTopRankedAnswer($answer);
 
         return trim($answer);
     }
@@ -294,16 +295,11 @@ final class BrandDiagnosisSnapshotPayload
 
     private function formatSingleLineNumberedAnswer(string $answer): string
     {
-        $trimmed = trim($answer);
-        if (
-            $trimmed === ''
-            || str_contains($trimmed, "\n")
-            || $this->containsDisplayTable($trimmed)
-            || $this->containsCodeFence($trimmed)
-        ) {
+        if (! $this->canFormatSingleLineMarkers($answer)) {
             return $answer;
         }
 
+        $trimmed = trim($answer);
         $compact = preg_replace('/[ \t\x{00A0}]+/u', ' ', $trimmed) ?? $trimmed;
         $count = preg_match_all('/(?:^|\s)(\d{1,2})[\.、．]\s+(?=\S)/u', $compact, $matches, PREG_OFFSET_CAPTURE);
         if ($count === false || $count < 2) {
@@ -358,6 +354,79 @@ final class BrandDiagnosisSnapshotPayload
         }
 
         return implode("\n", $lines);
+    }
+
+    private function formatSingleLineTopRankedAnswer(string $answer): string
+    {
+        if (! $this->canFormatSingleLineMarkers($answer)) {
+            return $answer;
+        }
+
+        $trimmed = trim($answer);
+        $compact = preg_replace('/[ \t\x{00A0}]+/u', ' ', $trimmed) ?? $trimmed;
+        $count = preg_match_all('/(?:^|\s)(TOP)\s*(\d{1,2})\s*[：:]\s*/iu', $compact, $matches, PREG_OFFSET_CAPTURE);
+        if ($count === false || $count < 2) {
+            return $answer;
+        }
+
+        $numbers = collect($matches[2])
+            ->map(static fn (array $match): int => (int) $match[0])
+            ->values();
+        if ((int) $numbers->first() !== 1) {
+            return $answer;
+        }
+
+        foreach ($numbers as $index => $number) {
+            if ($index > 0 && (int) $number !== (int) $numbers[$index - 1] + 1) {
+                return $answer;
+            }
+        }
+
+        $markers = collect($matches[0])
+            ->map(static fn (array $match): array => [
+                'offset' => (int) $match[1],
+                'length' => strlen((string) $match[0]),
+            ])
+            ->values();
+        $items = [];
+        foreach ($markers as $index => $marker) {
+            $start = (int) $marker['offset'] + (int) $marker['length'];
+            $end = isset($markers[$index + 1])
+                ? (int) $markers[$index + 1]['offset']
+                : strlen($compact);
+            $item = trim(substr($compact, $start, $end - $start));
+            if ($item === '') {
+                return $answer;
+            }
+            $items[] = '**TOP '.($index + 1).':** '.$item;
+        }
+
+        if (count($items) < 2) {
+            return $answer;
+        }
+
+        $lines = [];
+        $prefix = trim(substr($compact, 0, (int) $markers[0]['offset']));
+        if ($prefix !== '') {
+            $lines[] = $prefix;
+            $lines[] = '';
+        }
+
+        foreach ($items as $index => $item) {
+            $lines[] = ($index + 1).'. '.$item;
+        }
+
+        return implode("\n", $lines);
+    }
+
+    private function canFormatSingleLineMarkers(string $answer): bool
+    {
+        $trimmed = trim($answer);
+
+        return $trimmed !== ''
+            && ! str_contains($trimmed, "\n")
+            && ! $this->containsDisplayTable($trimmed)
+            && ! $this->containsCodeFence($trimmed);
     }
 
     private function containsDisplayTable(string $answer): bool
