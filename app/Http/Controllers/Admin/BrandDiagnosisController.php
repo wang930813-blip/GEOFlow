@@ -9,14 +9,16 @@ use App\Services\BrandDiagnosis\BrandDiagnosisLimitExceededException;
 use App\Services\BrandDiagnosis\BrandDiagnosisPdfService;
 use App\Services\BrandDiagnosis\BrandDiagnosisPlatform;
 use App\Services\BrandDiagnosis\BrandDiagnosisRunService;
+use App\Services\BrandDiagnosis\BrandDiagnosisSnapshotPayload;
 use App\Services\BrandDiagnosis\BrandEntityResolver;
 use App\Support\AdminWeb;
 use App\Support\CurrentSite;
+use App\Support\Site\ArticleHtmlPresenter;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Response;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
@@ -28,6 +30,7 @@ class BrandDiagnosisController extends Controller
     public function __construct(
         private readonly BrandDiagnosisRunService $runService,
         private readonly BrandDiagnosisPdfService $pdfService,
+        private readonly BrandDiagnosisSnapshotPayload $snapshotPayload,
         private readonly BrandEntityResolver $brandEntityResolver
     ) {}
 
@@ -679,7 +682,7 @@ class BrandDiagnosisController extends Controller
                             ])
                             ->values()
                             ->all();
-                        $answer = (string) ($result->answer ?? '');
+                        $answer = $this->snapshotPayload->displayAnswer((string) ($result->answer ?? ''));
                         $status = (string) ($result->status ?? $question->status);
                         $platformKey = (string) $result->platform;
                         $officialShareUrl = trim((string) ($result->official_share_url ?? ''));
@@ -694,6 +697,7 @@ class BrandDiagnosisController extends Controller
                             'visible_brands' => array_slice($brands, 0, 4),
                             'hidden_brand_count' => max(0, count($brands) - 4),
                             'answer' => $answer,
+                            'answer_html' => $answer !== '' ? ArticleHtmlPresenter::markdownToHtml($answer) : '',
                             'status' => $status,
                             'sources' => $sources,
                             'snapshot_url' => $status === 'success'
@@ -757,6 +761,7 @@ class BrandDiagnosisController extends Controller
                 $aliases = $group
                     ->flatMap(function ($mention): array {
                         $meta = (array) ($mention->meta ?? []);
+
                         return array_merge(
                             [$mention->brand_name],
                             (array) ($meta['aliases'] ?? [])

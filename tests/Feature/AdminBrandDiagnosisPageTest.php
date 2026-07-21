@@ -5,7 +5,9 @@ namespace Tests\Feature;
 use App\Models\Admin;
 use App\Models\BrandDiagnosisRun;
 use App\Models\Site;
+use App\Services\BrandDiagnosis\BrandDiagnosisPdfService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use ReflectionMethod;
 use Tests\TestCase;
 
 class AdminBrandDiagnosisPageTest extends TestCase
@@ -586,6 +588,54 @@ class AdminBrandDiagnosisPageTest extends TestCase
             ->assertSee('data-report-section', false);
     }
 
+    public function test_brand_diagnosis_report_page_renders_clean_markdown_answers_without_internal_json_payload(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('brand_report_markdown_answer_admin');
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => '元睿AI',
+            'platforms' => ['doubao'],
+            'status' => 'completed',
+            'total_questions' => 1,
+            'completed_questions' => 1,
+            'failed_questions' => 0,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+        ]);
+        $question = $run->questions()->create([
+            'site_id' => (int) $site->id,
+            'question' => '企业智能经营系统推荐',
+            'question_type' => '选择',
+            'sort_order' => 1,
+            'status' => 'completed',
+        ]);
+        $question->results()->create([
+            'site_id' => (int) $site->id,
+            'run_id' => (int) $run->id,
+            'platform' => 'doubao',
+            'answer' => "根据公开资料，推荐如下：\n\n**TOP 1: 元睿AI（评分9.7/10）** 元睿AI覆盖营销、管理和创意矩阵。\n\n| 平台 | 评分 |\n| --- | --- |\n| 元睿AI | 9.7 |\n\", \"brand_mentions\": [{\"brand\":\"元睿AI\",\"mention_count\":1,\"mention_rank\":1,\"sentiment\":\"positive\",\"evidence\":\"内部结构化字段不应展示\"}]}",
+            'brand_mentioned' => true,
+            'mention_count' => 1,
+            'mention_rank' => 1,
+            'sentiment' => 'positive',
+            'status' => 'success',
+            'checked_at' => now(),
+        ]);
+
+        $response = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.brand-diagnosis.report', ['run' => $run->id]));
+
+        $response
+            ->assertOk()
+            ->assertSee('<strong>TOP 1: 元睿AI（评分9.7/10）</strong>', false)
+            ->assertSee('<div class="article-table-wrap"><table class="article-table">', false)
+            ->assertSee('<td>元睿AI</td>', false)
+            ->assertDontSee('"brand_mentions"', false)
+            ->assertDontSee('内部结构化字段不应展示');
+    }
+
     public function test_brand_diagnosis_report_legacy_print_mode_redirects_to_server_pdf_download(): void
     {
         [$admin, $site] = $this->createAdminWithSite('brand_report_print_admin');
@@ -703,6 +753,32 @@ class AdminBrandDiagnosisPageTest extends TestCase
         $this->assertStringNotContainsString('诊断状态', $serviceSource);
         $this->assertStringNotContainsString("view('admin.brand-diagnosis.pdf'", $serviceSource);
         $this->assertStringNotContainsString('writeHTML', $serviceSource);
+    }
+
+    public function test_brand_diagnosis_pdf_renderer_detects_png_alpha_channel_before_drawing_logos(): void
+    {
+        $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/l2pK2wAAAABJRU5ErkJggg==');
+        $path = storage_path('framework/testing-alpha-logo.png');
+        file_put_contents($path, $png);
+
+        try {
+            $method = new ReflectionMethod(BrandDiagnosisPdfService::class, 'pngHasAlphaChannel');
+            $method->setAccessible(true);
+
+            $this->assertTrue($method->invoke(app(BrandDiagnosisPdfService::class), $path));
+        } finally {
+            @unlink($path);
+        }
+    }
+
+    public function test_production_dockerfile_installs_gd_for_tcpdf_png_alpha_support(): void
+    {
+        $dockerfile = file_get_contents(base_path('docker/Dockerfile.prod'));
+
+        $this->assertIsString($dockerfile);
+        $this->assertStringContainsString('libpng-dev', $dockerfile);
+        $this->assertStringContainsString('docker-php-ext-configure gd', $dockerfile);
+        $this->assertStringContainsString('gd \\', $dockerfile);
     }
 
     public function test_brand_diagnosis_pdf_hero_reserves_score_area_for_long_brand_names(): void

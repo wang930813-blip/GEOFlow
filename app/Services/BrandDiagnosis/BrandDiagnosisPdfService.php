@@ -9,8 +9,11 @@ use TCPDF;
 class BrandDiagnosisPdfService
 {
     private const LEFT = 18.0;
+
     private const TOP = 16.0;
+
     private const WIDTH = 174.0;
+
     private const BOTTOM = 278.0;
 
     private TCPDF $pdf;
@@ -409,9 +412,34 @@ class BrandDiagnosisPdfService
             return false;
         }
 
+        if ($this->pngHasAlphaChannel($path) && ! $this->canTcpdfHandlePngAlpha()) {
+            return false;
+        }
+
         $this->pdf->Image($path, $x, $y, $size, $size);
 
         return true;
+    }
+
+    private function canTcpdfHandlePngAlpha(): bool
+    {
+        return extension_loaded('gd') || extension_loaded('imagick');
+    }
+
+    private function pngHasAlphaChannel(string $path): bool
+    {
+        if (strtolower(pathinfo($path, PATHINFO_EXTENSION)) !== 'png') {
+            return false;
+        }
+
+        $header = file_get_contents($path, false, null, 0, 65536);
+        if (! is_string($header) || strlen($header) < 29 || ! str_starts_with($header, "\x89PNG\r\n\x1a\n")) {
+            return false;
+        }
+
+        $colorType = ord($header[25]);
+
+        return in_array($colorType, [4, 6], true) || str_contains($header, 'tRNS');
     }
 
     private function pill(string $text, float $x, float $y, float $w, array $fill = [241, 245, 249], array $color = [71, 85, 105]): void

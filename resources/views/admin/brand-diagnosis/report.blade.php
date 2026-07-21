@@ -90,6 +90,78 @@
                 text-decoration: none !important;
             }
         }
+
+        .diagnosis-answer :where(p, ul, ol, blockquote, pre, .article-table-wrap) {
+            margin: 0 0 0.875rem;
+        }
+
+        .diagnosis-answer :where(h2, h3, h4) {
+            margin: 1.25rem 0 0.5rem;
+            font-weight: 700;
+            line-height: 1.45;
+            color: #0f172a;
+        }
+
+        .diagnosis-answer ul,
+        .diagnosis-answer ol {
+            padding-left: 1.45rem;
+        }
+
+        .diagnosis-answer li {
+            margin: 0.25rem 0;
+        }
+
+        .diagnosis-answer blockquote {
+            border-left: 4px solid #fed7aa;
+            background: #fff7ed;
+            padding: 0.5rem 0.875rem;
+            color: #475569;
+        }
+
+        .diagnosis-answer code {
+            border-radius: 0.25rem;
+            background: #f1f5f9;
+            padding: 0.1rem 0.25rem;
+            font-size: 0.92em;
+        }
+
+        .diagnosis-answer pre {
+            overflow-x: auto;
+            border-radius: 0.5rem;
+            background: #0f172a;
+            color: #f8fafc;
+            padding: 0.875rem;
+        }
+
+        .diagnosis-answer pre code {
+            background: transparent;
+            color: inherit;
+            padding: 0;
+        }
+
+        .diagnosis-answer .article-table-wrap {
+            overflow-x: auto;
+        }
+
+        .diagnosis-answer .article-table {
+            width: 100%;
+            min-width: 520px;
+            border-collapse: collapse;
+            font-size: 0.875rem;
+        }
+
+        .diagnosis-answer .article-table th,
+        .diagnosis-answer .article-table td {
+            border: 1px solid #e2e8f0;
+            padding: 0.5rem 0.75rem;
+            text-align: left;
+            vertical-align: top;
+        }
+
+        .diagnosis-answer .article-table th {
+            background: #f8fafc;
+            font-weight: 700;
+        }
     </style>
 </head>
 <body class="report-page bg-slate-100 text-slate-900 antialiased" data-auto-print="{{ $autoPrint ? '1' : '0' }}">
@@ -399,7 +471,13 @@
                                     @endif
                                 </div>
                             </div>
-                            <p class="whitespace-pre-wrap text-sm leading-7 text-slate-700">{{ $conversation['answer'] ?: '暂无回答内容。' }}</p>
+                            <div class="diagnosis-answer text-sm leading-7 text-slate-700">
+                                @if (! empty($conversation['answer_html']))
+                                    {!! $conversation['answer_html'] !!}
+                                @else
+                                    <p>暂无回答内容。</p>
+                                @endif
+                            </div>
                             <div class="mt-4 flex flex-wrap items-center gap-2">
                                 @if (! empty($conversation['snapshot_url']))
                                     <a href="{{ $conversation['snapshot_url'] }}" target="_blank" rel="noopener noreferrer" class="inline-flex h-9 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 hover:border-orange-200 hover:text-orange-700">
