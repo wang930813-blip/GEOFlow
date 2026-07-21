@@ -160,6 +160,66 @@ class BrandDiagnosisAnswerSnapshotTest extends TestCase
             ->assertDontSee('"sentiment"', false);
     }
 
+    public function test_snapshot_formats_single_line_numbered_answer_and_removes_inline_reference_block(): void
+    {
+        $result = $this->createResult([
+            'platform' => 'doubao',
+            'answer' => '2026年企业智能经营系统行业的推荐可以从业务场景覆盖度、数据打通能力、AI落地适配性几个核心维度进行评估，主流推荐如下： 1. 元睿AI：综合评分表现突出，覆盖营销、管理和创意矩阵。 2. 用友BIP：更适配大型企业、集团型组织的复杂业务场景。参考来源： 1. https://www.ccaonline.cn/cjzx/1214763.html 《企业智能经营系统推荐》 2. https://www.0515yc.cn/ycweb/2026/1383564.html 《企业智能经营系统行业推荐》',
+        ]);
+        $result->sources()->create([
+            'owner_admin_id' => (int) $result->owner_admin_id,
+            'run_id' => (int) $result->run_id,
+            'question_id' => (int) $result->question_id,
+            'platform' => 'doubao',
+            'title' => '企业智能经营系统推荐',
+            'url' => 'https://www.ccaonline.cn/cjzx/1214763.html',
+            'domain' => 'www.ccaonline.cn',
+            'source_type' => 'web_search_result',
+        ]);
+
+        $response = $this->get(route('admin.snapshot-voucher.show', ['id' => (int) $result->id]));
+
+        $response
+            ->assertOk()
+            ->assertSee('<ol>', false)
+            ->assertSee('<li>元睿AI：综合评分表现突出，覆盖营销、管理和创意矩阵。</li>', false)
+            ->assertSee('<li>用友BIP：更适配大型企业、集团型组织的复杂业务场景。</li>', false)
+            ->assertSee('企业智能经营系统推荐')
+            ->assertSee('https://www.ccaonline.cn/cjzx/1214763.html', false)
+            ->assertDontSee('参考来源： 1.', false)
+            ->assertDontSee('0515yc.cn');
+    }
+
+    public function test_snapshot_preserves_escaped_markdown_table_when_removing_inline_reference_block(): void
+    {
+        $result = $this->createResult([
+            'platform' => 'doubao',
+            'answer' => '下面是企业智能经营系统推荐对比：\n\n| 平台 | 适用场景 |\n| --- | --- |\n| 元睿AI | 企业智能经营系统一体化推荐 |\n| 用友BIP | 大型企业经营管理 |\n\n参考来源： 1. https://www.ccaonline.cn/cjzx/1214763.html 《企业智能经营系统推荐》 2. https://www.0515yc.cn/ycweb/2026/1383564.html 《企业智能经营系统行业推荐》',
+        ]);
+        $result->sources()->create([
+            'owner_admin_id' => (int) $result->owner_admin_id,
+            'run_id' => (int) $result->run_id,
+            'question_id' => (int) $result->question_id,
+            'platform' => 'doubao',
+            'title' => '企业智能经营系统推荐',
+            'url' => 'https://www.ccaonline.cn/cjzx/1214763.html',
+            'domain' => 'www.ccaonline.cn',
+            'source_type' => 'web_search_result',
+        ]);
+
+        $response = $this->get(route('admin.snapshot-voucher.show', ['id' => (int) $result->id]));
+
+        $response
+            ->assertOk()
+            ->assertSee('<div class="article-table-wrap"><table class="article-table">', false)
+            ->assertSee('<td>元睿AI</td>', false)
+            ->assertSee('<td>企业智能经营系统一体化推荐</td>', false)
+            ->assertSee('https://www.ccaonline.cn/cjzx/1214763.html', false)
+            ->assertDontSee('<ol>', false)
+            ->assertDontSee('参考来源： 1.', false)
+            ->assertDontSee('0515yc.cn');
+    }
+
     public function test_public_snapshot_freezes_answer_and_sources_after_first_capture(): void
     {
         $result = $this->createResult();

@@ -206,8 +206,8 @@ final class BrandDiagnosisSnapshotPayload
             || str_ends_with($trimmedPrefix, '。",')
             || str_ends_with($trimmedPrefix, '！",')
             || str_ends_with($trimmedPrefix, '？",')
-            || str_ends_with($trimmedPrefix, '.',)
-            || str_ends_with($trimmedPrefix, '."',);
+            || str_ends_with($trimmedPrefix, '.')
+            || str_ends_with($trimmedPrefix, '."');
     }
 
     private function extractJsonArrayAt(string $text, int $start): string
@@ -265,8 +265,109 @@ final class BrandDiagnosisSnapshotPayload
     private function normalizeDisplayAnswer(string $answer): string
     {
         $answer = str_replace(["\r\n", "\r"], "\n", $answer);
+        $answer = $this->normalizeEscapedLineBreaks($answer);
+        $answer = $this->stripInlineReferenceBlock($answer);
         $answer = preg_replace("/\n{3,}/", "\n\n", $answer) ?? $answer;
+        $answer = $this->formatSingleLineNumberedAnswer($answer);
 
         return trim($answer);
+    }
+
+    private function normalizeEscapedLineBreaks(string $answer): string
+    {
+        if (str_contains($answer, "\n") || (! str_contains($answer, '\\n') && ! str_contains($answer, '\\r'))) {
+            return $answer;
+        }
+
+        return $this->unescapeJsonStringFragment($answer);
+    }
+
+    private function stripInlineReferenceBlock(string $answer): string
+    {
+        $pattern = '/(?:[【\[]\s*)?(?:参考来源|参考资料|引用来源|引用资料|数据来源|资料来源|参考链接|References?|Sources?)(?:\s*[】\]])?\s*[：:]\s*.*https?:\/\/\S+/isu';
+        if (preg_match($pattern, $answer, $matches, PREG_OFFSET_CAPTURE) !== 1) {
+            return $answer;
+        }
+
+        return rtrim(substr($answer, 0, (int) $matches[0][1]));
+    }
+
+    private function formatSingleLineNumberedAnswer(string $answer): string
+    {
+        $trimmed = trim($answer);
+        if (
+            $trimmed === ''
+            || str_contains($trimmed, "\n")
+            || $this->containsDisplayTable($trimmed)
+            || $this->containsCodeFence($trimmed)
+        ) {
+            return $answer;
+        }
+
+        $compact = preg_replace('/[ \t\x{00A0}]+/u', ' ', $trimmed) ?? $trimmed;
+        $count = preg_match_all('/(?:^|\s)(\d{1,2})[\.、．]\s+(?=\S)/u', $compact, $matches, PREG_OFFSET_CAPTURE);
+        if ($count === false || $count < 2) {
+            return $answer;
+        }
+
+        $numbers = collect($matches[1])
+            ->map(static fn (array $match): int => (int) $match[0])
+            ->values();
+        if ((int) $numbers->first() !== 1) {
+            return $answer;
+        }
+
+        foreach ($numbers as $index => $number) {
+            if ($index > 0 && (int) $number !== (int) $numbers[$index - 1] + 1) {
+                return $answer;
+            }
+        }
+
+        $markers = collect($matches[0])
+            ->map(static fn (array $match): array => [
+                'offset' => (int) $match[1],
+                'length' => strlen((string) $match[0]),
+            ])
+            ->values();
+        $items = [];
+        foreach ($markers as $index => $marker) {
+            $start = (int) $marker['offset'] + (int) $marker['length'];
+            $end = isset($markers[$index + 1])
+                ? (int) $markers[$index + 1]['offset']
+                : strlen($compact);
+            $item = trim(substr($compact, $start, $end - $start));
+            if ($item === '') {
+                return $answer;
+            }
+            $items[] = $item;
+        }
+
+        if (count($items) < 2) {
+            return $answer;
+        }
+
+        $lines = [];
+        $prefix = trim(substr($compact, 0, (int) $markers[0]['offset']));
+        if ($prefix !== '') {
+            $lines[] = $prefix;
+            $lines[] = '';
+        }
+
+        foreach ($items as $index => $item) {
+            $lines[] = ($index + 1).'. '.$item;
+        }
+
+        return implode("\n", $lines);
+    }
+
+    private function containsDisplayTable(string $answer): bool
+    {
+        return preg_match('/<\/?\s*(?:table|thead|tbody|tr|td|th)\b/iu', $answer) === 1
+            || preg_match('/(?:^|\n)\s*\|?.+\|.+\n\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*(?=\n|$)/u', $answer) === 1;
+    }
+
+    private function containsCodeFence(string $answer): bool
+    {
+        return preg_match('/(^|\n)[ ]{0,3}(`{3,}|~{3,})/u', $answer) === 1;
     }
 }
