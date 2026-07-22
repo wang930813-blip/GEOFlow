@@ -296,6 +296,17 @@
                                 <div class="rounded-lg border border-slate-200 bg-orange-50/40 px-3 py-2 text-xs text-gray-600">
                                     记录 #{{ $record['id'] }} 当前状态：{{ $record['status'] }}。诊断完成后会展示所选模型真实联网回答和引用来源。
                                 </div>
+                                @if (trim((string) ($record['brand_profile'] ?? '')) !== '')
+                                    <section class="mt-3 rounded-lg border border-blue-100 bg-blue-50/60 px-4 py-3">
+                                        <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                            <h3 class="text-sm font-semibold text-gray-900">品牌介绍</h3>
+                                            @if (trim((string) ($record['brand_profile_model'] ?? '')) !== '')
+                                                <span class="text-xs text-blue-700">来源：{{ $record['brand_profile_model'] }}</span>
+                                            @endif
+                                        </div>
+                                        <p class="mt-2 whitespace-pre-line text-sm leading-6 text-gray-700">{{ $record['brand_profile'] }}</p>
+                                    </section>
+                                @endif
 
                         <form method="POST" action="{{ route('admin.brand-diagnosis.confirm', ['run' => $record['id']]) }}" class="mt-5 rounded-lg border border-slate-200 bg-white p-4" data-confirm-diagnosis-form>
                             @csrf
@@ -317,9 +328,19 @@
                             <div class="grid gap-3 lg:grid-cols-2">
                                 @forelse ($recordQuestions as $question)
                                     <label class="block rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                        @php
+                                            $coreTerm = trim((string) ($question['core_term'] ?? ''));
+                                            $questionType = trim((string) ($question['type'] ?? ''));
+                                        @endphp
                                         <span class="mb-2 flex items-center gap-2 text-xs font-medium text-slate-600">
                                             <span class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-[11px] font-bold text-white">{{ $question['rank'] }}</span>
-                                            <span class="rounded bg-orange-50 px-1.5 py-0.5 text-[11px] text-orange-700">{{ $question['type'] }}</span>
+                                            @if ($coreTerm !== '')
+                                                <span class="inline-flex max-w-[12rem] items-center truncate rounded bg-blue-50 px-1.5 py-0.5 text-[11px] font-medium text-blue-700" title="{{ $coreTerm }}">{{ $coreTerm }}</span>
+                                                @if ($questionType !== '')
+                                                    <span class="text-[11px] text-slate-400">+</span>
+                                                    <span class="inline-flex max-w-[10rem] items-center truncate rounded bg-orange-50 px-1.5 py-0.5 text-[11px] font-medium text-orange-700" title="{{ $questionType }}">{{ $questionType }}</span>
+                                                @endif
+                                            @endif
                                         </span>
                                         <textarea
                                             name="questions[{{ $question['id'] }}]"

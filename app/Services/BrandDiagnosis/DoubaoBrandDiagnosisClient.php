@@ -11,87 +11,80 @@ use Throwable;
 class DoubaoBrandDiagnosisClient
 {
     /**
-     * @return list<array{question:string,type:string}>
+     * @return list<array{question:string,type:string,core_term:string}>
      */
     public function generateQuestions(string $brandName, int $count): array
     {
-        return $this->generateCandidateQuestions($brandName, $count, 'doubao');
+        return $this->generateCandidateQuestions($brandName, $count, 'doubao', '');
     }
 
     /**
      * @param  list<string>  $platforms
-     * @return list<array{question:string,type:string}>
+     * @param  list<string>  $brandCoreTerms
+     * @return list<array{question:string,type:string,core_term:string}>
      */
-    public function generateQuestionPool(string $brandName, int $count, array $platforms): array
+    public function generateQuestionPool(string $brandName, int $count, array $platforms, string $brandProfile = '', array $brandCoreTerms = []): array
     {
         $brandName = trim($brandName);
         $count = max(1, $count);
-        $platforms = collect($platforms)
-            ->map(fn (mixed $platform): string => $this->normalizePlatform((string) $platform))
-            ->unique()
-            ->values()
-            ->all();
-        if ($platforms === []) {
-            $platforms = ['doubao'];
+        $coreTerms = $this->normalizeBrandCoreTerms($brandCoreTerms, $brandName, 5);
+        if ($coreTerms === []) {
+            $coreTerms = $this->extractBrandCoreTerms($brandName, $brandProfile, 5);
         }
 
-        $candidates = [];
-        $platformErrors = [];
-        foreach ($platforms as $platform) {
-            try {
-                foreach ($this->generateCandidateQuestions($brandName, $count, $platform) as $question) {
-                    $candidates[] = [
-                        'question' => $question['question'],
-                        'type' => $question['type'],
-                        'platform' => $platform,
-                    ];
-                }
-            } catch (Throwable $exception) {
-                $platformErrors[$platform] = $exception->getMessage();
-            }
-        }
-
-        $candidates = collect($candidates)
-            ->filter(static fn (array $item): bool => trim((string) $item['question']) !== '')
-            ->unique(static fn (array $item): string => mb_strtolower(trim((string) $item['question']), 'UTF-8'))
-            ->values()
-            ->all();
-
-        if (count($candidates) < $count) {
-            $errorSummary = collect($platformErrors)
-                ->map(fn (string $message, string $platform): string => $this->platformLabel($platform).': '.$message)
-                ->implode('；');
-
-            throw new RuntimeException('品牌诊断问题候选不足，请稍后重试。'.($errorSummary !== '' ? ' '.$errorSummary : ''));
-        }
-
-        try {
-            $selectionPlatform = $platforms[0] ?? 'doubao';
-            $response = $this->postResponses($this->buildQuestionSelectionPrompt($brandName, $count, $candidates), $selectionPlatform);
-            $questions = $this->parseQuestions($this->extractText($response));
-            $questions = $this->preferNaturalQuestions($questions, $candidates, $brandName, $count, false);
-        } catch (Throwable) {
-            $questions = $this->fallbackQuestionsFromCandidates($candidates, $brandName, $count);
-        }
-
-        if (count($questions) < $count) {
-            throw new RuntimeException('品牌诊断问题精选不足，请稍后重试。');
-        }
-
-        return array_slice($questions, 0, $count);
+        return $this->generateQuestionsFromCoreTerms($brandName, $count, $brandProfile, $coreTerms);
     }
 
     /**
-     * @param  list<array{question:string,type:string,platform?:string}>  $candidates
-     * @return list<array{question:string,type:string}>
+     * @return list<string>
      */
-    private function fallbackQuestionsFromCandidates(array $candidates, string $brandName, int $count): array
+    public function extractBrandCoreTerms(string $brandName, string $brandProfile, int $count = 5): array
     {
-        return array_slice(
-            $this->preferNaturalQuestions($candidates, $candidates, $brandName, $count, false),
-            0,
-            $count
+        $brandName = trim($brandName);
+        $brandProfile = trim($brandProfile);
+        $count = max(1, $count);
+        if ($brandProfile === '') {
+            throw new RuntimeException('品牌介绍为空，无法提取品牌核心词。');
+        }
+
+        $response = $this->postResponses($this->buildBrandCoreTermsPrompt($brandName, $brandProfile, $count), BrandDiagnosisPlatform::DOUBAO, false);
+        $coreTerms = $this->parseBrandCoreTerms($this->extractText($response), $brandName, $count);
+        $coreTerms = $this->ensureBrandSubjectCoreTerm($coreTerms, $brandName, $count);
+        if ($coreTerms === []) {
+            throw new RuntimeException('豆包品牌诊断核心词提取为空，请稍后重试。');
+        }
+
+        return $coreTerms;
+    }
+
+    /**
+     * @param  list<string>  $brandCoreTerms
+     * @return list<array{question:string,type:string,core_term:string}>
+     */
+    public function generateQuestionsFromCoreTerms(string $brandName, int $count, string $brandProfile, array $brandCoreTerms): array
+    {
+        $brandName = trim($brandName);
+        $count = max(1, $count);
+        $coreTerms = $this->normalizeBrandCoreTerms($brandCoreTerms, $brandName, 5);
+        $coreTerms = $this->ensureBrandSubjectCoreTerm($coreTerms, $brandName, 5);
+        if ($coreTerms === []) {
+            throw new RuntimeException('品牌诊断核心词为空，无法生成问题。');
+        }
+
+        $candidateCount = max($count, $count * max(1, (int) config('brand_diagnosis.question_candidate_multiplier', 2)));
+        $response = $this->postResponses(
+            $this->buildQuestionPrompt($brandName, $candidateCount, $count, $brandProfile, $coreTerms),
+            BrandDiagnosisPlatform::DOUBAO,
+            false
         );
+        $questions = $this->parseQuestions($this->extractText($response));
+        $questions = $this->filteredQuestionSet($questions, $brandName, $coreTerms, $count);
+
+        if (count($questions) < $count) {
+            throw new RuntimeException('豆包品牌诊断问题生成不足，请稍后重试。');
+        }
+
+        return array_slice($questions, 0, $count);
     }
 
     public function ask(string $brandName, string $question, string $platform = 'doubao'): BrandDiagnosisAiResponse
@@ -145,6 +138,22 @@ class DoubaoBrandDiagnosisClient
     }
 
     /**
+     * @return array{text:string,sources:list<array{title:string,url:string,type:string,meta:array<string,mixed>}>,raw_response:array<string,mixed>,platform:string}
+     */
+    public function generateBrandProfileWithWebSearch(string $brandName, string $platform = BrandDiagnosisPlatform::DOUBAO): array
+    {
+        $platform = $this->normalizePlatform($platform);
+        $data = $this->postResponses($this->buildBrandProfileWebSearchPrompt($brandName), $platform, true);
+
+        return [
+            'text' => $this->extractText($data),
+            'sources' => $this->extractSources($data),
+            'raw_response' => $this->cleanExternalValue($data),
+            'platform' => $platform,
+        ];
+    }
+
+    /**
      * @param  array<string,mixed>  $rawResponse
      * @return list<array{brand:string,mention_count:int,mention_rank:int,sentiment:string,evidence:string,source_count?:int,meta?:array<string,mixed>}>
      */
@@ -166,16 +175,16 @@ class DoubaoBrandDiagnosisClient
     }
 
     /**
-     * @return list<array{question:string,type:string}>
+     * @return list<array{question:string,type:string,core_term:string}>
      */
-    private function generateCandidateQuestions(string $brandName, int $count, string $platform): array
+    private function generateCandidateQuestions(string $brandName, int $count, string $platform, string $brandProfile): array
     {
         $brandName = trim($brandName);
         $count = max(1, $count);
         $candidateCount = max($count, $count * max(1, (int) config('brand_diagnosis.question_candidate_multiplier', 2)));
         $platform = $this->normalizePlatform($platform);
 
-        $response = $this->postResponses($this->buildQuestionPrompt($brandName, $candidateCount, $count), $platform);
+        $response = $this->postResponses($this->buildQuestionPrompt($brandName, $candidateCount, $count, $brandProfile), $platform, false);
         $questions = $this->parseQuestions($this->extractText($response));
 
         if (count($questions) < $count) {
@@ -679,50 +688,82 @@ class DoubaoBrandDiagnosisClient
             : $baseUrl.'/chat/completions';
     }
 
-    private function buildQuestionPrompt(string $brandName, int $candidateCount, int $finalCount): string
+    private function buildBrandCoreTermsPrompt(string $brandName, string $brandProfile, int $count): string
     {
         return implode("\n", [
-            '请使用联网搜索，围绕目标品牌生成 '.$candidateCount.' 个用户会真实询问 AI 的品牌诊断候选问题，系统最终只会精选 '.$finalCount.' 个。',
-            '最终诊断会生成 '.$finalCount.' 个 AI 问题。',
+            '请根据下面的品牌介绍，提取 '.$count.' 个品牌诊断要使用的高频核心词。',
             '目标品牌：'.$brandName,
-            '请先联网检索目标品牌，智能分析它可能对应的行业、业务类型、服务对象、地域、产品形态、竞品集合、常见应用场景等维度；不要把目标品牌强行归入固定行业。',
-            '生成目标：问题必须帮助评估品牌在 AI 问答平台中的自然曝光、真实讨论、相关对象、市场认知和推荐倾向。',
-            '问题风格要求：',
-            '1. 用你分析出的行业、类型、服务对象、地域、应用场景等自然生成问题。',
-            '2. 问题要像真实用户会问 AI 的认知、选择、对比、评价、位置、服务、作品、口碑或合作问题。',
-            '3. 不要套用固定行业模板，不要默认生成某个特定领域的问题。',
-            '约束：',
-            '1. 不要生成“'.$brandName.' 是什么品牌”这种单一介绍题。',
-            '2. 不要直接出现目标品牌名称、简称、公司简称或品牌词；诊断要模拟普通用户自然提问，用行业、品类、地域、场景和服务对象来提问，让 AI 自然决定是否提及目标品牌。',
-            '3. 不要预设目标品牌是系统、平台、服务商、公司或门店；如果检索结果显示是个体户、个人品牌、产品、项目或机构，就按真实类型生成。',
-            '4. 每个问题 12-36 个中文字符，适合直接拿去问 AI。',
-            '5. 只输出 JSON 数组，不要 Markdown，不要解释。',
-            'JSON 格式可以是：',
-            '[{"question":"问题文本","type":"对比/选择"}]',
-            '或：',
-            '{"analysis":{"industry":"行业","type":"类型","scenario":"场景"},"questions":[{"question":"问题文本","type":"对比/选择"}]}',
+            '品牌介绍：'.$brandProfile,
+            '提取目标：',
+            '1. 核心词必须来自品牌介绍里的高频、高相关信息，不要凭空联想。',
+            '2. 优先覆盖不同维度：行业/品类、地域、产品或服务、用户场景、服务对象、价值诉求。',
+            '3. 核心词要适合直接组合成用户会搜索的问题，例如“核心词+哪家好”“核心词推荐”“核心词怎么选”。',
+            '4. 不要把完整问题当核心词，不要输出“哪家好”“怎么选”“推荐吗”这类问题后缀。',
+            '5. 默认不要把目标品牌名称、简称、公司简称原样作为核心词；除非它本身就是被广泛搜索的通用品类词。',
+            '6. 每个核心词 2-14 个中文字符，尽量精简。',
+            '7. 只输出 JSON，不要 Markdown，不要解释。',
+            'JSON 格式：',
+            '{"terms":["核心词1","核心词2","核心词3","核心词4","核心词5"]}',
         ]);
     }
 
     /**
-     * @param  list<array{question:string,type:string,platform:string}>  $candidates
+     * @param  list<string>  $brandCoreTerms
      */
-    private function buildQuestionSelectionPrompt(string $brandName, int $count, array $candidates): string
+    private function buildQuestionPrompt(string $brandName, int $candidateCount, int $finalCount, string $brandProfile, array $brandCoreTerms = []): string
+    {
+        $brandProfile = trim($brandProfile);
+        if ($brandProfile === '') {
+            $brandProfile = '品牌资料暂缺。当前仅确认目标品牌词为 '.$brandName.'，请围绕该品牌词可能对应的品类、地域、用户需求和选择比较场景生成自然搜索问题。';
+        }
+        $coreTerms = $this->normalizeBrandCoreTerms($brandCoreTerms, $brandName, 5);
+        $coreTermsText = $coreTerms !== [] ? implode('、', $coreTerms) : '未提供，请先从品牌介绍中提炼。';
+
+        return implode("\n", [
+            '请根据下面的品牌介绍和品牌核心词，生成 '.$candidateCount.' 个用户会真实在 AI 或搜索框中输入的品牌诊断候选问题，系统最终只会取 '.$finalCount.' 个。',
+            '最终诊断会生成 '.$finalCount.' 个 AI 问题。',
+            '目标品牌：'.$brandName,
+            '品牌介绍：'.$brandProfile,
+            '品牌核心词：'.$coreTermsText,
+            '请只围绕上面的品牌核心词组合生成自然问题，不要再重新发散到无关行业或固定领域模板。',
+            '生成目标：问题必须帮助评估品牌在 AI 问答平台中的自然曝光、真实讨论、相关对象、市场认知和推荐倾向。',
+            '问题风格要求：',
+            '1. 问题侧重用户真实搜索表达，可以覆盖理解、选择、评价、地域、服务、作品、合作等自然场景，但不要求固定类型、固定比例或固定顺序。',
+            '2. 必须包含 2-3 个短搜索句，长度控制在 8-18 个中文字符，像用户直接搜索时输入的短句，例如“武城哪家煊饼店最好吃”“宴请包间餐厅哪家好”“财务审核工具推荐”。',
+            '3. 允许生成“核心词+哪家好”“核心词推荐”“核心词怎么选”“地域+品类+哪家靠谱”“地域+哪家+品类+最好吃/好用”这类短问。这类问题属于真实搜索表达，不要因为短而剔除。',
+            '4. 问题要像真实用户会问 AI 或搜索框里输入的认知、选择、对比、评价、位置、服务、作品、口碑或合作问题。',
+            '5. 不要套用固定行业模板，不要默认生成某个特定领域的问题。',
+            '6. 每个问题请同时给出 core_term 和 type：core_term 必须优先从“品牌核心词”里选择；type 是问题类型，问题类型由模型自然概括，并根据问题含义生成短标签，不要求固定类型，也不要从固定枚举中选择。',
+            '约束：',
+            '1. 不要生成“'.$brandName.' 是什么品牌”这种单一介绍题。',
+            '2. 不要直接出现目标品牌名称、简称、公司简称或品牌词；诊断要模拟普通用户自然提问，用行业、品类、地域、场景和服务对象来提问，让 AI 自然决定是否提及目标品牌。',
+            '3. 不要预设目标品牌是系统、平台、服务商、公司或门店；如果检索结果显示是个体户、个人品牌、产品、项目或机构，就按真实类型生成。',
+            '4. 不要再联网检索目标品牌，只能依据上面的品牌介绍生成问题。',
+            '5. 不要把核心词原样作为问题，必须补成自然搜索表达。',
+            '6. 每个问题 8-36 个中文字符，适合直接拿去问 AI。',
+            '7. 只输出 JSON 数组，不要 Markdown，不要解释。',
+            'JSON 格式可以是：',
+            '[{"question":"问题文本","core_term":"核心词","type":"问题类型"}]',
+            '或：',
+            '{"analysis":{"industry":"行业","brand_type":"类型","scenario":"场景"},"questions":[{"question":"问题文本","core_term":"核心词","type":"问题类型"}]}',
+        ]);
+    }
+
+    private function buildBrandProfileWebSearchPrompt(string $brandName): string
     {
         return implode("\n", [
-            '请从多个 AI 模型生成的候选问题中，精选 '.$count.' 个最适合品牌诊断的最终问题。',
+            $brandName.'的品牌介绍',
+            '请使用联网搜索检索目标品牌，并生成品牌介绍。',
             '目标品牌：'.$brandName,
-            '候选问题 JSON：',
-            json_encode($candidates, JSON_UNESCAPED_UNICODE) ?: '[]',
-            '精选原则：',
-            '1. 先根据目标品牌的真实行业、类型、地域、服务对象、业务范围、品牌形态判断问题是否合理。',
-            '2. 优先保留不同维度的问题，避免 5 个问题都问同一件事。',
-            '3. 不要选明显套用固定行业模板的问题；如果候选问题中出现与目标品牌无关的领域词，要剔除。',
-            '4. 不要强行要求服务商对比、系统能力或行业服务选择；品牌是个体户、个人、产品、门店或项目时，按实际形态选择问题。',
-            '5. 最终问题默认不得出现目标品牌名称或简称；同时也不得出现公司简称或品牌词，以便检测 AI 是否自然提及该品牌。',
-            '6. 只输出 JSON，不要 Markdown，不要解释。',
+            '要求：',
+            '1. 基于可检索到的信息总结品牌介绍。',
+            '2. 提取行业、品牌类型、服务对象、地域、核心业务、典型场景、竞品方向。',
+            '3. 如果检索不到有效信息，明确返回 found=false。',
+            '4. 只返回 JSON，不要 Markdown。',
             'JSON 格式：',
-            '{"questions":[{"question":"问题文本","type":"认知/选择/对比/口碑/合作/位置/其他"}]}',
+            '{"found":true,"summary":"品牌介绍","industry":"行业","brand_type":"品牌类型","audience":"服务对象","region":"地域","business":"核心业务","scenarios":["场景"],"competitors":["竞品方向"]}',
+            '如果无法检索到有效资料，请返回：',
+            '{"found":false,"summary":"","reason":"无法检索到有效品牌资料"}',
         ]);
     }
 
@@ -947,7 +988,7 @@ class DoubaoBrandDiagnosisClient
     }
 
     /**
-     * @return list<array{question:string,type:string}>
+     * @return list<array{question:string,type:string,core_term:string}>
      */
     private function parseQuestions(string $text): array
     {
@@ -969,10 +1010,16 @@ class DoubaoBrandDiagnosisClient
 
         return collect($items)
             ->filter(static fn (mixed $item): bool => is_array($item))
-            ->map(static fn (array $item): array => [
-                'question' => trim((string) ($item['question'] ?? '')),
-                'type' => trim((string) ($item['type'] ?? 'AI问题')),
-            ])
+            ->map(function (array $item): array {
+                $question = trim((string) ($item['question'] ?? ''));
+                $labeler = app(BrandDiagnosisQuestionLabeler::class);
+
+                return [
+                    'question' => $question,
+                    'core_term' => $labeler->coreTerm($question, (string) ($item['core_term'] ?? $item['core_keyword'] ?? $item['keyword'] ?? '')),
+                    'type' => $labeler->questionType($question, (string) ($item['type'] ?? $item['question_type'] ?? '')),
+                ];
+            })
             ->filter(static fn (array $item): bool => $item['question'] !== '')
             ->unique(static fn (array $item): string => $item['question'])
             ->values()
@@ -980,9 +1027,533 @@ class DoubaoBrandDiagnosisClient
     }
 
     /**
-     * @param  list<array{question:string,type:string}>  $selected
-     * @param  list<array{question:string,type:string}>|list<array{question:string,type:string,platform:string}>  $candidates
-     * @return list<array{question:string,type:string}>
+     * @return list<string>
+     */
+    private function parseBrandCoreTerms(string $text, string $brandName, int $count): array
+    {
+        $json = trim($text);
+        if (preg_match('/```(?:json)?\s*(.*?)```/is', $json, $matches)) {
+            $json = trim((string) $matches[1]);
+        }
+
+        /** @var mixed $decoded */
+        $decoded = json_decode($json, true);
+        if (! is_array($decoded)) {
+            throw new RuntimeException('豆包品牌诊断核心词提取返回格式错误。');
+        }
+
+        $items = $decoded;
+        if (! array_is_list($items)) {
+            $items = (array) ($decoded['terms'] ?? $decoded['keywords'] ?? $decoded['core_terms'] ?? []);
+        }
+
+        return $this->normalizeBrandCoreTerms($items, $brandName, $count);
+    }
+
+    /**
+     * @param  array<int|string,mixed>  $terms
+     * @return list<string>
+     */
+    private function normalizeBrandCoreTerms(array $terms, string $brandName, int $count): array
+    {
+        $normalizedBrand = $this->normalizedSearchText($brandName);
+
+        return collect($terms)
+            ->map(function (mixed $item): string {
+                if (is_array($item)) {
+                    $item = $item['term'] ?? $item['keyword'] ?? $item['core_term'] ?? $item['name'] ?? '';
+                }
+
+                $term = trim((string) $item);
+                $term = preg_replace('/^[\s\d\.\)、\]】\->]+/u', '', $term) ?? $term;
+                $term = preg_replace('/[\s，。！？?；;：:、]+$/u', '', $term) ?? $term;
+                $term = preg_replace('/\s+/u', '', $term) ?? $term;
+
+                return trim($term);
+            })
+            ->filter(function (string $term) use ($normalizedBrand): bool {
+                if ($term === '') {
+                    return false;
+                }
+
+                $length = mb_strlen($term, 'UTF-8');
+                if ($length < 2 || $length > 18) {
+                    return false;
+                }
+
+                if ($this->looksLikeQuestion($term)) {
+                    return false;
+                }
+
+                $normalizedTerm = $this->normalizedSearchText($term);
+
+                return $normalizedTerm !== '' && $normalizedTerm !== $normalizedBrand;
+            })
+            ->unique(fn (string $term): string => $this->normalizedSearchText($term))
+            ->take(max(1, $count))
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  list<string>  $coreTerms
+     * @return list<string>
+     */
+    private function ensureBrandSubjectCoreTerm(array $coreTerms, string $brandName, int $count): array
+    {
+        $subject = $this->brandSubjectCoreTerm($brandName);
+        if ($subject === '') {
+            return array_slice($coreTerms, 0, max(1, $count));
+        }
+
+        $subjectKey = $this->normalizedSearchText($subject);
+        $subjectBaseKey = $this->normalizedSearchText($this->baseSearchSubject($subject));
+        foreach ($coreTerms as $coreTerm) {
+            $termKey = $this->normalizedSearchText($coreTerm);
+            if ($termKey === '' || $subjectKey === '') {
+                continue;
+            }
+
+            if ($termKey === $subjectKey
+                || str_contains($termKey, $subjectKey)
+                || str_contains($subjectKey, $termKey)
+                || ($subjectBaseKey !== '' && str_contains($termKey, $subjectBaseKey))) {
+                return array_slice($coreTerms, 0, max(1, $count));
+            }
+        }
+
+        return collect([$subject])
+            ->concat($coreTerms)
+            ->unique(fn (string $term): string => $this->normalizedSearchText($term))
+            ->take(max(1, $count))
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  list<array{question:string,type:string,core_term?:string}>  $questions
+     * @param  list<string>  $coreTerms
+     * @return list<array{question:string,type:string,core_term:string}>
+     */
+    private function filteredQuestionSet(array $questions, string $brandName, array $coreTerms, int $count): array
+    {
+        $labeler = app(BrandDiagnosisQuestionLabeler::class);
+        $seen = [];
+        $filtered = [];
+
+        foreach ($questions as $item) {
+            $question = trim((string) ($item['question'] ?? ''));
+            if (! $this->isUsableGeneratedQuestion($question, $brandName, $coreTerms)) {
+                continue;
+            }
+
+            $key = $this->normalizedSearchText($question);
+            if ($key === '' || isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+
+            $filtered[] = [
+                'question' => $question,
+                'core_term' => $this->questionCoreTerm($question, (string) ($item['core_term'] ?? ''), $coreTerms),
+                'type' => $labeler->questionType($question, (string) ($item['type'] ?? '')),
+            ];
+        }
+
+        $filtered = $this->ensureShortSearchQuestions($filtered, $coreTerms, $brandName, $count, $seen);
+
+        foreach ($this->templateQuestionsFromCoreTerms($coreTerms, $brandName, $count, array_keys($seen)) as $item) {
+            if (count($filtered) >= $count) {
+                break;
+            }
+
+            $key = $this->normalizedSearchText($item['question']);
+            if ($key === '' || isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $filtered[] = $item;
+        }
+
+        $filtered = $this->ensureShortSearchQuestions($filtered, $coreTerms, $brandName, $count, $seen);
+
+        return array_slice($filtered, 0, $count);
+    }
+
+    /**
+     * @param  list<array{question:string,type:string,core_term:string}>  $questions
+     * @param  list<string>  $coreTerms
+     * @param  array<string,bool>  $seen
+     * @return list<array{question:string,type:string,core_term:string}>
+     */
+    private function ensureShortSearchQuestions(array $questions, array $coreTerms, string $brandName, int $count, array &$seen): array
+    {
+        $targetShortCount = $this->targetShortSearchQuestionCount($count);
+        if ($targetShortCount === 0 || $this->shortSearchQuestionCount($questions) >= $targetShortCount) {
+            return array_slice($questions, 0, $count);
+        }
+
+        foreach ($this->templateQuestionsFromCoreTerms($coreTerms, $brandName, $count, array_keys($seen)) as $item) {
+            if ($this->shortSearchQuestionCount($questions) >= $targetShortCount) {
+                break;
+            }
+
+            if (! $this->isShortSearchQuestion($item['question'])) {
+                continue;
+            }
+
+            $key = $this->normalizedSearchText($item['question']);
+            if ($key === '' || isset($seen[$key])) {
+                continue;
+            }
+
+            if (count($questions) < $count) {
+                $seen[$key] = true;
+                $questions[] = $item;
+
+                continue;
+            }
+
+            $replaceIndex = $this->lastNonShortQuestionIndex($questions);
+            if ($replaceIndex === null) {
+                break;
+            }
+
+            $removedKey = $this->normalizedSearchText($questions[$replaceIndex]['question']);
+            if ($removedKey !== '') {
+                unset($seen[$removedKey]);
+            }
+            $seen[$key] = true;
+            $questions[$replaceIndex] = $item;
+        }
+
+        return array_slice(array_values($questions), 0, $count);
+    }
+
+    private function targetShortSearchQuestionCount(int $count): int
+    {
+        if ($count < 4) {
+            return 0;
+        }
+
+        return min(3, max(2, intdiv($count, 3)));
+    }
+
+    /**
+     * @param  list<array{question:string,type:string,core_term:string}>  $questions
+     */
+    private function shortSearchQuestionCount(array $questions): int
+    {
+        return collect($questions)
+            ->filter(fn (array $item): bool => $this->isShortSearchQuestion((string) $item['question']))
+            ->count();
+    }
+
+    /**
+     * @param  list<array{question:string,type:string,core_term:string}>  $questions
+     */
+    private function lastNonShortQuestionIndex(array $questions): ?int
+    {
+        for ($index = count($questions) - 1; $index >= 0; $index--) {
+            if (! $this->isShortSearchQuestion((string) $questions[$index]['question'])) {
+                return $index;
+            }
+        }
+
+        return null;
+    }
+
+    private function isShortSearchQuestion(string $question): bool
+    {
+        $cleanQuestion = preg_replace('/[\s，。！？、?]+/u', '', trim($question)) ?? trim($question);
+        $length = mb_strlen($cleanQuestion, 'UTF-8');
+        if ($length < 4 || $length > 18) {
+            return false;
+        }
+
+        return preg_match('/(哪家|推荐|最好|好吃|好用|口碑|怎么选|靠谱吗|靠谱)/u', $question) === 1;
+    }
+
+    /**
+     * @param  list<string>  $coreTerms
+     */
+    private function isUsableGeneratedQuestion(string $question, string $brandName, array $coreTerms): bool
+    {
+        $question = trim($question);
+        $length = mb_strlen($question, 'UTF-8');
+        if ($length < 4 || $length > 45) {
+            return false;
+        }
+
+        if (! $this->isNaturalQuestion($question, $brandName)) {
+            return false;
+        }
+
+        $normalizedQuestion = $this->normalizedSearchText($question);
+        if ($normalizedQuestion === '' || $normalizedQuestion === $this->normalizedSearchText($brandName)) {
+            return false;
+        }
+
+        foreach ($coreTerms as $coreTerm) {
+            if ($normalizedQuestion === $this->normalizedSearchText($coreTerm)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @param  list<string>  $coreTerms
+     */
+    private function questionCoreTerm(string $question, string $storedCoreTerm, array $coreTerms): string
+    {
+        $storedKey = $this->normalizedSearchText($storedCoreTerm);
+        foreach ($coreTerms as $coreTerm) {
+            if ($storedKey !== '' && $storedKey === $this->normalizedSearchText($coreTerm)) {
+                return $coreTerm;
+            }
+
+            if (mb_stripos($question, $coreTerm, 0, 'UTF-8') !== false) {
+                return $coreTerm;
+            }
+        }
+
+        $labeler = app(BrandDiagnosisQuestionLabeler::class);
+        $fallback = $labeler->coreTerm($question, $storedCoreTerm);
+
+        return $fallback !== '' ? $fallback : (string) ($coreTerms[0] ?? '');
+    }
+
+    /**
+     * @param  list<string>  $coreTerms
+     * @param  list<string>  $existingKeys
+     * @return list<array{question:string,type:string,core_term:string}>
+     */
+    private function templateQuestionsFromCoreTerms(array $coreTerms, string $brandName, int $count, array $existingKeys): array
+    {
+        $patterns = [
+            ['%s哪家好', '选择'],
+            ['%s推荐', '推荐'],
+            ['%s怎么选', '选择'],
+            ['%s口碑怎么样', '口碑'],
+            ['%s靠谱吗', '可信判断'],
+        ];
+        $seen = array_fill_keys($existingKeys, true);
+        $questions = [];
+
+        foreach ($this->brandSubjectTemplateQuestions($brandName, $coreTerms) as $item) {
+            if (! $this->appendTemplateQuestion($questions, $seen, $item, $brandName, $coreTerms, $count)) {
+                continue;
+            }
+
+            if (count($questions) >= $count) {
+                return $questions;
+            }
+        }
+
+        for ($round = 0; $round < max(1, $count); $round++) {
+            foreach ($coreTerms as $index => $coreTerm) {
+                [$pattern, $type] = $patterns[($round + $index) % count($patterns)];
+                $question = sprintf($pattern, $coreTerm);
+                $this->appendTemplateQuestion($questions, $seen, [
+                    'question' => $question,
+                    'core_term' => $coreTerm,
+                    'type' => $type,
+                ], $brandName, $coreTerms, $count);
+
+                if (count($questions) >= $count) {
+                    return $questions;
+                }
+            }
+        }
+
+        return $questions;
+    }
+
+    /**
+     * @param  list<string>  $coreTerms
+     * @return list<array{question:string,type:string,core_term:string}>
+     */
+    private function brandSubjectTemplateQuestions(string $brandName, array $coreTerms): array
+    {
+        $subject = $this->brandSubjectCoreTerm($brandName);
+        if ($subject === '') {
+            return [];
+        }
+
+        $coreTerm = $this->matchingCoreTerm($subject, $coreTerms) ?: $subject;
+        $region = $this->brandSearchRegion($brandName, $subject);
+        $questions = [];
+
+        if ($region !== '' && $this->looksFoodSearchSubject($subject)) {
+            $questions[] = [
+                'question' => $region.'哪家'.$subject.'最好吃',
+                'core_term' => $coreTerm,
+                'type' => '美食选择',
+            ];
+        }
+
+        if ($region !== '') {
+            $questions[] = [
+                'question' => $region.$subject.'哪家好',
+                'core_term' => $coreTerm,
+                'type' => '选择',
+            ];
+        }
+
+        $questions[] = [
+            'question' => $subject.'哪家好',
+            'core_term' => $coreTerm,
+            'type' => '选择',
+        ];
+        $questions[] = [
+            'question' => $subject.'推荐',
+            'core_term' => $coreTerm,
+            'type' => '推荐',
+        ];
+
+        return $questions;
+    }
+
+    /**
+     * @param  list<array{question:string,type:string,core_term:string}>  $questions
+     * @param  array<string,bool>  $seen
+     * @param  array{question:string,type:string,core_term:string}  $item
+     * @param  list<string>  $coreTerms
+     */
+    private function appendTemplateQuestion(array &$questions, array &$seen, array $item, string $brandName, array $coreTerms, int $count): bool
+    {
+        if (count($questions) >= $count) {
+            return false;
+        }
+
+        $question = trim((string) $item['question']);
+        if (! $this->isUsableGeneratedQuestion($question, $brandName, $coreTerms)) {
+            return false;
+        }
+
+        $key = $this->normalizedSearchText($question);
+        if ($key === '' || isset($seen[$key])) {
+            return false;
+        }
+
+        $seen[$key] = true;
+        $questions[] = [
+            'question' => $question,
+            'core_term' => (string) $item['core_term'],
+            'type' => (string) $item['type'],
+        ];
+
+        return true;
+    }
+
+    /**
+     * @param  list<string>  $coreTerms
+     */
+    private function matchingCoreTerm(string $subject, array $coreTerms): string
+    {
+        $subjectKey = $this->normalizedSearchText($subject);
+        $subjectBaseKey = $this->normalizedSearchText($this->baseSearchSubject($subject));
+        foreach ($coreTerms as $coreTerm) {
+            $termKey = $this->normalizedSearchText($coreTerm);
+            if ($termKey === '' || $subjectKey === '') {
+                continue;
+            }
+
+            if ($termKey === $subjectKey
+                || str_contains($termKey, $subjectKey)
+                || str_contains($subjectKey, $termKey)
+                || ($subjectBaseKey !== '' && str_contains($termKey, $subjectBaseKey))) {
+                return $coreTerm;
+            }
+        }
+
+        return '';
+    }
+
+    private function brandSubjectCoreTerm(string $brandName): string
+    {
+        $brandName = preg_replace('/[^\p{Han}A-Za-z0-9]/u', '', trim($brandName)) ?? trim($brandName);
+        if ($brandName === '') {
+            return '';
+        }
+
+        if (preg_match('/^(?<region>[\p{Han}]{2})(?<subject>[\p{Han}]{2,5})$/u', $brandName, $matches) === 1) {
+            $subject = (string) ($matches['subject'] ?? '');
+            if ($this->looksFoodSearchSubject($subject)) {
+                return $this->withFoodPlaceSuffix($subject);
+            }
+        }
+
+        if ($this->looksFoodSearchSubject($brandName)) {
+            return $this->withFoodPlaceSuffix($brandName);
+        }
+
+        return '';
+    }
+
+    private function brandSearchRegion(string $brandName, string $subject): string
+    {
+        $brandName = preg_replace('/[^\p{Han}A-Za-z0-9]/u', '', trim($brandName)) ?? trim($brandName);
+        $subjectBase = $this->baseSearchSubject($subject);
+        if ($brandName === '' || $subjectBase === '') {
+            return '';
+        }
+
+        if (str_ends_with($brandName, $subjectBase)) {
+            $region = mb_substr($brandName, 0, max(0, mb_strlen($brandName, 'UTF-8') - mb_strlen($subjectBase, 'UTF-8')), 'UTF-8');
+
+            return mb_strlen($region, 'UTF-8') >= 2 && mb_strlen($region, 'UTF-8') <= 4 ? $region : '';
+        }
+
+        if (preg_match('/^(?<region>[\p{Han}]{2})(?<subject>[\p{Han}]{2,5})$/u', $brandName, $matches) === 1) {
+            return (string) ($matches['region'] ?? '');
+        }
+
+        return '';
+    }
+
+    private function baseSearchSubject(string $subject): string
+    {
+        $subject = trim($subject);
+        $subject = preg_replace('/(门店|旗舰店|店铺|餐厅|饭店|小店|店|馆|铺)$/u', '', $subject) ?? $subject;
+
+        return trim($subject);
+    }
+
+    private function withFoodPlaceSuffix(string $subject): string
+    {
+        $subject = trim($subject);
+        if ($subject === '' || preg_match('/(店|馆|铺|餐厅|饭店)$/u', $subject) === 1) {
+            return $subject;
+        }
+
+        return $subject.'店';
+    }
+
+    private function looksFoodSearchSubject(string $value): bool
+    {
+        return preg_match('/(煊饼|馅饼|饼|面|粉|糕|包|粥|饭|菜|汤|串|小吃|美食|餐厅|饭店|火锅|奶茶|咖啡|甜品|烤|烧|煎|炸|卤|鸡|鸭|鱼|虾|牛肉|羊肉)/u', $value) === 1;
+    }
+
+    private function looksLikeQuestion(string $value): bool
+    {
+        return preg_match('/(哪家|推荐|怎么选|怎么样|靠谱吗|是什么|有哪些|好不好|可以吗|吗|\?|？)$/u', $value) === 1;
+    }
+
+    private function normalizedSearchText(string $value): string
+    {
+        $value = mb_strtolower(trim($value), 'UTF-8');
+        $value = preg_replace('/[\s，。！？?；;：:、,.!()（）【】\[\]《》"\'“”‘’]+/u', '', $value) ?? $value;
+
+        return trim($value);
+    }
+
+    /**
+     * @param  list<array{question:string,type:string,core_term?:string}>  $selected
+     * @param  list<array{question:string,type:string,core_term?:string}>|list<array{question:string,type:string,core_term?:string,platform:string}>  $candidates
+     * @return list<array{question:string,type:string,core_term:string}>
      */
     private function preferNaturalQuestions(array $selected, array $candidates, string $brandName, int $count, bool $allowBrandedFallback = true): array
     {
@@ -995,6 +1566,7 @@ class DoubaoBrandDiagnosisClient
             ->reject(static fn (array $question): bool => in_array(mb_strtolower(trim((string) $question['question']), 'UTF-8'), $selectedKeys, true))
             ->map(static fn (array $question): array => [
                 'question' => (string) $question['question'],
+                'core_term' => (string) ($question['core_term'] ?? ''),
                 'type' => (string) $question['type'],
             ])
             ->values();
@@ -1005,6 +1577,7 @@ class DoubaoBrandDiagnosisClient
                 if ($this->isNaturalQuestion((string) $question['question'], $brandName)) {
                     return [
                         'question' => (string) $question['question'],
+                        'core_term' => (string) ($question['core_term'] ?? ''),
                         'type' => (string) $question['type'],
                     ];
                 }
@@ -1016,6 +1589,7 @@ class DoubaoBrandDiagnosisClient
                     ? $replacement
                     : [
                         'question' => (string) $question['question'],
+                        'core_term' => (string) ($question['core_term'] ?? ''),
                         'type' => (string) $question['type'],
                     ];
             })
@@ -1040,6 +1614,7 @@ class DoubaoBrandDiagnosisClient
         return $naturalQuestions
             ->concat(collect($selected)->map(static fn (array $question): array => [
                 'question' => (string) $question['question'],
+                'core_term' => (string) ($question['core_term'] ?? ''),
                 'type' => (string) $question['type'],
             ]))
             ->unique(static fn (array $question): string => mb_strtolower(trim((string) $question['question']), 'UTF-8'))

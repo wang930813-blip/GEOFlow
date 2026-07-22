@@ -5,6 +5,7 @@ namespace App\Services\BrandDiagnosis;
 use App\Jobs\GenerateBrandDiagnosisQuestionsJob;
 use App\Jobs\ProcessBrandDiagnosisJob;
 use App\Models\Admin;
+use App\Models\BrandDiagnosisQuestion;
 use App\Models\BrandDiagnosisRun;
 use App\Support\CurrentSite;
 use Illuminate\Support\Collection;
@@ -35,14 +36,22 @@ class BrandDiagnosisRunService
         }
 
         if ($reuseQuestions) {
-            $reusableQuestions = $this->latestReusableQuestions($admin, $brandName, $siteId);
-            if ($reusableQuestions->isNotEmpty()) {
-                return DB::transaction(function () use ($admin, $brandName, $platforms, $siteId, $reusableQuestions): BrandDiagnosisRun {
+            $reusableRun = $this->latestReusableQuestionRun($admin, $brandName, $siteId);
+            $reusableQuestions = $reusableRun instanceof BrandDiagnosisRun
+                ? $this->questionsFromRun($reusableRun)
+                : collect();
+            if ($reusableRun instanceof BrandDiagnosisRun && $reusableQuestions->isNotEmpty()) {
+                return DB::transaction(function () use ($admin, $brandName, $platforms, $siteId, $reusableRun, $reusableQuestions): BrandDiagnosisRun {
                     $run = BrandDiagnosisRun::query()->create([
                         'site_id' => $siteId,
                         'owner_admin_id' => (int) $admin->id,
                         'admin_id' => (int) $admin->id,
                         'brand_name' => $brandName,
+                        'brand_profile' => (string) ($reusableRun->brand_profile ?? ''),
+                        'brand_profile_source' => (string) ($reusableRun->brand_profile_source ?? ''),
+                        'brand_profile_model' => (string) ($reusableRun->brand_profile_model ?? ''),
+                        'brand_profile_status' => (string) ($reusableRun->brand_profile_status ?? ''),
+                        'brand_profile_meta' => is_array($reusableRun->brand_profile_meta) ? $reusableRun->brand_profile_meta : null,
                         'platforms' => $platforms,
                         'status' => 'questions_ready',
                         'total_questions' => $reusableQuestions->count(),
@@ -97,7 +106,7 @@ class BrandDiagnosisRunService
     }
 
     /**
-     * @return array{run_id:int,created_at:string,questions:list<array{question:string,type:string,sort_order:int}>}|null
+     * @return array{run_id:int,created_at:string,questions:list<array{question:string,type:string,core_term:string,sort_order:int}>}|null
      */
     public function reusableQuestionPreview(Admin $admin, string $brandName): ?array
     {
@@ -181,6 +190,11 @@ class BrandDiagnosisRunService
                 'owner_admin_id' => (int) ($lockedRun->owner_admin_id ?: $admin->id),
                 'admin_id' => (int) $admin->id,
                 'brand_name' => (string) $lockedRun->brand_name,
+                'brand_profile' => (string) ($lockedRun->brand_profile ?? ''),
+                'brand_profile_source' => (string) ($lockedRun->brand_profile_source ?? ''),
+                'brand_profile_model' => (string) ($lockedRun->brand_profile_model ?? ''),
+                'brand_profile_status' => (string) ($lockedRun->brand_profile_status ?? ''),
+                'brand_profile_meta' => is_array($lockedRun->brand_profile_meta) ? $lockedRun->brand_profile_meta : null,
                 'platforms' => (array) $lockedRun->platforms,
                 'status' => 'running',
                 'total_questions' => $normalizedQuestions->count(),
@@ -228,18 +242,6 @@ class BrandDiagnosisRunService
         return $normalized !== [] ? $normalized : ['doubao'];
     }
 
-    /**
-     * @return Collection<int,array{question:string,type:string,sort_order:int}>
-     */
-    private function latestReusableQuestions(Admin $admin, string $brandName, int $siteId): Collection
-    {
-        $run = $this->latestReusableQuestionRun($admin, $brandName, $siteId);
-
-        return $run instanceof BrandDiagnosisRun
-            ? $this->questionsFromRun($run)
-            : collect();
-    }
-
     private function latestReusableQuestionRun(Admin $admin, string $brandName, int $siteId): ?BrandDiagnosisRun
     {
         if ($brandName === '') {
@@ -251,6 +253,11 @@ class BrandDiagnosisRunService
             ->with(['questions' => fn ($query) => $query->orderBy('sort_order')])
             ->where('site_id', $siteId)
             ->where('brand_name', $brandName)
+            ->where('brand_profile_source', 'web_search')
+            ->where('brand_profile_model', BrandDiagnosisPlatform::label(BrandDiagnosisPlatform::DOUBAO))
+            ->where('brand_profile_status', 'success')
+            ->whereNotNull('brand_profile')
+            ->where('brand_profile', '<>', '')
             ->whereIn('status', ['questions_ready', 'awaiting_confirmation', 'running', 'completed', 'failed'])
             ->where(function ($query) use ($admin): void {
                 $query->where('owner_admin_id', (int) $admin->id)
@@ -265,36 +272,47 @@ class BrandDiagnosisRunService
     }
 
     /**
-     * @return Collection<int,array{question:string,type:string,sort_order:int}>
+     * @return Collection<int,array{question:string,type:string,core_term:string,sort_order:int}>
      */
     private function questionsFromRun(BrandDiagnosisRun $run): Collection
     {
+        $labeler = app(BrandDiagnosisQuestionLabeler::class);
+
         return $run->questions
             ->sortBy('sort_order')
-            ->map(static fn ($question): array => [
-                'question' => mb_strimwidth(trim((string) $question->question), 0, 240, '', 'UTF-8'),
-                'type' => (string) $question->question_type,
-                'sort_order' => (int) $question->sort_order,
-            ])
+            ->map(static function ($question) use ($labeler): array {
+                $text = mb_strimwidth(trim((string) $question->question), 0, 240, '', 'UTF-8');
+
+                return [
+                    'question' => $text,
+                    'type' => $labeler->questionType($text, (string) $question->question_type),
+                    'core_term' => $labeler->coreTerm($text, (string) ($question->core_term ?? '')),
+                    'sort_order' => (int) $question->sort_order,
+                ];
+            })
             ->filter(static fn (array $question): bool => $question['question'] !== '')
             ->values();
     }
 
     /**
-     * @param  Collection<int,\App\Models\BrandDiagnosisQuestion>  $existingQuestions
+     * @param  Collection<int,BrandDiagnosisQuestion>  $existingQuestions
      * @param  array<int|string,string>  $submittedQuestions
-     * @return Collection<int,array{id:int,question:string,type:string,sort_order:int}>
+     * @return Collection<int,array{id:int,question:string,type:string,core_term:string,sort_order:int}>
      */
     private function confirmedQuestions(Collection $existingQuestions, array $submittedQuestions): Collection
     {
+        $labeler = app(BrandDiagnosisQuestionLabeler::class);
+
         return $existingQuestions
-            ->map(function ($question) use ($submittedQuestions): array {
+            ->map(function ($question) use ($submittedQuestions, $labeler): array {
                 $text = trim((string) ($submittedQuestions[(int) $question->id] ?? $question->question));
+                $text = mb_strimwidth($text, 0, 240, '', 'UTF-8');
 
                 return [
                     'id' => (int) $question->id,
-                    'question' => mb_strimwidth($text, 0, 240, '', 'UTF-8'),
-                    'type' => (string) $question->question_type,
+                    'question' => $text,
+                    'type' => $labeler->questionType($text, (string) $question->question_type),
+                    'core_term' => $labeler->coreTerm($text, (string) ($question->core_term ?? '')),
                     'sort_order' => (int) $question->sort_order,
                 ];
             })
@@ -304,7 +322,7 @@ class BrandDiagnosisRunService
     }
 
     /**
-     * @param  Collection<int,array{id:int,question:string,type:string,sort_order:int}>  $questions
+     * @param  Collection<int,array{id:int,question:string,type:string,core_term:string,sort_order:int}>  $questions
      */
     private function updateQuestionsForRun(BrandDiagnosisRun $run, Collection $questions): void
     {
@@ -320,6 +338,7 @@ class BrandDiagnosisRunService
                 ->update([
                     'question' => (string) $question['question'],
                     'question_type' => (string) $question['type'],
+                    'core_term' => (string) ($question['core_term'] ?? ''),
                     'sort_order' => $index + 1,
                     'status' => 'pending',
                 ]);
@@ -327,7 +346,7 @@ class BrandDiagnosisRunService
     }
 
     /**
-     * @param  Collection<int,array{id?:int,question:string,type:string,sort_order:int}>  $questions
+     * @param  Collection<int,array{id?:int,question:string,type:string,core_term?:string,sort_order:int}>  $questions
      */
     private function createQuestionsForRun(BrandDiagnosisRun $run, Collection $questions): void
     {
@@ -337,6 +356,7 @@ class BrandDiagnosisRunService
                 'owner_admin_id' => (int) ($run->owner_admin_id ?? 0) ?: null,
                 'question' => (string) $question['question'],
                 'question_type' => (string) $question['type'],
+                'core_term' => (string) ($question['core_term'] ?? ''),
                 'sort_order' => $index + 1,
                 'status' => 'pending',
             ]);

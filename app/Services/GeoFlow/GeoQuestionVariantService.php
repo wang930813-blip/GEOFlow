@@ -72,6 +72,8 @@ class GeoQuestionVariantService
      */
     private function buildPrompt(Keyword $keyword, KeywordLibrary $library, int $candidateCount, int $targetCount, array $existingQuestions): string
     {
+        $termPackage = $this->profileTermPackage($keyword, $library);
+
         $lines = [
             'Generate '.$candidateCount.' Chinese AI search query candidates for AI search inclusion checks.',
             'Finally return the best '.$targetCount.' usable variants after removing duplicates, exact keywords, incomplete phrases, and overlong sentences.',
@@ -81,6 +83,14 @@ class GeoQuestionVariantService
             'Domain keyword: '.(string) ($library->domain_keyword ?? ''),
             'Industry: '.(string) ($library->industry ?? ''),
             'Brand description: '.(string) ($library->brand_description ?? $library->description ?? ''),
+            'Core term package extracted from brand description:',
+            '- Business/capability terms: '.$this->termsLine($termPackage['business']),
+            '- Audience terms: '.$this->termsLine($termPackage['audience']),
+            '- Scenario terms: '.$this->termsLine($termPackage['scenario']),
+            '- Pain-point terms: '.$this->termsLine($termPackage['pain']),
+            '- Decision terms: '.$this->termsLine($termPackage['decision']),
+            'Primary question dimension for this keyword: '.$termPackage['primary_dimension'].'. If only one variant is requested, prioritize this dimension instead of a generic recommendation pattern.',
+            'Dimension rotation: generate from different dimensions such as audience fit, scenario usage, pain solution, decision comparison, and capability outcome. Do not let every keyword use the same "which one is good" pattern.',
             'Do not output the keyword itself as a standalone variant.',
             'Keyword intent guidance: Treat the keyword as the main search intent. Expand around its core phrases, user need, selection criteria, recommendation intent, or comparison intent. Do not drift into unrelated topics.',
             'Do not make every variant repeat the keyword verbatim. Some variants should express the same intent through industry terms, demand terms, service terms, recommendation terms, comparison terms, or scenario terms.',
@@ -163,6 +173,7 @@ class GeoQuestionVariantService
         $targetCount = max(1, min(20, $targetCount));
         $keywordText = $this->normalizeQuestion((string) ($keyword->keyword ?? ''));
         $companyName = $this->normalizeQuestion((string) ($library->company_name ?? ''));
+        $profileTerms = $this->profileFilterTerms($keywordText, $library);
         $seenKeys = [];
         foreach ($existingQuestions as $existingQuestion) {
             $key = $this->dedupeKey($existingQuestion);
@@ -173,14 +184,14 @@ class GeoQuestionVariantService
 
         $accepted = [];
         foreach ($questions as $question) {
-            $this->acceptQuestion($accepted, $seenKeys, $question, $keywordText, $companyName, $targetCount);
+            $this->acceptQuestion($accepted, $seenKeys, $question, $keywordText, $companyName, $profileTerms, $targetCount);
             if (count($accepted) >= $targetCount) {
                 return $accepted;
             }
         }
 
         foreach ($this->templateQuestions($keywordText, $library) as $question) {
-            $this->acceptQuestion($accepted, $seenKeys, $question, $keywordText, $companyName, $targetCount);
+            $this->acceptQuestion($accepted, $seenKeys, $question, $keywordText, $companyName, $profileTerms, $targetCount);
             if (count($accepted) >= $targetCount) {
                 break;
             }
@@ -192,10 +203,11 @@ class GeoQuestionVariantService
     /**
      * @param  list<string>  $accepted
      * @param  array<string,bool>  $seenKeys
+     * @param  list<string>  $profileTerms
      */
-    private function acceptQuestion(array &$accepted, array &$seenKeys, string $question, string $keywordText, string $companyName, int $targetCount): void
+    private function acceptQuestion(array &$accepted, array &$seenKeys, string $question, string $keywordText, string $companyName, array $profileTerms, int $targetCount): void
     {
-        if (count($accepted) >= $targetCount || ! $this->isUsableQuestion($question, $keywordText, $companyName)) {
+        if (count($accepted) >= $targetCount || ! $this->isUsableQuestion($question, $keywordText, $companyName, $profileTerms)) {
             return;
         }
 
@@ -208,7 +220,10 @@ class GeoQuestionVariantService
         $accepted[] = $question;
     }
 
-    private function isUsableQuestion(string $question, string $keywordText, string $companyName): bool
+    /**
+     * @param  list<string>  $profileTerms
+     */
+    private function isUsableQuestion(string $question, string $keywordText, string $companyName, array $profileTerms): bool
     {
         $question = $this->normalizeQuestion($question);
         if ($question === '') {
@@ -229,7 +244,8 @@ class GeoQuestionVariantService
             return false;
         }
 
-        return ! $this->looksIncomplete($question);
+        return ! $this->looksIncomplete($question)
+            && ! $this->looksLikeBareKeywordGenericQuestion($question, $keywordText, $profileTerms);
     }
 
     private function looksLikeStiffBrandKeyword(string $question, string $keywordText, string $companyName): bool
@@ -264,6 +280,31 @@ class GeoQuestionVariantService
         }
 
         return false;
+    }
+
+    /**
+     * @param  list<string>  $profileTerms
+     */
+    private function looksLikeBareKeywordGenericQuestion(string $question, string $keywordText, array $profileTerms): bool
+    {
+        $keywordKey = $this->dedupeKey($keywordText);
+        $questionKey = $this->dedupeKey($question);
+        if ($keywordKey === '' || $questionKey === '' || ! str_contains($questionKey, $keywordKey)) {
+            return false;
+        }
+
+        foreach ($profileTerms as $term) {
+            $termKey = $this->dedupeKey($term);
+            if ($termKey === '' || $termKey === $keywordKey || str_contains($keywordKey, $termKey)) {
+                continue;
+            }
+
+            if (str_contains($questionKey, $termKey)) {
+                return false;
+            }
+        }
+
+        return preg_match('/(?:哪家|哪个|哪个好|哪家好|哪家靠谱|怎么选|推荐|值得推荐|效果好|功能全|性价比高)/u', $question) === 1;
     }
 
     private function dedupeKey(string $question): string
@@ -339,20 +380,49 @@ class GeoQuestionVariantService
             return [];
         }
 
+        $termPackage = $this->profileTermPackageFromText($keywordText, $library);
         $domainKeyword = $this->normalizeQuestion((string) ($library->domain_keyword ?? ''));
         $industry = $this->normalizeQuestion((string) ($library->industry ?? ''));
         $companyName = $this->normalizeQuestion((string) ($library->company_name ?? ''));
+        $audience = $termPackage['audience'];
+        $scenario = $termPackage['scenario'];
+        $pain = $termPackage['pain'];
+        $decision = $termPackage['decision'];
+        $primaryDimension = $termPackage['primary_dimension'];
 
-        $templates = [
-            $keywordText.'推荐',
-            $keywordText.'怎么选？',
-            $keywordText.'哪家靠谱？',
-            $keywordText.'有哪些值得推荐？',
-            '企业'.$keywordText.'怎么选？',
-            '选择'.$keywordText.'要看哪些能力？',
-            '中小企业用'.$keywordText.'怎么降低成本？',
-            '需要'.$keywordText.'时怎么判断是否专业？',
+        $audienceTerm = $audience[0] ?? '用户';
+        $secondaryAudienceTerm = $audience[1] ?? $audienceTerm;
+        $humanAudienceTerm = $this->humanAudienceTerm($audience) ?? $audienceTerm;
+        $scenarioTerm = $scenario[0] ?? '业务场景';
+        $secondaryScenarioTerm = $scenario[1] ?? $scenarioTerm;
+        $painTerm = $pain[0] ?? '实际问题';
+        $secondaryPainTerm = $pain[1] ?? $painTerm;
+        $decisionTerm = $decision[0] ?? '效果';
+
+        $dimensionTemplates = [
+            'audience_fit' => [
+                $audienceTerm.'用'.$keywordText.'能解决什么问题？',
+                $secondaryAudienceTerm.'适合用'.$keywordText.'吗？',
+            ],
+            'scenario_usage' => [
+                $scenarioTerm.'场景怎么用'.$keywordText.'？',
+                $secondaryScenarioTerm.'需要哪些'.$keywordText.'能力？',
+            ],
+            'pain_solution' => [
+                $painTerm.'时用'.$keywordText.'有效果吗？',
+                $humanAudienceTerm.'遇到'.$secondaryPainTerm.'怎么通过'.$keywordText.'改善？',
+            ],
+            'decision_comparison' => [
+                '选择'.$keywordText.'主要看'.$decisionTerm.'吗？',
+                $keywordText.'怎么判断是否适合自己？',
+            ],
+            'capability_outcome' => [
+                $keywordText.'能带来哪些实际价值？',
+                $audienceTerm.'用'.$keywordText.'主要看什么效果？',
+            ],
         ];
+
+        $templates = $this->dimensionOrderedTemplates($dimensionTemplates, $primaryDimension);
 
         if ($domainKeyword !== '' && $this->dedupeKey($domainKeyword) !== $this->dedupeKey($keywordText)) {
             $templates[] = $domainKeyword.'服务怎么选？';
@@ -365,6 +435,325 @@ class GeoQuestionVariantService
 
         if ($companyName !== '') {
             $templates[] = $companyName.'的'.$keywordText.'适合什么场景？';
+        }
+
+        return $templates;
+    }
+
+    /**
+     * @return array{business:list<string>,audience:list<string>,scenario:list<string>,pain:list<string>,decision:list<string>,primary_dimension:string}
+     */
+    private function profileTermPackage(Keyword $keyword, KeywordLibrary $library): array
+    {
+        return $this->profileTermPackageFromText($this->normalizeQuestion((string) ($keyword->keyword ?? '')), $library);
+    }
+
+    /**
+     * @return array{business:list<string>,audience:list<string>,scenario:list<string>,pain:list<string>,decision:list<string>,primary_dimension:string}
+     */
+    private function profileTermPackageFromText(string $keywordText, KeywordLibrary $library): array
+    {
+        $domainKeyword = $this->normalizeQuestion((string) ($library->domain_keyword ?? ''));
+        $industry = $this->normalizeQuestion((string) ($library->industry ?? ''));
+        $brandProfile = $this->normalizeQuestion(implode(' ', [
+            (string) ($library->company_name ?? ''),
+            $domainKeyword,
+            $industry,
+            (string) ($library->brand_description ?? ''),
+            (string) ($library->description ?? ''),
+        ]));
+
+        $generalTerms = $this->generalProfileTerms($brandProfile);
+
+        $business = $this->uniqueTerms([
+            $keywordText,
+            $domainKeyword,
+            $industry,
+            ...$this->extractProfileTermsByLabels($brandProfile, ['核心业务', '主营业务', '业务类型', '产品服务', '产品/服务', '服务内容', '核心能力', '主打']),
+            ...$this->extractProfileTermsAfterMarkers($brandProfile, ['提供', '主打', '主营', '覆盖', '包括', '专注于', '聚焦']),
+        ]);
+        $audience = $this->uniqueTerms([
+            ...$this->extractProfileTermsByLabels($brandProfile, ['服务对象', '目标用户', '目标客户', '目标人群', '用户群体', '受众', '面向对象']),
+            ...$this->extractProfileTermsAfterMarkers($brandProfile, ['面向', '服务于', '适合', '针对']),
+            ...$this->extractProfileTermsBetweenMarkers($brandProfile, ['帮助', '支持', '协助'], ['解决', '完成', '提升', '改善']),
+        ]);
+        $scenario = $this->uniqueTerms([
+            ...$this->extractProfileTermsByLabels($brandProfile, ['典型场景', '应用场景', '使用场景', '服务场景', '场景', '需求']),
+            ...$this->extractProfileTermsAfterMarkers($brandProfile, ['适用于', '应用于', '用于', '主打']),
+        ]);
+        $pain = $this->uniqueTerms([
+            ...$this->extractProfileTermsByLabels($brandProfile, ['痛点', '问题', '难题', '挑战']),
+            ...$this->extractProfileTermsAfterMarkers($brandProfile, ['解决', '改善', '降低', '提升']),
+        ]);
+        $decision = $this->uniqueTerms([
+            ...$this->extractProfileTermsByLabels($brandProfile, ['选择标准', '决策因素', '核心优势', '优势', '特点']),
+            ...$this->extractDecisionTermsFromText($brandProfile),
+            '效果',
+            '适配度',
+        ]);
+
+        $fallbackTerms = $this->fallbackProfileTerms($generalTerms, [$keywordText, $domainKeyword, $industry]);
+        $fallbackScenarios = $this->fallbackProfileTerms($generalTerms, $fallbackTerms);
+
+        return [
+            'business' => $business !== [] ? $business : [$keywordText],
+            'audience' => $audience !== [] ? $audience : ($fallbackTerms !== [] ? array_slice($fallbackTerms, 0, 2) : ['目标用户']),
+            'scenario' => $scenario !== [] ? $scenario : ($fallbackScenarios !== [] ? array_slice($fallbackScenarios, 0, 2) : ['实际应用']),
+            'pain' => $pain !== [] ? $pain : ($fallbackScenarios !== [] ? array_slice($fallbackScenarios, 0, 2) : ['实际问题']),
+            'decision' => $decision,
+            'primary_dimension' => $this->primaryDimension($keywordText),
+        ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function profileFilterTerms(string $keywordText, KeywordLibrary $library): array
+    {
+        $termPackage = $this->profileTermPackageFromText($keywordText, $library);
+
+        return $this->uniqueTerms([
+            ...$termPackage['audience'],
+            ...$termPackage['scenario'],
+            ...$termPackage['pain'],
+        ]);
+    }
+
+    /**
+     * @param  list<string>  $terms
+     * @return list<string>
+     */
+    private function uniqueTerms(array $terms): array
+    {
+        $seen = [];
+        $unique = [];
+        foreach ($terms as $term) {
+            $term = $this->normalizeQuestion($term);
+            if ($term === '') {
+                continue;
+            }
+
+            $key = $this->dedupeKey($term);
+            if ($key === '' || isset($seen[$key])) {
+                continue;
+            }
+
+            $seen[$key] = true;
+            $unique[] = $term;
+        }
+
+        return $unique;
+    }
+
+    /**
+     * @param  list<string>  $labels
+     * @return list<string>
+     */
+    private function extractProfileTermsByLabels(string $text, array $labels): array
+    {
+        $terms = [];
+        foreach ($labels as $label) {
+            $quotedLabel = preg_quote($label, '/');
+            if (preg_match_all('/(?:^|[\s。；;\n])'.$quotedLabel.'\s*[：:]\s*([^。；;\n]+)/u', $text, $matches)) {
+                foreach ((array) ($matches[1] ?? []) as $segment) {
+                    array_push($terms, ...$this->splitProfileTermSegment((string) $segment));
+                }
+            }
+        }
+
+        return $this->uniqueTerms($terms);
+    }
+
+    /**
+     * @param  list<string>  $markers
+     * @return list<string>
+     */
+    private function extractProfileTermsAfterMarkers(string $text, array $markers): array
+    {
+        $terms = [];
+        foreach ($markers as $marker) {
+            $quotedMarker = preg_quote($marker, '/');
+            if (preg_match_all('/'.$quotedMarker.'([^。；;，,\n]+)/u', $text, $matches)) {
+                foreach ((array) ($matches[1] ?? []) as $segment) {
+                    array_push($terms, ...$this->splitProfileTermSegment((string) $segment));
+                }
+            }
+        }
+
+        return $this->uniqueTerms($terms);
+    }
+
+    /**
+     * @param  list<string>  $startMarkers
+     * @param  list<string>  $endMarkers
+     * @return list<string>
+     */
+    private function extractProfileTermsBetweenMarkers(string $text, array $startMarkers, array $endMarkers): array
+    {
+        $terms = [];
+        $startPattern = implode('|', array_map(static fn (string $marker): string => preg_quote($marker, '/'), $startMarkers));
+        $endPattern = implode('|', array_map(static fn (string $marker): string => preg_quote($marker, '/'), $endMarkers));
+        if ($startPattern === '' || $endPattern === '') {
+            return [];
+        }
+
+        if (preg_match_all('/(?:'.$startPattern.')([^。；;，,\n]{2,30}?)(?:'.$endPattern.')/u', $text, $matches)) {
+            foreach ((array) ($matches[1] ?? []) as $segment) {
+                array_push($terms, ...$this->splitProfileTermSegment((string) $segment));
+            }
+        }
+
+        return $this->uniqueTerms($terms);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function generalProfileTerms(string $text): array
+    {
+        $segments = preg_split('/[\n。；;，,]+/u', $text) ?: [];
+        $terms = [];
+        foreach ($segments as $segment) {
+            array_push($terms, ...$this->splitProfileTermSegment((string) $segment));
+        }
+
+        return $this->uniqueTerms($terms);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function splitProfileTermSegment(string $segment): array
+    {
+        $segment = $this->cleanupProfileTerm($segment);
+        if ($segment === '') {
+            return [];
+        }
+
+        $parts = preg_split('/(?:、|，|,|\/|以及|并且|同时|和|与|及)/u', $segment) ?: [];
+
+        return collect($parts)
+            ->map(fn (string $part): string => $this->cleanupProfileTerm($part))
+            ->filter(fn (string $part): bool => $this->isUsableProfileTerm($part))
+            ->values()
+            ->all();
+    }
+
+    private function cleanupProfileTerm(string $term): string
+    {
+        $term = $this->normalizeQuestion($term);
+        $term = preg_replace('/^(?:行业|品牌类型|服务对象|目标用户|目标客户|目标人群|用户群体|受众|地域|核心业务|主营业务|业务类型|产品服务|产品\/服务|服务内容|核心能力|典型场景|应用场景|使用场景|服务场景|场景|竞品方向|痛点|问题|难题|挑战|选择标准|决策因素|核心优势|优势|特点)\s*[：:]/u', '', $term) ?? $term;
+        $term = preg_replace('/^(?:是一家|一家|一个|一种|面向|服务于|适合|针对|提供|主打|主营|覆盖|包括|专注于|聚焦|适用于|应用于|用于|解决|改善|降低|提升|帮助|主要|核心|专业|高端|一站式)\s*/u', '', $term) ?? $term;
+        $term = preg_replace('/(?:的问题|等问题|相关问题|服务场景|应用场景|使用场景|场景需求|场景)$/u', '', $term) ?? $term;
+        $term = preg_replace('/\s+/u', '', $term) ?? $term;
+        $term = preg_replace('/^[：:，,。；;、]+|[：:，,。；;、]+$/u', '', $term) ?? $term;
+
+        return trim($term);
+    }
+
+    private function isUsableProfileTerm(string $term): bool
+    {
+        $term = trim($term);
+        if ($term === '') {
+            return false;
+        }
+
+        $length = mb_strlen($term, 'UTF-8');
+        if ($length < 2 || $length > 18) {
+            return false;
+        }
+
+        if (preg_match('/^(?:品牌|行业|服务|产品|业务|场景|用户|客户|对象|人群|类型|地域|介绍|资料|不确定|暂无|无)$/u', $term) === 1) {
+            return false;
+        }
+
+        return preg_match('/(?:暂缺|无法|不能|不知道|不清楚|未提供)/u', $term) !== 1;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function extractDecisionTermsFromText(string $text): array
+    {
+        $terms = [];
+        foreach (['效果', '成本', '价格', '费用', '功能', '质量', '效率', '体验', '口碑', '交付', '周期', '稳定性', '适配', '性价比'] as $term) {
+            if (mb_stripos($text, $term, 0, 'UTF-8') !== false) {
+                $terms[] = $term;
+            }
+        }
+
+        return $this->uniqueTerms($terms);
+    }
+
+    /**
+     * @param  list<string>  $terms
+     * @param  list<string>  $excluded
+     * @return list<string>
+     */
+    private function fallbackProfileTerms(array $terms, array $excluded): array
+    {
+        $excludedKeys = collect($excluded)
+            ->map(fn (string $term): string => $this->dedupeKey($term))
+            ->filter()
+            ->flip()
+            ->all();
+
+        return collect($terms)
+            ->reject(fn (string $term): bool => isset($excludedKeys[$this->dedupeKey($term)]))
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  list<string>  $terms
+     */
+    private function termsLine(array $terms): string
+    {
+        return $terms !== [] ? implode('、', array_slice($terms, 0, 8)) : '暂无明确提取结果';
+    }
+
+    private function primaryDimension(string $keywordText): string
+    {
+        $dimensions = ['audience_fit', 'scenario_usage', 'pain_solution', 'decision_comparison', 'capability_outcome'];
+        $index = abs((int) crc32($keywordText)) % count($dimensions);
+
+        return $dimensions[$index];
+    }
+
+    /**
+     * @param  list<string>  $audience
+     */
+    private function humanAudienceTerm(array $audience): ?string
+    {
+        foreach ($audience as $term) {
+            if (preg_match('/(?:老板|团队|人员|用户|客户|商家|企业)$/u', $term) === 1) {
+                return $term;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string,list<string>>  $dimensionTemplates
+     * @return list<string>
+     */
+    private function dimensionOrderedTemplates(array $dimensionTemplates, string $primaryDimension): array
+    {
+        $orderedDimensions = array_values(array_unique([
+            $primaryDimension,
+            'audience_fit',
+            'scenario_usage',
+            'pain_solution',
+            'decision_comparison',
+            'capability_outcome',
+        ]));
+
+        $templates = [];
+        foreach ($orderedDimensions as $dimension) {
+            foreach ($dimensionTemplates[$dimension] ?? [] as $template) {
+                $templates[] = $template;
+            }
         }
 
         return $templates;

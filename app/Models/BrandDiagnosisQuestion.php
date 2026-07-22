@@ -19,6 +19,7 @@ class BrandDiagnosisQuestion extends Model
         'run_id',
         'question',
         'question_type',
+        'core_term',
         'sort_order',
         'status',
     ];

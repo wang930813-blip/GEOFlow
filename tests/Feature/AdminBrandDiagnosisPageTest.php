@@ -110,6 +110,10 @@ class AdminBrandDiagnosisPageTest extends TestCase
             'site_id' => (int) $site->id,
             'admin_id' => (int) $admin->id,
             'brand_name' => '策影GEO',
+            'brand_profile' => '策影GEO 是面向企业 AI 搜索曝光分析的品牌诊断工具。',
+            'brand_profile_source' => 'web_search',
+            'brand_profile_model' => '豆包',
+            'brand_profile_status' => 'success',
             'platforms' => ['doubao'],
             'status' => 'questions_ready',
             'total_questions' => 1,
@@ -121,8 +125,16 @@ class AdminBrandDiagnosisPageTest extends TestCase
         $question = $run->questions()->create([
             'site_id' => (int) $site->id,
             'question' => 'AI搜索优化服务怎么选？',
-            'question_type' => '选择',
+            'core_term' => '自然核心词标签',
+            'question_type' => '怎么选',
             'sort_order' => 1,
+            'status' => 'pending',
+        ]);
+        $legacyQuestion = $run->questions()->create([
+            'site_id' => (int) $site->id,
+            'question' => '能同时做智能客服加营销内容生成的AI服务商哪家好？',
+            'question_type' => '选择',
+            'sort_order' => 2,
             'status' => 'pending',
         ]);
 
@@ -135,9 +147,46 @@ class AdminBrandDiagnosisPageTest extends TestCase
             ->assertSee('data-confirm-diagnosis-form', false)
             ->assertSee('data-confirm-diagnosis-submit', false)
             ->assertSee('确认诊断')
+            ->assertSee('品牌介绍')
+            ->assertSee('策影GEO 是面向企业 AI 搜索曝光分析的品牌诊断工具。')
+            ->assertSee('豆包')
             ->assertSee('name="questions['.$question->id.']"', false)
+            ->assertSee('自然核心词标签')
+            ->assertSee('怎么选')
             ->assertSee('AI搜索优化服务怎么选？')
+            ->assertSee('name="questions['.$legacyQuestion->id.']"', false)
+            ->assertSee('能同时做智能客服加营销内容生成的AI服务商哪家好？')
+            ->assertSee('title="智能客服加营销内容生成的AI服务商"', false)
+            ->assertSee('title="选择"', false)
             ->assertSee('诊断中...', false);
+    }
+
+    public function test_brand_diagnosis_page_hides_legacy_article_model_brand_profile(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('brand_legacy_profile_page_admin');
+        BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => '武城煊饼',
+            'brand_profile' => '“武城煊饼”从名称判断，可能是地方特色餐饮或食品品牌。',
+            'brand_profile_source' => 'article_model',
+            'brand_profile_model' => 'GPT-5.5',
+            'brand_profile_status' => 'success',
+            'platforms' => ['doubao'],
+            'status' => 'questions_ready',
+            'total_questions' => 0,
+            'completed_questions' => 0,
+            'failed_questions' => 0,
+            'billing_mode' => 'pending_confirmation',
+            'usage_date' => null,
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.brand-diagnosis.index'))
+            ->assertOk()
+            ->assertDontSee('“武城煊饼”从名称判断')
+            ->assertDontSee('GPT-5.5');
     }
 
     public function test_brand_diagnosis_nav_sits_between_geo_reports_and_analytics(): void

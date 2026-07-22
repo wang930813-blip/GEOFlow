@@ -8,6 +8,7 @@ use App\Models\BrandDiagnosisRun;
 use App\Services\BrandDiagnosis\BrandDiagnosisLimitExceededException;
 use App\Services\BrandDiagnosis\BrandDiagnosisPdfService;
 use App\Services\BrandDiagnosis\BrandDiagnosisPlatform;
+use App\Services\BrandDiagnosis\BrandDiagnosisQuestionLabeler;
 use App\Services\BrandDiagnosis\BrandDiagnosisRunService;
 use App\Services\BrandDiagnosis\BrandDiagnosisSnapshotPayload;
 use App\Services\BrandDiagnosis\BrandEntityResolver;
@@ -371,20 +372,31 @@ class BrandDiagnosisController extends Controller
      */
     private function formatRecord(BrandDiagnosisRun $run, bool $expanded): array
     {
-        $questions = $run->questions->map(static fn ($question): array => [
-            'id' => (int) $question->id,
-            'rank' => (int) $question->sort_order,
-            'text' => (string) $question->question,
-            'type' => (string) $question->question_type,
-            'status' => (string) $question->status,
-        ])->values()->all();
+        $labeler = app(BrandDiagnosisQuestionLabeler::class);
+        $questions = $run->questions->map(static function ($question) use ($labeler): array {
+            $text = (string) $question->question;
+
+            return [
+                'id' => (int) $question->id,
+                'rank' => (int) $question->sort_order,
+                'text' => $text,
+                'type' => $labeler->questionType($text, (string) $question->question_type),
+                'core_term' => $labeler->coreTerm($text, (string) ($question->core_term ?? '')),
+                'status' => (string) $question->status,
+            ];
+        })->values()->all();
 
         $platformData = $this->recordPlatformData($run);
         $allPlatformData = $platformData['all'];
+        $brandProfile = $this->displayableBrandProfile($run);
 
         return [
             'id' => (int) $run->id,
             'brand' => (string) $run->brand_name,
+            'brand_profile' => $brandProfile['profile'],
+            'brand_profile_source' => $brandProfile['source'],
+            'brand_profile_model' => $brandProfile['model'],
+            'brand_profile_status' => $brandProfile['status'],
             'status' => $this->statusLabel((string) $run->status),
             'raw_status' => (string) $run->status,
             'created_at' => $run->created_at?->format('Y-m-d H:i:s') ?? '',
@@ -398,6 +410,36 @@ class BrandDiagnosisController extends Controller
             'platform_options' => $this->recordPlatformOptions($run),
             'platform_data' => $platformData,
             'can_manage_official_links' => auth('admin')->user()?->isSuperAdmin() ?? false,
+        ];
+    }
+
+    /**
+     * @return array{profile:string,source:string,model:string,status:string}
+     */
+    private function displayableBrandProfile(BrandDiagnosisRun $run): array
+    {
+        $source = trim((string) ($run->brand_profile_source ?? ''));
+        $model = trim((string) ($run->brand_profile_model ?? ''));
+        $status = trim((string) ($run->brand_profile_status ?? ''));
+        $profile = trim((string) ($run->brand_profile ?? ''));
+        $isDoubaoWebSearch = $source === 'web_search'
+            && $status === 'success'
+            && $model === BrandDiagnosisPlatform::label(BrandDiagnosisPlatform::DOUBAO);
+
+        if (! $isDoubaoWebSearch || $profile === '') {
+            return [
+                'profile' => '',
+                'source' => '',
+                'model' => '',
+                'status' => '',
+            ];
+        }
+
+        return [
+            'profile' => $profile,
+            'source' => $source,
+            'model' => $model,
+            'status' => $status,
         ];
     }
 

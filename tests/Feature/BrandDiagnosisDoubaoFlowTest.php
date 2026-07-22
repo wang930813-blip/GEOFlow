@@ -6,6 +6,7 @@ use App\Jobs\GenerateBrandDiagnosisQuestionsJob;
 use App\Jobs\ProcessBrandDiagnosisJob;
 use App\Models\Admin;
 use App\Models\AdminResourceUsage;
+use App\Models\AiModel;
 use App\Models\BrandDiagnosisBrandMention;
 use App\Models\BrandDiagnosisResult;
 use App\Models\BrandDiagnosisRun;
@@ -13,7 +14,11 @@ use App\Models\BrandDiagnosisSource;
 use App\Models\BrandDiagnosisUsageLimit;
 use App\Models\PlatformPlan;
 use App\Models\Site;
+use App\Models\SiteResourceUsage;
+use App\Services\Billing\AdminPlanSubscriptionService;
 use App\Services\BrandDiagnosis\BrandDiagnosisMentionBackfillService;
+use App\Services\BrandDiagnosis\DoubaoBrandDiagnosisClient;
+use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -130,6 +135,11 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
             'admin_id' => (int) $admin->id,
             'owner_admin_id' => (int) $admin->id,
             'brand_name' => 'Acme AI',
+            'brand_profile' => 'Acme AI is a reusable web searched brand profile.',
+            'brand_profile_source' => 'web_search',
+            'brand_profile_model' => '豆包',
+            'brand_profile_status' => 'success',
+            'brand_profile_meta' => ['core_terms' => ['AI服务', '企业智能化']],
             'platforms' => ['doubao'],
             'status' => 'completed',
             'total_questions' => 2,
@@ -175,9 +185,181 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
             'Which Acme AI service is reliable?',
             'How does Acme AI compare with competitors?',
         ], $newRun->questions()->orderBy('sort_order')->pluck('question')->all());
+        $this->assertSame('Acme AI is a reusable web searched brand profile.', (string) $newRun->brand_profile);
+        $this->assertSame('web_search', (string) $newRun->brand_profile_source);
+        $this->assertSame('豆包', (string) $newRun->brand_profile_model);
+        $this->assertSame(['core_terms' => ['AI服务', '企业智能化']], $newRun->brand_profile_meta);
 
         Queue::assertNotPushed(GenerateBrandDiagnosisQuestionsJob::class);
         Queue::assertNotPushed(ProcessBrandDiagnosisJob::class);
+    }
+
+    public function test_legacy_article_model_questions_are_not_reused_when_brand_profile_requires_doubao_web_search(): void
+    {
+        Queue::fake();
+        [$admin, $site] = $this->createAdminWithSite('brand_diagnosis_skip_legacy_reuse_admin');
+
+        $legacyRun = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'owner_admin_id' => (int) $admin->id,
+            'brand_name' => '武城煊饼',
+            'brand_profile' => '“武城煊饼”从名称判断，可能是地方特色餐饮或食品品牌。',
+            'brand_profile_source' => 'article_model',
+            'brand_profile_model' => 'GPT-5.5',
+            'brand_profile_status' => 'success',
+            'brand_profile_meta' => ['model_id' => 'gpt-5.5'],
+            'platforms' => ['doubao'],
+            'status' => 'completed',
+            'total_questions' => 1,
+            'completed_questions' => 1,
+            'failed_questions' => 0,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+        ]);
+        $legacyRun->questions()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'question' => '地方特色小吃哪家好',
+            'question_type' => '选择',
+            'sort_order' => 1,
+            'status' => 'completed',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.brand-diagnosis.store'), [
+                'brand_name' => '武城煊饼',
+                'platforms' => ['doubao'],
+                'reuse_questions' => '1',
+            ])
+            ->assertRedirect(route('admin.brand-diagnosis.index'));
+
+        $newRun = BrandDiagnosisRun::query()
+            ->whereKeyNot((int) $legacyRun->id)
+            ->firstOrFail();
+
+        $this->assertSame('questions_generating', (string) $newRun->status);
+        $this->assertSame('', (string) $newRun->brand_profile_source);
+        $this->assertSame('', (string) $newRun->brand_profile_model);
+        $this->assertSame(0, $newRun->questions()->count());
+
+        Queue::assertPushedOn('geoflow', GenerateBrandDiagnosisQuestionsJob::class, function (GenerateBrandDiagnosisQuestionsJob $job) use ($newRun): bool {
+            return $job->runId === (int) $newRun->id;
+        });
+    }
+
+    public function test_existing_brand_profile_is_not_reused_when_user_generates_new_questions(): void
+    {
+        Queue::fake();
+        [$admin, $site] = $this->createAdminWithSite('brand_diagnosis_ignore_legacy_profile_admin');
+
+        $legacyRun = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'owner_admin_id' => (int) $admin->id,
+            'brand_name' => '武城煊饼',
+            'brand_profile' => '“武城煊饼”从名称判断，可能是地方特色餐饮或食品品牌。',
+            'brand_profile_source' => 'article_model',
+            'brand_profile_model' => 'GPT-5.5',
+            'brand_profile_status' => 'success',
+            'brand_profile_meta' => ['model_id' => 'gpt-5.5'],
+            'platforms' => ['doubao'],
+            'status' => 'completed',
+            'total_questions' => 1,
+            'completed_questions' => 1,
+            'failed_questions' => 0,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+        ]);
+        $legacyRun->questions()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'question' => '地方特色小吃哪家好',
+            'question_type' => '选择',
+            'sort_order' => 1,
+            'status' => 'completed',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.brand-diagnosis.store'), [
+                'brand_name' => '武城煊饼',
+                'platforms' => ['doubao'],
+            ])
+            ->assertRedirect(route('admin.brand-diagnosis.index'));
+
+        $newRun = BrandDiagnosisRun::query()
+            ->whereKeyNot((int) $legacyRun->id)
+            ->firstOrFail();
+
+        $this->assertSame('questions_generating', $newRun->status);
+        $this->assertSame('', (string) $newRun->brand_profile_source);
+        $this->assertSame('', (string) $newRun->brand_profile_model);
+        $this->assertSame(0, $newRun->questions()->count());
+
+        Queue::assertPushedOn('geoflow', GenerateBrandDiagnosisQuestionsJob::class, function (GenerateBrandDiagnosisQuestionsJob $job) use ($newRun): bool {
+            return $job->runId === (int) $newRun->id;
+        });
+    }
+
+    public function test_question_generation_clears_stale_brand_profile_before_web_searching_again(): void
+    {
+        config()->set('brand_diagnosis.question_count', 1);
+
+        [$admin, $site] = $this->createAdminWithSite('brand_diagnosis_clear_stale_profile_admin');
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'owner_admin_id' => (int) $admin->id,
+            'brand_name' => '武城煊饼',
+            'brand_profile' => '“武城煊饼”从名称判断，可能是地方特色餐饮或食品品牌。',
+            'brand_profile_source' => 'article_model',
+            'brand_profile_model' => 'GPT-5.5',
+            'brand_profile_status' => 'success',
+            'brand_profile_meta' => ['model_id' => 'gpt-5.5'],
+            'platforms' => ['doubao'],
+            'status' => 'questions_generating',
+            'total_questions' => 0,
+            'completed_questions' => 0,
+            'failed_questions' => 0,
+            'billing_mode' => 'pending_confirmation',
+            'usage_date' => null,
+        ]);
+
+        $call = 0;
+        Http::fake(function () use (&$call, $run) {
+            $call++;
+            if ($call === 1) {
+                $freshRun = $run->fresh();
+                $this->assertSame('', (string) $freshRun->brand_profile);
+                $this->assertSame('', (string) $freshRun->brand_profile_source);
+                $this->assertSame('', (string) $freshRun->brand_profile_model);
+                $this->assertSame('', (string) $freshRun->brand_profile_status);
+                $this->assertNull($freshRun->brand_profile_meta);
+
+                return Http::response($this->brandProfileWebSearchResponse(), 200);
+            }
+
+            if ($call === 2) {
+                return Http::response($this->brandCoreTermsResponse(['地方特色面食']), 200);
+            }
+
+            return Http::response([
+                'id' => 'resp-cleared-stale-profile-question',
+                'output_text' => json_encode([
+                    'questions' => [
+                        ['question' => '地方特色面食哪家好', 'core_term' => '地方特色面食', 'type' => '选择'],
+                    ],
+                ], JSON_UNESCAPED_UNICODE),
+            ], 200);
+        });
+
+        (new GenerateBrandDiagnosisQuestionsJob((int) $run->id))->handle();
+
+        $run->refresh();
+        $this->assertSame('web_search', (string) $run->brand_profile_source);
+        $this->assertSame('豆包', (string) $run->brand_profile_model);
     }
 
     public function test_admin_can_create_brand_diagnosis_run_with_four_platforms(): void
@@ -201,10 +383,310 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         });
     }
 
+    public function test_brand_profile_web_search_always_uses_doubao_even_when_other_platform_is_selected(): void
+    {
+        config()->set('brand_diagnosis.question_count', 1);
+        config()->set('brand_diagnosis.qianwen.base_url', 'https://qianwen.test/api/v1');
+
+        Http::fake([
+            'ark.cn-beijing.volces.com/api/v3/responses' => Http::sequence()
+                ->push($this->brandProfileWebSearchResponse(), 200)
+                ->push($this->brandCoreTermsResponse(['地方特色面食']), 200)
+                ->push([
+                    'id' => 'resp-doubao-only-profile-question',
+                    'output_text' => json_encode([
+                        'questions' => [
+                            ['question' => '地方特色面食哪家好', 'core_term' => '地方特色面食', 'type' => '选择'],
+                        ],
+                    ], JSON_UNESCAPED_UNICODE),
+                ], 200),
+            'qianwen.test/*' => Http::response(['unexpected' => 'qianwen must not generate brand profile'], 500),
+        ]);
+
+        [$admin, $site] = $this->createAdminWithSite('brand_profile_fixed_doubao_admin');
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'owner_admin_id' => (int) $admin->id,
+            'brand_name' => '武城煊饼',
+            'platforms' => ['qianwen'],
+            'status' => 'questions_generating',
+            'total_questions' => 0,
+            'completed_questions' => 0,
+            'failed_questions' => 0,
+            'billing_mode' => 'pending_confirmation',
+            'usage_date' => null,
+        ]);
+
+        (new GenerateBrandDiagnosisQuestionsJob((int) $run->id))->handle();
+
+        $run->refresh();
+        $this->assertSame('questions_ready', (string) $run->status);
+        $this->assertSame('豆包', (string) $run->brand_profile_model);
+
+        Http::assertNotSent(static fn ($request): bool => str_contains($request->url(), 'qianwen.test'));
+    }
+
+    public function test_question_generation_resolves_brand_profile_once_and_reuses_it_without_platform_web_search(): void
+    {
+        config(['geoflow.api_key_crypto_roots' => ['brand-profile-generation-test-key']]);
+        config()->set('brand_diagnosis.question_count', 3);
+
+        Http::fake([
+            'https://article-ai.test/v1/chat/completions' => Http::response(['unexpected' => 'article model must not be used'], 500),
+            'ark.cn-beijing.volces.com/api/v3/responses' => Http::sequence()
+                ->push($this->brandProfileWebSearchResponse(
+                    '聚福楼是一家面向本地家庭聚餐和宴请需求的餐饮门店，主打地方菜、包间宴请和聚会服务。',
+                    '餐饮服务',
+                    '本地餐饮门店',
+                    '本地居民、家庭聚餐用户、商务宴请用户',
+                    '本地',
+                    '地方菜、宴请、聚会用餐',
+                    ['家庭聚餐', '朋友聚会', '商务宴请'],
+                    ['本地餐厅', '宴请餐饮门店'],
+                ), 200)
+                ->push($this->brandCoreTermsResponse([
+                    '本地家庭聚餐餐厅',
+                    '宴请包间餐厅',
+                    '朋友聚会地方菜',
+                    '地方菜馆',
+                    '商务宴请',
+                ]), 200)
+                ->push([
+                    'id' => 'resp-profile-based-final-question-generation',
+                    'output_text' => json_encode([
+                        'questions' => [
+                            ['question' => '本地家庭聚餐餐厅怎么选？', 'core_term' => '本地家庭聚餐餐厅', 'type' => '怎么选'],
+                            ['question' => '宴请包间餐厅哪家口碑好？', 'core_term' => '宴请包间餐厅', 'type' => '口碑评价'],
+                            ['question' => '适合朋友聚会的地方菜馆有哪些？', 'core_term' => '朋友聚会地方菜', 'type' => '场景推荐'],
+                        ],
+                    ], JSON_UNESCAPED_UNICODE),
+                ], 200),
+        ]);
+
+        [$admin, $site] = $this->createAdminWithSite('brand_profile_question_generation_admin');
+        AiModel::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Article Chat',
+            'version' => '',
+            'api_key' => app(ApiKeyCrypto::class)->encrypt('article-model-key'),
+            'model_id' => 'article-chat-model',
+            'model_type' => 'chat',
+            'api_url' => 'https://article-ai.test/v1',
+            'failover_priority' => 1,
+            'daily_limit' => 100,
+            'used_today' => 0,
+            'total_used' => 0,
+            'status' => 'active',
+        ]);
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'owner_admin_id' => (int) $admin->id,
+            'brand_name' => '聚福楼',
+            'platforms' => ['doubao'],
+            'status' => 'questions_generating',
+            'total_questions' => 0,
+            'completed_questions' => 0,
+            'failed_questions' => 0,
+            'billing_mode' => 'pending_confirmation',
+            'usage_date' => null,
+        ]);
+
+        (new GenerateBrandDiagnosisQuestionsJob((int) $run->id))->handle();
+
+        $run->refresh();
+        $this->assertSame('questions_ready', $run->status);
+        $this->assertSame('success', (string) $run->brand_profile_status);
+        $this->assertSame('web_search', (string) $run->brand_profile_source);
+        $this->assertSame('豆包', (string) $run->brand_profile_model);
+        $this->assertStringContainsString('聚福楼是一家面向本地家庭聚餐', (string) $run->brand_profile);
+        $this->assertSame([
+            '本地家庭聚餐餐厅怎么选？',
+            '宴请包间餐厅哪家口碑好？',
+            '适合朋友聚会的地方菜馆有哪些？',
+        ], $run->questions()->orderBy('sort_order')->pluck('question')->all());
+        $this->assertSame([
+            '怎么选',
+            '口碑评价',
+            '场景推荐',
+        ], $run->questions()->orderBy('sort_order')->pluck('question_type')->all());
+        $this->assertSame([
+            '本地家庭聚餐餐厅',
+            '宴请包间餐厅',
+            '朋友聚会地方菜',
+        ], $run->questions()->orderBy('sort_order')->pluck('core_term')->all());
+        $this->assertSame([
+            '本地家庭聚餐餐厅',
+            '宴请包间餐厅',
+            '朋友聚会地方菜',
+            '地方菜馆',
+            '商务宴请',
+        ], data_get($run->brand_profile_meta, 'core_terms'));
+
+        $recordedRequests = Http::recorded()->map(fn (array $record) => $record[0])->values();
+        $this->assertCount(3, $recordedRequests);
+        $profilePrompt = json_encode($recordedRequests[0]->data(), JSON_UNESCAPED_UNICODE) ?: '';
+        $coreTermPrompt = (string) data_get($recordedRequests[1]->data(), 'input.0.content.0.text');
+        $candidatePrompt = (string) data_get($recordedRequests[2]->data(), 'input.0.content.0.text');
+
+        $this->assertStringContainsString('聚福楼的品牌介绍', $profilePrompt);
+        $this->assertStringContainsString('请使用联网搜索检索目标品牌', $profilePrompt);
+        $this->assertSame('web_search', data_get($recordedRequests[0]->data(), 'tools.0.type'));
+        $this->assertStringContainsString('提取 5 个', $coreTermPrompt);
+        $this->assertStringContainsString('品牌介绍：聚福楼是一家面向本地家庭聚餐', $coreTermPrompt);
+        $this->assertStringContainsString('高频核心词', $coreTermPrompt);
+        $this->assertStringContainsString('品牌介绍：聚福楼是一家面向本地家庭聚餐', $candidatePrompt);
+        $this->assertStringContainsString('品牌核心词：本地家庭聚餐餐厅、宴请包间餐厅、朋友聚会地方菜、地方菜馆、商务宴请', $candidatePrompt);
+        $this->assertStringContainsString('用户真实搜索表达', $candidatePrompt);
+        $this->assertStringContainsString('不要求固定类型', $candidatePrompt);
+        $this->assertStringContainsString('core_term', $candidatePrompt);
+        $this->assertStringContainsString('问题类型由模型自然概括', $candidatePrompt);
+        $this->assertStringContainsString('允许生成“核心词+哪家好”', $candidatePrompt);
+        $this->assertStringNotContainsString('从这些问题类型中选择', $candidatePrompt);
+        $this->assertStringNotContainsString('问题类型必须贴合问题问法', $candidatePrompt);
+        $this->assertStringContainsString('不要再联网检索目标品牌', $candidatePrompt);
+        $this->assertStringNotContainsString('请先联网检索目标品牌', $candidatePrompt);
+        $this->assertArrayNotHasKey('tools', $recordedRequests[1]->data());
+        $this->assertArrayNotHasKey('tools', $recordedRequests[2]->data());
+        Http::assertNotSent(static fn ($request): bool => $request->url() === 'https://article-ai.test/v1/chat/completions');
+    }
+
+    public function test_question_generation_job_refreshes_existing_brand_profile_when_not_reusing_questions(): void
+    {
+        config()->set('brand_diagnosis.question_count', 2);
+
+        Http::fake([
+            'ark.cn-beijing.volces.com/api/v3/responses' => Http::sequence()
+                ->push($this->brandProfileWebSearchResponse(
+                    '武城煊饼是根据联网资料整理的地方特色面食介绍，重点关注地域特色、产品形态和真实消费场景。',
+                    '餐饮食品',
+                    '地方特色面食',
+                    '本地居民、游客、伴手礼消费者',
+                    '山东德州武城',
+                    '煊饼制作、门店销售、地方特产消费',
+                    ['早餐简餐', '伴手礼购买'],
+                    ['地方面食门店'],
+                ), 200)
+                ->push($this->brandCoreTermsResponse(['地方特色面食', '山东德州武城', '伴手礼', '早餐简餐', '煊饼小吃']), 200)
+                ->push([
+                    'id' => 'resp-refreshed-profile-questions',
+                    'output_text' => json_encode([
+                        'questions' => [
+                            ['question' => '地方特色面食哪家好', 'core_term' => '地方特色面食', 'type' => '选择'],
+                            ['question' => '山东德州武城伴手礼推荐', 'core_term' => '伴手礼', 'type' => '推荐'],
+                        ],
+                    ], JSON_UNESCAPED_UNICODE),
+                ], 200),
+        ]);
+
+        [$admin, $site] = $this->createAdminWithSite('brand_diagnosis_refresh_existing_profile_admin');
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'owner_admin_id' => (int) $admin->id,
+            'brand_name' => '武城煊饼',
+            'brand_profile' => '“武城煊饼”从名称判断，可能是地方特色餐饮或食品品牌。',
+            'brand_profile_source' => 'article_model',
+            'brand_profile_model' => 'GPT-5.5',
+            'brand_profile_status' => 'success',
+            'brand_profile_meta' => ['model_id' => 'gpt-5.5'],
+            'platforms' => ['doubao'],
+            'status' => 'questions_generating',
+            'total_questions' => 0,
+            'completed_questions' => 0,
+            'failed_questions' => 0,
+            'billing_mode' => 'pending_confirmation',
+            'usage_date' => null,
+        ]);
+
+        (new GenerateBrandDiagnosisQuestionsJob((int) $run->id))->handle();
+
+        $run->refresh();
+        $this->assertSame('web_search', (string) $run->brand_profile_source);
+        $this->assertSame('豆包', (string) $run->brand_profile_model);
+        $this->assertStringContainsString('根据联网资料整理', (string) $run->brand_profile);
+        $this->assertSame(['地方特色面食', '山东德州武城', '伴手礼', '早餐简餐', '煊饼小吃'], data_get($run->brand_profile_meta, 'core_terms'));
+        $this->assertSame([
+            '地方特色面食哪家好',
+            '山东德州武城伴手礼推荐',
+        ], $run->questions()->orderBy('sort_order')->pluck('question')->all());
+
+        $recordedRequests = Http::recorded()->map(fn (array $record) => $record[0])->values();
+        $this->assertCount(3, $recordedRequests);
+        $this->assertSame('web_search', data_get($recordedRequests[0]->data(), 'tools.0.type'));
+    }
+
+    public function test_question_generation_returns_six_questions_with_short_search_queries(): void
+    {
+        config()->set('brand_diagnosis.question_count', 6);
+
+        Http::fake([
+            'ark.cn-beijing.volces.com/api/v3/responses' => Http::sequence()
+                ->push($this->brandProfileWebSearchResponse(
+                    '武城煊饼是山东省德州市武城县的特色传统名吃，已有数百年历史，饼大如盘、皮酥馅嫩，适合本地居民日常就餐、游客地标美食打卡和非遗美食体验。',
+                    '餐饮地方特色小吃',
+                    '地方非遗地标美食',
+                    '本地居民、文旅游客、传统美食爱好者',
+                    '山东德州武城',
+                    '武城煊饼手工制作、线下售卖、地方文旅特色美食体验',
+                    ['本地居民日常就餐', '文旅游客地标美食打卡', '非遗美食体验'],
+                    ['香河肉饼', '黄桥烧饼', '区域特色馅饼'],
+                ), 200)
+                ->push($this->brandCoreTermsResponse(['地方特色小吃', '山东地标美食', '非遗美食体验', '传统手工面食', '酥皮馅饼']), 200)
+                ->push([
+                    'id' => 'resp-six-long-questions',
+                    'output_text' => json_encode([
+                        'questions' => [
+                            ['question' => '山东德州适合外地游客专程打卡的地方特色小吃有哪些推荐？', 'core_term' => '地方特色小吃', 'type' => '美食推荐'],
+                            ['question' => '来山东旅游必吃的正宗山东地标美食通常有哪些选择？', 'core_term' => '山东地标美食', 'type' => '旅游美食咨询'],
+                            ['question' => '鲁北地区适合体验传统技艺的非遗美食项目有哪些？', 'core_term' => '非遗美食体验', 'type' => '体验攻略'],
+                            ['question' => '适合日常饱腹的山东本地传统手工面食应该怎么选择？', 'core_term' => '传统手工面食', 'type' => '品类选择'],
+                            ['question' => '外酥里嫩不腻口的酥皮馅饼品类应该看哪些口碑？', 'core_term' => '酥皮馅饼', 'type' => '口碑对比'],
+                            ['question' => '山东地方特色面点适合作为伴手礼或旅行打卡吗？', 'core_term' => '山东地标美食', 'type' => '场景判断'],
+                        ],
+                    ], JSON_UNESCAPED_UNICODE),
+                ], 200),
+        ]);
+
+        [$admin, $site] = $this->createAdminWithSite('brand_diagnosis_short_question_mix_admin');
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'owner_admin_id' => (int) $admin->id,
+            'brand_name' => '武城煊饼',
+            'platforms' => ['doubao'],
+            'status' => 'questions_generating',
+            'total_questions' => 0,
+            'completed_questions' => 0,
+            'failed_questions' => 0,
+            'billing_mode' => 'pending_confirmation',
+            'usage_date' => null,
+        ]);
+
+        (new GenerateBrandDiagnosisQuestionsJob((int) $run->id))->handle();
+
+        $questions = $run->questions()->orderBy('sort_order')->pluck('question')->all();
+
+        $this->assertCount(6, $questions);
+        $this->assertContains('武城哪家煊饼店最好吃', $questions);
+        $this->assertGreaterThanOrEqual(2, collect($questions)->filter(function (string $question): bool {
+            $length = mb_strlen(preg_replace('/[，。！？、\s?]/u', '', $question) ?? $question, 'UTF-8');
+
+            return $length <= 18 && preg_match('/(哪家|推荐|最好|好吃|口碑|怎么选|靠谱)/u', $question) === 1;
+        })->count());
+
+        $run->refresh();
+        $this->assertSame('questions_ready', (string) $run->status);
+        $this->assertSame(6, (int) $run->total_questions);
+    }
+
     public function test_doubao_job_generates_industry_question_variants_before_collecting_answers(): void
     {
         Http::fake([
             'ark.cn-beijing.volces.com/api/v3/responses' => Http::sequence()
+                ->push($this->brandProfileWebSearchResponse(), 200)
+                ->push($this->brandCoreTermsResponse(), 200)
                 ->push([
                     'id' => 'resp-question-generation',
                     'output_text' => json_encode([
@@ -213,24 +695,11 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
                             'type' => '企业服务',
                         ],
                         'questions' => [
-                            ['question' => '成都本地AI服务公司口碑怎么样？', 'type' => '认知'],
-                            ['question' => '新知地适合哪些客户？', 'type' => '服务对象'],
-                            ['question' => '成都AI项目合作流程是什么？', 'type' => '流程'],
-                            ['question' => '本地人工智能团队怎么比较？', 'type' => '对比'],
-                            ['question' => '成都智能化方案怎么选？', 'type' => '选择'],
-                        ],
-                    ], JSON_UNESCAPED_UNICODE),
-                    'usage' => ['input_tokens' => 30, 'output_tokens' => 80],
-                ], 200)
-                ->push([
-                    'id' => 'resp-question-selection',
-                    'output_text' => json_encode([
-                        'questions' => [
-                            ['question' => '成都本地AI服务公司口碑怎么样？', 'type' => '认知'],
-                            ['question' => '成都AI项目合作流程是什么？', 'type' => '流程'],
-                            ['question' => '本地人工智能团队怎么比较？', 'type' => '对比'],
-                            ['question' => '新知地适合哪些客户？', 'type' => '服务对象'],
-                            ['question' => '成都智能化方案怎么选？', 'type' => '选择'],
+                            ['question' => '成都本地AI服务公司口碑怎么样？', 'core_term' => '本地AI服务公司', 'type' => '认知'],
+                            ['question' => '成都AI项目合作流程是什么？', 'core_term' => 'AI项目合作', 'type' => '流程'],
+                            ['question' => '本地人工智能团队怎么比较？', 'core_term' => '人工智能团队', 'type' => '对比'],
+                            ['question' => '企业AI项目适合哪些客户？', 'core_term' => '企业AI项目', 'type' => '服务对象'],
+                            ['question' => '成都智能化方案怎么选？', 'core_term' => '智能化方案', 'type' => '选择'],
                         ],
                     ], JSON_UNESCAPED_UNICODE),
                     'usage' => ['input_tokens' => 30, 'output_tokens' => 80],
@@ -263,21 +732,29 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
             '成都本地AI服务公司口碑怎么样？',
             '成都AI项目合作流程是什么？',
             '本地人工智能团队怎么比较？',
-            '新知地适合哪些客户？',
+            '企业AI项目适合哪些客户？',
             '成都智能化方案怎么选？',
         ], $questions);
 
         $recordedRequests = Http::recorded()->map(fn (array $record) => $record[0])->values();
-        $this->assertCount(2, $recordedRequests);
-        $firstPrompt = (string) data_get($recordedRequests[0]->data(), 'input.0.content.0.text');
-        $secondPrompt = (string) data_get($recordedRequests[1]->data(), 'input.0.content.0.text');
-        $selectionPrompt = (string) data_get($recordedRequests[1]->data(), 'input.0.content.0.text');
+        $this->assertCount(3, $recordedRequests);
+        $profilePrompt = (string) data_get($recordedRequests[0]->data(), 'input.0.content.0.text');
+        $coreTermPrompt = (string) data_get($recordedRequests[1]->data(), 'input.0.content.0.text');
+        $firstPrompt = (string) data_get($recordedRequests[2]->data(), 'input.0.content.0.text');
+        $this->assertStringContainsString('请使用联网搜索检索目标品牌', $profilePrompt);
+        $this->assertSame('web_search', data_get($recordedRequests[0]->data(), 'tools.0.type'));
+        $this->assertStringContainsString('提取 5 个', $coreTermPrompt);
         $this->assertStringContainsString('生成 5 个', $firstPrompt);
-        $this->assertStringContainsString('智能分析', $firstPrompt);
+        $this->assertStringContainsString('品牌介绍：', $firstPrompt);
+        $this->assertStringContainsString('品牌核心词：本地AI服务公司、AI项目合作、人工智能团队、智能化方案、企业AI项目', $firstPrompt);
+        $this->assertStringContainsString('用户真实搜索表达', $firstPrompt);
+        $this->assertStringContainsString('不要求固定类型', $firstPrompt);
+        $this->assertStringContainsString('不要再联网检索目标品牌', $firstPrompt);
+        $this->assertStringNotContainsString('请先联网检索目标品牌', $firstPrompt);
         $this->assertStringNotContainsString('至少 1 个问题用于竞品/服务商对比', $firstPrompt);
         $this->assertStringNotContainsString('GEO优化', $firstPrompt);
-        $this->assertStringContainsString('成都本地AI服务公司口碑怎么样？', $selectionPrompt);
-        $this->assertStringContainsString('成都AI项目合作流程是什么？', $selectionPrompt);
+        $this->assertArrayNotHasKey('tools', $recordedRequests[1]->data());
+        $this->assertArrayNotHasKey('tools', $recordedRequests[2]->data());
 
         $run->refresh();
         $this->assertSame('questions_ready', $run->status);
@@ -293,23 +770,15 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
 
         Http::fake([
             'ark.cn-beijing.volces.com/api/v3/responses' => Http::sequence()
+                ->push($this->brandProfileWebSearchResponse(), 200)
+                ->push($this->brandCoreTermsResponse(), 200)
                 ->push([
                     'id' => 'resp-question-generation-only',
                     'output_text' => json_encode([
                         'questions' => [
-                            ['question' => '成都本地AI服务公司口碑怎么样？', 'type' => '认知'],
-                            ['question' => '成都AI项目合作流程是什么？', 'type' => '流程'],
-                            ['question' => '本地人工智能团队怎么比较？', 'type' => '对比'],
-                        ],
-                    ], JSON_UNESCAPED_UNICODE),
-                ], 200)
-                ->push([
-                    'id' => 'resp-question-selection-only',
-                    'output_text' => json_encode([
-                        'questions' => [
-                            ['question' => '成都本地AI服务公司口碑怎么样？', 'type' => '认知'],
-                            ['question' => '成都AI项目合作流程是什么？', 'type' => '流程'],
-                            ['question' => '本地人工智能团队怎么比较？', 'type' => '对比'],
+                            ['question' => '成都本地AI服务公司口碑怎么样？', 'core_term' => '本地AI服务公司', 'type' => '认知'],
+                            ['question' => '成都AI项目合作流程是什么？', 'core_term' => 'AI项目合作', 'type' => '流程'],
+                            ['question' => '本地人工智能团队怎么比较？', 'core_term' => '人工智能团队', 'type' => '对比'],
                         ],
                     ], JSON_UNESCAPED_UNICODE),
                 ], 200),
@@ -470,7 +939,7 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
             'meta' => [],
         ]);
 
-        $subscriptionService = app(\App\Services\Billing\AdminPlanSubscriptionService::class);
+        $subscriptionService = app(AdminPlanSubscriptionService::class);
         $subscriptionService->openOwner($agent, $site, $plan, 'agent_owner', $agent, now(), now()->addDays(30), false);
         $subscriptionService->inheritForAgentUser($agent, $userOne, $site, $agent);
         $subscriptionService->inheritForAgentUser($agent, $userTwo, $site, $agent);
@@ -508,7 +977,7 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
             'resource_key' => PlatformPlan::RESOURCE_BRAND_DIAGNOSES,
             'used_amount' => 1,
         ]);
-        $this->assertSame(0, \App\Models\SiteResourceUsage::query()
+        $this->assertSame(0, SiteResourceUsage::query()
             ->where('site_id', (int) $site->id)
             ->where('resource_key', PlatformPlan::RESOURCE_BRAND_DIAGNOSES)
             ->count());
@@ -609,6 +1078,8 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
 
         Http::fake([
             'ark.cn-beijing.volces.com/api/v3/responses' => Http::sequence()
+                ->push($this->brandProfileWebSearchResponse(), 200)
+                ->push($this->brandCoreTermsResponse(), 200)
                 ->push([
                     'id' => 'resp-question-generation-configured-count',
                     'output_text' => json_encode([
@@ -617,21 +1088,9 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
                             'type' => '企业服务',
                         ],
                         'questions' => [
-                            ['question' => '成都本地AI服务公司口碑怎么样？', 'type' => '认知'],
-                            ['question' => '新知地适合哪些客户？', 'type' => '服务对象'],
-                            ['question' => '成都AI项目合作流程是什么？', 'type' => '流程'],
-                            ['question' => '本地人工智能团队怎么比较？', 'type' => '对比'],
-                            ['question' => '成都智能化方案怎么选？', 'type' => '选择'],
-                        ],
-                    ], JSON_UNESCAPED_UNICODE),
-                ], 200)
-                ->push([
-                    'id' => 'resp-question-selection-configured-count',
-                    'output_text' => json_encode([
-                        'questions' => [
-                            ['question' => '成都本地AI服务公司口碑怎么样？', 'type' => '认知'],
-                            ['question' => '成都AI项目合作流程是什么？', 'type' => '流程'],
-                            ['question' => '本地人工智能团队怎么比较？', 'type' => '对比'],
+                            ['question' => '成都本地AI服务公司口碑怎么样？', 'core_term' => '本地AI服务公司', 'type' => '认知'],
+                            ['question' => '成都AI项目合作流程是什么？', 'core_term' => 'AI项目合作', 'type' => '流程'],
+                            ['question' => '本地人工智能团队怎么比较？', 'core_term' => '人工智能团队', 'type' => '对比'],
                         ],
                     ], JSON_UNESCAPED_UNICODE),
                 ], 200)
@@ -657,8 +1116,8 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         (new GenerateBrandDiagnosisQuestionsJob((int) $run->id))->handle();
 
         $recordedRequests = Http::recorded()->map(fn (array $record) => $record[0])->values();
-        $this->assertCount(2, $recordedRequests);
-        $this->assertStringContainsString('生成 3 个', (string) data_get($recordedRequests[0]->data(), 'input.0.content.0.text'));
+        $this->assertCount(3, $recordedRequests);
+        $this->assertStringContainsString('最终诊断会生成 3 个', (string) data_get($recordedRequests[2]->data(), 'input.0.content.0.text'));
 
         $this->assertSame([
             '成都本地AI服务公司口碑怎么样？',
@@ -693,15 +1152,17 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
             ], 200),
         ]);
 
-        app(\App\Services\BrandDiagnosis\DoubaoBrandDiagnosisClient::class)
+        app(DoubaoBrandDiagnosisClient::class)
             ->generateQuestions('新知地(成都)人工智能科技有限公司', 5);
 
         $request = Http::recorded()->first()[0];
         $prompt = (string) data_get($request->data(), 'input.0.content.0.text');
 
-        $this->assertStringContainsString('先联网检索目标品牌', $prompt);
+        $this->assertStringContainsString('品牌介绍：', $prompt);
         $this->assertStringContainsString('行业', $prompt);
         $this->assertStringContainsString('类型', $prompt);
+        $this->assertStringContainsString('不要再联网检索目标品牌', $prompt);
+        $this->assertStringNotContainsString('先联网检索目标品牌', $prompt);
         $this->assertStringContainsString('不要直接出现目标品牌名称', $prompt);
         $this->assertStringNotContainsString('至少 1 个问题用于竞品/服务商对比', $prompt);
         $this->assertStringNotContainsString('至少 1 个问题用于行业服务选择', $prompt);
@@ -710,53 +1171,27 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         $this->assertStringNotContainsString('AI搜索优化服务选哪家靠谱', $prompt);
     }
 
-    public function test_selected_platforms_merge_candidate_question_pools_before_selecting_final_questions(): void
+    public function test_selected_platforms_use_doubao_only_to_generate_final_question_pool(): void
     {
         config()->set('brand_diagnosis.question_count', 5);
 
         Http::fake([
             'ark.cn-beijing.volces.com/api/v3/responses' => Http::sequence()
+                ->push($this->brandProfileWebSearchResponse(), 200)
+                ->push($this->brandCoreTermsResponse(), 200)
                 ->push([
-                    'id' => 'resp-doubao-candidates',
+                    'id' => 'resp-doubao-final-questions',
                     'output_text' => json_encode([
                         'analysis' => [
                             'industry' => '人工智能服务',
                             'type' => '本地企业服务',
                         ],
                         'questions' => [
-                            ['question' => '成都本地AI服务公司口碑怎么样？', 'type' => '认知'],
-                            ['question' => '新知地适合哪些客户？', 'type' => '服务对象'],
-                            ['question' => '成都AI项目合作流程是什么？', 'type' => '流程'],
-                            ['question' => '本地人工智能团队怎么比较？', 'type' => '对比'],
-                            ['question' => '成都智能化方案怎么选？', 'type' => '选择'],
-                        ],
-                    ], JSON_UNESCAPED_UNICODE),
-                ], 200)
-                ->push([
-                    'id' => 'resp-deepseek-candidates',
-                    'output_text' => json_encode([
-                        'analysis' => [
-                            'industry' => '企业数字化服务',
-                            'type' => 'AI应用咨询',
-                        ],
-                        'questions' => [
-                            ['question' => '成都企业做AI业务先看什么？', 'type' => '选择'],
-                            ['question' => '新知地的服务适合哪些企业？', 'type' => '服务对象'],
-                            ['question' => '本地AI项目交付能力怎么判断？', 'type' => '评估'],
-                            ['question' => '成都有哪些类似品牌？', 'type' => '对比'],
-                            ['question' => '企业智能化合作怎么比价？', 'type' => '选择'],
-                        ],
-                    ], JSON_UNESCAPED_UNICODE),
-                ], 200)
-                ->push([
-                    'id' => 'resp-selected-questions',
-                    'output_text' => json_encode([
-                        'questions' => [
-                            ['question' => '成都本地AI服务公司口碑怎么样？', 'type' => '认知'],
-                            ['question' => '成都企业做AI业务先看什么？', 'type' => '选择'],
-                            ['question' => '新知地的服务适合哪些企业？', 'type' => '服务对象'],
-                            ['question' => '本地AI项目交付能力怎么判断？', 'type' => '评估'],
-                            ['question' => '成都智能化方案怎么选？', 'type' => '选择'],
+                            ['question' => '成都本地AI服务公司口碑怎么样？', 'core_term' => '本地AI服务公司', 'type' => '认知'],
+                            ['question' => '成都企业做AI业务先看什么？', 'core_term' => '企业AI项目', 'type' => '选择'],
+                            ['question' => '成都AI项目合作流程是什么？', 'core_term' => 'AI项目合作', 'type' => '流程'],
+                            ['question' => '本地AI项目交付能力怎么判断？', 'core_term' => '企业AI项目', 'type' => '评估'],
+                            ['question' => '成都智能化方案怎么选？', 'core_term' => '智能化方案', 'type' => '选择'],
                         ],
                     ], JSON_UNESCAPED_UNICODE),
                 ], 200)
@@ -799,17 +1234,20 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         $recordedRequests = Http::recorded()->map(fn (array $record) => $record[0])->values();
         $this->assertCount(3, $recordedRequests);
 
-        $doubaoPrompt = (string) data_get($recordedRequests[0]->data(), 'input.0.content.0.text');
-        $deepseekPrompt = (string) data_get($recordedRequests[1]->data(), 'input.0.content.0.text');
-        $selectionPrompt = (string) data_get($recordedRequests[2]->data(), 'input.0.content.0.text');
+        $profilePrompt = (string) data_get($recordedRequests[0]->data(), 'input.0.content.0.text');
+        $coreTermPrompt = (string) data_get($recordedRequests[1]->data(), 'input.0.content.0.text');
+        $doubaoPrompt = (string) data_get($recordedRequests[2]->data(), 'input.0.content.0.text');
 
-        $this->assertStringContainsString('智能分析它可能对应的行业', $doubaoPrompt);
+        $this->assertStringContainsString('请使用联网搜索检索目标品牌', $profilePrompt);
+        $this->assertStringContainsString('提取 5 个', $coreTermPrompt);
+        $this->assertStringContainsString('品牌介绍：', $doubaoPrompt);
+        $this->assertStringContainsString('品牌核心词：本地AI服务公司、AI项目合作、人工智能团队、智能化方案、企业AI项目', $doubaoPrompt);
+        $this->assertStringContainsString('不要再联网检索目标品牌', $doubaoPrompt);
+        $this->assertStringNotContainsString('智能分析它可能对应的行业', $doubaoPrompt);
         $this->assertStringNotContainsString('至少 1 个问题用于竞品/服务商对比', $doubaoPrompt);
-        $this->assertStringNotContainsString('GEO优化', $deepseekPrompt);
-        $this->assertStringContainsString('成都本地AI服务公司口碑怎么样？', $selectionPrompt);
-        $this->assertStringContainsString('成都企业做AI业务先看什么？', $selectionPrompt);
-        $this->assertStringContainsString('新知地的服务适合哪些企业？', $selectionPrompt);
-        $this->assertStringContainsString('最终问题默认不得出现目标品牌名称或简称', $selectionPrompt);
+        $this->assertStringNotContainsString('GEO优化', $doubaoPrompt);
+        $this->assertArrayNotHasKey('tools', $recordedRequests[1]->data());
+        $this->assertArrayNotHasKey('tools', $recordedRequests[2]->data());
 
         $run->refresh();
         $this->assertSame('questions_ready', $run->status);
@@ -819,35 +1257,23 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         $this->assertSame(0, (int) $run->mention_count);
     }
 
-    public function test_question_pool_continues_when_one_selected_platform_fails_to_generate_candidates(): void
+    public function test_question_pool_ignores_non_doubao_platforms_when_generating_questions(): void
     {
         config()->set('brand_diagnosis.question_count', 5);
 
         Http::fake([
             'ark.cn-beijing.volces.com/api/v3/responses' => Http::sequence()
+                ->push($this->brandProfileWebSearchResponse(), 200)
+                ->push($this->brandCoreTermsResponse(), 200)
                 ->push([
                     'id' => 'resp-doubao-candidates-only',
                     'output_text' => json_encode([
                         'questions' => [
-                            ['question' => '成都本地AI服务公司口碑怎么样？', 'type' => '认知'],
-                            ['question' => '成都AI项目合作流程是什么？', 'type' => '流程'],
-                            ['question' => '本地人工智能团队怎么比较？', 'type' => '对比'],
-                            ['question' => '成都智能化方案怎么选？', 'type' => '选择'],
-                            ['question' => '企业AI项目交付怎么判断？', 'type' => '评估'],
-                        ],
-                    ], JSON_UNESCAPED_UNICODE),
-                ], 200)
-                ->pushStatus(504)
-                ->pushStatus(504)
-                ->push([
-                    'id' => 'resp-selected-after-partial-platform-failure',
-                    'output_text' => json_encode([
-                        'questions' => [
-                            ['question' => '成都本地AI服务公司口碑怎么样？', 'type' => '认知'],
-                            ['question' => '成都AI项目合作流程是什么？', 'type' => '流程'],
-                            ['question' => '本地人工智能团队怎么比较？', 'type' => '对比'],
-                            ['question' => '成都智能化方案怎么选？', 'type' => '选择'],
-                            ['question' => '企业AI项目交付怎么判断？', 'type' => '评估'],
+                            ['question' => '成都本地AI服务公司口碑怎么样？', 'core_term' => '本地AI服务公司', 'type' => '认知'],
+                            ['question' => '成都AI项目合作流程是什么？', 'core_term' => 'AI项目合作', 'type' => '流程'],
+                            ['question' => '本地人工智能团队怎么比较？', 'core_term' => '人工智能团队', 'type' => '对比'],
+                            ['question' => '成都智能化方案怎么选？', 'core_term' => '智能化方案', 'type' => '选择'],
+                            ['question' => '企业AI项目交付怎么判断？', 'core_term' => '企业AI项目', 'type' => '评估'],
                         ],
                     ], JSON_UNESCAPED_UNICODE),
                 ], 200)
@@ -894,26 +1320,26 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         $this->assertSame(0, (int) $run->completed_questions);
     }
 
-    public function test_question_pool_uses_candidate_fallback_when_final_selection_request_fails(): void
+    public function test_question_pool_filters_invalid_questions_and_fills_from_core_terms(): void
     {
         config()->set('brand_diagnosis.question_count', 5);
 
         Http::fake([
             'ark.cn-beijing.volces.com/api/v3/responses' => Http::sequence()
+                ->push($this->brandProfileWebSearchResponse(), 200)
+                ->push($this->brandCoreTermsResponse(), 200)
                 ->push([
-                    'id' => 'resp-candidates-before-selection-timeout',
+                    'id' => 'resp-invalid-and-valid-questions',
                     'output_text' => json_encode([
                         'questions' => [
-                            ['question' => '成都本地AI服务公司口碑怎么样？', 'type' => '认知'],
-                            ['question' => '成都AI项目合作流程是什么？', 'type' => '流程'],
-                            ['question' => '本地人工智能团队怎么比较？', 'type' => '对比'],
-                            ['question' => '成都智能化方案怎么选？', 'type' => '选择'],
-                            ['question' => '企业AI项目交付怎么判断？', 'type' => '评估'],
+                            ['question' => '本地AI服务公司', 'core_term' => '本地AI服务公司', 'type' => '原样核心词'],
+                            ['question' => '成都AI项目合作流程是什么？', 'core_term' => 'AI项目合作', 'type' => '流程'],
+                            ['question' => '成都AI项目合作流程是什么？', 'core_term' => 'AI项目合作', 'type' => '重复'],
+                            ['question' => '新知地适合哪些客户？', 'core_term' => '企业AI项目', 'type' => '品牌词'],
+                            ['question' => '本地人工智能团队怎么比较？', 'core_term' => '人工智能团队', 'type' => '对比'],
                         ],
                     ], JSON_UNESCAPED_UNICODE),
                 ], 200)
-                ->pushStatus(504)
-                ->pushStatus(504)
                 ->push($this->doubaoAnswerResponse('公开资料中暂未检索到明确品牌提及。'))
                 ->push($this->doubaoAnswerResponse('公开资料中暂未检索到明确品牌提及。'))
                 ->push($this->doubaoAnswerResponse('公开资料中暂未检索到明确品牌提及。'))
@@ -938,11 +1364,11 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         (new GenerateBrandDiagnosisQuestionsJob((int) $run->id))->handle();
 
         $this->assertSame([
-            '成都本地AI服务公司口碑怎么样？',
             '成都AI项目合作流程是什么？',
             '本地人工智能团队怎么比较？',
-            '成都智能化方案怎么选？',
-            '企业AI项目交付怎么判断？',
+            '本地AI服务公司哪家好',
+            'AI项目合作推荐',
+            '人工智能团队怎么选',
         ], $run->questions()->orderBy('sort_order')->pluck('question')->all());
 
         $run->refresh();
@@ -1317,7 +1743,7 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
             'https://qianwen.example.com/api/v1/services/aigc/text-generation/generation' => Http::response($this->dashScopeBrandMentionAnswerResponse('qianwen-direct', 'Qianwen answer mentions Acme AI.'), 200),
         ]);
 
-        $response = app(\App\Services\BrandDiagnosis\DoubaoBrandDiagnosisClient::class)
+        $response = app(DoubaoBrandDiagnosisClient::class)
             ->ask('Acme AI', 'Which AI brand service is reliable?', 'qianwen');
 
         $this->assertSame('Qianwen answer mentions Acme AI.', $response->answer);
@@ -1347,7 +1773,7 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
             'https://qianwen.example.com/api/v1/services/aigc/multimodal-generation/generation' => Http::response($this->dashScopeBrandMentionAnswerResponse('qianwen-multimodal', 'Qianwen multimodal answer mentions Acme AI.'), 200),
         ]);
 
-        $response = app(\App\Services\BrandDiagnosis\DoubaoBrandDiagnosisClient::class)
+        $response = app(DoubaoBrandDiagnosisClient::class)
             ->ask('Acme AI', 'Which AI brand service is reliable?', 'qianwen');
 
         $this->assertSame('Qianwen multimodal answer mentions Acme AI.', $response->answer);
@@ -1387,7 +1813,7 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
             },
         ]);
 
-        $response = app(\App\Services\BrandDiagnosis\DoubaoBrandDiagnosisClient::class)
+        $response = app(DoubaoBrandDiagnosisClient::class)
             ->ask('Acme AI', 'Which AI brand service is reliable?', 'wenxin');
 
         $this->assertSame('Wenxin streamed answer mentions Acme AI.', $response->answer);
@@ -1422,7 +1848,7 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
             ),
         ]);
 
-        $response = app(\App\Services\BrandDiagnosis\DoubaoBrandDiagnosisClient::class)
+        $response = app(DoubaoBrandDiagnosisClient::class)
             ->ask('Acme AI', 'Which AI brand service is reliable?', 'wenxin');
 
         $this->assertSame('Wenxin finished answer mentions Acme AI.', $response->answer);
@@ -1440,7 +1866,7 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         ]);
 
         try {
-            app(\App\Services\BrandDiagnosis\DoubaoBrandDiagnosisClient::class)
+            app(DoubaoBrandDiagnosisClient::class)
                 ->ask('Acme AI', 'Which AI brand service is reliable?', 'qianwen');
         } catch (\Throwable $exception) {
             $this->assertStringContainsString('Connection', class_basename($exception));
@@ -2485,7 +2911,7 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
 2. **成都创智联恒科技有限公司**：专注中小企业管理系统定制。","brand_mentions":[{"brand":"成都智码智创软件有限公司","mention_count":1,"mention_rank":1,"sentiment":"positive","evidence":"回答正文第1项真实出现"},{"brand":"成都创智联恒科技有限公司","mention_count":1,"mention_rank":2,"sentiment":"positive","evidence":"回答正文第2项真实出现"}]}
 JSON;
 
-        $mentions = app(\App\Services\BrandDiagnosis\DoubaoBrandDiagnosisClient::class)
+        $mentions = app(DoubaoBrandDiagnosisClient::class)
             ->extractBrandMentionsFromRawResponse([
                 'output' => [
                     [
@@ -2693,7 +3119,7 @@ JSON,
             'started_at' => now()->subMinutes(11),
         ]);
 
-        (new ProcessBrandDiagnosisJob((int) $run->id))->failed(new \RuntimeException('brand diagnosis timed out'));
+        (new ProcessBrandDiagnosisJob((int) $run->id))->failed(new RuntimeException('brand diagnosis timed out'));
 
         $run->refresh();
         $this->assertSame('failed', $run->status);
@@ -2750,6 +3176,59 @@ JSON,
         ]);
 
         return $run;
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function brandProfileWebSearchResponse(
+        string $summary = '新知地是一家基于公开资料整理的人工智能技术服务品牌，面向企业智能化应用、AI项目落地和知识库建设场景。',
+        string $industry = '人工智能技术服务',
+        string $brandType = '企业服务品牌',
+        string $audience = '企业客户',
+        string $region = '成都',
+        string $business = 'AI应用开发、智能化方案、知识库建设',
+        array $scenarios = ['企业智能化升级', 'AI项目落地'],
+        array $competitors = ['本地AI服务公司'],
+    ): array {
+        return [
+            'id' => 'resp-brand-profile-'.md5($summary),
+            'output_text' => json_encode([
+                'found' => true,
+                'summary' => $summary,
+                'industry' => $industry,
+                'brand_type' => $brandType,
+                'audience' => $audience,
+                'region' => $region,
+                'business' => $business,
+                'scenarios' => $scenarios,
+                'competitors' => $competitors,
+            ], JSON_UNESCAPED_UNICODE),
+            'output' => [
+                [
+                    'type' => 'web_search_result',
+                    'title' => '品牌介绍来源',
+                    'url' => 'https://geo.example.com/brand-profile',
+                    'snippet' => $summary,
+                ],
+            ],
+            'usage' => ['input_tokens' => 20, 'output_tokens' => 80],
+        ];
+    }
+
+    /**
+     * @param  list<string>  $terms
+     * @return array<string,mixed>
+     */
+    private function brandCoreTermsResponse(array $terms = ['本地AI服务公司', 'AI项目合作', '人工智能团队', '智能化方案', '企业AI项目']): array
+    {
+        return [
+            'id' => 'resp-brand-core-terms-'.md5(implode('|', $terms)),
+            'output_text' => json_encode([
+                'terms' => $terms,
+            ], JSON_UNESCAPED_UNICODE),
+            'usage' => ['input_tokens' => 20, 'output_tokens' => 30],
+        ];
     }
 
     /**

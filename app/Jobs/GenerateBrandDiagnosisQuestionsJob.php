@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\BrandDiagnosisRun;
+use App\Services\BrandDiagnosis\BrandProfileResolver;
 use App\Services\BrandDiagnosis\DoubaoBrandDiagnosisClient;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -46,16 +47,45 @@ class GenerateBrandDiagnosisQuestionsJob implements ShouldQueue
 
         $run->update([
             'status' => 'questions_generating',
+            'brand_profile' => null,
+            'brand_profile_source' => '',
+            'brand_profile_model' => '',
+            'brand_profile_status' => '',
+            'brand_profile_meta' => null,
             'error_message' => null,
             'started_at' => null,
             'completed_at' => null,
         ]);
 
         try {
-            $questions = app(DoubaoBrandDiagnosisClient::class)->generateQuestionPool(
+            $brandProfile = app(BrandProfileResolver::class)->resolve($run, (array) $run->platforms);
+            if ((string) ($brandProfile['status'] ?? '') !== 'success') {
+                throw new \RuntimeException('未检索到可用品牌介绍，请更换更明确的品牌词后重试。');
+            }
+            $diagnosisClient = app(DoubaoBrandDiagnosisClient::class);
+            $coreTerms = $diagnosisClient->extractBrandCoreTerms(
                 (string) $run->brand_name,
-                max(1, (int) config('brand_diagnosis.question_count', 5)),
-                (array) $run->platforms
+                (string) $brandProfile['profile'],
+                5
+            );
+            $brandProfileMeta = (array) ($brandProfile['meta'] ?? []);
+            $brandProfileMeta['core_terms'] = $coreTerms;
+            $brandProfileMeta['core_terms_model'] = 'doubao';
+
+            $run->update([
+                'brand_profile' => $brandProfile['profile'],
+                'brand_profile_source' => $brandProfile['source'],
+                'brand_profile_model' => $brandProfile['model'],
+                'brand_profile_status' => $brandProfile['status'],
+                'brand_profile_meta' => $brandProfileMeta,
+            ]);
+
+            $questions = $diagnosisClient->generateQuestionPool(
+                (string) $run->brand_name,
+                max(1, (int) config('brand_diagnosis.question_count', 6)),
+                (array) $run->platforms,
+                (string) $brandProfile['profile'],
+                $coreTerms
             );
 
             $run->questions()->delete();
@@ -65,6 +95,7 @@ class GenerateBrandDiagnosisQuestionsJob implements ShouldQueue
                     'owner_admin_id' => (int) ($run->owner_admin_id ?? 0) ?: null,
                     'question' => (string) $question['question'],
                     'question_type' => (string) $question['type'],
+                    'core_term' => (string) ($question['core_term'] ?? ''),
                     'sort_order' => $index + 1,
                     'status' => 'pending',
                 ]);

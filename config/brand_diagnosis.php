@@ -2,7 +2,7 @@
 
 return [
     'daily_free_limit' => (int) env('BRAND_DIAGNOSIS_DAILY_FREE_LIMIT', 1),
-    'question_count' => (int) env('BRAND_DIAGNOSIS_QUESTION_COUNT', 5),
+    'question_count' => (int) env('BRAND_DIAGNOSIS_QUESTION_COUNT', 6),
     'job_timeout' => (int) env('BRAND_DIAGNOSIS_JOB_TIMEOUT', 1200),
 
     // 显示层基础值叠加：开启后仅在「已完成」诊断的页面展示时叠加基础数值，不写入存储、不影响真实计算。
