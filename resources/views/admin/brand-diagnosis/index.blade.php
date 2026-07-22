@@ -297,14 +297,28 @@
                                     记录 #{{ $record['id'] }} 当前状态：{{ $record['status'] }}。诊断完成后会展示所选模型真实联网回答和引用来源。
                                 </div>
                                 @if (trim((string) ($record['brand_profile'] ?? '')) !== '')
-                                    <section class="mt-3 rounded-lg border border-blue-100 bg-blue-50/60 px-4 py-3">
-                                        <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                    @php
+                                        $profileView = $record['brand_profile_view'] ?? [];
+                                        $profileSummary = trim((string) ($profileView['summary'] ?? $record['brand_profile']));
+                                        $profileFields = is_array($profileView['fields'] ?? null) ? $profileView['fields'] : [];
+                                    @endphp
+                                    <section class="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-4">
+                                        <div class="flex items-center justify-between">
                                             <h3 class="text-sm font-semibold text-gray-900">品牌介绍</h3>
-                                            @if (trim((string) ($record['brand_profile_model'] ?? '')) !== '')
-                                                <span class="text-xs text-blue-700">来源：{{ $record['brand_profile_model'] }}</span>
-                                            @endif
                                         </div>
-                                        <p class="mt-2 whitespace-pre-line text-sm leading-6 text-gray-700">{{ $record['brand_profile'] }}</p>
+                                        @if ($profileSummary !== '')
+                                            <p class="mt-3 whitespace-pre-line text-sm leading-6 text-slate-700">{{ $profileSummary }}</p>
+                                        @endif
+                                        @if (count($profileFields) > 0)
+                                            <dl class="mt-4 grid gap-x-6 gap-y-3 md:grid-cols-2">
+                                                @foreach ($profileFields as $field)
+                                                    <div @class(['border-t border-slate-200 pt-3', 'md:col-span-2' => !empty($field['wide'])])>
+                                                        <dt class="text-xs font-semibold text-slate-500">{{ $field['label'] }}</dt>
+                                                        <dd class="mt-1 text-sm leading-6 text-slate-700">{{ $field['value'] }}</dd>
+                                                    </div>
+                                                @endforeach
+                                            </dl>
+                                        @endif
                                     </section>
                                 @endif
 

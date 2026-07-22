@@ -397,6 +397,7 @@ class BrandDiagnosisController extends Controller
             'brand_profile_source' => $brandProfile['source'],
             'brand_profile_model' => $brandProfile['model'],
             'brand_profile_status' => $brandProfile['status'],
+            'brand_profile_view' => $brandProfile['view'],
             'status' => $this->statusLabel((string) $run->status),
             'raw_status' => (string) $run->status,
             'created_at' => $run->created_at?->format('Y-m-d H:i:s') ?? '',
@@ -414,7 +415,7 @@ class BrandDiagnosisController extends Controller
     }
 
     /**
-     * @return array{profile:string,source:string,model:string,status:string}
+     * @return array{profile:string,source:string,model:string,status:string,view:array{summary:string,fields:list<array{label:string,value:string,wide:bool}>}}
      */
     private function displayableBrandProfile(BrandDiagnosisRun $run): array
     {
@@ -422,6 +423,7 @@ class BrandDiagnosisController extends Controller
         $model = trim((string) ($run->brand_profile_model ?? ''));
         $status = trim((string) ($run->brand_profile_status ?? ''));
         $profile = trim((string) ($run->brand_profile ?? ''));
+        $emptyView = ['summary' => '', 'fields' => []];
         $isDoubaoWebSearch = $source === 'web_search'
             && $status === 'success'
             && $model === BrandDiagnosisPlatform::label(BrandDiagnosisPlatform::DOUBAO);
@@ -432,6 +434,7 @@ class BrandDiagnosisController extends Controller
                 'source' => '',
                 'model' => '',
                 'status' => '',
+                'view' => $emptyView,
             ];
         }
 
@@ -440,7 +443,146 @@ class BrandDiagnosisController extends Controller
             'source' => $source,
             'model' => $model,
             'status' => $status,
+            'view' => $this->brandProfileView($profile, is_array($run->brand_profile_meta) ? $run->brand_profile_meta : []),
         ];
+    }
+
+    /**
+     * @param  array<string,mixed>  $meta
+     * @return array{summary:string,fields:list<array{label:string,value:string,wide:bool}>}
+     */
+    private function brandProfileView(string $profile, array $meta): array
+    {
+        $payload = $this->brandProfilePayload($meta);
+        if ($payload !== []) {
+            $summary = $this->brandProfileDisplayValue(data_get($payload, 'summary', data_get($payload, 'profile', data_get($payload, 'introduction', ''))));
+            $fields = [];
+            foreach ($this->brandProfileFieldLabels() as $key => $label) {
+                $value = $this->brandProfileDisplayValue(data_get($payload, $key));
+                if ($value === '') {
+                    continue;
+                }
+
+                $fields[] = [
+                    'label' => $label,
+                    'value' => $value,
+                    'wide' => in_array($key, ['business', 'scenarios', 'competitors'], true),
+                ];
+            }
+
+            return [
+                'summary' => $summary !== '' ? $summary : $this->brandProfileTextSummary($profile),
+                'fields' => $fields,
+            ];
+        }
+
+        return $this->brandProfileViewFromText($profile);
+    }
+
+    /**
+     * @param  array<string,mixed>  $meta
+     * @return array<string,mixed>
+     */
+    private function brandProfilePayload(array $meta): array
+    {
+        $rawText = trim((string) data_get($meta, 'raw_text', ''));
+        if ($rawText === '') {
+            return [];
+        }
+
+        if (preg_match('/^```(?:json)?\s*(.*?)\s*```$/su', $rawText, $matches) === 1) {
+            $rawText = trim((string) ($matches[1] ?? ''));
+        }
+
+        $decoded = json_decode($rawText, true);
+
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    /**
+     * @return array<string,string>
+     */
+    private function brandProfileFieldLabels(): array
+    {
+        return [
+            'industry' => '行业',
+            'brand_type' => '品牌类型',
+            'audience' => '服务对象',
+            'region' => '地域',
+            'business' => '核心业务',
+            'scenarios' => '典型场景',
+            'competitors' => '竞品方向',
+        ];
+    }
+
+    private function brandProfileDisplayValue(mixed $value): string
+    {
+        if (is_array($value)) {
+            return collect($value)
+                ->map(fn (mixed $item): string => $this->brandProfileDisplayValue($item))
+                ->filter(static fn (string $item): bool => $item !== '')
+                ->values()
+                ->implode('、');
+        }
+
+        return is_scalar($value) ? $this->normalizeBrandProfileDisplayText((string) $value) : '';
+    }
+
+    /**
+     * @return array{summary:string,fields:list<array{label:string,value:string,wide:bool}>}
+     */
+    private function brandProfileViewFromText(string $profile): array
+    {
+        $summaryLines = [];
+        $fields = [];
+        foreach (preg_split('/\R/u', $profile) ?: [] as $line) {
+            $line = $this->normalizeBrandProfileDisplayText((string) $line);
+            if ($line === '') {
+                continue;
+            }
+
+            if (preg_match('/^([^：:]{2,12})[：:]\s*(.+)$/u', $line, $matches) === 1) {
+                $label = trim((string) ($matches[1] ?? ''));
+                $value = $this->normalizeBrandProfileDisplayText((string) ($matches[2] ?? ''));
+                if ($label !== '' && $value !== '') {
+                    $fields[] = [
+                        'label' => $label,
+                        'value' => $value,
+                        'wide' => mb_strlen($value, 'UTF-8') > 36,
+                    ];
+                }
+
+                continue;
+            }
+
+            $summaryLines[] = $line;
+        }
+
+        return [
+            'summary' => $summaryLines !== [] ? implode("\n", $summaryLines) : $this->brandProfileTextSummary($profile),
+            'fields' => $fields,
+        ];
+    }
+
+    private function brandProfileTextSummary(string $profile): string
+    {
+        $profile = $this->normalizeBrandProfileDisplayText($profile);
+        if ($profile === '') {
+            return '';
+        }
+
+        $firstLine = strtok($profile, "\n");
+
+        return $firstLine !== false ? trim($firstLine) : $profile;
+    }
+
+    private function normalizeBrandProfileDisplayText(string $text): string
+    {
+        $text = trim($text);
+        $text = preg_replace('/[ \t]+/u', ' ', $text) ?? $text;
+        $text = preg_replace("/\n{3,}/u", "\n\n", $text) ?? $text;
+
+        return trim($text);
     }
 
     private function statusLabel(string $status): string

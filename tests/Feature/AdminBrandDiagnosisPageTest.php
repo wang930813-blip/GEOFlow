@@ -161,6 +161,50 @@ class AdminBrandDiagnosisPageTest extends TestCase
             ->assertSee('诊断中...', false);
     }
 
+    public function test_brand_profile_hides_source_badge_and_uses_structured_layout(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('brand_profile_layout_admin');
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => '元睿AI',
+            'brand_profile' => "元睿AI是企业智能经营操作系统。\n行业：人工智能/企业级SaaS服务\n品牌类型：企业智能经营全链路AI解决方案服务商\n核心业务：AI全域获客、私域智能自动化运营、AI-CRM全流程客户管理",
+            'brand_profile_source' => 'web_search',
+            'brand_profile_model' => '豆包',
+            'brand_profile_status' => 'success',
+            'brand_profile_meta' => [
+                'raw_text' => json_encode([
+                    'found' => true,
+                    'summary' => '元睿AI是面向企业经营场景的一体化AI SaaS系统。',
+                    'industry' => '人工智能/企业级SaaS服务',
+                    'brand_type' => '企业智能经营全链路AI解决方案服务商',
+                    'audience' => '中小微企业、成长型企业',
+                    'business' => 'AI全域获客、私域智能自动化运营、AI-CRM全流程客户管理',
+                    'scenarios' => ['全渠道线索挖掘', '私域用户精细化运营'],
+                ], JSON_UNESCAPED_UNICODE),
+            ],
+            'platforms' => ['doubao'],
+            'status' => 'questions_ready',
+            'total_questions' => 0,
+            'completed_questions' => 0,
+            'failed_questions' => 0,
+            'billing_mode' => 'pending_confirmation',
+            'usage_date' => null,
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.brand-diagnosis.index', ['record' => (int) $run->id]))
+            ->assertOk()
+            ->assertSee('品牌介绍')
+            ->assertSee('元睿AI是面向企业经营场景的一体化AI SaaS系统。')
+            ->assertSee('行业')
+            ->assertSee('人工智能/企业级SaaS服务')
+            ->assertSee('典型场景')
+            ->assertSee('全渠道线索挖掘、私域用户精细化运营')
+            ->assertDontSee('来源：豆包');
+    }
+
     public function test_brand_diagnosis_page_hides_legacy_article_model_brand_profile(): void
     {
         [$admin, $site] = $this->createAdminWithSite('brand_legacy_profile_page_admin');
