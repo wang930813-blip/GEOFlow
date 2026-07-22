@@ -3030,6 +3030,20 @@ return [
         'message' => [
             'completed' => 'AI生成完成！成功保存 :count 个标题',
             'duplicates' => '，跳过 :count 个重复标题',
+            'invalid' => '，跳过 :count 个未通过校验的标题',
+            'fallback_used' => '（AI生成不完整，已使用模板补齐；原因：:reason）',
+        ],
+        'fallback_reason' => [
+            'ai_url_missing' => 'AI模型接口地址未配置',
+            'ai_key_missing' => 'AI模型 API Key 未配置',
+            'ai_empty_content' => '模型返回内容为空',
+            'invalid_keyword_mapping' => '模型返回内容缺少部分关键词映射或格式不匹配',
+            'timeout' => 'AI接口调用超时',
+            'response_format' => 'AI接口响应格式异常',
+            'unauthorized' => 'AI接口鉴权失败',
+            'forbidden' => 'AI模型无权限或未开通',
+            'rate_limited' => 'AI接口限流',
+            'unknown' => 'AI接口调用异常或返回不完整',
         ],
         'error' => [
             'keyword_library_required' => '请选择关键词库',

@@ -136,10 +136,7 @@ class TitleLibraryController extends Controller
         }
 
         /** @var Collection<int, string> $keywords */
-        $keywordSampleLimit = min(
-            (int) $payload['title_count'],
-            (int) config('geoflow.title_ai_keyword_sample_limit', 10)
-        );
+        $keywordSampleLimit = (int) $payload['title_count'];
         $keywords = Keyword::query()
             ->where('library_id', (int) $payload['keyword_library_id'])
             ->inRandomOrder()
@@ -173,14 +170,19 @@ class TitleLibraryController extends Controller
 
         $savedCount = 0;
         $duplicateCount = 0;
-        DB::transaction(function () use ($generatedEntries, $library, $libraryId, $admin, &$savedCount, &$duplicateCount): void {
+        $invalidCount = 0;
+        DB::transaction(function () use ($generatedEntries, $library, $libraryId, $admin, &$savedCount, &$duplicateCount, &$invalidCount): void {
             foreach ($generatedEntries as $entry) {
                 $title = $this->normalizeGeneratedTitle((string) ($entry['title'] ?? ''));
                 $keyword = trim((string) ($entry['keyword'] ?? ''));
                 if ($title === '' || $keyword === '' || mb_strlen($title, 'UTF-8') > 500) {
+                    $invalidCount++;
+
                     continue;
                 }
                 if (mb_stripos($title, $keyword, 0, 'UTF-8') === false) {
+                    $invalidCount++;
+
                     continue;
                 }
 
@@ -214,8 +216,13 @@ class TitleLibraryController extends Controller
         if ($duplicateCount > 0) {
             $message .= __('admin.title_ai_generate.message.duplicates', ['count' => $duplicateCount]);
         }
+        if ($invalidCount > 0) {
+            $message .= __('admin.title_ai_generate.message.invalid', ['count' => $invalidCount]);
+        }
         if (($generationResult['fallback_used'] ?? false) === true) {
-            $message .= '（AI服务不可用，已使用模板兜底）';
+            $message .= __('admin.title_ai_generate.message.fallback_used', [
+                'reason' => $this->titleAiFallbackReasonLabel((string) ($generationResult['fallback_reason'] ?? '')),
+            ]);
         }
         if ($savedCount > 0 && $siteId > 0 && ! ($admin instanceof Admin && $admin->isSuperAdmin())) {
             try {
@@ -651,6 +658,42 @@ class TitleLibraryController extends Controller
         $cleaned = preg_replace('/^\d+[\.\)\-、\s]*/u', '', trim($title));
 
         return trim((string) $cleaned);
+    }
+
+    private function titleAiFallbackReasonLabel(string $reason): string
+    {
+        $reason = trim($reason);
+        $lowerReason = mb_strtolower($reason, 'UTF-8');
+
+        if ($reason === 'ai_url_missing') {
+            return __('admin.title_ai_generate.fallback_reason.ai_url_missing');
+        }
+        if ($reason === 'ai_key_missing') {
+            return __('admin.title_ai_generate.fallback_reason.ai_key_missing');
+        }
+        if ($reason === 'ai_empty_content' || $reason === 'ai_empty_stream_content') {
+            return __('admin.title_ai_generate.fallback_reason.ai_empty_content');
+        }
+        if ($reason === 'invalid_keyword_mapping') {
+            return __('admin.title_ai_generate.fallback_reason.invalid_keyword_mapping');
+        }
+        if (str_contains($lowerReason, 'timeout') || str_contains($lowerReason, 'timed out') || str_contains($lowerReason, 'curl error 28')) {
+            return __('admin.title_ai_generate.fallback_reason.timeout');
+        }
+        if (str_contains($lowerReason, '非 json') || str_contains($lowerReason, 'non json') || str_contains($lowerReason, 'html')) {
+            return __('admin.title_ai_generate.fallback_reason.response_format');
+        }
+        if (str_contains($lowerReason, '401') || str_contains($lowerReason, 'unauthorized')) {
+            return __('admin.title_ai_generate.fallback_reason.unauthorized');
+        }
+        if (str_contains($lowerReason, '403') || str_contains($lowerReason, 'forbidden')) {
+            return __('admin.title_ai_generate.fallback_reason.forbidden');
+        }
+        if (str_contains($lowerReason, '429') || str_contains($lowerReason, 'rate limit')) {
+            return __('admin.title_ai_generate.fallback_reason.rate_limited');
+        }
+
+        return __('admin.title_ai_generate.fallback_reason.unknown');
     }
 
     /**

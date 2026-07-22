@@ -36,6 +36,33 @@ class TitleAiGenerationServiceTest extends TestCase
         }
     }
 
+    public function test_fallback_titles_are_unique_when_keyword_repeats(): void
+    {
+        $service = new TitleAiGenerationService(app(ApiKeyCrypto::class));
+        $model = new AiModel([
+            'api_url' => '',
+            'api_key' => '',
+            'model_id' => 'missing-model',
+        ]);
+
+        $result = $service->generateTitles(
+            $model,
+            ['武城煊饼历史由来'],
+            15,
+            'professional'
+        );
+
+        $titles = array_column($result['entries'], 'title');
+
+        $this->assertTrue($result['fallback_used']);
+        $this->assertCount(15, $titles);
+        $this->assertSame($titles, array_values(array_unique($titles)));
+        foreach ($result['entries'] as $entry) {
+            $this->assertSame('武城煊饼历史由来', $entry['keyword']);
+            $this->assertStringContainsString($entry['keyword'], $entry['title']);
+        }
+    }
+
     public function test_invalid_keyword_mapping_is_retried_without_reassigning_other_titles(): void
     {
         AnonymousAgent::fake([

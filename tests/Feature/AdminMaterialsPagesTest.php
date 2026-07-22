@@ -1436,6 +1436,149 @@ class AdminMaterialsPagesTest extends TestCase
         }
     }
 
+    public function test_ai_title_generation_samples_title_count_keywords_even_when_config_limit_is_lower(): void
+    {
+        Config::set('geoflow.title_ai_keyword_sample_limit', 10);
+
+        $admin = Admin::query()->create([
+            'username' => 'materials_ai_title_sample_count_admin',
+            'password' => 'secret-123',
+            'email' => 'materials-ai-title-sample-count@example.com',
+            'display_name' => 'Materials AI Title Sample Count Admin',
+            'role' => 'super_admin',
+            'status' => 'active',
+        ]);
+        $site = $this->createSiteForAdmin($admin);
+        $keywordLibrary = KeywordLibrary::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'name' => '标题抽样关键词库',
+            'description' => '',
+            'keyword_count' => 20,
+        ]);
+        $titleLibrary = TitleLibrary::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'name' => '标题抽样标题库',
+            'description' => '',
+            'title_count' => 0,
+            'generation_type' => 'manual',
+            'generation_rounds' => 1,
+            'is_ai_generated' => false,
+        ]);
+        foreach (range(1, 20) as $index) {
+            Keyword::query()->create([
+                'site_id' => (int) $site->id,
+                'owner_admin_id' => (int) $admin->id,
+                'library_id' => (int) $keywordLibrary->id,
+                'keyword' => '抽样关键词'.$index,
+                'used_count' => 0,
+                'usage_count' => 0,
+            ]);
+        }
+        $aiModel = $this->createReadyUrlImportAiModel();
+
+        $this->mock(TitleAiGenerationService::class, function ($mock): void {
+            $mock->shouldReceive('generateTitles')
+                ->once()
+                ->andReturnUsing(function (AiModel $model, array $keywords, int $count): array {
+                    $this->assertSame(15, $count);
+                    $this->assertCount(15, $keywords);
+                    $this->assertCount(15, array_unique($keywords));
+
+                    return [
+                        'entries' => array_map(static fn (string $keyword): array => [
+                            'keyword' => $keyword,
+                            'title' => $keyword.'生成标题',
+                        ], $keywords),
+                        'fallback_used' => false,
+                        'fallback_reason' => null,
+                    ];
+                });
+        });
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.title-libraries.ai-generate.submit', ['libraryId' => (int) $titleLibrary->id]), [
+                'keyword_library_id' => (int) $keywordLibrary->id,
+                'ai_model_id' => (int) $aiModel->id,
+                'title_count' => 15,
+                'title_style' => 'professional',
+                'custom_prompt' => '',
+            ])
+            ->assertRedirect(route('admin.title-libraries.detail', ['libraryId' => (int) $titleLibrary->id]));
+    }
+
+    public function test_ai_title_generation_reports_partial_fallback_without_saying_service_unavailable(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'materials_ai_title_fallback_message_admin',
+            'password' => 'secret-123',
+            'email' => 'materials-ai-title-fallback-message@example.com',
+            'display_name' => 'Materials AI Title Fallback Message Admin',
+            'role' => 'super_admin',
+            'status' => 'active',
+        ]);
+        $site = $this->createSiteForAdmin($admin);
+        $keywordLibrary = KeywordLibrary::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'name' => '兜底提示关键词库',
+            'description' => '',
+            'keyword_count' => 1,
+        ]);
+        $titleLibrary = TitleLibrary::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'name' => '兜底提示标题库',
+            'description' => '',
+            'title_count' => 0,
+            'generation_type' => 'manual',
+            'generation_rounds' => 1,
+            'is_ai_generated' => false,
+        ]);
+        Keyword::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'library_id' => (int) $keywordLibrary->id,
+            'keyword' => '武城煊饼历史由来',
+            'used_count' => 0,
+            'usage_count' => 0,
+        ]);
+        $aiModel = $this->createReadyUrlImportAiModel();
+
+        $this->mock(TitleAiGenerationService::class, function ($mock): void {
+            $mock->shouldReceive('generateTitles')
+                ->once()
+                ->andReturn([
+                    'entries' => [
+                        [
+                            'keyword' => '武城煊饼历史由来',
+                            'title' => '武城煊饼历史由来生成标题',
+                        ],
+                    ],
+                    'fallback_used' => true,
+                    'fallback_reason' => 'invalid_keyword_mapping',
+                ]);
+        });
+
+        $response = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.title-libraries.ai-generate.submit', ['libraryId' => (int) $titleLibrary->id]), [
+                'keyword_library_id' => (int) $keywordLibrary->id,
+                'ai_model_id' => (int) $aiModel->id,
+                'title_count' => 1,
+                'title_style' => 'professional',
+                'custom_prompt' => '',
+            ]);
+
+        $response->assertRedirect(route('admin.title-libraries.detail', ['libraryId' => (int) $titleLibrary->id]));
+        $message = (string) session('message');
+        $this->assertStringContainsString('AI生成不完整，已使用模板补齐', $message);
+        $this->assertStringContainsString('模型返回内容缺少部分关键词映射或格式不匹配', $message);
+        $this->assertStringNotContainsString('AI服务不可用', $message);
+    }
+
     public function test_admin_can_bulk_delete_and_edit_titles_from_detail_page(): void
     {
         $admin = Admin::query()->create([
