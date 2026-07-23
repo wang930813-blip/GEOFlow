@@ -92,6 +92,15 @@ class BrandDiagnosisApiTest extends TestCase
             ->assertJsonPath('data.progress.completed_questions', 2);
     }
 
+    public function test_brand_diagnosis_query_returns_not_found_for_invalid_task_key(): void
+    {
+        $this->withHeader('X-Api-Key', 'test-open-api-key')
+            ->getJson('/api/v1/brand-diagnoses/bdg_fac2fff342d8d02cff2949336589e41')
+            ->assertNotFound()
+            ->assertJsonPath('error.code', 'diagnosis_not_found')
+            ->assertJsonPath('error.message', '诊断任务不存在或任务 ID 格式不正确');
+    }
+
     public function test_auto_confirm_turns_api_questions_ready_run_into_running(): void
     {
         Queue::fake([ProcessBrandDiagnosisJob::class]);

@@ -30,8 +30,7 @@ Route::prefix('v1')
 
         Route::middleware(['throttle:machine-api', 'brand-diagnosis.api-key'])->group(function (): void {
             Route::post('brand-diagnoses', [BrandDiagnosisController::class, 'store']);
-            Route::get('brand-diagnoses/{taskKey}', [BrandDiagnosisController::class, 'show'])
-                ->where('taskKey', 'bdg_[a-f0-9]{32}');
+            Route::get('brand-diagnoses/{taskKey}', [BrandDiagnosisController::class, 'show']);
         });
 
         // 需有效 Token + 对应 scope

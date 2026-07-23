@@ -21,7 +21,7 @@ class BrandDiagnosisApiService
     public function findByTaskKey(string $taskKey): BrandDiagnosisRun
     {
         if (! $this->taskKeys->isValid($taskKey)) {
-            throw new ApiException('diagnosis_not_found', '诊断任务不存在', 404);
+            throw new ApiException('diagnosis_not_found', '诊断任务不存在或任务 ID 格式不正确', 404);
         }
 
         $run = BrandDiagnosisRun::query()
@@ -37,7 +37,7 @@ class BrandDiagnosisApiService
             ->first();
 
         if (! $run instanceof BrandDiagnosisRun) {
-            throw new ApiException('diagnosis_not_found', '诊断任务不存在', 404);
+            throw new ApiException('diagnosis_not_found', '诊断任务不存在或任务 ID 格式不正确', 404);
         }
 
         return $run;
