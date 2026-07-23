@@ -317,11 +317,7 @@ class BrandDiagnosisController extends Controller
                 $query->whereNull('api_task_key')
                     ->orWhere('api_task_key', '');
             })
-            ->with([
-                'questions' => fn ($query) => $query->orderBy('sort_order')->with(['results.sources', 'results.brandMentions']),
-                'sources',
-                'brandMentions',
-            ]);
+            ->with($this->diagnosisRunRelations());
     }
 
     private function openApiDiagnosisRunQuery(): Builder
@@ -330,11 +326,7 @@ class BrandDiagnosisController extends Controller
             ->withoutGlobalScope('current_site')
             ->whereNotNull('api_task_key')
             ->where('api_task_key', '<>', '')
-            ->with([
-                'questions' => fn ($query) => $query->orderBy('sort_order')->with(['results.sources', 'results.brandMentions']),
-                'sources',
-                'brandMentions',
-            ]);
+            ->with($this->diagnosisRunRelations());
     }
 
     /**
@@ -384,11 +376,29 @@ class BrandDiagnosisController extends Controller
         return BrandDiagnosisRun::query()
             ->when($isSuperAdmin, fn ($query) => $query->withoutGlobalScope('current_site'))
             ->when(! $isSuperAdmin && $siteId !== null, fn ($query) => $query->where('site_id', $siteId))
-            ->with([
-                'questions' => fn ($query) => $query->orderBy('sort_order')->with(['results.sources', 'results.brandMentions']),
-                'sources',
-                'brandMentions',
-            ]);
+            ->with($this->diagnosisRunRelations());
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function diagnosisRunRelations(): array
+    {
+        return [
+            'questions' => fn ($query) => $query
+                ->withoutGlobalScope('current_site')
+                ->orderBy('sort_order')
+                ->with([
+                    'results' => fn ($query) => $query
+                        ->withoutGlobalScope('current_site')
+                        ->with([
+                            'sources' => fn ($query) => $query->withoutGlobalScope('current_site'),
+                            'brandMentions' => fn ($query) => $query->withoutGlobalScope('current_site'),
+                        ]),
+                ]),
+            'sources' => fn ($query) => $query->withoutGlobalScope('current_site'),
+            'brandMentions' => fn ($query) => $query->withoutGlobalScope('current_site'),
+        ];
     }
 
     private function reportFileName(BrandDiagnosisRun $run): string

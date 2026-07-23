@@ -1683,6 +1683,89 @@ class AdminBrandDiagnosisPageTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_open_api_brand_diagnosis_report_uses_site_independent_relations(): void
+    {
+        [$superAdmin, $site] = $this->createAdminWithSite('brand_diagnosis_open_api_report_super_admin', 'super_admin');
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => null,
+            'owner_admin_id' => (int) $superAdmin->id,
+            'admin_id' => (int) $superAdmin->id,
+            'brand_name' => 'Open API Brand',
+            'platforms' => ['doubao'],
+            'api_task_key' => 'bdg_'.str_repeat('6', 32),
+            'status' => 'completed',
+            'total_questions' => 1,
+            'completed_questions' => 1,
+            'failed_questions' => 0,
+            'brand_score' => 90,
+            'mention_rate' => 100,
+            'average_rank' => 1,
+            'mention_count' => 2,
+            'sentiment_rate' => 100,
+        ]);
+        $question = $run->questions()->create([
+            'site_id' => null,
+            'owner_admin_id' => (int) $superAdmin->id,
+            'question' => 'Which open api brand is recommended',
+            'question_type' => 'choice',
+            'core_term' => 'open api brand',
+            'sort_order' => 1,
+            'status' => 'completed',
+        ]);
+        $result = $question->results()->create([
+            'site_id' => null,
+            'owner_admin_id' => (int) $superAdmin->id,
+            'run_id' => (int) $run->id,
+            'platform' => 'doubao',
+            'answer' => 'Open API Answer recommends Open API Brand.',
+            'brand_mentioned' => true,
+            'mention_count' => 2,
+            'mention_rank' => 1,
+            'sentiment' => 'positive',
+            'status' => 'success',
+            'checked_at' => now(),
+        ]);
+        $result->sources()->create([
+            'site_id' => null,
+            'owner_admin_id' => (int) $superAdmin->id,
+            'run_id' => (int) $run->id,
+            'question_id' => (int) $question->id,
+            'platform' => 'doubao',
+            'title' => 'Open API Source',
+            'url' => 'https://example.com/open-api-source',
+            'domain' => 'example.com',
+            'source_type' => 'url_citation',
+        ]);
+        $result->brandMentions()->create([
+            'site_id' => null,
+            'owner_admin_id' => (int) $superAdmin->id,
+            'run_id' => (int) $run->id,
+            'question_id' => (int) $question->id,
+            'platform' => 'doubao',
+            'brand_name' => 'Open API Brand',
+            'mention_count' => 2,
+            'mention_rank' => 1,
+            'sentiment' => 'positive',
+            'source_count' => 1,
+            'is_target_brand' => true,
+            'evidence' => 'Open API Answer recommends Open API Brand.',
+        ]);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.brand-diagnosis.open-api.index'))
+            ->assertOk()
+            ->assertSee('评分 90 / 提及率 100%');
+
+        $this->actingAs($superAdmin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.brand-diagnosis.report', ['run' => (int) $run->id]))
+            ->assertOk()
+            ->assertSee('Open API Brand')
+            ->assertSee('Open API Answer recommends Open API Brand.')
+            ->assertSee('Open API Source');
+    }
+
     /**
      * @return array{0:Admin,1:Site}
      */
