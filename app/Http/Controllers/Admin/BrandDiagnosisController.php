@@ -60,6 +60,21 @@ class BrandDiagnosisController extends Controller
         ]);
     }
 
+    public function openApiIndex(Request $request): View
+    {
+        $filters = $this->diagnosisRecordFilters($request);
+        $recordPaginator = $this->openApiDiagnosisRecords($filters);
+
+        return view('admin.brand-diagnosis.open-api', [
+            'pageTitle' => 'OpenAPI 诊断记录',
+            'activeMenu' => 'brand_diagnosis_open_api',
+            'adminSiteName' => AdminWeb::siteName(),
+            'records' => $recordPaginator->getCollection()->all(),
+            'recordPaginator' => $recordPaginator,
+            'recordFilters' => $filters,
+        ]);
+    }
+
     public function downloadReport(int $run): Response
     {
         $diagnosisRun = $this->findDownloadableReportRun($run);
@@ -241,6 +256,25 @@ class BrandDiagnosisController extends Controller
         return $paginator;
     }
 
+    private function openApiDiagnosisRecords(array $filters): LengthAwarePaginator
+    {
+        $paginator = $this->openApiDiagnosisRunQuery()
+            ->when($filters['brand'] !== '', fn (Builder $query): Builder => $query->where('brand_name', 'like', '%'.$filters['brand'].'%'))
+            ->when($filters['start_date'] !== '', fn (Builder $query): Builder => $query->whereDate('created_at', '>=', $filters['start_date']))
+            ->when($filters['end_date'] !== '', fn (Builder $query): Builder => $query->whereDate('created_at', '<=', $filters['end_date']))
+            ->orderByDesc('created_at')
+            ->paginate(10)
+            ->withQueryString();
+
+        $paginator->setCollection(
+            $paginator->getCollection()
+                ->values()
+                ->map(fn (BrandDiagnosisRun $run): array => $this->formatRecord($run, false))
+        );
+
+        return $paginator;
+    }
+
     /**
      * @return list<array{
      *     id:int,
@@ -279,6 +313,23 @@ class BrandDiagnosisController extends Controller
         return BrandDiagnosisRun::query()
             ->when($isSuperAdmin, fn ($query) => $query->withoutGlobalScope('current_site'))
             ->when(! $isSuperAdmin && $siteId !== null, fn ($query) => $query->where('site_id', $siteId))
+            ->where(function (Builder $query): void {
+                $query->whereNull('api_task_key')
+                    ->orWhere('api_task_key', '');
+            })
+            ->with([
+                'questions' => fn ($query) => $query->orderBy('sort_order')->with(['results.sources', 'results.brandMentions']),
+                'sources',
+                'brandMentions',
+            ]);
+    }
+
+    private function openApiDiagnosisRunQuery(): Builder
+    {
+        return BrandDiagnosisRun::query()
+            ->withoutGlobalScope('current_site')
+            ->whereNotNull('api_task_key')
+            ->where('api_task_key', '<>', '')
             ->with([
                 'questions' => fn ($query) => $query->orderBy('sort_order')->with(['results.sources', 'results.brandMentions']),
                 'sources',
@@ -392,6 +443,7 @@ class BrandDiagnosisController extends Controller
 
         return [
             'id' => (int) $run->id,
+            'api_task_key' => (string) ($run->api_task_key ?? ''),
             'brand' => (string) $run->brand_name,
             'brand_profile' => $brandProfile['profile'],
             'brand_profile_source' => $brandProfile['source'],

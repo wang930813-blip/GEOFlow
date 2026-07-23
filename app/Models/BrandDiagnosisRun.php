@@ -17,6 +17,7 @@ class BrandDiagnosisRun extends Model
 
     protected $fillable = [
         'site_id',
+        'api_task_key',
         'owner_admin_id',
         'admin_id',
         'brand_name',

@@ -10,6 +10,7 @@ use App\Exceptions\ApiException;
 use App\Http\Middleware\AdminWebLocale;
 use App\Http\Middleware\AssignApiRequestId;
 use App\Http\Middleware\AuthenticateAdminWeb;
+use App\Http\Middleware\AuthenticateBrandDiagnosisOpenApi;
 use App\Http\Middleware\AuthenticateApiToken;
 use App\Http\Middleware\AuthenticateCrebeeAgent;
 use App\Http\Middleware\AutoFollowRedirectBody;
@@ -61,6 +62,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'api.request_id' => AssignApiRequestId::class,
             // Authorization: Bearer，解析 Sanctum token 并注入 ApiAuthContext
             'api.auth' => AuthenticateApiToken::class,
+            // 品牌诊断开放 API：固定 X-Api-Key 鉴权，不绑定站点
+            'brand-diagnosis.api-key' => AuthenticateBrandDiagnosisOpenApi::class,
             // 校验 Token scopes，如 api.scope:catalog:read
             'api.scope' => EnsureApiScope::class,
             'crebee.agent' => AuthenticateCrebeeAgent::class,

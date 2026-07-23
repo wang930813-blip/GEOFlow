@@ -1633,6 +1633,56 @@ class AdminBrandDiagnosisPageTest extends TestCase
         $this->assertMatchesRegularExpression('/class="(?![^"]*\bhidden\b)[^"]*" data-ranking-target="mention_rate" title="Sunk Brand"/', $html);
     }
 
+    public function test_open_api_brand_diagnosis_records_are_separated_for_super_admin(): void
+    {
+        $superAdmin = Admin::query()->create([
+            'username' => 'brand_diagnosis_open_api_list_super_admin',
+            'password' => 'secret-123',
+            'email' => 'brand-diagnosis-open-api-list@example.com',
+            'display_name' => '品牌诊断开放 API 超管',
+            'role' => 'super_admin',
+            'status' => 'active',
+        ]);
+        BrandDiagnosisRun::query()->create([
+            'site_id' => null,
+            'owner_admin_id' => (int) $superAdmin->id,
+            'admin_id' => (int) $superAdmin->id,
+            'brand_name' => '开放 API 诊断品牌',
+            'platforms' => ['doubao', 'qianwen'],
+            'api_task_key' => 'bdg_'.str_repeat('5', 32),
+            'status' => 'completed',
+            'total_questions' => 6,
+            'completed_questions' => 6,
+            'failed_questions' => 0,
+            'brand_score' => 82,
+            'mention_rate' => 67,
+            'average_rank' => 3.4,
+            'mention_count' => 8,
+            'sentiment_rate' => 90,
+        ]);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.brand-diagnosis.index'))
+            ->assertOk()
+            ->assertDontSee('开放 API 诊断品牌');
+
+        $this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.brand-diagnosis.open-api.index'))
+            ->assertOk()
+            ->assertSee('OpenAPI 诊断记录')
+            ->assertSee('开放 API 诊断品牌')
+            ->assertSee('bdg_'.str_repeat('5', 32));
+    }
+
+    public function test_non_super_admin_cannot_open_open_api_brand_diagnosis_records(): void
+    {
+        [$admin] = $this->createAdminWithSite('brand_diagnosis_open_api_denied_admin');
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.brand-diagnosis.open-api.index'))
+            ->assertForbidden();
+    }
+
     /**
      * @return array{0:Admin,1:Site}
      */

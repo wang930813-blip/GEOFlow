@@ -104,7 +104,7 @@ class ProcessBrandDiagnosisJob implements ShouldQueue
                     $result = $question->results()->updateOrCreate(
                         ['platform' => $platform],
                         [
-                            'site_id' => (int) $run->site_id,
+                            'site_id' => $this->siteId($run->site_id),
                             'owner_admin_id' => (int) ($run->owner_admin_id ?? 0) ?: null,
                             'run_id' => (int) $run->id,
                             'answer' => $this->cleanExternalText($clientResponse->answer),
@@ -123,7 +123,7 @@ class ProcessBrandDiagnosisJob implements ShouldQueue
                     $result->sources()->delete();
                     foreach ($clientResponse->sources as $source) {
                         $result->sources()->create([
-                            'site_id' => (int) $run->site_id,
+                            'site_id' => $this->siteId($run->site_id),
                             'owner_admin_id' => (int) ($run->owner_admin_id ?? 0) ?: null,
                             'run_id' => (int) $run->id,
                             'question_id' => (int) $question->id,
@@ -144,7 +144,7 @@ class ProcessBrandDiagnosisJob implements ShouldQueue
                     $question->results()->updateOrCreate(
                         ['platform' => $platform],
                         [
-                            'site_id' => (int) $run->site_id,
+                            'site_id' => $this->siteId($run->site_id),
                             'owner_admin_id' => (int) ($run->owner_admin_id ?? 0) ?: null,
                             'run_id' => (int) $run->id,
                             'answer' => null,
@@ -271,7 +271,7 @@ class ProcessBrandDiagnosisJob implements ShouldQueue
 
         foreach ($brandMentions as $mention) {
             $result->brandMentions()->create([
-                'site_id' => (int) $result->site_id,
+                'site_id' => $this->siteId($result->site_id),
                 'owner_admin_id' => (int) ($result->owner_admin_id ?? 0) ?: null,
                 'run_id' => (int) $result->run_id,
                 'question_id' => (int) $result->question_id,
@@ -286,5 +286,10 @@ class ProcessBrandDiagnosisJob implements ShouldQueue
                 'meta' => $this->cleanExternalValue((array) ($mention['meta'] ?? [])),
             ]);
         }
+    }
+
+    private function siteId(mixed $siteId): ?int
+    {
+        return $siteId !== null ? (int) $siteId : null;
     }
 }

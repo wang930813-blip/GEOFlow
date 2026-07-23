@@ -106,6 +106,48 @@ class BrandDiagnosisRunService
     }
 
     /**
+     * @param  list<string>  $platforms
+     */
+    public function createForApi(Admin $admin, string $brandName, array $platforms, string $apiTaskKey): BrandDiagnosisRun
+    {
+        $brandName = trim($brandName);
+        $apiTaskKey = trim($apiTaskKey);
+        if ($brandName === '') {
+            throw new RuntimeException('请输入品牌名称。');
+        }
+        if ($apiTaskKey === '') {
+            throw new RuntimeException('API 任务 ID 不能为空。');
+        }
+
+        $platforms = $this->normalizePlatforms($platforms);
+
+        $run = DB::transaction(function () use ($admin, $brandName, $platforms, $apiTaskKey): BrandDiagnosisRun {
+            return BrandDiagnosisRun::query()->create([
+                'site_id' => null,
+                'api_task_key' => $apiTaskKey,
+                'owner_admin_id' => (int) $admin->id,
+                'admin_id' => (int) $admin->id,
+                'brand_name' => $brandName,
+                'platforms' => $platforms,
+                'status' => 'questions_generating',
+                'total_questions' => 0,
+                'completed_questions' => 0,
+                'failed_questions' => 0,
+                'billing_mode' => 'pending_confirmation',
+                'points_cost' => 0,
+                'points_transaction_id' => null,
+                'limit_bypassed' => false,
+                'limit_bypass_reason' => '',
+                'usage_date' => null,
+            ]);
+        });
+
+        GenerateBrandDiagnosisQuestionsJob::dispatch((int) $run->id)->onQueue('geoflow');
+
+        return $run;
+    }
+
+    /**
      * @return array{run_id:int,created_at:string,questions:list<array{question:string,type:string,core_term:string,sort_order:int}>}|null
      */
     public function reusableQuestionPreview(Admin $admin, string $brandName): ?array
@@ -219,6 +261,69 @@ class BrandDiagnosisRunService
             $this->createQuestionsForRun($newRun, $normalizedQuestions);
 
             return $newRun;
+        });
+
+        ProcessBrandDiagnosisJob::dispatch((int) $run->id)->onQueue('geoflow');
+
+        return $run;
+    }
+
+    public function confirmForApi(BrandDiagnosisRun $sourceRun): BrandDiagnosisRun
+    {
+        $run = DB::transaction(function () use ($sourceRun): BrandDiagnosisRun {
+            $lockedRun = BrandDiagnosisRun::query()
+                ->withoutGlobalScope('current_site')
+                ->with(['questions' => fn ($query) => $query->orderBy('sort_order')->lockForUpdate()])
+                ->whereKey((int) $sourceRun->id)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $lockedRun) {
+                throw new RuntimeException('诊断记录不存在，请刷新后重试。');
+            }
+            if (trim((string) $lockedRun->api_task_key) === '') {
+                throw new RuntimeException('当前记录不是开放 API 诊断任务。');
+            }
+
+            $status = (string) $lockedRun->status;
+            if (! in_array($status, ['questions_ready', 'awaiting_confirmation'], true)) {
+                throw new RuntimeException('当前记录正在处理中，请勿重复提交诊断。');
+            }
+            if ($lockedRun->questions->isEmpty()) {
+                throw new RuntimeException('当前记录还没有可确认的 AI 问题，请先重新生成问题。');
+            }
+
+            $submittedQuestions = $lockedRun->questions
+                ->mapWithKeys(static fn (BrandDiagnosisQuestion $question): array => [(int) $question->id => (string) $question->question])
+                ->all();
+            $normalizedQuestions = $this->confirmedQuestions($lockedRun->questions, $submittedQuestions);
+            if ($normalizedQuestions->isEmpty()) {
+                throw new RuntimeException('请至少保留一个 AI 问题。');
+            }
+
+            $this->updateQuestionsForRun($lockedRun, $normalizedQuestions);
+            $lockedRun->update([
+                'status' => 'running',
+                'total_questions' => $normalizedQuestions->count(),
+                'completed_questions' => 0,
+                'failed_questions' => 0,
+                'brand_score' => 0,
+                'mention_rate' => 0,
+                'average_rank' => 0,
+                'mention_count' => 0,
+                'sentiment_rate' => 0,
+                'billing_mode' => 'open_api',
+                'points_cost' => 0,
+                'points_transaction_id' => null,
+                'limit_bypassed' => true,
+                'limit_bypass_reason' => 'open_api',
+                'usage_date' => now()->toDateString(),
+                'started_at' => now(),
+                'completed_at' => null,
+                'error_message' => null,
+            ]);
+
+            return $lockedRun->refresh();
         });
 
         ProcessBrandDiagnosisJob::dispatch((int) $run->id)->onQueue('geoflow');
@@ -352,7 +457,7 @@ class BrandDiagnosisRunService
     {
         foreach ($questions->values() as $index => $question) {
             $run->questions()->create([
-                'site_id' => (int) $run->site_id,
+                'site_id' => $run->site_id !== null ? (int) $run->site_id : null,
                 'owner_admin_id' => (int) ($run->owner_admin_id ?? 0) ?: null,
                 'question' => (string) $question['question'],
                 'question_type' => (string) $question['type'],

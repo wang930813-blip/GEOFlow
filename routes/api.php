@@ -11,6 +11,7 @@
 
 use App\Http\Controllers\Api\V1\ArticleController;
 use App\Http\Controllers\Api\V1\AuthController;
+use App\Http\Controllers\Api\V1\BrandDiagnosisController;
 use App\Http\Controllers\Api\V1\CatalogController;
 use App\Http\Controllers\Api\V1\CrebeeAgentController;
 use App\Http\Controllers\Api\V1\JobController;
@@ -26,6 +27,12 @@ Route::prefix('v1')
     ->group(function (): void {
         // 公开：管理员登录，返回 API Token（无需 Bearer）
         Route::post('auth/login', [AuthController::class, 'login']);
+
+        Route::middleware(['throttle:machine-api', 'brand-diagnosis.api-key'])->group(function (): void {
+            Route::post('brand-diagnoses', [BrandDiagnosisController::class, 'store']);
+            Route::get('brand-diagnoses/{taskKey}', [BrandDiagnosisController::class, 'show'])
+                ->where('taskKey', 'bdg_[a-f0-9]{32}');
+        });
 
         // 需有效 Token + 对应 scope
         Route::middleware(['throttle:machine-api', 'api.auth', 'throttle:api-token'])->group(function (): void {

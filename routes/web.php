@@ -125,6 +125,9 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
         Route::post('brand-diagnosis', [BrandDiagnosisController::class, 'store'])->name('brand-diagnosis.store');
         Route::get('brand-diagnosis/reusable-questions', [BrandDiagnosisController::class, 'reusableQuestions'])
             ->name('brand-diagnosis.reusable-questions');
+        Route::get('brand-diagnosis/open-api', [BrandDiagnosisController::class, 'openApiIndex'])
+            ->name('brand-diagnosis.open-api.index')
+            ->middleware('admin.super');
         Route::post('brand-diagnosis/{run}/confirm', [BrandDiagnosisController::class, 'confirm'])
             ->name('brand-diagnosis.confirm')
             ->whereNumber('run');

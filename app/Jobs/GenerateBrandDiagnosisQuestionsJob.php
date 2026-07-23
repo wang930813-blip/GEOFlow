@@ -91,7 +91,7 @@ class GenerateBrandDiagnosisQuestionsJob implements ShouldQueue
             $run->questions()->delete();
             foreach ($questions as $index => $question) {
                 $run->questions()->create([
-                    'site_id' => (int) $run->site_id,
+                    'site_id' => $run->site_id !== null ? (int) $run->site_id : null,
                     'owner_admin_id' => (int) ($run->owner_admin_id ?? 0) ?: null,
                     'question' => (string) $question['question'],
                     'question_type' => (string) $question['type'],
@@ -113,6 +113,10 @@ class GenerateBrandDiagnosisQuestionsJob implements ShouldQueue
                 'sentiment_rate' => 0,
                 'error_message' => null,
             ]);
+
+            if (trim((string) $run->api_task_key) !== '') {
+                AutoConfirmBrandDiagnosisRunJob::dispatch((int) $run->id)->onQueue('geoflow');
+            }
         } catch (Throwable $exception) {
             $this->markFailed($run, $exception);
         }

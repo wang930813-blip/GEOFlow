@@ -57,6 +57,7 @@
             'items' => [
                 ['key' => 'geo_reports', 'route' => 'admin.geo-reports.index', 'name' => 'GEO 报表', 'visible' => true],
                 ['key' => 'brand_diagnosis', 'route' => 'admin.brand-diagnosis.index', 'name' => '品牌诊断/报告', 'visible' => true],
+                ['key' => 'brand_diagnosis_open_api', 'route' => 'admin.brand-diagnosis.open-api.index', 'name' => 'OpenAPI 诊断记录', 'visible' => $isSuperAdmin],
                 ['key' => 'monitoring_center', 'route' => 'admin.monitoring-center.index', 'name' => '监测中心', 'visible' => ! $isAgentAdmin],
             ],
         ],
@@ -169,6 +170,7 @@
         'admin.profile.index' => 'profile',
         'admin.geo-reports.index' => 'geo_reports',
         'admin.brand-diagnosis.index' => 'brand_diagnosis',
+        'admin.brand-diagnosis.open-api.index' => 'brand_diagnosis_open_api',
         'admin.brand-diagnosis.store' => 'brand_diagnosis',
         'admin.brand-diagnosis.confirm' => 'brand_diagnosis',
         'admin.brand-diagnosis.report' => 'brand_diagnosis',
