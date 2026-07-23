@@ -44,7 +44,7 @@
                             <tr class="hover:bg-slate-50">
                                 <td class="px-4 py-3 font-semibold text-slate-900">{{ $record['brand'] }}</td>
                                 <td class="px-4 py-3 font-mono text-xs text-slate-500">{{ $record['api_task_key'] }}</td>
-                                <td class="px-4 py-3 text-slate-600">{{ collect($record['platform_options'] ?? [])->pluck('name')->filter()->implode('、') }}</td>
+                                <td class="px-4 py-3 text-slate-600">{{ collect($record['platform_options'] ?? [])->reject(fn ($option) => ($option['value'] ?? '') === 'all')->pluck('label')->filter()->implode('、') }}</td>
                                 <td class="px-4 py-3 text-slate-600">{{ $record['status'] }}</td>
                                 <td class="px-4 py-3 text-slate-600">评分 {{ $record['metrics']['score'] ?? 0 }} / 提及率 {{ $record['metrics']['mention_rate'] ?? 0 }}%</td>
                                 <td class="px-4 py-3 text-slate-500">{{ $record['created_at'] }}</td>

@@ -159,7 +159,7 @@ class BrandDiagnosisController extends Controller
             abort(403);
         }
 
-        $diagnosisRun = $this->diagnosisRunQuery()
+        $diagnosisRun = $this->diagnosisRunBaseQuery()
             ->whereKey($run)
             ->firstOrFail();
 
@@ -182,7 +182,7 @@ class BrandDiagnosisController extends Controller
 
     public function destroy(int $run): RedirectResponse
     {
-        $diagnosisRun = $this->diagnosisRunQuery()
+        $diagnosisRun = $this->diagnosisRunBaseQuery()
             ->whereKey($run)
             ->firstOrFail();
 
@@ -259,6 +259,7 @@ class BrandDiagnosisController extends Controller
     private function openApiDiagnosisRecords(array $filters): LengthAwarePaginator
     {
         $paginator = $this->openApiDiagnosisRunQuery()
+            ->select($this->diagnosisRunSummaryColumns())
             ->when($filters['brand'] !== '', fn (Builder $query): Builder => $query->where('brand_name', 'like', '%'.$filters['brand'].'%'))
             ->when($filters['start_date'] !== '', fn (Builder $query): Builder => $query->whereDate('created_at', '>=', $filters['start_date']))
             ->when($filters['end_date'] !== '', fn (Builder $query): Builder => $query->whereDate('created_at', '<=', $filters['end_date']))
@@ -269,7 +270,7 @@ class BrandDiagnosisController extends Controller
         $paginator->setCollection(
             $paginator->getCollection()
                 ->values()
-                ->map(fn (BrandDiagnosisRun $run): array => $this->formatRecord($run, false))
+                ->map(fn (BrandDiagnosisRun $run): array => $this->formatRecordSummary($run))
         );
 
         return $paginator;
@@ -291,13 +292,14 @@ class BrandDiagnosisController extends Controller
      */
     private function reportRecords(): array
     {
-        return $this->diagnosisRunQuery()
+        return $this->diagnosisRunBaseQuery()
+            ->select($this->diagnosisRunSummaryColumns())
             ->where('status', 'completed')
             ->orderByDesc('created_at')
             ->limit(50)
             ->get()
             ->values()
-            ->map(fn (BrandDiagnosisRun $run): array => $this->formatRecord($run, false))
+            ->map(fn (BrandDiagnosisRun $run): array => $this->formatRecordSummary($run))
             ->all();
     }
 
@@ -305,6 +307,15 @@ class BrandDiagnosisController extends Controller
      * @return Builder<BrandDiagnosisRun>
      */
     private function diagnosisRunQuery(): Builder
+    {
+        return $this->diagnosisRunBaseQuery()
+            ->with($this->diagnosisRunRelations());
+    }
+
+    /**
+     * @return Builder<BrandDiagnosisRun>
+     */
+    private function diagnosisRunBaseQuery(): Builder
     {
         $admin = auth('admin')->user();
         $isSuperAdmin = $admin instanceof Admin && $admin->isSuperAdmin();
@@ -316,8 +327,7 @@ class BrandDiagnosisController extends Controller
             ->where(function (Builder $query): void {
                 $query->whereNull('api_task_key')
                     ->orWhere('api_task_key', '');
-            })
-            ->with($this->diagnosisRunRelations());
+            });
     }
 
     private function openApiDiagnosisRunQuery(): Builder
@@ -325,8 +335,27 @@ class BrandDiagnosisController extends Controller
         return BrandDiagnosisRun::query()
             ->withoutGlobalScope('current_site')
             ->whereNotNull('api_task_key')
-            ->where('api_task_key', '<>', '')
-            ->with($this->diagnosisRunRelations());
+            ->where('api_task_key', '<>', '');
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function diagnosisRunSummaryColumns(): array
+    {
+        return [
+            'id',
+            'api_task_key',
+            'brand_name',
+            'platforms',
+            'status',
+            'brand_score',
+            'mention_rate',
+            'average_rank',
+            'mention_count',
+            'sentiment_rate',
+            'created_at',
+        ];
     }
 
     /**
@@ -474,6 +503,110 @@ class BrandDiagnosisController extends Controller
             'platform_data' => $platformData,
             'can_manage_official_links' => auth('admin')->user()?->isSuperAdmin() ?? false,
         ];
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function formatRecordSummary(BrandDiagnosisRun $run): array
+    {
+        $metrics = $this->storedMetrics($run);
+        $platformData = $this->summaryPlatformData($run, $metrics);
+
+        return [
+            'id' => (int) $run->id,
+            'api_task_key' => (string) ($run->api_task_key ?? ''),
+            'brand' => (string) $run->brand_name,
+            'brand_profile' => '',
+            'brand_profile_source' => '',
+            'brand_profile_model' => '',
+            'brand_profile_status' => '',
+            'brand_profile_view' => ['summary' => '', 'fields' => []],
+            'status' => $this->statusLabel((string) $run->status),
+            'raw_status' => (string) $run->status,
+            'created_at' => $run->created_at?->format('Y-m-d H:i:s') ?? '',
+            'expanded' => false,
+            'has_report' => (string) $run->status === 'completed',
+            'metrics' => $metrics,
+            'questions' => [],
+            'sources' => [],
+            'conversations' => [],
+            'rankings' => $this->emptyRankings(),
+            'platform_options' => $this->recordPlatformOptions($run),
+            'platform_data' => $platformData,
+            'can_manage_official_links' => auth('admin')->user()?->isSuperAdmin() ?? false,
+        ];
+    }
+
+    /**
+     * @return array{score:int,mention_rate:int,average_rank:string,mention_count:int,sentiment_rate:int}
+     */
+    private function storedMetrics(BrandDiagnosisRun $run): array
+    {
+        $score = (int) $run->brand_score;
+        $mentionRate = (int) $run->mention_rate;
+        $averageRank = (float) $run->average_rank;
+        $mentionCount = (int) $run->mention_count;
+        $sentimentRate = (int) $run->sentiment_rate;
+
+        $baseline = (array) config('brand_diagnosis.display_baseline', []);
+        if ((string) $run->status === 'completed' && filter_var($baseline['enabled'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            $score = (int) min(100, $score + (int) ($baseline['score'] ?? 60));
+            $mentionRate = (int) min(100, $mentionRate + (int) ($baseline['mention_rate'] ?? 50));
+            $mentionCount += (int) ($baseline['mention_count'] ?? 9);
+
+            $rankCap = (int) ($baseline['rank_cap'] ?? 9);
+            $averageRank = $averageRank > 0 ? min($averageRank, (float) $rankCap) : (float) $rankCap;
+        }
+
+        return [
+            'score' => $score,
+            'mention_rate' => $mentionRate,
+            'average_rank' => $this->formatAverageRank($averageRank),
+            'mention_count' => $mentionCount,
+            'sentiment_rate' => $sentimentRate,
+        ];
+    }
+
+    /**
+     * @return array{
+     *   mention_rate:list<array{}>,
+     *   mention_count:list<array{}>,
+     *   average_rank:list<array{}>
+     * }
+     */
+    private function emptyRankings(): array
+    {
+        return [
+            'mention_rate' => [],
+            'mention_count' => [],
+            'average_rank' => [],
+        ];
+    }
+
+    /**
+     * @param  array{score:int,mention_rate:int,average_rank:string,mention_count:int,sentiment_rate:int}  $metrics
+     * @return array<string,array<string,mixed>>
+     */
+    private function summaryPlatformData(BrandDiagnosisRun $run, array $metrics): array
+    {
+        $payload = [
+            'metrics' => $metrics,
+            'rankings' => $this->emptyRankings(),
+            'sources' => [],
+            'conversations' => [],
+        ];
+        $data = ['all' => $payload];
+
+        collect((array) $run->platforms)
+            ->map(static fn (mixed $platform): string => strtolower(trim((string) $platform)))
+            ->filter(static fn (string $platform): bool => BrandDiagnosisPlatform::isSupported($platform))
+            ->unique()
+            ->each(static function (string $platform) use (&$data, $payload): void {
+                $data[$platform] = $payload;
+            });
+
+        return $data;
     }
 
     /**
