@@ -225,6 +225,88 @@ void describe('GeoFlowApiClient', () => {
         ]);
     });
 
+    void it('完整映射 MCP 品牌诊断创建查询和确认接口', async () => {
+        const requests: Array<{
+            path: string;
+            query: string;
+            method: string;
+            idempotencyKey: string | null;
+            body: unknown;
+        }> = [];
+        const fetcher: typeof fetch = (input, init) => {
+            const url = requestUrl(input);
+            requests.push({
+                path: url.pathname,
+                query: url.search,
+                method: init?.method || 'GET',
+                idempotencyKey: new Headers(init?.headers).get('X-Idempotency-Key'),
+                body: typeof init?.body === 'string' ? (JSON.parse(init.body) as unknown) : null,
+            });
+
+            return Promise.resolve(jsonResponse({ success: true, data: { ok: true } }));
+        };
+        const client = new GeoFlowApiClient(baseUrl, 'secret-key', 1_000, fetcher);
+
+        await client.listBrandDiagnoses({ page: 2, per_page: 10, status: 'completed', search: '策影' });
+        await client.createBrandDiagnosis(
+            {
+                brand_name: '策影GEO',
+                models: ['doubao', 'qianwen'],
+                reuse_questions: false,
+            },
+            'brand-create-123',
+        );
+        await client.getBrandDiagnosis(31);
+        await client.confirmBrandDiagnosis(
+            31,
+            [
+                { id: 101, question: 'GEO 服务怎么选' },
+                { id: 102, question: '策影GEO 有哪些优势' },
+            ],
+            'brand-confirm-123',
+        );
+
+        assert.deepEqual(requests, [
+            {
+                path: '/api/v1/mcp/brand-diagnoses',
+                query: '?page=2&per_page=10&status=completed&search=%E7%AD%96%E5%BD%B1',
+                method: 'GET',
+                idempotencyKey: null,
+                body: null,
+            },
+            {
+                path: '/api/v1/mcp/brand-diagnoses',
+                query: '',
+                method: 'POST',
+                idempotencyKey: 'brand-create-123',
+                body: {
+                    brand_name: '策影GEO',
+                    models: ['doubao', 'qianwen'],
+                    reuse_questions: false,
+                },
+            },
+            {
+                path: '/api/v1/mcp/brand-diagnoses/31',
+                query: '',
+                method: 'GET',
+                idempotencyKey: null,
+                body: null,
+            },
+            {
+                path: '/api/v1/mcp/brand-diagnoses/31/confirm',
+                query: '',
+                method: 'POST',
+                idempotencyKey: 'brand-confirm-123',
+                body: {
+                    questions: [
+                        { id: 101, question: 'GEO 服务怎么选' },
+                        { id: 102, question: '策影GEO 有哪些优势' },
+                    ],
+                },
+            },
+        ]);
+    });
+
     void it('使用派生幂等键创建 AI 文章并投递指定媒体渠道', async () => {
         const requests: Array<{ path: string; method: string; idempotencyKey: string | null; body: unknown }> = [];
         const fetcher: typeof fetch = (input, init) => {

@@ -222,6 +222,8 @@ class ApiTokenService
             'media:sync',
             'materials:read',
             'materials:write',
+            'brand-diagnoses:read',
+            'brand-diagnoses:write',
         ];
     }
 

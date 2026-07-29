@@ -270,6 +270,61 @@ void describe('GEO MCP 工具注册', () => {
         }
     });
 
+    void it('具备品牌诊断读写权限时发现完整诊断流程工具', async () => {
+        const brandDiagnosisContext: GeoFlowAuthContext = {
+            ...context,
+            token: {
+                ...context.token,
+                scopes: ['mcp:connect', 'brand-diagnoses:read', 'brand-diagnoses:write'],
+            },
+        };
+        const server = createGeoMcpServer(createClient(), brandDiagnosisContext);
+        const client = new Client({ name: 'brand-diagnosis-tool-registry-check', version: '1.0.0' });
+        const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+
+        await server.connect(serverTransport);
+        await client.connect(clientTransport);
+
+        try {
+            assert.match(client.getInstructions() || '', /geo_confirm_brand_diagnosis/u);
+            const tools = await client.listTools();
+            const names = tools.tools.map((tool) => tool.name).sort();
+
+            assert.deepEqual(names, [
+                'geo_confirm_brand_diagnosis',
+                'geo_create_brand_diagnosis',
+                'geo_get_brand_diagnosis',
+                'geo_list_brand_diagnoses',
+            ]);
+
+            const createTool = tools.tools.find((tool) => tool.name === 'geo_create_brand_diagnosis');
+            const confirmTool = tools.tools.find((tool) => tool.name === 'geo_confirm_brand_diagnosis');
+            assert.equal(createTool?.annotations?.readOnlyHint, false);
+            assert.equal(createTool?.annotations?.destructiveHint, false);
+            assert.equal(confirmTool?.annotations?.readOnlyHint, false);
+            assert.equal(confirmTool?.annotations?.destructiveHint, true);
+
+            const result = await client.callTool({
+                name: 'geo_create_brand_diagnosis',
+                arguments: {
+                    brand_name: '策影GEO',
+                    models: ['doubao', 'deepseek'],
+                    reuse_questions: false,
+                    idempotency_key: 'brand-diagnosis-create-123',
+                },
+            });
+            assert.equal(result.isError, undefined);
+            assert.deepEqual(result.structuredContent, {
+                result: {
+                    path: '/api/v1/mcp/brand-diagnoses',
+                },
+            });
+        } finally {
+            await client.close();
+            await server.close();
+        }
+    });
+
     void it('工具错误响应不返回上游 details', async () => {
         const fetcher: typeof fetch = () =>
             Promise.resolve(

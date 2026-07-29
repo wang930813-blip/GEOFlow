@@ -5,6 +5,7 @@ namespace App\Services\BrandDiagnosis;
 use App\Exceptions\ApiException;
 use App\Models\Admin;
 use App\Models\BrandDiagnosisRun;
+use Illuminate\Support\Facades\Schema;
 
 class BrandDiagnosisApiService
 {
@@ -15,11 +16,15 @@ class BrandDiagnosisApiService
 
     public function create(string $brandName, array $models): BrandDiagnosisRun
     {
+        $this->assertSchemaReady();
+
         return $this->runs->createForApi($this->resolveOwnerAdmin(), $brandName, $models, $this->uniqueTaskKey());
     }
 
     public function findByTaskKey(string $taskKey): BrandDiagnosisRun
     {
+        $this->assertSchemaReady();
+
         if (! $this->taskKeys->isValid($taskKey)) {
             throw new ApiException('diagnosis_not_found', '诊断任务不存在或任务 ID 格式不正确', 404);
         }
@@ -65,5 +70,27 @@ class BrandDiagnosisApiService
         }
 
         return $admin;
+    }
+
+    /**
+     * @Name: assertSchemaReady
+     *
+     * @Description: 在开放接口访问数据库前确认任务标识列已迁移，避免把底层 PostgreSQL 异常暴露为通用 500。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-07-24 13:31:18
+     *
+     * @UpdateTime: 2026-07-24 13:31:18
+     *
+     * @Return: void
+     *
+     * @Throws: ApiException 品牌诊断开放接口数据库迁移尚未完成
+     */
+    private function assertSchemaReady(): void
+    {
+        if (! Schema::hasColumn('brand_diagnosis_runs', 'api_task_key')) {
+            throw new ApiException('brand_diagnosis_api_not_ready', '品牌诊断开放 API 数据库迁移尚未完成', 503);
+        }
     }
 }

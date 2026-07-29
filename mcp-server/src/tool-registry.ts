@@ -53,6 +53,11 @@ const materialItemDataSchema = z
     .describe(
         '条目字段。关键词使用 keyword；标题使用 title，可选 keyword；图片使用 file_path，可选 filename、original_name、file_name、file_size、mime_type、width、height、tags。',
     );
+const brandDiagnosisModelSchema = z.enum(['doubao', 'deepseek', 'qianwen', 'wenxin']);
+const brandDiagnosisQuestionSchema = z.object({
+    id: z.number().int().positive().describe('通过 geo_get_brand_diagnosis 获取的问题编号'),
+    question: z.string().trim().max(240).describe('确认后的问题文本，空字符串表示删除该问题'),
+});
 
 /**
  * @Name: hasScope
@@ -183,12 +188,17 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
             '处理 AI 文章媒体投递时，先调用 geo_get_catalog 获取有效作者和分类，再调用 geo_list_media_channels 查询渠道编号与当前售价。由当前 AI 应用完成最终标题和正文后，优先调用 geo_publish_article_to_media 一次创建并投递。未获得明确媒体资源编号时禁止投稿；多渠道部分成功时只重投失败渠道；同一操作重试必须保持 idempotency_key 不变。',
         );
     }
+    if (hasScope(context, 'brand-diagnoses:read') || hasScope(context, 'brand-diagnoses:write')) {
+        instructions.push(
+            '处理品牌诊断时先创建任务，再查询任务直到 raw_status 为 questions_ready；确认问题会消耗一次品牌诊断额度，必须在用户确认后调用 geo_confirm_brand_diagnosis；启动后继续查询直到 completed 或 failed。',
+        );
+    }
 
     const server = new McpServer(
         {
             name: 'geoflow-business-mcp-server',
             title: `GEOFlow - ${context.site?.name || 'GEO'}`,
-            version: '1.2.0',
+            version: '1.3.0',
         },
         {
             instructions: instructions.join(''),
@@ -290,6 +300,96 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
                 annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
             },
             async ({ run_id }) => await executeTool(async () => await client.getTaskRun(run_id)),
+        );
+    }
+
+    if (hasScope(context, 'brand-diagnoses:read')) {
+        server.registerTool(
+            'geo_list_brand_diagnoses',
+            {
+                title: '查询品牌诊断任务',
+                description: '分页查询当前 MCP Key 所属账号和站点的品牌诊断任务，可按状态和品牌词筛选。',
+                inputSchema: {
+                    page: z.number().int().min(1).default(1).describe('页码'),
+                    per_page: z.number().int().min(1).max(100).default(20).describe('每页数量'),
+                    status: z.string().trim().min(1).max(32).optional().describe('任务原始状态'),
+                    search: z.string().trim().min(1).max(120).optional().describe('品牌词关键词'),
+                },
+                annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
+            },
+            async ({ page, per_page, status, search }) =>
+                await executeTool(async () => await client.listBrandDiagnoses({ page, per_page, status, search })),
+        );
+
+        server.registerTool(
+            'geo_get_brand_diagnosis',
+            {
+                title: '获取品牌诊断详情',
+                description: '查询单次品牌诊断的状态、待确认问题、模型回答、引用来源、品牌表现和排名。',
+                inputSchema: {
+                    run_id: z.number().int().positive().describe('品牌诊断任务编号'),
+                },
+                annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
+            },
+            async ({ run_id }) => await executeTool(async () => await client.getBrandDiagnosis(run_id)),
+        );
+    }
+
+    if (hasScope(context, 'brand-diagnoses:write')) {
+        server.registerTool(
+            'geo_create_brand_diagnosis',
+            {
+                title: '创建品牌诊断任务',
+                description: '创建品牌诊断问题生成任务。此阶段不扣额度，生成问题后需查询详情并由用户确认。',
+                inputSchema: {
+                    brand_name: z.string().trim().min(1).max(120).describe('需要诊断的品牌词'),
+                    models: z
+                        .array(brandDiagnosisModelSchema)
+                        .min(1)
+                        .max(4)
+                        .describe('诊断模型列表，支持豆包、DeepSeek、千问和文心一言'),
+                    reuse_questions: z.boolean().default(false).describe('是否复用当前账号同站点最近生成的问题'),
+                    idempotency_key: optionalIdempotencyKeySchema,
+                },
+                annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
+            },
+            async ({ brand_name, models, reuse_questions, idempotency_key }) =>
+                await executeTool(
+                    async () =>
+                        await client.createBrandDiagnosis(
+                            { brand_name, models, reuse_questions },
+                            idempotency_key || `mcp-brand-diagnosis-${randomUUID()}`,
+                        ),
+                ),
+        );
+
+        server.registerTool(
+            'geo_confirm_brand_diagnosis',
+            {
+                title: '确认并启动品牌诊断',
+                description:
+                    '确认系统生成的问题并启动正式诊断。调用后按现有套餐规则扣减一次品牌诊断额度；省略问题列表表示全部保留。',
+                inputSchema: {
+                    run_id: z.number().int().positive().describe('处于 questions_ready 状态的品牌诊断任务编号'),
+                    questions: z
+                        .array(brandDiagnosisQuestionSchema)
+                        .min(1)
+                        .max(50)
+                        .optional()
+                        .describe('可选问题确认列表，省略时保留全部系统生成问题'),
+                    idempotency_key: optionalIdempotencyKeySchema,
+                },
+                annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
+            },
+            async ({ run_id, questions, idempotency_key }) =>
+                await executeTool(
+                    async () =>
+                        await client.confirmBrandDiagnosis(
+                            run_id,
+                            questions,
+                            idempotency_key || `mcp-brand-diagnosis-confirm-${randomUUID()}`,
+                        ),
+                ),
         );
     }
 

@@ -71,6 +71,10 @@ class AdminMcpServerTest extends TestCase
             ->assertSee('geo_get_material_summary')
             ->assertSee('geo_delete_material_items')
             ->assertSee('geo_publish_article_to_media')
+            ->assertSee('geo_create_brand_diagnosis')
+            ->assertSee('geo_confirm_brand_diagnosis')
+            ->assertSee('品牌诊断执行')
+            ->assertSee('扣减一次品牌诊断额度')
             ->assertSee('按渠道实际售价扣费，失败退款')
             ->assertSee('MCP 请求本身不单独计费')
             ->assertSee('data-mcp-never-expires', false)
@@ -114,6 +118,8 @@ class AdminMcpServerTest extends TestCase
                     'articles:write',
                     'media:read',
                     'media:submit',
+                    'brand-diagnoses:read',
+                    'brand-diagnoses:write',
                 ],
             ]);
 
@@ -131,6 +137,8 @@ class AdminMcpServerTest extends TestCase
         $this->assertContains('articles:write', (array) $token->abilities);
         $this->assertContains('media:read', (array) $token->abilities);
         $this->assertContains('media:submit', (array) $token->abilities);
+        $this->assertContains('brand-diagnoses:read', (array) $token->abilities);
+        $this->assertContains('brand-diagnoses:write', (array) $token->abilities);
 
         $plainToken = (string) $response->getSession()->get('new_mcp_key');
         $authResponse = $this->withHeader('Authorization', 'Bearer '.$plainToken)

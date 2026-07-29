@@ -20,7 +20,90 @@ class BrandDiagnosisApiResultPresenter
 
     public function detail(BrandDiagnosisRun $run): array
     {
-        return array_merge($this->summary($run), [
+        return array_merge($this->summary($run), $this->detailPayload($run));
+    }
+
+    /**
+     * @Name: mcpSummary
+     *
+     * @Description: 输出用户侧 MCP 品牌诊断摘要，使用账号内任务编号并标明是否可确认及现有费用状态。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-07-24 12:01:13
+     *
+     * @UpdateTime: 2026-07-24 12:01:13
+     *
+     * @Param: BrandDiagnosisRun $run 用户侧品牌诊断任务
+     *
+     * @Return: array<string, mixed> MCP 品牌诊断摘要
+     *
+     * @Throws: 无
+     */
+    public function mcpSummary(BrandDiagnosisRun $run): array
+    {
+        return [
+            'run_id' => (int) $run->id,
+            'status' => $this->publicStatus((string) $run->status),
+            'raw_status' => (string) $run->status,
+            'brand_name' => (string) $run->brand_name,
+            'brand_profile' => (string) ($run->brand_profile ?? ''),
+            'models' => array_values((array) $run->platforms),
+            'can_confirm' => in_array((string) $run->status, ['questions_ready', 'awaiting_confirmation'], true),
+            'billing' => [
+                'mode' => (string) ($run->billing_mode ?? 'pending_confirmation'),
+                'confirmed' => (string) ($run->billing_mode ?? 'pending_confirmation') !== 'pending_confirmation',
+                'quota_consumed' => (string) ($run->billing_mode ?? 'pending_confirmation') === 'plan_quota',
+                'usage_date' => $run->usage_date?->format('Y-m-d') ?? '',
+            ],
+            'created_at' => $run->created_at?->format('Y-m-d H:i:s') ?? '',
+            'started_at' => $run->started_at?->format('Y-m-d H:i:s') ?? '',
+            'completed_at' => $run->completed_at?->format('Y-m-d H:i:s') ?? '',
+        ];
+    }
+
+    /**
+     * @Name: mcpDetail
+     *
+     * @Description: 输出 MCP 品牌诊断完整结果，包含确认问题、模型回答、引用来源和品牌排名。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-07-24 12:01:13
+     *
+     * @UpdateTime: 2026-07-24 12:01:13
+     *
+     * @Param: BrandDiagnosisRun $run 已加载关联数据的用户侧品牌诊断任务
+     *
+     * @Return: array<string, mixed> MCP 品牌诊断完整结果
+     *
+     * @Throws: 无
+     */
+    public function mcpDetail(BrandDiagnosisRun $run): array
+    {
+        return array_merge($this->mcpSummary($run), $this->detailPayload($run));
+    }
+
+    /**
+     * @Name: detailPayload
+     *
+     * @Description: 构造开放接口和 MCP 共用的诊断进度、错误、表现、问题、回答、来源和排名字段。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-07-24 12:01:13
+     *
+     * @UpdateTime: 2026-07-24 12:01:13
+     *
+     * @Param: BrandDiagnosisRun $run 已加载关联数据的品牌诊断任务
+     *
+     * @Return: array<string, mixed> 品牌诊断详细业务字段
+     *
+     * @Throws: 无
+     */
+    private function detailPayload(BrandDiagnosisRun $run): array
+    {
+        return [
             'progress' => [
                 'total_questions' => (int) $run->total_questions,
                 'completed_questions' => (int) $run->completed_questions,
@@ -32,7 +115,7 @@ class BrandDiagnosisApiResultPresenter
             'model_results' => $this->modelResults($run),
             'sources' => $this->sources($run),
             'rankings' => $this->brandRankings($run),
-        ]);
+        ];
     }
 
     private function publicStatus(string $status): string

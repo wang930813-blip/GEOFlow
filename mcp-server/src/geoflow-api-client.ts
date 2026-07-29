@@ -7,7 +7,7 @@
  * @Email: network@iyuanma.net
  *
  * @File： geoflow-api-client.ts
- * @Description: 封装 GEOFlow REST API 鉴权、超时、错误映射、素材管理、文章管理、媒体渠道和投稿调用。
+ * @Description: 封装 GEOFlow REST API 鉴权、超时、错误映射、品牌诊断、素材、文章、媒体渠道和投稿调用。
  */
 
 import { randomUUID } from 'node:crypto';
@@ -80,6 +80,19 @@ export interface GeoFlowArticlePublicationResult {
     article: GeoFlowArticleRecord;
     submissions: unknown[];
     errors: unknown[];
+}
+
+export type GeoFlowBrandDiagnosisModel = 'doubao' | 'deepseek' | 'qianwen' | 'wenxin';
+
+export interface GeoFlowBrandDiagnosisInput {
+    brand_name: string;
+    models: GeoFlowBrandDiagnosisModel[];
+    reuse_questions: boolean;
+}
+
+export interface GeoFlowBrandDiagnosisQuestionInput {
+    id: number;
+    question: string;
 }
 
 export class GeoFlowApiError extends Error {
@@ -211,6 +224,83 @@ export class GeoFlowApiClient {
      */
     public async getTaskRun(runId: number): Promise<unknown> {
         return await this.request<unknown>('GET', `jobs/${runId}`);
+    }
+
+    /**
+     * @Name: listBrandDiagnoses
+     * @Description: 分页查询 MCP Key 所属账号和站点的品牌诊断任务。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-07-24 12:01:13
+     * @UpdateTime: 2026-07-24 12:01:13
+     *
+     * @Param: Record<string, string | number | undefined> query 品牌诊断分页和筛选参数
+     * @Return: Promise<unknown> 品牌诊断分页结果
+     * @Throws: GeoFlowApiError 权限、账号、站点或上游 API 调用失败
+     */
+    public async listBrandDiagnoses(query: Record<string, string | number | undefined>): Promise<unknown> {
+        return await this.request<unknown>('GET', 'mcp/brand-diagnoses', { query });
+    }
+
+    /**
+     * @Name: createBrandDiagnosis
+     * @Description: 为当前 MCP Key 账号和站点创建品牌诊断问题生成任务，创建阶段不消耗诊断额度。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-07-24 12:01:13
+     * @UpdateTime: 2026-07-24 12:01:13
+     *
+     * @Param: GeoFlowBrandDiagnosisInput input 品牌词、诊断模型和问题复用配置
+     * @Param: string idempotencyKey 幂等键
+     * @Return: Promise<unknown> 新建品牌诊断任务摘要
+     * @Throws: GeoFlowApiError 参数、权限、幂等或上游 API 调用失败
+     */
+    public async createBrandDiagnosis(input: GeoFlowBrandDiagnosisInput, idempotencyKey: string): Promise<unknown> {
+        return await this.request<unknown>('POST', 'mcp/brand-diagnoses', {
+            body: { ...input },
+            idempotencyKey,
+        });
+    }
+
+    /**
+     * @Name: getBrandDiagnosis
+     * @Description: 查询当前账号和站点内单次品牌诊断的进度、问题、回答、来源和排名。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-07-24 12:01:13
+     * @UpdateTime: 2026-07-24 12:01:13
+     *
+     * @Param: number runId 品牌诊断任务编号
+     * @Return: Promise<unknown> 品牌诊断完整状态和结果
+     * @Throws: GeoFlowApiError 任务不存在、权限不足或上游 API 调用失败
+     */
+    public async getBrandDiagnosis(runId: number): Promise<unknown> {
+        return await this.request<unknown>('GET', `mcp/brand-diagnoses/${runId}`);
+    }
+
+    /**
+     * @Name: confirmBrandDiagnosis
+     * @Description: 确认系统生成的问题并启动正式品牌诊断，费用由现有套餐品牌诊断额度结算。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-07-24 12:01:13
+     * @UpdateTime: 2026-07-24 12:01:13
+     *
+     * @Param: number runId 品牌诊断任务编号
+     * @Param: GeoFlowBrandDiagnosisQuestionInput[] | undefined questions 可选问题确认列表
+     * @Param: string idempotencyKey 幂等键
+     * @Return: Promise<unknown> 已启动品牌诊断的完整状态
+     * @Throws: GeoFlowApiError 任务状态、额度、幂等或上游 API 调用失败
+     */
+    public async confirmBrandDiagnosis(
+        runId: number,
+        questions: GeoFlowBrandDiagnosisQuestionInput[] | undefined,
+        idempotencyKey: string,
+    ): Promise<unknown> {
+        return await this.request<unknown>('POST', `mcp/brand-diagnoses/${runId}/confirm`, {
+            body: questions === undefined ? {} : { questions },
+            idempotencyKey,
+        });
     }
 
     /**
@@ -642,7 +732,7 @@ export class GeoFlowApiClient {
             Accept: 'application/json',
             Authorization: `Bearer ${this.token}`,
             'X-Request-Id': randomUUID(),
-            'User-Agent': 'GEOFlow-Business-MCP/1.0',
+            'User-Agent': 'GEOFlow-Business-MCP/1.3',
         });
         if (options.body !== undefined) {
             headers.set('Content-Type', 'application/json');

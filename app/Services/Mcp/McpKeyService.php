@@ -42,6 +42,8 @@ class McpKeyService
         'articles:write',
         'media:read',
         'media:submit',
+        'brand-diagnoses:read',
+        'brand-diagnoses:write',
     ];
 
     public function __construct(
@@ -243,6 +245,16 @@ class McpKeyService
                 'description' => '允许将当前账号文章投递到指定媒体渠道。',
                 'risk' => '会扣除余额',
             ],
+            'brand-diagnoses:read' => [
+                'label' => '品牌诊断读取',
+                'description' => '查询当前账号的品牌诊断任务、问题、模型回答、引用来源和排名。',
+                'risk' => '只读',
+            ],
+            'brand-diagnoses:write' => [
+                'label' => '品牌诊断执行',
+                'description' => '创建品牌诊断、确认问题并按现有套餐规则启动正式诊断。',
+                'risk' => '会消耗额度',
+            ],
         ];
     }
 
@@ -286,6 +298,10 @@ class McpKeyService
             ['name' => 'geo_get_media_submission', 'scope' => 'media:read', 'description' => '查询单个投稿订单和发布链接', 'billing' => '不扣费'],
             ['name' => 'geo_submit_article_to_media', 'scope' => 'media:submit', 'description' => '将当前账号已有文章投递到指定媒体渠道', 'billing' => '按渠道实际售价扣费，失败退款'],
             ['name' => 'geo_publish_article_to_media', 'scope' => 'articles:write + media:submit', 'description' => '保存 AI 文章并立即投递到指定媒体渠道', 'billing' => '按渠道实际售价扣费，失败退款'],
+            ['name' => 'geo_list_brand_diagnoses', 'scope' => 'brand-diagnoses:read', 'description' => '分页查询当前账号的品牌诊断任务', 'billing' => '不扣费'],
+            ['name' => 'geo_get_brand_diagnosis', 'scope' => 'brand-diagnoses:read', 'description' => '查询诊断进度、问题、回答、来源和排名', 'billing' => '不扣费'],
+            ['name' => 'geo_create_brand_diagnosis', 'scope' => 'brand-diagnoses:write', 'description' => '创建品牌诊断问题生成任务', 'billing' => '不扣费'],
+            ['name' => 'geo_confirm_brand_diagnosis', 'scope' => 'brand-diagnoses:write', 'description' => '确认问题并启动正式品牌诊断', 'billing' => '扣减一次品牌诊断额度'],
         ];
     }
 

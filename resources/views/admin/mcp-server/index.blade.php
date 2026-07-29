@@ -120,7 +120,7 @@
                         <div data-mcp-scope-grid class="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
                             @foreach ($scopeCatalog as $scope => $definition)
                                 <label data-mcp-scope-option class="flex min-h-[72px] cursor-pointer items-start gap-2.5 rounded-md border border-gray-200 px-3 py-2 transition-colors hover:border-blue-300 hover:bg-blue-50/40">
-                                    <input type="checkbox" name="scopes[]" value="{{ $scope }}" @checked(in_array($scope, old('scopes', ['catalog:read', 'tasks:read', 'jobs:read', 'materials:read', 'articles:read', 'media:read']), true)) class="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                    <input type="checkbox" name="scopes[]" value="{{ $scope }}" @checked(in_array($scope, old('scopes', ['catalog:read', 'tasks:read', 'jobs:read', 'materials:read', 'articles:read', 'media:read', 'brand-diagnoses:read']), true)) class="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
                                     <span class="min-w-0 flex-1">
                                         <span class="flex items-start justify-between gap-2">
                                             <span class="text-sm font-medium text-gray-900">{{ $definition['label'] }}</span>
@@ -382,7 +382,7 @@
                     </tbody>
                 </table>
             </div>
-            <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
                 <div class="border-l-2 border-gray-300 pl-4">
                     <h3 class="text-sm font-semibold text-gray-900">Key 数量</h3>
                     <p class="mt-1 text-sm leading-6 text-gray-600">每个有效 MCP Key 计入当前账号规格的 API Token 数量上限，不产生调用次数费用。</p>
@@ -398,6 +398,10 @@
                 <div class="border-l-2 border-emerald-500 pl-4">
                     <h3 class="text-sm font-semibold text-gray-900">媒体投稿</h3>
                     <p class="mt-1 text-sm leading-6 text-gray-600">投稿前按实时售价强制校验单渠道和本次总预算；通过后逐笔扣费，提交失败自动退款，渠道成功接单后以订单价格快照为准。</p>
+                </div>
+                <div class="border-l-2 border-orange-400 pl-4">
+                    <h3 class="text-sm font-semibold text-gray-900">品牌诊断</h3>
+                    <p class="mt-1 text-sm leading-6 text-gray-600">创建和查询不扣额度；确认问题并启动正式诊断时，扣减当前账号一次品牌诊断额度。</p>
                 </div>
             </div>
         </section>

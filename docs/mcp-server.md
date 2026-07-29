@@ -9,7 +9,7 @@ GEO MCP Server 是独立 Node 服务，用于把 GEOFlow 已有用户侧业务�
 - 只通过 GEOFlow `/api/v1` 调用现有业务服务。
 - 使用专用 MCP Key 鉴权，Key 由 GEOFlow 用户侧创建并哈希保存。
 - 所有数据请求受 Key 绑定站点、创建账号和 scope 约束。
-- 不开放文章删除和审核能力；素材写入、素材删除、文章写入与媒体投稿必须由 Key 显式授权。
+- 不开放文章删除和审核能力；素材写入、素材删除、文章写入、媒体投稿与品牌诊断执行必须由 Key 显式授权。
 
 ## 2. 工具清单
 
@@ -39,6 +39,10 @@ GEO MCP Server 是独立 Node 服务，用于把 GEOFlow 已有用户侧业务�
 | `geo_get_media_submission` | `media:read` | 查询投稿状态和发布链接 | 不扣费 |
 | `geo_submit_article_to_media` | `media:submit` | 将当前账号已有文章投递到指定渠道 | 按渠道实际售价扣费 |
 | `geo_publish_article_to_media` | `articles:write`、`media:submit` | 保存文章并投递指定渠道 | 按渠道实际售价扣费 |
+| `geo_list_brand_diagnoses` | `brand-diagnoses:read` | 分页查询当前账号的品牌诊断任务 | 不扣费 |
+| `geo_get_brand_diagnosis` | `brand-diagnoses:read` | 查询诊断进度、问题、回答、来源和排名 | 不扣费 |
+| `geo_create_brand_diagnosis` | `brand-diagnoses:write` | 创建品牌诊断问题生成任务 | 不扣费 |
+| `geo_confirm_brand_diagnosis` | `brand-diagnoses:write` | 确认问题并启动正式品牌诊断 | 扣减一次品牌诊断额度 |
 
 工具根据 MCP Key scope 动态注册。客户端不会看到未授权工具。
 
@@ -48,7 +52,7 @@ GEO MCP Server 是独立 Node 服务，用于把 GEOFlow 已有用户侧业务�
 2. 切换到需要接入的站点。
 3. 进入“账号与权益 > MCP Server”。
 4. 输入 Key 名称和过期时间。
-5. 按最小权限原则选择业务 scope；素材读取和素材管理、媒体读取和媒体投稿分别授权。
+5. 按最小权限原则选择业务 scope；素材、媒体和品牌诊断的读取与写入权限分别授权。
 6. 创建后立即复制 Key，明文只显示一次。
 7. 客户端使用请求头：`Authorization: Bearer <MCP_KEY>`。
 
@@ -106,6 +110,8 @@ MCP 不建立新的费用体系，全部复用 GEOFlow 现有账号级套餐和�
 - 任务启用 AI 配图时，按实际成功生成图片数量扣减 `ai_image_generations`。
 - 生成失败且未创建文章时，不扣文章生成额度。
 - 素材查询和素材管理不扣减业务额度。
+- 创建品牌诊断和查询诊断结果不扣减业务额度。
+- `geo_confirm_brand_diagnosis` 成功确认问题时扣减一次当前账号套餐中的 `brand_diagnoses`，重复调用同一幂等请求不会重复扣减。
 - 单次 MCP 投稿最多选择 20 个渠道。
 - 每篇文章按渠道实时售价逐笔扣费，提交失败按现有媒体结算规则自动退款。
 
@@ -198,8 +204,8 @@ location /mcp {
 |------|------|------|
 | `401` | Key 缺失、格式错误、已过期或已撤销 | 检查 Bearer 请求头，必要时重新创建 Key |
 | `403` | 不是专用 MCP Key、缺少 scope、站点停用 | 检查 Key 权限和绑定站点 |
-| `404` | 任务、执行记录或文章不属于当前站点 | 确认资源编号和 Key 绑定站点 |
-| `409` | 相同幂等操作仍在处理中或同键载荷不一致 | 保持原幂等键并等待当前请求完成，不要创建新键重投 |
+| `404` | 任务、执行记录、文章或品牌诊断不属于当前账号和站点 | 确认资源编号和 Key 绑定站点 |
+| `409` | 相同幂等操作仍在处理中、同键载荷不一致或品牌诊断状态不可确认 | 保持原幂等键并等待当前请求完成，确认诊断问题已生成且任务尚未启动 |
 | `422` | 参数校验失败、素材仍被占用或套餐额度不足 | 按错误信息修正参数、解除占用或升级规格 |
 | `426` | 使用了非 HTTPS 连接 | 修正公网 TLS 和 `X-Forwarded-Proto` 配置 |
 | `429` | IP 或 Token 请求超过限流 | 按响应头等待后重试，降低并发调用频率 |
@@ -229,3 +235,34 @@ location /mcp {
 4. 使用写工具创建或更新素材。知识库切块只能读取，不能直接新增或删除。
 5. 删除素材或素材条目前先确认编号和引用关系；仍被文章、任务或其他素材引用时，GEOFlow 会拒绝删除。
 6. 所有写操作重试必须保持 `idempotency_key` 和请求内容不变。
+
+## 10. 品牌诊断流程与边界
+
+品牌诊断工具只访问 MCP Key 创建账号在绑定站点中的用户侧诊断记录，不读取系统级 OpenAPI 任务，也不读取同站点其他账号的任务。
+
+支持模型：
+
+- `doubao`：豆包。
+- `deepseek`：DeepSeek。
+- `qianwen`：千问。
+- `wenxin`：文心一言。
+
+执行顺序：
+
+1. 调用 `geo_create_brand_diagnosis` 提交品牌词和一至四个模型，保存返回的 `run_id`。
+2. 调用 `geo_get_brand_diagnosis` 查询进度；`raw_status=questions_generating` 表示正在生成问题。
+3. 当 `raw_status=questions_ready` 且 `can_confirm=true` 时检查 `questions`。需要调整时向确认工具传入问题编号和文本；省略 `questions` 表示保留全部问题。
+4. 在用户确认消耗一次品牌诊断额度后，调用 `geo_confirm_brand_diagnosis`。网络重试必须保持 `idempotency_key` 和问题内容不变。
+5. 继续调用 `geo_get_brand_diagnosis`，直到 `status=completed` 或 `status=failed`。完成后读取 `brand_performance`、`model_results`、`sources` 和 `rankings`。
+
+状态说明：
+
+| 字段 | 值 | 含义 |
+|------|----|------|
+| `status` | `diagnosing` | 正在生成问题、等待确认或执行诊断 |
+| `status` | `completed` | 诊断完成，可读取完整结果 |
+| `status` | `failed` | 诊断失败，读取 `error_message` |
+| `raw_status` | `questions_ready` | 问题已生成，可以确认并消耗额度启动诊断 |
+| `can_confirm` | `true` | 当前任务允许调用确认工具 |
+
+创建任务不等于正式诊断，不扣减额度。只有确认工具成功将任务转为执行中时才消耗一次 `brand_diagnoses`；额度不足返回 `422`，任务保留在可确认状态。

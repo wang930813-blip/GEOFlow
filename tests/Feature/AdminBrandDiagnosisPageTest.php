@@ -6,7 +6,9 @@ use App\Models\Admin;
 use App\Models\BrandDiagnosisRun;
 use App\Models\Site;
 use App\Services\BrandDiagnosis\BrandDiagnosisPdfService;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Schema;
 use ReflectionMethod;
 use Tests\TestCase;
 
@@ -80,6 +82,42 @@ class AdminBrandDiagnosisPageTest extends TestCase
             ->assertDontSee('重新搜索')
             ->assertDontSee('_scope', false)
             ->assertSee('is-active font-medium', false);
+    }
+
+    /**
+     * @Name: test_brand_diagnosis_page_remains_available_before_open_api_column_migration
+     *
+     * @Description: 验证代码先发布而开放接口任务列尚未迁移时，用户侧品牌诊断页面仍可正常访问。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-07-24 13:31:18
+     *
+     * @UpdateTime: 2026-07-24 13:31:18
+     *
+     * @Return: void
+     *
+     * @Throws: \PHPUnit\Framework\AssertionFailedError 页面兼容结果不符合预期
+     */
+    public function test_brand_diagnosis_page_remains_available_before_open_api_column_migration(): void
+    {
+        Schema::table('brand_diagnosis_runs', function (Blueprint $table): void {
+            $table->dropUnique(['api_task_key']);
+            $table->dropColumn('api_task_key');
+        });
+        $admin = Admin::query()->create([
+            'username' => 'brand_diagnosis_pre_migration_admin',
+            'password' => 'secret-123',
+            'email' => 'brand-diagnosis-pre-migration@example.com',
+            'display_name' => 'Brand Diagnosis Pre Migration Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.brand-diagnosis.index'))
+            ->assertOk()
+            ->assertSee('品牌诊断/报告');
     }
 
     public function test_brand_diagnosis_page_exposes_four_selectable_platform_models(): void

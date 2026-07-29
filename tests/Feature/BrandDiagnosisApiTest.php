@@ -2,13 +2,17 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\AutoConfirmBrandDiagnosisRunJob;
 use App\Jobs\GenerateBrandDiagnosisQuestionsJob;
 use App\Jobs\ProcessBrandDiagnosisJob;
 use App\Models\Admin;
 use App\Models\BrandDiagnosisRun;
+use App\Services\BrandDiagnosis\BrandDiagnosisRunService;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class BrandDiagnosisApiTest extends TestCase
@@ -31,6 +35,37 @@ class BrandDiagnosisApiTest extends TestCase
             'models' => ['doubao'],
         ])->assertStatus(401)
             ->assertJsonPath('error.code', 'invalid_api_key');
+    }
+
+    /**
+     * @Name: test_brand_diagnosis_api_reports_unavailable_before_task_key_migration
+     *
+     * @Description: 验证开放接口任务列尚未迁移时返回明确服务不可用错误，不泄露底层数据库异常。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-07-24 13:31:18
+     *
+     * @UpdateTime: 2026-07-24 13:31:18
+     *
+     * @Return: void
+     *
+     * @Throws: \PHPUnit\Framework\AssertionFailedError 接口兼容错误契约不符合预期
+     */
+    public function test_brand_diagnosis_api_reports_unavailable_before_task_key_migration(): void
+    {
+        Schema::table('brand_diagnosis_runs', function (Blueprint $table): void {
+            $table->dropUnique(['api_task_key']);
+            $table->dropColumn('api_task_key');
+        });
+
+        $this->withHeader('X-Api-Key', 'test-open-api-key')
+            ->postJson('/api/v1/brand-diagnoses', [
+                'brand_name' => '武城煊饼',
+                'models' => ['doubao'],
+            ])
+            ->assertServiceUnavailable()
+            ->assertJsonPath('error.code', 'brand_diagnosis_api_not_ready');
     }
 
     public function test_brand_diagnosis_api_creates_opaque_system_level_task(): void
@@ -127,7 +162,7 @@ class BrandDiagnosisApiTest extends TestCase
             'status' => 'pending',
         ]);
 
-        (new \App\Jobs\AutoConfirmBrandDiagnosisRunJob((int) $run->id))->handle(app(\App\Services\BrandDiagnosis\BrandDiagnosisRunService::class));
+        (new AutoConfirmBrandDiagnosisRunJob((int) $run->id))->handle(app(BrandDiagnosisRunService::class));
 
         $this->assertDatabaseHas('brand_diagnosis_runs', [
             'id' => (int) $run->id,

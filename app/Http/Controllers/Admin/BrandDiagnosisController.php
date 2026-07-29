@@ -22,6 +22,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
 use Throwable;
@@ -321,21 +322,27 @@ class BrandDiagnosisController extends Controller
         $isSuperAdmin = $admin instanceof Admin && $admin->isSuperAdmin();
         $siteId = app(CurrentSite::class)->id();
 
-        return BrandDiagnosisRun::query()
+        $query = BrandDiagnosisRun::query()
             ->when($isSuperAdmin, fn ($query) => $query->withoutGlobalScope('current_site'))
-            ->when(! $isSuperAdmin && $siteId !== null, fn ($query) => $query->where('site_id', $siteId))
-            ->where(function (Builder $query): void {
+            ->when(! $isSuperAdmin && $siteId !== null, fn ($query) => $query->where('site_id', $siteId));
+
+        return $this->supportsOpenApiRuns()
+            ? $query->where(function (Builder $query): void {
                 $query->whereNull('api_task_key')
                     ->orWhere('api_task_key', '');
-            });
+            })
+            : $query;
     }
 
     private function openApiDiagnosisRunQuery(): Builder
     {
-        return BrandDiagnosisRun::query()
-            ->withoutGlobalScope('current_site')
-            ->whereNotNull('api_task_key')
-            ->where('api_task_key', '<>', '');
+        $query = BrandDiagnosisRun::query()->withoutGlobalScope('current_site');
+
+        return $this->supportsOpenApiRuns()
+            ? $query
+                ->whereNotNull('api_task_key')
+                ->where('api_task_key', '<>', '')
+            : $query->whereRaw('1 = 0');
     }
 
     /**
@@ -343,9 +350,8 @@ class BrandDiagnosisController extends Controller
      */
     private function diagnosisRunSummaryColumns(): array
     {
-        return [
+        $columns = [
             'id',
-            'api_task_key',
             'brand_name',
             'platforms',
             'status',
@@ -356,6 +362,32 @@ class BrandDiagnosisController extends Controller
             'sentiment_rate',
             'created_at',
         ];
+
+        if ($this->supportsOpenApiRuns()) {
+            array_splice($columns, 1, 0, ['api_task_key']);
+        }
+
+        return $columns;
+    }
+
+    /**
+     * @Name: supportsOpenApiRuns
+     *
+     * @Description: 检查品牌诊断开放接口任务列是否已完成迁移，用于兼容代码发布与数据库迁移之间的短暂时间差。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-07-24 13:31:18
+     *
+     * @UpdateTime: 2026-07-24 13:31:18
+     *
+     * @Return: bool 当前数据库是否支持区分开放接口品牌诊断任务
+     *
+     * @Throws: 无
+     */
+    private function supportsOpenApiRuns(): bool
+    {
+        return Schema::hasColumn('brand_diagnosis_runs', 'api_task_key');
     }
 
     /**
