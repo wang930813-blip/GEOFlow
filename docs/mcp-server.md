@@ -1,15 +1,17 @@
-# GEO MCP Server
+# ceying-geo MCP Server
 
 ## 1. 定位与边界
 
-GEO MCP Server 是独立 Node 服务，用于把 GEOFlow 已有用户侧业务能力提供给支持 MCP 的客户端。
+ceying-geo MCP Server 是独立 Node 服务，用于把 ceying-geo 已有用户侧业务能力提供给支持 MCP 的客户端。
 
 - 不使用 `laravel/mcp`。
 - 不直接连接 PostgreSQL、Redis 或 Laravel 内部模型。
-- 只通过 GEOFlow `/api/v1` 调用现有业务服务。
-- 使用专用 MCP Key 鉴权，Key 由 GEOFlow 用户侧创建并哈希保存。
+- 只通过 ceying-geo `/api/v1` 调用现有业务服务。
+- 使用专用 MCP Key 鉴权，Key 由 ceying-geo 用户侧创建并哈希保存。
 - 所有数据请求受 Key 绑定站点、创建账号和 scope 约束。
 - 不开放文章删除和审核能力；素材写入、素材删除、文章写入、媒体投稿与品牌诊断执行必须由 Key 显式授权。
+- 正式品牌名称和推荐客户端配置名均为 `ceying-geo`。
+- `GEO`、`geo`、`GEOFlow`、`geoflow` 继续作为兼容触发名称，现有 `geo_*` 工具名保持不变。
 
 ## 2. 工具清单
 
@@ -48,9 +50,9 @@ GEO MCP Server 是独立 Node 服务，用于把 GEOFlow 已有用户侧业务�
 
 ## 3. Key 鉴权
 
-1. 登录 GEOFlow 后台。
+1. 登录 ceying-geo 后台。
 2. 切换到需要接入的站点。
-3. 进入“账号与权益 > MCP Server”。
+3. 进入“账号与权益 > ceying-geo MCP”。
 4. 输入 Key 名称和过期时间。
 5. 按最小权限原则选择业务 scope；素材、媒体和品牌诊断的读取与写入权限分别授权。
 6. 创建后立即复制 Key，明文只显示一次。
@@ -67,7 +69,7 @@ Key 使用 Sanctum 标准格式和哈希存储。MCP 服务每次请求都会调
 ```json
 {
   "mcpServers": {
-    "geoflow": {
+      "ceying-geo": {
       "type": "streamable-http",
       "url": "https://geo.example.com/mcp",
       "headers": {
@@ -83,7 +85,7 @@ Key 使用 Sanctum 标准格式和哈希存储。MCP 服务每次请求都会调
 ```json
 {
   "mcpServers": {
-    "geoflow": {
+      "ceying-geo": {
       "command": "npx",
       "args": [
         "-y",
@@ -99,9 +101,21 @@ Key 使用 Sanctum 标准格式和哈希存储。MCP 服务每次请求都会调
 
 Key 不得放入 URL、提示词、公开仓库或日志。生产环境必须使用 HTTPS，并由客户端安全存储或环境变量注入。
 
-## 5. 费用结算
+## 5. 配套 Skill
 
-MCP 不建立新的费用体系，全部复用 GEOFlow 现有账号级套餐和资源流水。
+用户可在“账号与权益 > ceying-geo MCP”下载 `ceying-geo-content-operations` Skill。源码位于 `resources/skills/ceying-geo-content-operations`，下载时由应用生成版本化 ZIP，不包含 MCP Key、站点域名或用户数据。
+
+- Skill 正式名称：`ceying-geo-content-operations`。
+- 当前 Skill 版本：`1.0.0`。
+- 适配 ceying-geo MCP Server：`1.4.0` 及以上。
+- 兼容触发名称：策影 GEO、GEO、geo、GEOFlow、geoflow。
+- Skill 继续调用稳定的 `geo_*` 工具名，已有客户端无需迁移工具调用。
+
+安装时保留压缩包中的完整根目录，将其放入客户端声明的 Agent Skills 目录，并同时配置 ceying-geo MCP Server。客户端不支持 Agent Skills 时，可复制管理页提供的兼容指令继续使用 MCP 工具。
+
+## 6. 费用结算
+
+MCP 不建立新的费用体系，全部复用 ceying-geo 现有账号级套餐和资源流水。
 
 - 创建一个有效 MCP Key，会占用当前账号一个 API Token 数量名额。
 - 查询目录、任务、执行记录和文章不扣减业务额度。
@@ -117,7 +131,7 @@ MCP 不建立新的费用体系，全部复用 GEOFlow 现有账号级套餐和�
 
 费用记录仍写入项目现有账号资源使用表和流水表，可在“规格使用情况”中查看。
 
-## 6. 本机开发
+## 7. 本机开发
 
 `.env` 至少包含：
 
@@ -149,7 +163,7 @@ Invoke-WebRequest -UseBasicParsing http://localhost:18082/health
 
 开发容器将 `mcp-server` 目录挂载到 `/app`，使用 `tsx watch` 热重载。
 
-## 7. 生产部署
+## 8. 生产部署
 
 `.env.prod` 增加：
 
@@ -198,7 +212,7 @@ location /mcp {
 }
 ```
 
-## 8. 错误处理
+## 9. 错误处理
 
 | 状态 | 原因 | 处理 |
 |------|------|------|
@@ -209,14 +223,14 @@ location /mcp {
 | `422` | 参数校验失败、素材仍被占用或套餐额度不足 | 按错误信息修正参数、解除占用或升级规格 |
 | `426` | 使用了非 HTTPS 连接 | 修正公网 TLS 和 `X-Forwarded-Proto` 配置 |
 | `429` | IP 或 Token 请求超过限流 | 按响应头等待后重试，降低并发调用频率 |
-| `502` | MCP 服务无法访问 GEO API | 检查 `GEOFLOW_API_BASE_URL` 和应用容器状态 |
-| `504` | GEO API 请求超时 | 检查应用负载并调整 `MCP_API_TIMEOUT_MS` |
+| `502` | MCP 服务无法访问 ceying-geo API | 检查 `GEOFLOW_API_BASE_URL` 和应用容器状态 |
+| `504` | ceying-geo API 请求超时 | 检查应用负载并调整 `MCP_API_TIMEOUT_MS` |
 
 执行任务后应保存返回的执行记录编号，并通过 `geo_get_task_run` 查询最终状态。不要在未确认状态前重复投递相同任务。
 
 媒体投稿前必须先读取渠道实时售价，并且只使用用户明确指定的媒体资源编号；重试同一操作时必须保持正文、渠道和 `idempotency_key` 不变。
 
-## 9. 素材字段与操作边界
+## 10. 素材字段与操作边界
 
 素材类型固定为：
 
@@ -225,7 +239,7 @@ location /mcp {
 - `keyword-libraries`：关键词库，字段为 `name`、`description`；条目字段为 `keyword`。
 - `title-libraries`：标题库，字段为 `name`、`description`；条目字段为 `title`，可选 `keyword`。
 - `image-libraries`：图片库，字段为 `name`、`description`；图片条目必须提供 `file_path`，可选文件名、尺寸、类型和标签元数据。
-- `knowledge-bases`：知识库，创建字段为 `name`、`content`，可选 `description`、`file_type`、`file_path`；正文保存后由 GEOFlow 自动切块。
+- `knowledge-bases`：知识库，创建字段为 `name`、`content`，可选 `description`、`file_type`、`file_path`；正文保存后由 ceying-geo 自动切块。
 
 推荐操作顺序：
 
@@ -233,10 +247,10 @@ location /mcp {
 2. 使用 `geo_list_materials` 查找素材编号，必要时使用 `geo_get_material` 获取完整内容。
 3. 使用 `geo_list_material_items` 查询库内条目；分类和作者没有条目接口。
 4. 使用写工具创建或更新素材。知识库切块只能读取，不能直接新增或删除。
-5. 删除素材或素材条目前先确认编号和引用关系；仍被文章、任务或其他素材引用时，GEOFlow 会拒绝删除。
+5. 删除素材或素材条目前先确认编号和引用关系；仍被文章、任务或其他素材引用时，ceying-geo 会拒绝删除。
 6. 所有写操作重试必须保持 `idempotency_key` 和请求内容不变。
 
-## 10. 品牌诊断流程与边界
+## 11. 品牌诊断流程与边界
 
 品牌诊断工具只访问 MCP Key 创建账号在绑定站点中的用户侧诊断记录，不读取系统级 OpenAPI 任务，也不读取同站点其他账号的任务。
 

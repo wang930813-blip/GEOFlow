@@ -1,11 +1,11 @@
 <?php
 
 /**
- * Created by 开发工具.
+ * Created by Codex.
  *
- * @Date: 2026-07-13
+ * @Date: 2026-07-29
  *
- * @Time: 16:38
+ * @Time: 15:41:12
  *
  * @Author: cdkay
  *
@@ -13,7 +13,7 @@
  *
  * @File： McpServerController.php
  *
- * @Description: 提供用户侧 GEO MCP Server 的 Key 管理、启用状态和接入说明页面。
+ * @Description: 提供用户侧 ceying-geo MCP Server 的 Key 管理、Skill 下载和接入说明页面。
  */
 
 namespace App\Http\Controllers\Admin;
@@ -24,16 +24,20 @@ use App\Http\Requests\Admin\StoreMcpKeyRequest;
 use App\Models\Admin;
 use App\Models\Site;
 use App\Services\Mcp\McpKeyService;
+use App\Services\Mcp\McpSkillPackageBuilder;
 use App\Support\AdminWeb;
 use App\Support\CurrentSite;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\View\View;
+use RuntimeException;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
 
 class McpServerController extends Controller
 {
     public function __construct(
         private readonly McpKeyService $mcpKeyService,
+        private readonly McpSkillPackageBuilder $mcpSkillPackageBuilder,
         private readonly CurrentSite $currentSite,
     ) {}
 
@@ -54,7 +58,7 @@ class McpServerController extends Controller
      *
      * @CreateTime: 2026-07-13 16:38:47
      *
-     * @UpdateTime: 2026-07-13 16:38:47
+     * @UpdateTime: 2026-07-29 16:14:54
      *
      * @Return View MCP Server 管理页面
      *
@@ -77,7 +81,68 @@ class McpServerController extends Controller
             'toolCatalog' => $this->mcpKeyService->toolCatalog(),
             'defaultExpiresAtInput' => now()->addDays(30)->format('Y-m-d\TH:i'),
             'mcpServerUrl' => (string) config('geoflow.mcp_server_public_url'),
+            'mcpSkill' => $this->mcpSkillPackageBuilder->metadata(),
         ]);
+    }
+
+    /**
+     * 下载 ceying-geo 配套 Skill
+     * 为已登录用户生成不包含站点配置和 MCP Key 的标准 Skill ZIP 安装包。
+     *
+     * @Url [GET] /geo_admin/mcp-server/skills/ceying-geo-content-operations/download
+     *      登录 是
+     *
+     *      分页参数：
+     *      无
+     *
+     *      筛选参数：
+     *      无
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-07-29 15:41:12
+     *
+     * @UpdateTime: 2026-07-29 15:56:34
+     *
+     * @Return StreamedResponse|RedirectResponse Skill ZIP 下载流或失败重定向
+     *
+     * @Throws \Symfony\Component\HttpKernel\Exception\HttpException 当前管理员或站点无效
+     */
+    public function downloadSkill(): StreamedResponse|RedirectResponse
+    {
+        $this->admin();
+        $this->site();
+
+        try {
+            $package = $this->mcpSkillPackageBuilder->build();
+
+            return response()->streamDownload(function () use ($package): void {
+                $stream = null;
+
+                try {
+                    $stream = fopen($package['path'], 'rb');
+                    if ($stream === false) {
+                        throw new RuntimeException('ceying-geo Skill ZIP 读取失败');
+                    }
+
+                    fpassthru($stream);
+                } finally {
+                    if (is_resource($stream)) {
+                        fclose($stream);
+                    }
+                    @unlink($package['path']);
+                }
+            }, $package['filename'], [
+                'Content-Type' => 'application/zip',
+                'Cache-Control' => 'private, no-store, max-age=0',
+            ]);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return redirect()
+                ->route('admin.mcp-server.index')
+                ->withErrors('ceying-geo Skill 下载包生成失败，请稍后重试');
+        }
     }
 
     /**
@@ -89,7 +154,7 @@ class McpServerController extends Controller
      *      name string 必选 MCP Key 名称
      *      never_expires bool 可选 是否永不过期
      *      expires_at string 可选 过期时间
-     *      scopes array 必选 GEO 业务权限列表
+     *      scopes array 必选 ceying-geo 业务权限列表
      *
      * @Author: cdkay
      *

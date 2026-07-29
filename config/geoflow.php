@@ -101,7 +101,7 @@ return [
     'api_token_rate_limit_per_minute' => (int) env('GEOFLOW_API_TOKEN_RATE_LIMIT_PER_MINUTE', 120),
     // MCP 媒体投稿等付费写操作每个 Token 每分钟最大请求数
     'mcp_paid_write_rate_limit_per_minute' => (int) env('GEOFLOW_MCP_PAID_WRITE_RATE_LIMIT_PER_MINUTE', 10),
-    // 用户侧展示的独立 GEO MCP Server Streamable HTTP 地址
+    // 用户侧展示的独立 ceying-geo MCP Server Streamable HTTP 地址
     'mcp_server_public_url' => env('MCP_SERVER_PUBLIC_URL', 'http://localhost:18082/mcp'),
     // 会话空闲超时（秒）
     'session_timeout_seconds' => (int) env('GEOFLOW_SESSION_TIMEOUT', 2592000),

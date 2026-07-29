@@ -1,13 +1,13 @@
 /**
- * Created by 开发工具.
+ * Created by Codex.
  *
- * @Date: 2026-07-13
- * @Time: 16:38
+ * @Date: 2026-07-29
+ * @Time: 15:41:12
  * @Author: cdkay
  * @Email: network@iyuanma.net
  *
  * @File： geoflow-api-client.ts
- * @Description: 封装 GEOFlow REST API 鉴权、超时、错误映射、品牌诊断、素材、文章、媒体渠道和投稿调用。
+ * @Description: 封装 ceying-geo REST API 鉴权、超时、错误映射、品牌诊断、素材、文章、媒体渠道和投稿调用。
  */
 
 import { randomUUID } from 'node:crypto';
@@ -709,11 +709,11 @@ export class GeoFlowApiClient {
 
     /**
      * @Name: request
-     * @Description: 统一发送 GEO API 请求，负责 Bearer 鉴权、请求编号、超时、幂等头和标准错误信封解析。
+     * @Description: 统一发送 ceying-geo API 请求，负责 Bearer 鉴权、请求编号、超时、幂等头和标准错误信封解析。
      *
      * @Author: cdkay
      * @CreateTime: 2026-07-13 16:38:47
-     * @UpdateTime: 2026-07-13 16:38:47
+     * @UpdateTime: 2026-07-29 15:41:12
      *
      * @Param: string method HTTP 请求方法
      * @Param: string path API 相对路径
@@ -732,7 +732,7 @@ export class GeoFlowApiClient {
             Accept: 'application/json',
             Authorization: `Bearer ${this.token}`,
             'X-Request-Id': randomUUID(),
-            'User-Agent': 'GEOFlow-Business-MCP/1.3',
+            'User-Agent': 'ceying-geo-MCP/1.4',
         });
         if (options.body !== undefined) {
             headers.set('Content-Type', 'application/json');
@@ -755,7 +755,7 @@ export class GeoFlowApiClient {
             if (!response.ok || payload.success !== true) {
                 const errorPayload = payload as GeoFlowErrorEnvelope;
                 throw new GeoFlowApiError(
-                    errorPayload.error?.message || `GEOFlow API 请求失败，HTTP ${response.status}`,
+                    errorPayload.error?.message || `ceying-geo API 请求失败，HTTP ${response.status}`,
                     response.status,
                     errorPayload.error?.code || 'geoflow_api_error',
                     errorPayload.error?.details,
@@ -768,10 +768,10 @@ export class GeoFlowApiClient {
                 throw error;
             }
             if (error instanceof Error && error.name === 'AbortError') {
-                throw new GeoFlowApiError('GEOFlow API 请求超时', 504, 'geoflow_api_timeout');
+                throw new GeoFlowApiError('ceying-geo API 请求超时', 504, 'geoflow_api_timeout');
             }
 
-            throw new GeoFlowApiError('无法连接 GEOFlow API', 502, 'geoflow_api_unavailable');
+            throw new GeoFlowApiError('无法连接 ceying-geo API', 502, 'geoflow_api_unavailable');
         } finally {
             clearTimeout(timeout);
         }
@@ -783,7 +783,7 @@ export class GeoFlowApiClient {
      *
      * @Author: cdkay
      * @CreateTime: 2026-07-13 16:38:47
-     * @UpdateTime: 2026-07-13 16:38:47
+     * @UpdateTime: 2026-07-29 15:41:12
      *
      * @Param: Response response GEOFlow API 响应
      * @Return: Promise<GeoFlowSuccessEnvelope<T> | GeoFlowErrorEnvelope> 标准响应信封
@@ -791,12 +791,12 @@ export class GeoFlowApiClient {
     private async parseEnvelope<T>(response: Response): Promise<GeoFlowSuccessEnvelope<T> | GeoFlowErrorEnvelope> {
         const contentType = response.headers.get('content-type') || '';
         if (!contentType.toLowerCase().includes('application/json')) {
-            throw new GeoFlowApiError('GEOFlow API 返回了非 JSON 响应', 502, 'invalid_geoflow_response');
+            throw new GeoFlowApiError('ceying-geo API 返回了非 JSON 响应', 502, 'invalid_geoflow_response');
         }
 
         const payload: unknown = await response.json();
         if (typeof payload !== 'object' || payload === null || !('success' in payload)) {
-            throw new GeoFlowApiError('GEOFlow API 响应格式无效', 502, 'invalid_geoflow_response');
+            throw new GeoFlowApiError('ceying-geo API 响应格式无效', 502, 'invalid_geoflow_response');
         }
 
         return payload as GeoFlowSuccessEnvelope<T> | GeoFlowErrorEnvelope;

@@ -404,6 +404,8 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
 
         Route::prefix('mcp-server')->name('mcp-server.')->group(function () {
             Route::get('/', [McpServerController::class, 'index'])->name('index');
+            Route::get('skills/ceying-geo-content-operations/download', [McpServerController::class, 'downloadSkill'])
+                ->name('skills.download');
             Route::post('keys', [McpServerController::class, 'store'])->name('keys.store');
             Route::post('keys/{keyId}/revoke', [McpServerController::class, 'revoke'])
                 ->name('keys.revoke')

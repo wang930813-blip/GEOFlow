@@ -1,11 +1,11 @@
 <?php
 
 /**
- * Created by 开发工具.
+ * Created by Codex.
  *
- * @Date: 2026-07-13
+ * @Date: 2026-07-29
  *
- * @Time: 16:38
+ * @Time: 15:41:12
  *
  * @Author: cdkay
  *
@@ -13,7 +13,7 @@
  *
  * @File： McpKeyService.php
  *
- * @Description: 管理 GEO 业务 MCP Key，复用现有 API Token 的哈希存储、站点隔离、权限和套餐额度。
+ * @Description: 管理 ceying-geo 业务 MCP Key，复用现有 API Token 的哈希存储、站点隔离、权限和套餐额度。
  */
 
 namespace App\Services\Mcp;
@@ -182,13 +182,13 @@ class McpKeyService
     /**
      * @Name: scopeCatalog
      *
-     * @Description: 返回 GEO MCP 可授权权限及其业务说明，作为用户侧权限选择的唯一来源。
+     * @Description: 返回 ceying-geo MCP 可授权权限及其业务说明，作为用户侧权限选择的唯一来源。
      *
      * @Author: cdkay
      *
      * @CreateTime: 2026-07-13 16:38:47
      *
-     * @UpdateTime: 2026-07-18 13:58:43
+     * @UpdateTime: 2026-07-29 15:41:12
      *
      * @Return: array<string, array{label: string, description: string, risk: string}> 权限目录
      */
@@ -261,26 +261,26 @@ class McpKeyService
     /**
      * @Name: toolCatalog
      *
-     * @Description: 返回 GEO MCP 工具清单，用于用户侧说明并与独立 MCP 服务保持同一业务边界。
+     * @Description: 返回 ceying-geo MCP 工具清单，用于用户侧说明并与独立 MCP 服务保持同一业务边界。
      *
      * @Author: cdkay
      *
      * @CreateTime: 2026-07-13 16:38:47
      *
-     * @UpdateTime: 2026-07-18 13:58:43
+     * @UpdateTime: 2026-07-29 15:41:12
      *
      * @Return: array<int, array{name: string, scope: string, description: string, billing: string}> 工具目录
      */
     public function toolCatalog(): array
     {
         return [
-            ['name' => 'geo_get_catalog', 'scope' => 'catalog:read', 'description' => '获取当前站点 GEO 任务所需目录数据', 'billing' => '不扣费'],
+            ['name' => 'geo_get_catalog', 'scope' => 'catalog:read', 'description' => '获取当前站点 ceying-geo 任务所需目录数据', 'billing' => '不扣费'],
             ['name' => 'geo_list_tasks', 'scope' => 'tasks:read', 'description' => '分页查询当前站点任务', 'billing' => '不扣费'],
             ['name' => 'geo_get_task', 'scope' => 'tasks:read', 'description' => '查询单个任务及运行概况', 'billing' => '不扣费'],
             ['name' => 'geo_run_task', 'scope' => 'tasks:write', 'description' => '向现有任务投递一次文章生成执行', 'billing' => '成功生成后扣文章生成额度'],
             ['name' => 'geo_list_task_runs', 'scope' => 'tasks:read', 'description' => '查询任务的执行记录', 'billing' => '不扣费'],
             ['name' => 'geo_get_task_run', 'scope' => 'jobs:read', 'description' => '查询单次执行状态和结果', 'billing' => '不扣费'],
-            ['name' => 'geo_get_material_summary', 'scope' => 'materials:read', 'description' => '查询六类 GEO 素材数量摘要', 'billing' => '不扣费'],
+            ['name' => 'geo_get_material_summary', 'scope' => 'materials:read', 'description' => '查询六类 ceying-geo 素材数量摘要', 'billing' => '不扣费'],
             ['name' => 'geo_list_materials', 'scope' => 'materials:read', 'description' => '分页查询指定类型素材', 'billing' => '不扣费'],
             ['name' => 'geo_get_material', 'scope' => 'materials:read', 'description' => '查询单个素材详情', 'billing' => '不扣费'],
             ['name' => 'geo_list_material_items', 'scope' => 'materials:read', 'description' => '分页查询素材库条目或知识库切块', 'billing' => '不扣费'],

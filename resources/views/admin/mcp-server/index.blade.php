@@ -6,7 +6,7 @@
     $neverExpires = filter_var(old('never_expires', false), FILTER_VALIDATE_BOOL);
     $httpConfig = json_encode([
         'mcpServers' => [
-            'geoflow' => [
+            'ceying-geo' => [
                 'type' => 'streamable-http',
                 'url' => $mcpServerUrl,
                 'headers' => [
@@ -17,7 +17,7 @@
     ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
     $stdioConfig = json_encode([
         'mcpServers' => [
-            'geoflow' => [
+            'ceying-geo' => [
                 'command' => 'npx',
                 'args' => [
                     '-y',
@@ -36,7 +36,7 @@
         <header class="flex flex-col gap-4 border-b border-gray-200 pb-6 sm:flex-row sm:items-end sm:justify-between">
             <div>
                 <h1 class="text-2xl font-bold text-gray-900">MCP Server</h1>
-                <p class="mt-1 text-sm text-gray-600">将当前站点的 GEO 任务、执行记录和文章能力接入支持 MCP 的客户端。</p>
+                <p class="mt-1 text-sm text-gray-600">将当前站点的内容任务、素材、文章、媒体投稿和品牌诊断能力接入支持 MCP 的客户端。</p>
             </div>
             <div class="flex items-center gap-2 text-sm font-medium {{ $activeKeyCount > 0 ? 'text-emerald-700' : 'text-gray-500' }}">
                 <span class="h-2.5 w-2.5 rounded-full {{ $activeKeyCount > 0 ? 'bg-emerald-500' : 'bg-gray-300' }}"></span>
@@ -217,7 +217,7 @@
         <section class="space-y-5 border-t border-gray-200 pt-8" aria-labelledby="guide-heading">
             <div>
                 <h2 id="guide-heading" class="text-xl font-semibold text-gray-900">使用说明</h2>
-                <p class="mt-1 text-sm text-gray-600">完成以下配置后，客户端会根据 Key 权限自动发现可用的 GEO 工具。</p>
+                <p class="mt-1 text-sm text-gray-600">完成以下配置后，客户端会根据 Key 权限自动发现可用的 ceying-geo 工具。</p>
             </div>
 
             <ol class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -259,7 +259,7 @@
                         <div class="flex items-center justify-between gap-4">
                             <div>
                                 <h3 class="text-sm font-semibold text-gray-900">仅支持本地 stdio 的客户端</h3>
-                                <p class="mt-1 text-sm text-gray-500">本机需安装 Node.js 20 或更高版本，客户端通过 mcp-remote 转发到 GEO MCP Server。</p>
+                                <p class="mt-1 text-sm text-gray-500">本机需安装 Node.js 20 或更高版本，客户端通过 mcp-remote 转发到 ceying-geo MCP Server。</p>
                             </div>
                             <button type="button" class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50" data-copy-target="stdio-bridge-config" title="复制配置" aria-label="复制 stdio 桥接配置">
                                 <i data-lucide="copy" class="h-4 w-4"></i>
@@ -271,10 +271,79 @@
             </div>
         </section>
 
+        <section class="space-y-5 border-t border-gray-200 pt-8" aria-labelledby="skill-heading">
+            <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div class="max-w-3xl">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <h2 id="skill-heading" class="text-xl font-semibold text-gray-900">GEO Skills</h2>
+                        <span class="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">v{{ $mcpSkill['version'] }}</span>
+                    </div>
+                    <p class="mt-2 text-sm leading-6 text-gray-600">为支持 Agent Skills 的 AI 应用提供文章编写与投稿、任务执行、素材管理、品牌诊断和安全重试工作流。Skill 不包含 MCP Key、站点域名或用户数据。</p>
+                </div>
+                <a href="{{ route('admin.mcp-server.skills.download') }}" class="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                    <i data-lucide="download" class="h-4 w-4"></i>
+                    下载 Skill
+                </a>
+            </div>
+
+            <dl class="grid gap-4 border-y border-gray-200 py-4 sm:grid-cols-2 xl:grid-cols-4">
+                <div>
+                    <dt class="text-xs font-medium text-gray-500">Skill 名称</dt>
+                    <dd class="mt-1 break-all text-sm font-medium text-gray-900">{{ $mcpSkill['name'] }}</dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-medium text-gray-500">适配服务</dt>
+                    <dd class="mt-1 text-sm font-medium text-gray-900">ceying-geo MCP {{ $mcpSkill['mcp_server_version'] }}+</dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-medium text-gray-500">兼容触发词</dt>
+                    <dd class="mt-1 text-sm text-gray-700">{{ implode('、', $mcpSkill['aliases']) }}</dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-medium text-gray-500">工具兼容</dt>
+                    <dd class="mt-1 text-sm text-gray-700">继续使用现有 <code class="text-blue-700">geo_*</code> 工具名</dd>
+                </div>
+            </dl>
+
+            <details class="group border-b border-gray-200 pb-4">
+                <summary class="flex cursor-pointer list-none items-center justify-between gap-4 py-1 text-sm font-medium text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+                    查看安装与兼容说明
+                    <i data-lucide="chevron-down" class="h-4 w-4 shrink-0 text-gray-500 transition-transform group-open:rotate-180"></i>
+                </summary>
+                <div class="space-y-5 pt-4">
+                    <ol class="grid gap-4 md:grid-cols-3">
+                        @foreach ([
+                            ['1', '下载并解压', '保留 ceying-geo-content-operations 根目录及其中的 SKILL.md、agents 和 references。'],
+                            ['2', '安装到客户端', '将完整目录放入 AI 应用声明的 Agent Skills 目录，不要只复制 SKILL.md。'],
+                            ['3', '连接并重载', '同时配置上方 ceying-geo MCP Server，重载客户端后即可用正式名称或兼容名称发起任务。'],
+                        ] as [$step, $title, $description])
+                            <li class="border-l-2 border-blue-500 pl-4">
+                                <div class="text-xs font-semibold text-blue-600">步骤 {{ $step }}</div>
+                                <h3 class="mt-1 text-sm font-semibold text-gray-900">{{ $title }}</h3>
+                                <p class="mt-1 text-sm leading-6 text-gray-600">{{ $description }}</p>
+                            </li>
+                        @endforeach
+                    </ol>
+
+                    <div class="border-l-2 border-gray-300 bg-gray-50 px-4 py-3">
+                        <div class="flex items-start justify-between gap-4">
+                            <div>
+                                <h3 class="text-sm font-semibold text-gray-900">不支持 Agent Skills 的客户端</h3>
+                                <p id="ceying-geo-fallback-prompt" class="mt-1 text-sm leading-6 text-gray-600">使用 ceying-geo MCP Server 完成内容运营。调用前检查实际发现的 geo_* 工具；不要猜测资源编号；投稿、执行任务、确认品牌诊断或删除素材前说明费用或影响并取得授权；同一写操作重试保持参数和 idempotency_key 不变。</p>
+                            </div>
+                            <button type="button" class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-600 hover:bg-gray-100" data-copy-target="ceying-geo-fallback-prompt" title="复制兼容指令" aria-label="复制兼容指令">
+                                <i data-lucide="copy" class="h-4 w-4"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </details>
+        </section>
+
         <section class="space-y-5 border-t border-gray-200 pt-8" aria-labelledby="agent-workflow-heading">
             <div>
                 <h2 id="agent-workflow-heading" class="text-xl font-semibold text-gray-900">AI Agent 自动写作与媒体投递</h2>
-                <p class="mt-1 text-sm leading-6 text-gray-600">文章由已安装本 MCP 的 AI 应用生成，GEO MCP 负责资源查询、文章保存、指定渠道投稿、费用结算和状态跟踪。</p>
+                <p class="mt-1 text-sm leading-6 text-gray-600">文章由已安装本 MCP 的 AI 应用生成，ceying-geo MCP 负责资源查询、文章保存、指定渠道投稿、费用结算和状态跟踪。</p>
             </div>
 
             <ol class="grid gap-5 md:grid-cols-2 xl:grid-cols-5">
@@ -397,7 +466,7 @@
                 </div>
                 <div class="border-l-2 border-emerald-500 pl-4">
                     <h3 class="text-sm font-semibold text-gray-900">媒体投稿</h3>
-                    <p class="mt-1 text-sm leading-6 text-gray-600">投稿前按实时售价强制校验单渠道和本次总预算；通过后逐笔扣费，提交失败自动退款，渠道成功接单后以订单价格快照为准。</p>
+                    <p class="mt-1 text-sm leading-6 text-gray-600">投稿前查询并展示渠道实时售价；获得用户授权后逐笔扣费，提交失败自动退款，渠道成功接单后以订单价格快照为准。</p>
                 </div>
                 <div class="border-l-2 border-orange-400 pl-4">
                     <h3 class="text-sm font-semibold text-gray-900">品牌诊断</h3>

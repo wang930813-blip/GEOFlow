@@ -1,13 +1,13 @@
 /**
- * Created by 开发工具.
+ * Created by Codex.
  *
- * @Date: 2026-07-13
- * @Time: 16:38
+ * @Date: 2026-07-29
+ * @Time: 15:41:12
  * @Author: cdkay
  * @Email: network@iyuanma.net
  *
  * @File： tool-registry.test.ts
- * @Description: 验证 GEO MCP 工具按 Key scope 动态发现，并拒绝普通 API Token 和未绑定站点凭证。
+ * @Description: 验证 ceying-geo MCP 工具按 Key scope 动态发现、兼容旧触发名称并拒绝无效凭证。
  */
 
 import assert from 'node:assert/strict';
@@ -105,8 +105,8 @@ function assertMediaToolSchema(schema: unknown): void {
     assert.equal((mediaResourceIds as Record<string, unknown>).maxItems, 20);
 }
 
-void describe('GEO MCP 工具注册', () => {
-    void it('仅发现当前 Key 已授权的 GEO 工具', async () => {
+void describe('ceying-geo MCP 工具注册', () => {
+    void it('使用正式服务身份并仅发现当前 Key 已授权的工具', async () => {
         const server = createGeoMcpServer(createClient(), context);
         const client = new Client({ name: 'tool-registry-check', version: '1.0.0' });
         const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -115,6 +115,13 @@ void describe('GEO MCP 工具注册', () => {
         await client.connect(clientTransport);
 
         try {
+            assert.equal(client.getServerVersion()?.name, 'ceying-geo-mcp-server');
+            assert.equal(client.getServerVersion()?.version, '1.4.0');
+            assert.match(client.getInstructions() || '', /ceying-geo/u);
+            assert.match(client.getInstructions() || '', /geo_\*/u);
+            for (const alias of ['GEO', 'geo', 'GEOFlow', 'geoflow']) {
+                assert.equal((client.getInstructions() || '').includes(alias), true);
+            }
             assert.doesNotMatch(client.getInstructions() || '', /geo_publish_article_to_media/);
             const tools = await client.listTools();
             const names = tools.tools.map((tool) => tool.name).sort();

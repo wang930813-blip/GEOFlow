@@ -1,11 +1,11 @@
 <?php
 
 /**
- * Created by 开发工具.
+ * Created by Codex.
  *
- * @Date: 2026-07-13
+ * @Date: 2026-07-29
  *
- * @Time: 16:38
+ * @Time: 15:41:12
  *
  * @Author: cdkay
  *
@@ -13,7 +13,7 @@
  *
  * @File： AdminMcpServerTest.php
  *
- * @Description: 验证用户侧 GEO MCP Key 管理、站点隔离、套餐额度和机器凭证自检契约。
+ * @Description: 验证用户侧 ceying-geo MCP Key、Skill 下载、站点隔离、套餐额度和机器凭证自检契约。
  */
 
 namespace Tests\Feature;
@@ -36,6 +36,7 @@ use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\PersonalAccessToken;
 use Tests\TestCase;
+use ZipArchive;
 
 class AdminMcpServerTest extends TestCase
 {
@@ -44,13 +45,13 @@ class AdminMcpServerTest extends TestCase
     /**
      * @Name: test_user_can_open_mcp_server_page_for_current_site
      *
-     * @Description: 验证用户可从当前站点打开 MCP Server 页面并看到连接、工具和费用说明。
+     * @Description: 验证用户可从当前站点打开 MCP Server 页面并看到连接、Skill、工具和费用说明。
      *
      * @Author: cdkay
      *
      * @CreateTime: 2026-07-13 16:38:47
      *
-     * @UpdateTime: 2026-07-13 16:38:47
+     * @UpdateTime: 2026-07-29 16:19:09
      *
      * @Return: void
      */
@@ -64,9 +65,15 @@ class AdminMcpServerTest extends TestCase
 
         $response
             ->assertOk()
-            ->assertSee('MCP Server')
+            ->assertSee('<h1 class="text-2xl font-bold text-gray-900">MCP Server</h1>', false)
             ->assertSee($site->name)
             ->assertSee('Streamable HTTP')
+            ->assertSee('&quot;ceying-geo&quot;:', false)
+            ->assertSee('<h2 id="skill-heading" class="text-xl font-semibold text-gray-900">GEO Skills</h2>', false)
+            ->assertSee('ceying-geo-content-operations')
+            ->assertSee('GEOFlow')
+            ->assertSee('<h2 id="materials-heading" class="text-xl font-semibold text-gray-900">GEO 素材管理</h2>', false)
+            ->assertSee(route('admin.mcp-server.skills.download'), false)
             ->assertSee('geo_run_task')
             ->assertSee('geo_get_material_summary')
             ->assertSee('geo_delete_material_items')
@@ -85,6 +92,59 @@ class AdminMcpServerTest extends TestCase
             count(McpKeyService::BUSINESS_SCOPES),
             substr_count((string) $response->getContent(), 'data-mcp-scope-option')
         );
+    }
+
+    /**
+     * @Name: test_user_can_download_versioned_ceying_geo_skill_package
+     *
+     * @Description: 验证登录用户可下载完整 Skill ZIP，包内包含主文件、客户端元数据和五类业务参考文件且不携带连接凭证。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-07-29 15:41:12
+     *
+     * @UpdateTime: 2026-07-29 15:41:12
+     *
+     * @Return: void
+     */
+    public function test_user_can_download_versioned_ceying_geo_skill_package(): void
+    {
+        [$admin, $site] = $this->createAccount('mcp_skill_download_user');
+
+        $response = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.mcp-server.skills.download'));
+
+        $response->assertOk();
+        $response->assertHeader('content-type', 'application/zip');
+        $this->assertStringContainsString(
+            'ceying-geo-content-operations-1.0.0.zip',
+            (string) $response->headers->get('content-disposition')
+        );
+
+        $zipPath = tempnam(sys_get_temp_dir(), 'ceying-geo-skill-');
+        $this->assertIsString($zipPath);
+        file_put_contents($zipPath, $response->streamedContent());
+
+        $zip = new ZipArchive;
+        $this->assertTrue($zip->open($zipPath));
+
+        $root = 'ceying-geo-content-operations/';
+        $skill = (string) $zip->getFromName($root.'SKILL.md');
+        $this->assertStringContainsString('name: ceying-geo-content-operations', $skill);
+        $this->assertStringContainsString('GEO、geo、GEOFlow、geoflow', $skill);
+        $this->assertStringContainsString('GEOFlow', $skill);
+        $this->assertStringContainsString('geo_*', $skill);
+        $this->assertStringNotContainsString('Authorization: Bearer', $skill);
+        $this->assertNotFalse($zip->getFromName($root.'agents/openai.yaml'));
+        $this->assertNotFalse($zip->getFromName($root.'references/article-publishing.md'));
+        $this->assertNotFalse($zip->getFromName($root.'references/task-execution.md'));
+        $this->assertNotFalse($zip->getFromName($root.'references/material-management.md'));
+        $this->assertNotFalse($zip->getFromName($root.'references/brand-diagnosis.md'));
+        $this->assertNotFalse($zip->getFromName($root.'references/error-recovery.md'));
+
+        $zip->close();
+        @unlink($zipPath);
     }
 
     /**

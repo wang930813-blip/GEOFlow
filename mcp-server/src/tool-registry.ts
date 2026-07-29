@@ -1,13 +1,13 @@
 /**
- * Created by 开发工具.
+ * Created by Codex.
  *
- * @Date: 2026-07-13
- * @Time: 16:38
+ * @Date: 2026-07-29
+ * @Time: 15:41:12
  * @Author: cdkay
  * @Email: network@iyuanma.net
  *
  * @File： tool-registry.ts
- * @Description: 按 MCP Key scope 动态注册 GEO 目录、任务、素材、文章、媒体渠道和自动投稿工具。
+ * @Description: 按 MCP Key scope 动态注册 ceying-geo 目录、任务、素材、文章、媒体渠道和自动投稿工具。
  */
 
 import { randomUUID } from 'node:crypto';
@@ -122,11 +122,11 @@ function successResult(data: unknown): CallToolResult {
 
 /**
  * @Name: executeTool
- * @Description: 统一执行 GEO 工具并将上游业务错误转换为 MCP 可处理错误结果，不泄露调用栈和密钥。
+ * @Description: 统一执行 ceying-geo 工具并将上游业务错误转换为 MCP 可处理错误结果，不泄露调用栈和密钥。
  *
  * @Author: cdkay
  * @CreateTime: 2026-07-13 16:38:47
- * @UpdateTime: 2026-07-18 15:37:25
+ * @UpdateTime: 2026-07-29 15:41:12
  *
  * @Param: () => Promise<unknown> operation GEO API 调用
  * @Return: Promise<CallToolResult> MCP 工具结果
@@ -136,7 +136,9 @@ async function executeTool(operation: () => Promise<unknown>): Promise<CallToolR
         return successResult(await operation());
     } catch (error) {
         const apiError =
-            error instanceof GeoFlowApiError ? error : new GeoFlowApiError('GEO 工具执行失败', 500, 'geo_tool_error');
+            error instanceof GeoFlowApiError
+                ? error
+                : new GeoFlowApiError('ceying-geo 工具执行失败', 500, 'geo_tool_error');
 
         const errorPayload = {
             code: apiError.code,
@@ -160,11 +162,11 @@ async function executeTool(operation: () => Promise<unknown>): Promise<CallToolR
 
 /**
  * @Name: createGeoMcpServer
- * @Description: 根据已验证 Key 的 scopes 创建无状态 GEO MCP Server，仅注册当前凭证可调用的业务工具。
+ * @Description: 根据已验证 Key 的 scopes 创建无状态 ceying-geo MCP Server，仅注册当前凭证可调用的业务工具。
  *
  * @Author: cdkay
  * @CreateTime: 2026-07-13 16:38:47
- * @UpdateTime: 2026-07-18 15:37:25
+ * @UpdateTime: 2026-07-29 15:41:12
  *
  * @Param: GeoFlowApiClient client 当前请求专用 GEO API 客户端
  * @Param: GeoFlowAuthContext context 已验证 GEO 账号和站点上下文
@@ -177,10 +179,12 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
         hasScope(context, 'articles:write') &&
         hasScope(context, 'media:read') &&
         hasScope(context, 'media:submit');
-    const instructions = ['只调用当前 MCP Key 已授权并实际发现的 GEO 工具，不要尝试调用工具列表中不存在的能力。'];
+    const instructions = [
+        '本服务正式名称为 ceying-geo；当用户在内容运营语境中提及策影 GEO、GEO、geo、GEOFlow 或 geoflow 时，均视为调用本服务。保留 geo_* 工具名以兼容现有客户端。只调用当前 MCP Key 已授权并实际发现的工具，不要尝试调用工具列表中不存在的能力。',
+    ];
     if (hasScope(context, 'materials:read')) {
         instructions.push(
-            '管理 GEO 素材时先调用 geo_get_material_summary 确认可用类型，再按类型查询或操作；知识库条目由正文自动切块，仅允许读取。',
+            '管理 ceying-geo 素材时先调用 geo_get_material_summary 确认可用类型，再按类型查询或操作；知识库条目由正文自动切块，仅允许读取。',
         );
     }
     if (canPublishToMedia) {
@@ -196,9 +200,9 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
 
     const server = new McpServer(
         {
-            name: 'geoflow-business-mcp-server',
-            title: `GEOFlow - ${context.site?.name || 'GEO'}`,
-            version: '1.3.0',
+            name: 'ceying-geo-mcp-server',
+            title: `ceying-geo - ${context.site?.name || '当前站点'}`,
+            version: '1.4.0',
         },
         {
             instructions: instructions.join(''),
@@ -209,7 +213,7 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
         server.registerTool(
             'geo_get_catalog',
             {
-                title: '获取 GEO 目录',
+                title: '获取 ceying-geo 目录',
                 description: '获取当前站点可用的模型、提示词、标题库、知识库、作者和分类。',
                 annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
             },
@@ -221,8 +225,8 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
         server.registerTool(
             'geo_list_tasks',
             {
-                title: '查询 GEO 任务',
-                description: '分页查询当前站点 GEO 任务，可按状态和名称筛选。',
+                title: '查询 ceying-geo 任务',
+                description: '分页查询当前站点 ceying-geo 任务，可按状态和名称筛选。',
                 inputSchema: {
                     page: z.number().int().min(1).default(1).describe('页码'),
                     per_page: z.number().int().min(1).max(100).default(20).describe('每页数量'),
@@ -238,7 +242,7 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
         server.registerTool(
             'geo_get_task',
             {
-                title: '获取 GEO 任务详情',
+                title: '获取 ceying-geo 任务详情',
                 description: '查询当前站点单个任务的配置、业务进度和队列概况。',
                 inputSchema: {
                     task_id: z.number().int().positive().describe('任务编号'),
@@ -252,7 +256,7 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
             'geo_list_task_runs',
             {
                 title: '查询任务执行记录',
-                description: '查询指定 GEO 任务最近的执行记录，可按状态筛选。',
+                description: '查询指定 ceying-geo 任务最近的执行记录，可按状态筛选。',
                 inputSchema: {
                     task_id: z.number().int().positive().describe('任务编号'),
                     status: z.string().trim().min(1).max(32).optional().describe('执行状态'),
@@ -269,7 +273,7 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
         server.registerTool(
             'geo_run_task',
             {
-                title: '立即执行 GEO 任务',
+                title: '立即执行 ceying-geo 任务',
                 description: '向当前站点已有任务投递一次文章生成执行。成功生成文章后按现有套餐规则扣减额度。',
                 inputSchema: {
                     task_id: z.number().int().positive().describe('任务编号'),
@@ -293,7 +297,7 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
             'geo_get_task_run',
             {
                 title: '获取任务执行详情',
-                description: '查询单次 GEO 任务执行的状态、结果摘要和错误信息。',
+                description: '查询单次 ceying-geo 任务执行的状态、结果摘要和错误信息。',
                 inputSchema: {
                     run_id: z.number().int().positive().describe('执行记录编号'),
                 },
@@ -397,7 +401,7 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
         server.registerTool(
             'geo_get_material_summary',
             {
-                title: '获取 GEO 素材摘要',
+                title: '获取 ceying-geo 素材摘要',
                 description: '查询分类、作者、关键词库、标题库、图片库、知识库六类素材的数量。',
                 annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
             },
@@ -407,7 +411,7 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
         server.registerTool(
             'geo_list_materials',
             {
-                title: '查询 GEO 素材',
+                title: '查询 ceying-geo 素材',
                 description: '分页查询指定类型素材，可按名称、描述、作者信息或分类字段搜索。',
                 inputSchema: {
                     type: materialTypeSchema.describe('素材类型'),
@@ -424,7 +428,7 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
         server.registerTool(
             'geo_get_material',
             {
-                title: '获取 GEO 素材详情',
+                title: '获取 ceying-geo 素材详情',
                 description: '查询当前站点指定类型和编号的素材详情。',
                 inputSchema: {
                     type: materialTypeSchema.describe('素材类型'),
@@ -438,7 +442,7 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
         server.registerTool(
             'geo_list_material_items',
             {
-                title: '查询 GEO 素材条目',
+                title: '查询 ceying-geo 素材条目',
                 description: '分页查询关键词、标题、图片条目或知识库自动切块。分类和作者没有条目接口。',
                 inputSchema: {
                     type: materialItemTypeSchema.describe('支持条目的素材库类型'),
@@ -457,7 +461,7 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
         server.registerTool(
             'geo_create_material',
             {
-                title: '创建 GEO 素材',
+                title: '创建 ceying-geo 素材',
                 description: '创建分类、作者、关键词库、标题库、图片库或知识库。知识库正文保存后会自动切块。',
                 inputSchema: {
                     type: materialTypeSchema.describe('素材类型'),
@@ -476,7 +480,7 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
         server.registerTool(
             'geo_update_material',
             {
-                title: '更新 GEO 素材',
+                title: '更新 ceying-geo 素材',
                 description: '更新指定素材的可写字段；知识库正文变化后会重新生成切块。',
                 inputSchema: {
                     type: materialTypeSchema.describe('素材类型'),
@@ -501,8 +505,8 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
         server.registerTool(
             'geo_delete_material',
             {
-                title: '删除 GEO 素材',
-                description: '删除指定素材；仍被文章、任务或其他素材引用时由 GEOFlow 拒绝删除。',
+                title: '删除 ceying-geo 素材',
+                description: '删除指定素材；仍被文章、任务或其他素材引用时由 ceying-geo 拒绝删除。',
                 inputSchema: {
                     type: materialTypeSchema.describe('素材类型'),
                     material_id: z.number().int().positive().describe('素材编号'),
@@ -524,7 +528,7 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
         server.registerTool(
             'geo_create_material_item',
             {
-                title: '新增 GEO 素材条目',
+                title: '新增 ceying-geo 素材条目',
                 description: '向关键词库、标题库或图片库新增条目。知识库切块由正文自动生成，不能直接新增。',
                 inputSchema: {
                     type: writableMaterialItemTypeSchema.describe('可写素材库类型'),
@@ -549,7 +553,7 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
         server.registerTool(
             'geo_delete_material_items',
             {
-                title: '批量删除 GEO 素材条目',
+                title: '批量删除 ceying-geo 素材条目',
                 description: '从关键词库、标题库或图片库批量删除指定条目。',
                 inputSchema: {
                     type: writableMaterialItemTypeSchema.describe('可写素材库类型'),
@@ -576,7 +580,7 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
         server.registerTool(
             'geo_list_articles',
             {
-                title: '查询 GEO 文章',
+                title: '查询 ceying-geo 文章',
                 description: '分页查询当前站点文章，可按任务、状态、审核状态、作者和关键词筛选。',
                 inputSchema: {
                     page: z.number().int().min(1).default(1).describe('页码'),
@@ -607,7 +611,7 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
         server.registerTool(
             'geo_get_article',
             {
-                title: '获取 GEO 文章详情',
+                title: '获取 ceying-geo 文章详情',
                 description: '查询当前站点单篇文章的正文、元数据、作者、分类和配图。',
                 inputSchema: {
                     article_id: z.number().int().positive().describe('文章编号'),

@@ -1,13 +1,13 @@
 /**
- * Created by 开发工具.
+ * Created by Codex.
  *
- * @Date: 2026-07-13
- * @Time: 16:38
+ * @Date: 2026-07-29
+ * @Time: 15:41:12
  * @Author: cdkay
  * @Email: network@iyuanma.net
  *
  * @File： server.ts
- * @Description: 启动独立 GEO MCP Streamable HTTP 服务并完成请求限流、Key 鉴权、工具注册和优雅退出。
+ * @Description: 启动独立 ceying-geo MCP Streamable HTTP 服务并完成请求限流、Key 鉴权、工具注册和优雅退出。
  */
 
 import type { Server as HttpServer } from 'node:http';
@@ -79,7 +79,7 @@ function sendJsonRpcError(response: Response, error: GeoFlowApiError): void {
  *
  * @Author: cdkay
  * @CreateTime: 2026-07-18 17:15:00
- * @UpdateTime: 2026-07-18 17:15:00
+ * @UpdateTime: 2026-07-29 15:41:12
  *
  * @Param: Request request Express 请求
  * @Param: Response response Express 响应
@@ -92,13 +92,14 @@ function enforceHttps(request: Request, response: Response, next: NextFunction):
         return;
     }
 
-    sendJsonRpcError(response, new GeoFlowApiError('MCP Server 仅允许 HTTPS 连接', 426, 'https_required'));
+    sendJsonRpcError(response, new GeoFlowApiError('ceying-geo MCP Server 仅允许 HTTPS 连接', 426, 'https_required'));
 }
 
 app.get('/health', (_request: Request, response: Response) => {
     response.json({
         status: 'ok',
-        service: 'geoflow-business-mcp-server',
+        service: 'ceying-geo-mcp-server',
+        version: '1.4.0',
         protocol: 'streamable-http',
     });
 });
@@ -159,7 +160,7 @@ app.delete('/mcp', (_request: Request, response: Response) => {
 });
 
 const httpServer: HttpServer = app.listen(config.port, config.host, () => {
-    process.stdout.write(`GEOFlow Business MCP Server 已监听 ${config.host}:${config.port}\n`);
+    process.stdout.write(`ceying-geo MCP Server 已监听 ${config.host}:${config.port}\n`);
 });
 
 /**

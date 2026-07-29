@@ -1,13 +1,13 @@
 /**
- * Created by 开发工具.
+ * Created by Codex.
  *
- * @Date: 2026-07-13
- * @Time: 16:38
+ * @Date: 2026-07-29
+ * @Time: 15:41:12
  * @Author: cdkay
  * @Email: network@iyuanma.net
  *
  * @File： config.ts
- * @Description: 解析并校验 GEO MCP Server 的监听地址、内部 API 地址和安全配置。
+ * @Description: 解析并校验 ceying-geo MCP Server 的监听地址、内部 API 地址和安全配置。
  */
 
 export interface ServerConfig {

@@ -1,0 +1,6 @@
+interface:
+  display_name: "ceying-geo 内容运营"
+  short_description: "通过策影 GEO 完成写作、投稿、素材管理和品牌诊断"
+  default_prompt: "使用 $ceying-geo-content-operations 根据我的要求完成 ceying-geo 内容运营任务。"
+policy:
+  allow_implicit_invocation: true
