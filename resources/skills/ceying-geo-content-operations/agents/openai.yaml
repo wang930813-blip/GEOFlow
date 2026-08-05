@@ -1,6 +1,6 @@
 interface:
-  display_name: "ceying-geo 内容运营"
-  short_description: "通过策影 GEO 完成写作、投稿、素材管理和品牌诊断"
-  default_prompt: "使用 $ceying-geo-content-operations 根据我的要求完成 ceying-geo 内容运营任务。"
+  display_name: "策影GEO品牌增长智能体"
+  short_description: "诊断品牌可见性并规划、生成、发布和跟踪增长内容"
+  default_prompt: "使用 $ceying-geo-content-operations 分析我的品牌增长问题，制定路线图，并列出可由 ceying-geo 执行的动作。"
 policy:
   allow_implicit_invocation: true

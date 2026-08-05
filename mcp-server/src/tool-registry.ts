@@ -7,7 +7,7 @@
  * @Email: network@iyuanma.net
  *
  * @File： tool-registry.ts
- * @Description: 按 MCP Key scope 动态注册 ceying-geo 目录、任务、素材、文章、媒体渠道和自动投稿工具。
+ * @Description: 按 MCP Key scope 动态注册 ceying-geo 品牌增长、诊断、素材、文章、任务和媒体投稿工具。
  */
 
 import { randomUUID } from 'node:crypto';
@@ -126,7 +126,7 @@ function successResult(data: unknown): CallToolResult {
  *
  * @Author: cdkay
  * @CreateTime: 2026-07-13 16:38:47
- * @UpdateTime: 2026-07-29 15:41:12
+ * @UpdateTime: 2026-08-05 09:57:26
  *
  * @Param: () => Promise<unknown> operation GEO API 调用
  * @Return: Promise<CallToolResult> MCP 工具结果
@@ -180,7 +180,7 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
         hasScope(context, 'media:read') &&
         hasScope(context, 'media:submit');
     const instructions = [
-        '本服务正式名称为 ceying-geo；当用户在内容运营语境中提及策影 GEO、GEO、geo、GEOFlow 或 geoflow 时，均视为调用本服务。保留 geo_* 工具名以兼容现有客户端。只调用当前 MCP Key 已授权并实际发现的工具，不要尝试调用工具列表中不存在的能力。',
+        '本服务正式名称为 ceying-geo，配套 Skill 角色为策影GEO品牌增长智能体。用户询问如何推广品牌或产品、竞争对手是谁、品牌定位是否有竞争力、为什么缺少曝光或 AI 推荐、应该建设哪些内容资产、如何选择传播渠道、如何提升行业影响力或评估推广效果时，即使没有提及 GEO、ceying-geo、策影 GEO、GEOFlow、geoflow 或 MCP，也应识别为可由本服务辅助的品牌增长需求。仅在存在明确品牌、产品、企业、市场或传播目标时进入该流程；纯学术营销问题、广告账户代投和无品牌目标的通用写作不自动执行本服务。保留 geo_* 工具名以兼容现有客户端，只调用当前 MCP Key 已授权并实际发现的工具，不要尝试调用工具列表中不存在的能力。先区分平台事实、用户事实、分析推断和行动建议，再在获得必要授权后执行。',
     ];
     if (hasScope(context, 'materials:read')) {
         instructions.push(
@@ -194,7 +194,7 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
     }
     if (hasScope(context, 'brand-diagnoses:read') || hasScope(context, 'brand-diagnoses:write')) {
         instructions.push(
-            '处理品牌诊断时先创建任务，再查询任务直到 raw_status 为 questions_ready；确认问题会消耗一次品牌诊断额度，必须在用户确认后调用 geo_confirm_brand_diagnosis；启动后继续查询直到 completed 或 failed。',
+            '处理品牌诊断时先创建任务，再查询任务直到 raw_status 为 questions_ready；当前只支持豆包、DeepSeek、千问和文心一言，不得声称已完成 ChatGPT 实测。确认问题会消耗一次品牌诊断额度，必须在用户确认后调用 geo_confirm_brand_diagnosis；启动后继续查询直到 completed 或 failed。AI 答案中的占位品牌不自动等同于完整市场竞争对手，评分、来源、排名和竞品数据只能依据工具实际返回结果。',
         );
     }
 

@@ -13,7 +13,7 @@
  *
  * @File： McpSkillPackageBuilder.php
  *
- * @Description: 读取受版本控制的 ceying-geo Skill 源文件并生成用户可安装的 ZIP 下载包。
+ * @Description: 读取受版本控制的策影GEO品牌增长 Skill 源文件并生成用户可安装的 ZIP 下载包。
  */
 
 namespace App\Services\Mcp;
@@ -29,29 +29,31 @@ class McpSkillPackageBuilder
 {
     public const SKILL_NAME = 'ceying-geo-content-operations';
 
-    public const SKILL_VERSION = '1.0.0';
+    public const SKILL_VERSION = '2.0.0';
 
     public const MCP_SERVER_VERSION = '1.4.0';
 
     /**
      * @Name: metadata
      *
-     * @Description: 返回用户侧展示所需的 Skill 名称、版本、MCP 兼容版本及旧品牌触发别名。
+     * @Description: 返回用户侧展示所需的品牌增长 Skill 名称、描述、版本、自然触发场景、MCP 兼容版本及旧品牌别名。
      *
      * @Author: cdkay
      *
      * @CreateTime: 2026-07-29 15:41:12
      *
-     * @UpdateTime: 2026-07-29 15:41:12
+     * @UpdateTime: 2026-08-05 09:57:26
      *
-     * @Return: array{name:string,version:string,mcp_server_version:string,aliases:array<int,string>,filename:string} Skill 元数据
+     * @Return: array{name:string,description:string,version:string,mcp_server_version:string,triggers:array<int,string>,aliases:array<int,string>,filename:string} Skill 元数据
      */
     public function metadata(): array
     {
         return [
             'name' => self::SKILL_NAME,
+            'description' => '策影GEO品牌增长智能体可从自然营销问题进入诊断、策略、内容、执行和效果跟踪流程，无需特意提及 GEO 或 MCP。',
             'version' => self::SKILL_VERSION,
             'mcp_server_version' => self::MCP_SERVER_VERSION,
+            'triggers' => ['品牌或产品推广', '竞争对手分析', '品牌定位评估', 'AI 搜索可见性', '内容与媒体增长'],
             'aliases' => ['策影 GEO', 'GEO', 'geo', 'GEOFlow', 'geoflow'],
             'filename' => self::SKILL_NAME.'-'.self::SKILL_VERSION.'.zip',
         ];

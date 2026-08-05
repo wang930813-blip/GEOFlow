@@ -51,7 +51,7 @@ class AdminMcpServerTest extends TestCase
      *
      * @CreateTime: 2026-07-13 16:38:47
      *
-     * @UpdateTime: 2026-07-29 16:19:09
+     * @UpdateTime: 2026-08-05 09:57:26
      *
      * @Return: void
      */
@@ -70,6 +70,9 @@ class AdminMcpServerTest extends TestCase
             ->assertSee('Streamable HTTP')
             ->assertSee('&quot;ceying-geo&quot;:', false)
             ->assertSee('<h2 id="skill-heading" class="text-xl font-semibold text-gray-900">GEO Skills</h2>', false)
+            ->assertSee('策影GEO品牌增长智能体')
+            ->assertSee('自然触发场景')
+            ->assertSee('品牌或产品推广')
             ->assertSee('ceying-geo-content-operations')
             ->assertSee('GEOFlow')
             ->assertSee('<h2 id="materials-heading" class="text-xl font-semibold text-gray-900">GEO 素材管理</h2>', false)
@@ -97,13 +100,13 @@ class AdminMcpServerTest extends TestCase
     /**
      * @Name: test_user_can_download_versioned_ceying_geo_skill_package
      *
-     * @Description: 验证登录用户可下载完整 Skill ZIP，包内包含主文件、客户端元数据和五类业务参考文件且不携带连接凭证。
+     * @Description: 验证登录用户可下载完整品牌增长 Skill ZIP，包内包含主文件、客户端元数据和十二类业务参考文件且不携带连接凭证。
      *
      * @Author: cdkay
      *
      * @CreateTime: 2026-07-29 15:41:12
      *
-     * @UpdateTime: 2026-07-29 15:41:12
+     * @UpdateTime: 2026-08-05 09:57:26
      *
      * @Return: void
      */
@@ -118,7 +121,7 @@ class AdminMcpServerTest extends TestCase
         $response->assertOk();
         $response->assertHeader('content-type', 'application/zip');
         $this->assertStringContainsString(
-            'ceying-geo-content-operations-1.0.0.zip',
+            'ceying-geo-content-operations-2.0.0.zip',
             (string) $response->headers->get('content-disposition')
         );
 
@@ -132,16 +135,29 @@ class AdminMcpServerTest extends TestCase
         $root = 'ceying-geo-content-operations/';
         $skill = (string) $zip->getFromName($root.'SKILL.md');
         $this->assertStringContainsString('name: ceying-geo-content-operations', $skill);
-        $this->assertStringContainsString('GEO、geo、GEOFlow、geoflow', $skill);
+        $this->assertStringContainsString('策影GEO品牌增长智能体', $skill);
+        $this->assertStringContainsString('即使没有提及 GEO', $skill);
+        $this->assertStringContainsString('如何推广品牌或产品', $skill);
+        $this->assertStringContainsString('“策影 GEO”“GEO”“geo”“GEOFlow”“geoflow”', $skill);
         $this->assertStringContainsString('GEOFlow', $skill);
         $this->assertStringContainsString('geo_*', $skill);
         $this->assertStringNotContainsString('Authorization: Bearer', $skill);
-        $this->assertNotFalse($zip->getFromName($root.'agents/openai.yaml'));
+        $openAiMetadata = (string) $zip->getFromName($root.'agents/openai.yaml');
+        $this->assertStringContainsString('display_name: "策影GEO品牌增长智能体"', $openAiMetadata);
+        $this->assertStringContainsString('$ceying-geo-content-operations', $openAiMetadata);
+        $this->assertStringContainsString('allow_implicit_invocation: true', $openAiMetadata);
         $this->assertNotFalse($zip->getFromName($root.'references/article-publishing.md'));
         $this->assertNotFalse($zip->getFromName($root.'references/task-execution.md'));
         $this->assertNotFalse($zip->getFromName($root.'references/material-management.md'));
         $this->assertNotFalse($zip->getFromName($root.'references/brand-diagnosis.md'));
         $this->assertNotFalse($zip->getFromName($root.'references/error-recovery.md'));
+        $this->assertNotFalse($zip->getFromName($root.'references/marketing-intent-routing.md'));
+        $this->assertNotFalse($zip->getFromName($root.'references/brand-positioning.md'));
+        $this->assertNotFalse($zip->getFromName($root.'references/competitor-analysis.md'));
+        $this->assertNotFalse($zip->getFromName($root.'references/product-promotion.md'));
+        $this->assertNotFalse($zip->getFromName($root.'references/brand-promotion.md'));
+        $this->assertNotFalse($zip->getFromName($root.'references/growth-roadmap.md'));
+        $this->assertNotFalse($zip->getFromName($root.'references/measurement-and-monitoring.md'));
 
         $zip->close();
         @unlink($zipPath);

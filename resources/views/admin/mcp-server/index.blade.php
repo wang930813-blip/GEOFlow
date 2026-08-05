@@ -278,7 +278,7 @@
                         <h2 id="skill-heading" class="text-xl font-semibold text-gray-900">GEO Skills</h2>
                         <span class="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">v{{ $mcpSkill['version'] }}</span>
                     </div>
-                    <p class="mt-2 text-sm leading-6 text-gray-600">为支持 Agent Skills 的 AI 应用提供文章编写与投稿、任务执行、素材管理、品牌诊断和安全重试工作流。Skill 不包含 MCP Key、站点域名或用户数据。</p>
+                    <p class="mt-2 text-sm leading-6 text-gray-600">{{ $mcpSkill['description'] }} Skill 不包含 MCP Key、站点域名或用户数据。</p>
                 </div>
                 <a href="{{ route('admin.mcp-server.skills.download') }}" class="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
                     <i data-lucide="download" class="h-4 w-4"></i>
@@ -296,8 +296,8 @@
                     <dd class="mt-1 text-sm font-medium text-gray-900">ceying-geo MCP {{ $mcpSkill['mcp_server_version'] }}+</dd>
                 </div>
                 <div>
-                    <dt class="text-xs font-medium text-gray-500">兼容触发词</dt>
-                    <dd class="mt-1 text-sm text-gray-700">{{ implode('、', $mcpSkill['aliases']) }}</dd>
+                    <dt class="text-xs font-medium text-gray-500">自然触发场景</dt>
+                    <dd class="mt-1 text-sm text-gray-700">{{ implode('、', $mcpSkill['triggers']) }}</dd>
                 </div>
                 <div>
                     <dt class="text-xs font-medium text-gray-500">工具兼容</dt>
@@ -315,7 +315,7 @@
                         @foreach ([
                             ['1', '下载并解压', '保留 ceying-geo-content-operations 根目录及其中的 SKILL.md、agents 和 references。'],
                             ['2', '安装到客户端', '将完整目录放入 AI 应用声明的 Agent Skills 目录，不要只复制 SKILL.md。'],
-                            ['3', '连接并重载', '同时配置上方 ceying-geo MCP Server，重载客户端后即可用正式名称或兼容名称发起任务。'],
+                            ['3', '连接并重载', '同时配置上方 ceying-geo MCP Server，重载客户端后可直接询问品牌推广、竞争、定位或 AI 可见性问题。'],
                         ] as [$step, $title, $description])
                             <li class="border-l-2 border-blue-500 pl-4">
                                 <div class="text-xs font-semibold text-blue-600">步骤 {{ $step }}</div>
@@ -329,7 +329,7 @@
                         <div class="flex items-start justify-between gap-4">
                             <div>
                                 <h3 class="text-sm font-semibold text-gray-900">不支持 Agent Skills 的客户端</h3>
-                                <p id="ceying-geo-fallback-prompt" class="mt-1 text-sm leading-6 text-gray-600">使用 ceying-geo MCP Server 完成内容运营。调用前检查实际发现的 geo_* 工具；不要猜测资源编号；投稿、执行任务、确认品牌诊断或删除素材前说明费用或影响并取得授权；同一写操作重试保持参数和 idempotency_key 不变。</p>
+                                <p id="ceying-geo-fallback-prompt" class="mt-1 text-sm leading-6 text-gray-600">你是策影GEO品牌增长智能体。用户提出品牌或产品推广、竞争对手、品牌定位、AI 搜索可见性、内容资产、媒体传播或效果评估问题时，即使没有提及 GEO 或 MCP，也先识别目标并区分事实、推断与建议，再使用 ceying-geo MCP Server 的实际 geo_* 工具完成诊断、素材、文章、投稿和跟踪。不要猜测资源编号；投稿、执行任务、确认品牌诊断或删除素材前说明费用或影响并取得授权；同一写操作重试保持参数和 idempotency_key 不变。</p>
                             </div>
                             <button type="button" class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-600 hover:bg-gray-100" data-copy-target="ceying-geo-fallback-prompt" title="复制兼容指令" aria-label="复制兼容指令">
                                 <i data-lucide="copy" class="h-4 w-4"></i>

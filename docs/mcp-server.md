@@ -12,6 +12,7 @@ ceying-geo MCP Server 是独立 Node 服务，用于把 ceying-geo 已有用户�
 - 不开放文章删除和审核能力；素材写入、素材删除、文章写入、媒体投稿与品牌诊断执行必须由 Key 显式授权。
 - 正式品牌名称和推荐客户端配置名均为 `ceying-geo`。
 - `GEO`、`geo`、`GEOFlow`、`geoflow` 继续作为兼容触发名称，现有 `geo_*` 工具名保持不变。
+- 配套 Skill 定位为“策影GEO品牌增长智能体”，自然识别品牌或产品推广、竞争分析、品牌定位、AI 搜索可见性、内容资产、媒体传播和效果评估需求，不依赖用户显式输入 GEO 或 MCP。
 
 ## 2. 工具清单
 
@@ -52,7 +53,7 @@ ceying-geo MCP Server 是独立 Node 服务，用于把 ceying-geo 已有用户�
 
 1. 登录 ceying-geo 后台。
 2. 切换到需要接入的站点。
-3. 进入“账号与权益 > ceying-geo MCP”。
+3. 进入“账号与权益 > MCP Server”。
 4. 输入 Key 名称和过期时间。
 5. 按最小权限原则选择业务 scope；素材、媒体和品牌诊断的读取与写入权限分别授权。
 6. 创建后立即复制 Key，明文只显示一次。
@@ -103,15 +104,20 @@ Key 不得放入 URL、提示词、公开仓库或日志。生产环境必须使
 
 ## 5. 配套 Skill
 
-用户可在“账号与权益 > ceying-geo MCP”下载 `ceying-geo-content-operations` Skill。源码位于 `resources/skills/ceying-geo-content-operations`，下载时由应用生成版本化 ZIP，不包含 MCP Key、站点域名或用户数据。
+用户可在“账号与权益 > MCP Server”下载 `ceying-geo-content-operations` Skill。源码位于 `resources/skills/ceying-geo-content-operations`，下载时由应用生成版本化 ZIP，不包含 MCP Key、站点域名或用户数据。技术包名保持不变，用户侧角色名称为“策影GEO品牌增长智能体”。
 
 - Skill 正式名称：`ceying-geo-content-operations`。
-- 当前 Skill 版本：`1.0.0`。
+- 当前 Skill 版本：`2.0.0`。
 - 适配 ceying-geo MCP Server：`1.4.0` 及以上。
 - 兼容触发名称：策影 GEO、GEO、geo、GEOFlow、geoflow。
+- 自然触发场景：品牌或产品推广、竞争对手分析、品牌定位评估、AI 搜索可见性、内容与媒体增长、推广效果评估。
 - Skill 继续调用稳定的 `geo_*` 工具名，已有客户端无需迁移工具调用。
 
-安装时保留压缩包中的完整根目录，将其放入客户端声明的 Agent Skills 目录，并同时配置 ceying-geo MCP Server。客户端不支持 Agent Skills 时，可复制管理页提供的兼容指令继续使用 MCP 工具。
+安装时保留压缩包中的完整根目录，将其放入客户端声明的 Agent Skills 目录，并同时配置 ceying-geo MCP Server。安装后可直接询问“我应该如何推广品牌”“我的竞争对手是谁”“品牌定位是否有竞争力”等自然业务问题，不需要在输入中加入 GEO、ceying-geo 或 MCP。客户端不支持 Agent Skills 时，可复制管理页提供的兼容指令继续使用 MCP 工具。
+
+Skill 采用“识别目标、收集最少必要信息、判断是否需要诊断、区分事实与建议、输出增长路线图、获得授权、MCP 执行、跟踪结果”的流程。用户明确要求投稿、执行已有任务或管理素材时可直接进入执行模块，不强制重新诊断。
+
+当前品牌诊断只支持豆包、DeepSeek、千问和文心一言。ChatGPT 等其他平台的问题可以触发 Skill，但 MCP Server 不能执行对应平台实测。当前也没有定时品牌监控和自动趋势对比工具，只能按相同问题及模型重复诊断后人工比较。AI 答案中的占位品牌不等同于现实市场中的完整竞争对手，市场竞品仍需可靠来源验证。
 
 ## 6. 费用结算
 

@@ -7,7 +7,7 @@
  * @Email: network@iyuanma.net
  *
  * @File： tool-registry.test.ts
- * @Description: 验证 ceying-geo MCP 工具按 Key scope 动态发现、兼容旧触发名称并拒绝无效凭证。
+ * @Description: 验证 ceying-geo MCP 工具按 Key scope 动态发现、识别自然品牌增长意图、兼容旧名称并拒绝无效凭证。
  */
 
 import assert from 'node:assert/strict';
@@ -293,7 +293,11 @@ void describe('ceying-geo MCP 工具注册', () => {
         await client.connect(clientTransport);
 
         try {
-            assert.match(client.getInstructions() || '', /geo_confirm_brand_diagnosis/u);
+            const instructions = client.getInstructions() || '';
+            assert.match(instructions, /如何推广品牌或产品/u);
+            assert.match(instructions, /竞争对手是谁/u);
+            assert.match(instructions, /即使没有提及 GEO/u);
+            assert.match(instructions, /geo_confirm_brand_diagnosis/u);
             const tools = await client.listTools();
             const names = tools.tools.map((tool) => tool.name).sort();
 
