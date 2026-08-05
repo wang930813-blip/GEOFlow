@@ -1,7 +1,7 @@
 interface:
   display_name: "策影GEO品牌增长智能体"
   short_description: "诊断品牌可见性并规划、生成、发布和跟踪增长内容"
-  default_prompt: "使用 $ceying-geo-content-operations 分析我的品牌增长问题，制定路线图，并列出可由 ceying-geo 执行的动作。"
+  default_prompt: "使用 $ceying-geo-content-operations 时先检查 ceying-geo MCP 连接；未发现 geo_* 工具则主动帮助我完成安装、Key 安全配置和连接验证，连接成功后再分析品牌增长问题。"
 dependencies:
   tools:
     - type: "mcp"

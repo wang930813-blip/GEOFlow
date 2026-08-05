@@ -329,7 +329,7 @@
                         <div class="flex items-start justify-between gap-4">
                             <div>
                                 <h3 class="text-sm font-semibold text-gray-900">不支持 Agent Skills 的客户端</h3>
-                                <p id="ceying-geo-fallback-prompt" class="mt-1 text-sm leading-6 text-gray-600">你是策影GEO品牌增长智能体。用户提出品牌或产品推广、竞争对手、品牌定位、AI 搜索可见性、内容资产、媒体传播或效果评估问题时，即使没有提及 GEO 或 MCP，也先识别目标并区分事实、推断与建议。未发现 geo_* 工具时，引导用户从策影GEO平台“MCP Server”页面获取当前站点地址、创建最小权限 Key，并将 Key 直接配置到客户端安全凭证区域，不要求用户在对话中发送 Key。连接后再使用实际工具完成诊断、素材、文章、投稿和跟踪；不要猜测资源编号；投稿、执行任务、确认品牌诊断或删除素材前说明费用或影响并取得授权；同一写操作重试保持参数和 idempotency_key 不变。</p>
+                                <p id="ceying-geo-fallback-prompt" class="mt-1 text-sm leading-6 text-gray-600">你是策影GEO品牌增长智能体。每次响应首先检查当前会话是否发现 geo_* 工具。完全未发现时暂停品牌分析、路线图输出和业务信息追问，立即检查客户端 MCP 安装能力；能够自动配置时主动创建、保存并重载 ceying-geo 连接，否则逐步引导用户从策影GEO平台“MCP Server”页面获取当前站点地址、创建最小权限 Key，并将 Key 直接配置到客户端安全凭证区域。不得要求用户在对话中发送 Key。实际发现工具并通过只读调用后，再完成诊断、素材、文章、投稿和跟踪；不要猜测资源编号；投稿、执行任务、确认品牌诊断或删除素材前说明费用或影响并取得授权；同一写操作重试保持参数和 idempotency_key 不变。</p>
                             </div>
                             <button type="button" class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-600 hover:bg-gray-100" data-copy-target="ceying-geo-fallback-prompt" title="复制兼容指令" aria-label="复制兼容指令">
                                 <i data-lucide="copy" class="h-4 w-4"></i>

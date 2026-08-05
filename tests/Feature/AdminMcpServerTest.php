@@ -100,13 +100,13 @@ class AdminMcpServerTest extends TestCase
     /**
      * @Name: test_user_can_download_versioned_ceying_geo_skill_package
      *
-     * @Description: 验证登录用户可下载完整品牌增长 Skill ZIP，包内包含 MCP 依赖声明、安装引导和十三类业务参考文件且不携带连接凭证。
+     * @Description: 验证登录用户可下载带强制 MCP 连接门禁的品牌增长 Skill ZIP，包内包含安装引导和十三类业务参考文件且不携带连接凭证。
      *
      * @Author: cdkay
      *
      * @CreateTime: 2026-07-29 15:41:12
      *
-     * @UpdateTime: 2026-08-05 11:27:38
+     * @UpdateTime: 2026-08-05 13:47:27
      *
      * @Return: void
      */
@@ -121,7 +121,7 @@ class AdminMcpServerTest extends TestCase
         $response->assertOk();
         $response->assertHeader('content-type', 'application/zip');
         $this->assertStringContainsString(
-            'ceying-geo-content-operations-2.1.0.zip',
+            'ceying-geo-content-operations-2.1.1.zip',
             (string) $response->headers->get('content-disposition')
         );
 
@@ -138,8 +138,10 @@ class AdminMcpServerTest extends TestCase
         $this->assertStringContainsString('策影GEO品牌增长智能体', $skill);
         $this->assertStringContainsString('即使没有提及 GEO', $skill);
         $this->assertStringContainsString('如何推广品牌或产品', $skill);
-        $this->assertStringContainsString('自动进入 MCP 安装、MCP Key 获取', $skill);
-        $this->assertStringContainsString('主动调用该能力检查、创建、保存和重载', $skill);
+        $this->assertStringContainsString('每次触发的第一步必须检查 ceying-geo MCP Server', $skill);
+        $this->assertStringContainsString('## 强制启动门禁', $skill);
+        $this->assertStringContainsString('暂停品牌诊断、增长路线图、内容生成和业务信息追问', $skill);
+        $this->assertStringContainsString('不得止于“当前 ceying-geo 未连接”', $skill);
         $this->assertStringContainsString('“策影 GEO”“GEO”“geo”“GEOFlow”“geoflow”', $skill);
         $this->assertStringContainsString('GEOFlow', $skill);
         $this->assertStringContainsString('geo_*', $skill);

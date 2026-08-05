@@ -29,20 +29,20 @@ class McpSkillPackageBuilder
 {
     public const SKILL_NAME = 'ceying-geo-content-operations';
 
-    public const SKILL_VERSION = '2.1.0';
+    public const SKILL_VERSION = '2.1.1';
 
     public const MCP_SERVER_VERSION = '1.4.0';
 
     /**
      * @Name: metadata
      *
-     * @Description: 返回品牌增长 Skill 的名称、描述、版本、自然触发场景、MCP 依赖安装引导、兼容版本及旧品牌别名。
+     * @Description: 返回品牌增长 Skill 的名称、描述、版本、自然触发场景、MCP 强制连接门禁、兼容版本及旧品牌别名。
      *
      * @Author: cdkay
      *
      * @CreateTime: 2026-07-29 15:41:12
      *
-     * @UpdateTime: 2026-08-05 11:27:38
+     * @UpdateTime: 2026-08-05 13:47:27
      *
      * @Return: array{name:string,description:string,version:string,mcp_server_version:string,triggers:array<int,string>,aliases:array<int,string>,filename:string} Skill 元数据
      */
@@ -50,7 +50,7 @@ class McpSkillPackageBuilder
     {
         return [
             'name' => self::SKILL_NAME,
-            'description' => '策影GEO品牌增长智能体可从自然营销问题进入诊断、策略、内容、执行和效果跟踪流程；未连接时自动引导安装 MCP Server 并安全配置 Key。',
+            'description' => '策影GEO品牌增长智能体每次触发先检查 MCP 连接；未连接时暂停业务分析，主动引导安装 MCP Server、安全配置 Key 并验证工具。',
             'version' => self::SKILL_VERSION,
             'mcp_server_version' => self::MCP_SERVER_VERSION,
             'triggers' => ['品牌或产品推广', '竞争对手分析', '品牌定位评估', 'AI 搜索可见性', '内容与媒体增长'],
