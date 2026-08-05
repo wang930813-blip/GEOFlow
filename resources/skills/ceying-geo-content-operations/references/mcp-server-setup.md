@@ -95,9 +95,12 @@ Key 由策影GEO平台生成。没有平台账号、可用站点或创建 Key �
 | 创建、更新或删除素材 | `materials:read`、`materials:write` |
 | 查询文章 | `articles:read` |
 | 保存当前 AI 应用编写的文章 | `catalog:read`、`articles:write` |
+| 自动通过并发布文章到 GEO 用户站点 | `articles:read`、`articles:site-publish` |
 | 查询媒体渠道和投稿记录 | `media:read` |
 | 投稿已有文章 | `articles:read`、`media:read`、`media:submit` |
 | 编写新文章并直接投稿 | `catalog:read`、`articles:write`、`media:read`、`media:submit` |
+| 查询视频任务和生成结果 | `videos:read` |
+| 生成视频 | `videos:read`、`videos:write` |
 | 查询品牌诊断 | `brand-diagnoses:read` |
 | 创建、确认并跟踪品牌诊断 | `brand-diagnoses:read`、`brand-diagnoses:write` |
 

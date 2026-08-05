@@ -116,7 +116,7 @@ void describe('ceying-geo MCP 工具注册', () => {
 
         try {
             assert.equal(client.getServerVersion()?.name, 'ceying-geo-mcp-server');
-            assert.equal(client.getServerVersion()?.version, '1.4.0');
+            assert.equal(client.getServerVersion()?.version, '1.5.0');
             assert.match(client.getInstructions() || '', /ceying-geo/u);
             assert.match(client.getInstructions() || '', /geo_\*/u);
             for (const alias of ['GEO', 'geo', 'GEOFlow', 'geoflow']) {
@@ -205,6 +205,54 @@ void describe('ceying-geo MCP 工具注册', () => {
             assert.deepEqual(result.structuredContent, {
                 result: {
                     path: '/api/v1/media/resources',
+                },
+            });
+        } finally {
+            await client.close();
+            await server.close();
+        }
+    });
+
+    void it('具备文章发布权限时发现 GEO 用户站点发布工具', async () => {
+        const sitePublishContext: GeoFlowAuthContext = {
+            ...context,
+            token: {
+                ...context.token,
+                scopes: ['mcp:connect', 'articles:read', 'articles:site-publish'],
+            },
+        };
+        const server = createGeoMcpServer(createClient(), sitePublishContext);
+        const client = new Client({ name: 'article-site-publish-tool-registry-check', version: '1.0.0' });
+        const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+
+        await server.connect(serverTransport);
+        await client.connect(clientTransport);
+
+        try {
+            const instructions = client.getInstructions() || '';
+            assert.match(instructions, /geo_publish_article_to_site/u);
+            assert.match(instructions, /不需要人工审核/u);
+            assert.match(instructions, /auto_approved/u);
+            assert.match(instructions, /站内发布不扣媒体投稿费用/u);
+            const tools = await client.listTools();
+            const names = tools.tools.map((tool) => tool.name).sort();
+
+            assert.deepEqual(names, ['geo_get_article', 'geo_list_articles', 'geo_publish_article_to_site']);
+            const publishTool = tools.tools.find((tool) => tool.name === 'geo_publish_article_to_site');
+            assert.equal(publishTool?.annotations?.readOnlyHint, false);
+            assert.equal(publishTool?.annotations?.destructiveHint, true);
+
+            const result = await client.callTool({
+                name: 'geo_publish_article_to_site',
+                arguments: {
+                    article_id: 91,
+                    idempotency_key: 'site-publish-123',
+                },
+            });
+            assert.equal(result.isError, undefined);
+            assert.deepEqual(result.structuredContent, {
+                result: {
+                    path: '/api/v1/mcp/articles/91/publish',
                 },
             });
         } finally {
@@ -328,6 +376,55 @@ void describe('ceying-geo MCP 工具注册', () => {
             assert.deepEqual(result.structuredContent, {
                 result: {
                     path: '/api/v1/mcp/brand-diagnoses',
+                },
+            });
+        } finally {
+            await client.close();
+            await server.close();
+        }
+    });
+
+    void it('具备视频权限时只发现视频生成工具', async () => {
+        const videoContext: GeoFlowAuthContext = {
+            ...context,
+            token: {
+                ...context.token,
+                scopes: ['mcp:connect', 'videos:read', 'videos:write'],
+            },
+        };
+        const server = createGeoMcpServer(createClient(), videoContext);
+        const client = new Client({ name: 'video-tool-registry-check', version: '1.0.0' });
+        const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+
+        await server.connect(serverTransport);
+        await client.connect(clientTransport);
+
+        try {
+            const instructions = client.getInstructions() || '';
+            assert.match(instructions, /创建视频会按 video_count 消耗视频生成额度/u);
+            assert.match(instructions, /只负责生成和查询结果/u);
+            assert.doesNotMatch(instructions, /geo_list_self_media_video_accounts/u);
+            const tools = await client.listTools();
+            const names = tools.tools.map((tool) => tool.name).sort();
+
+            assert.deepEqual(names, ['geo_create_video', 'geo_get_video', 'geo_list_videos']);
+
+            const createTool = tools.tools.find((tool) => tool.name === 'geo_create_video');
+            assert.equal(createTool?.annotations?.readOnlyHint, false);
+            assert.equal(createTool?.annotations?.destructiveHint, true);
+
+            const result = await client.callTool({
+                name: 'geo_create_video',
+                arguments: {
+                    subject: '策影GEO 品牌增长短视频',
+                    video_count: 1,
+                    idempotency_key: 'video-create-123',
+                },
+            });
+            assert.equal(result.isError, undefined);
+            assert.deepEqual(result.structuredContent, {
+                result: {
+                    path: '/api/v1/mcp/videos',
                 },
             });
         } finally {

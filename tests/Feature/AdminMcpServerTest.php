@@ -75,6 +75,7 @@ class AdminMcpServerTest extends TestCase
             ->assertSee('获客推广曝光方案')
             ->assertSee('行业获客方案')
             ->assertSee('品牌或产品推广')
+            ->assertSee('视频生成与文章站内发布')
             ->assertSee('主动获客与客户开发')
             ->assertSee('ceying-geo-content-operations')
             ->assertSee('GEOFlow')
@@ -84,9 +85,14 @@ class AdminMcpServerTest extends TestCase
             ->assertSee('geo_run_task')
             ->assertSee('geo_get_material_summary')
             ->assertSee('geo_delete_material_items')
+            ->assertSee('geo_publish_article_to_site')
             ->assertSee('geo_publish_article_to_media')
+            ->assertSee('geo_create_video')
+            ->assertDontSee('geo_publish_video_to_self_media')
             ->assertSee('geo_create_brand_diagnosis')
             ->assertSee('geo_confirm_brand_diagnosis')
+            ->assertSee('视频生成')
+            ->assertSee('文章站内发布不扣费')
             ->assertSee('品牌诊断执行')
             ->assertSee('扣减一次品牌诊断额度')
             ->assertSee('按渠道实际售价扣费，失败退款')
@@ -125,7 +131,7 @@ class AdminMcpServerTest extends TestCase
         $response->assertOk();
         $response->assertHeader('content-type', 'application/zip');
         $this->assertStringContainsString(
-            'ceying-geo-content-operations-2.2.1.zip',
+            'ceying-geo-content-operations-2.3.0.zip',
             (string) $response->headers->get('content-disposition')
         );
 
@@ -144,6 +150,9 @@ class AdminMcpServerTest extends TestCase
         $this->assertStringContainsString('如何推广品牌或产品', $skill);
         $this->assertStringContainsString('找客户', $skill);
         $this->assertStringContainsString('获客推广曝光整体方案', $skill);
+        $this->assertStringContainsString('如何做短视频推广', $skill);
+        $this->assertStringContainsString('视频生成', $skill);
+        $this->assertStringContainsString('文章站内发布', $skill);
         $this->assertStringContainsString('带有行业、品类、地区或业务类型的获客问题', $skill);
         $this->assertStringContainsString('品牌曝光技能方案和主动获客方案', $skill);
         $this->assertStringContainsString('潜客挖掘', $skill);
@@ -168,6 +177,7 @@ class AdminMcpServerTest extends TestCase
         $this->assertStringContainsString('transport: "streamable_http"', $openAiMetadata);
         $this->assertStringContainsString('allow_implicit_invocation: true', $openAiMetadata);
         $this->assertNotFalse($zip->getFromName($root.'references/article-publishing.md'));
+        $this->assertNotFalse($zip->getFromName($root.'references/video-generation-and-publishing.md'));
         $this->assertNotFalse($zip->getFromName($root.'references/task-execution.md'));
         $this->assertNotFalse($zip->getFromName($root.'references/material-management.md'));
         $this->assertNotFalse($zip->getFromName($root.'references/brand-diagnosis.md'));
@@ -200,7 +210,7 @@ class AdminMcpServerTest extends TestCase
      *
      * @CreateTime: 2026-07-13 16:38:47
      *
-     * @UpdateTime: 2026-07-13 16:38:47
+     * @UpdateTime: 2026-08-05 21:05:15
      *
      * @Return: void
      */
@@ -220,8 +230,11 @@ class AdminMcpServerTest extends TestCase
                     'materials:write',
                     'articles:read',
                     'articles:write',
+                    'articles:site-publish',
                     'media:read',
                     'media:submit',
+                    'videos:read',
+                    'videos:write',
                     'brand-diagnoses:read',
                     'brand-diagnoses:write',
                 ],
@@ -239,8 +252,13 @@ class AdminMcpServerTest extends TestCase
         $this->assertContains('materials:read', (array) $token->abilities);
         $this->assertContains('materials:write', (array) $token->abilities);
         $this->assertContains('articles:write', (array) $token->abilities);
+        $this->assertContains('articles:site-publish', (array) $token->abilities);
+        $this->assertNotContains('articles:publish', (array) $token->abilities);
         $this->assertContains('media:read', (array) $token->abilities);
         $this->assertContains('media:submit', (array) $token->abilities);
+        $this->assertContains('videos:read', (array) $token->abilities);
+        $this->assertContains('videos:write', (array) $token->abilities);
+        $this->assertNotContains('videos:publish', (array) $token->abilities);
         $this->assertContains('brand-diagnoses:read', (array) $token->abilities);
         $this->assertContains('brand-diagnoses:write', (array) $token->abilities);
 
@@ -251,6 +269,176 @@ class AdminMcpServerTest extends TestCase
             ->assertJsonMissingPath('data.token.spending_policy');
         $this->assertContains('materials:read', $authResponse->json('data.token.scopes'));
         $this->assertContains('materials:write', $authResponse->json('data.token.scopes'));
+    }
+
+    /**
+     * @Name: test_mcp_created_article_is_approved_without_manual_review
+     *
+     * @Description: 验证 MCP 上传文章时自动保存为已审核草稿，取消人工审核环节，同时不通过文章写入权限直接公开发布。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-08-06 00:04:31
+     *
+     * @UpdateTime: 2026-08-06 00:04:31
+     *
+     * @Return: void
+     *
+     * @Throws \PHPUnit\Framework\AssertionFailedError MCP 文章创建审核状态或发布边界不符合预期
+     */
+    public function test_mcp_created_article_is_approved_without_manual_review(): void
+    {
+        [$admin, $site] = $this->createAccount('mcp_article_auto_review_user');
+        $author = Author::withoutGlobalScopes()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'MCP 上传作者',
+        ]);
+        $category = Category::withoutGlobalScopes()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'MCP 上传分类',
+            'slug' => 'mcp-upload-category',
+        ]);
+        $created = app(McpKeyService::class)->createKey(
+            $admin,
+            $site,
+            '文章上传 MCP Key',
+            ['articles:read', 'articles:write'],
+            now()->addDay()->format('Y-m-d H:i:s'),
+        );
+
+        $response = $this->withHeaders([
+            'Authorization' => 'Bearer '.$created['token'],
+            'X-Idempotency-Key' => 'mcp-create-approved-article-123',
+        ])->postJson('/api/v1/articles', [
+            'title' => 'MCP 上传免审核文章',
+            'content' => '这是一篇通过 MCP 上传的文章正文。',
+            'category_id' => (int) $category->id,
+            'author_id' => (int) $author->id,
+            'status' => 'published',
+            'review_status' => 'pending',
+            'keywords' => ['MCP', '自动审核'],
+        ]);
+
+        $response
+            ->assertCreated()
+            ->assertJsonPath('data.title', 'MCP 上传免审核文章')
+            ->assertJsonPath('data.status', 'draft')
+            ->assertJsonPath('data.review_status', 'approved')
+            ->assertJsonPath('data.published_at', null);
+
+        $this->assertDatabaseHas('articles', [
+            'id' => (int) $response->json('data.id'),
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'status' => 'draft',
+            'review_status' => 'approved',
+            'is_ai_generated' => 1,
+        ]);
+    }
+
+    /**
+     * @Name: test_mcp_site_publish_scope_auto_approves_without_review_api
+     *
+     * @Description: 验证 MCP 站内发布权限不会授予审核接口权限，但可自动通过并发布未被拒绝的文章。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-08-05 21:05:15
+     *
+     * @UpdateTime: 2026-08-05 21:12:19
+     *
+     * @Return: void
+     *
+     * @Throws \PHPUnit\Framework\AssertionFailedError 权限边界或发布结果不符合预期
+     */
+    public function test_mcp_site_publish_scope_auto_approves_without_review_api(): void
+    {
+        [$admin, $site] = $this->createAccount('mcp_site_publish_user');
+        $author = Author::withoutGlobalScopes()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'name' => '站内发布作者',
+        ]);
+        $category = Category::withoutGlobalScopes()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'name' => '站内发布分类',
+            'slug' => 'mcp-site-publish-category',
+        ]);
+        $approvedArticle = Article::withoutGlobalScopes()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'title' => '已审核站内发布文章',
+            'slug' => 'mcp-site-publish-approved',
+            'content' => '已审核文章正文',
+            'category_id' => (int) $category->id,
+            'author_id' => (int) $author->id,
+            'status' => 'draft',
+            'review_status' => 'approved',
+        ]);
+        $pendingArticle = Article::withoutGlobalScopes()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'title' => '待审核站内发布文章',
+            'slug' => 'mcp-site-publish-pending',
+            'content' => '待审核文章正文',
+            'category_id' => (int) $category->id,
+            'author_id' => (int) $author->id,
+            'status' => 'draft',
+            'review_status' => 'pending',
+        ]);
+        $rejectedArticle = Article::withoutGlobalScopes()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'title' => '已拒绝站内发布文章',
+            'slug' => 'mcp-site-publish-rejected',
+            'content' => '已拒绝文章正文',
+            'category_id' => (int) $category->id,
+            'author_id' => (int) $author->id,
+            'status' => 'draft',
+            'review_status' => 'rejected',
+        ]);
+        $created = app(McpKeyService::class)->createKey(
+            $admin,
+            $site,
+            '站内发布 MCP Key',
+            ['articles:read', 'articles:site-publish'],
+            now()->addDay()->format('Y-m-d H:i:s'),
+        );
+        $authorization = ['Authorization' => 'Bearer '.$created['token']];
+
+        $this->withHeaders($authorization)
+            ->postJson('/api/v1/articles/'.$pendingArticle->id.'/review', [
+                'review_status' => 'approved',
+                'review_note' => 'MCP 尝试审核',
+            ])
+            ->assertForbidden()
+            ->assertJsonPath('error.details.required_scope', 'articles:publish');
+        $this->assertSame(
+            'pending',
+            (string) Article::withoutGlobalScopes()->whereKey((int) $pendingArticle->id)->value('review_status')
+        );
+
+        $this->withHeaders([...$authorization, 'X-Idempotency-Key' => 'mcp-site-publish-123'])
+            ->postJson('/api/v1/mcp/articles/'.$approvedArticle->id.'/publish')
+            ->assertOk()
+            ->assertJsonPath('data.id', (int) $approvedArticle->id)
+            ->assertJsonPath('data.status', 'published')
+            ->assertJsonPath('data.review_status', 'approved');
+
+        $this->withHeaders([...$authorization, 'X-Idempotency-Key' => 'mcp-site-publish-pending-123'])
+            ->postJson('/api/v1/mcp/articles/'.$pendingArticle->id.'/publish')
+            ->assertOk()
+            ->assertJsonPath('data.id', (int) $pendingArticle->id)
+            ->assertJsonPath('data.status', 'published')
+            ->assertJsonPath('data.review_status', 'auto_approved');
+
+        $this->withHeaders([...$authorization, 'X-Idempotency-Key' => 'mcp-site-publish-rejected-123'])
+            ->postJson('/api/v1/mcp/articles/'.$rejectedArticle->id.'/publish')
+            ->assertStatus(409)
+            ->assertJsonPath('error.code', 'article_rejected');
     }
 
     /**
@@ -335,6 +523,118 @@ class AdminMcpServerTest extends TestCase
             ->assertSee('当前账号 MCP Key')
             ->assertDontSee('普通 API Token')
             ->assertDontSee('其他账号 MCP Key');
+    }
+
+    /**
+     * @Name: test_user_can_update_existing_mcp_key_scopes_without_rotating_token
+     *
+     * @Description: 验证已生成 MCP Key 可修改业务权限，且不改变 Token 哈希、有效期和既有客户端认证能力。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-08-05 23:05:06
+     *
+     * @UpdateTime: 2026-08-05 23:05:06
+     *
+     * @Return: void
+     */
+    public function test_user_can_update_existing_mcp_key_scopes_without_rotating_token(): void
+    {
+        [$admin, $site] = $this->createAccount('mcp_update_scope_user');
+        $expiresAt = now()->addDay()->format('Y-m-d H:i:s');
+        $created = app(McpKeyService::class)->createKey(
+            $admin,
+            $site,
+            '可改权限 MCP Key',
+            ['tasks:read'],
+            $expiresAt,
+        );
+        $keyId = (int) $created['record']['id'];
+        $plainToken = (string) $created['token'];
+        $before = PersonalAccessToken::query()->whereKey($keyId)->firstOrFail();
+        $tokenHash = (string) $before->token;
+        $tokenExpiresAt = $before->expires_at?->format('Y-m-d H:i:s');
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.mcp-server.keys.scopes', ['keyId' => $keyId]), [
+                'scopes' => ['materials:read', 'articles:site-publish', 'videos:write'],
+            ])
+            ->assertRedirect(route('admin.mcp-server.index'))
+            ->assertSessionHas('message', 'MCP Key 权限已更新，客户端重新加载后生效。');
+
+        $updated = PersonalAccessToken::query()->whereKey($keyId)->firstOrFail();
+        $this->assertSame($tokenHash, (string) $updated->token);
+        $this->assertSame($tokenExpiresAt, $updated->expires_at?->format('Y-m-d H:i:s'));
+        $this->assertContains(ApiTokenService::MCP_CONNECT_SCOPE, (array) $updated->abilities);
+        $this->assertContains('materials:read', (array) $updated->abilities);
+        $this->assertContains('articles:site-publish', (array) $updated->abilities);
+        $this->assertContains('videos:write', (array) $updated->abilities);
+        $this->assertNotContains('tasks:read', (array) $updated->abilities);
+
+        $authResponse = $this->withHeader('Authorization', 'Bearer '.$plainToken)
+            ->getJson('/api/v1/auth/me')
+            ->assertOk();
+        $this->assertContains('materials:read', $authResponse->json('data.token.scopes'));
+        $this->assertContains('articles:site-publish', $authResponse->json('data.token.scopes'));
+        $this->assertContains('videos:write', $authResponse->json('data.token.scopes'));
+        $this->assertNotContains('tasks:read', $authResponse->json('data.token.scopes'));
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.mcp-server.index'))
+            ->assertOk()
+            ->assertSee(route('admin.mcp-server.keys.scopes', ['keyId' => $keyId]), false)
+            ->assertSee('修改权限')
+            ->assertSee('保存后不会重新显示 Key 明文');
+    }
+
+    /**
+     * @Name: test_user_cannot_update_other_accounts_mcp_key_or_regular_api_token_scopes
+     *
+     * @Description: 验证 MCP Key 权限修改接口保持账号、站点和 MCP 专用 Token 隔离，禁止越权修改或误改普通 API Token。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-08-05 23:05:06
+     *
+     * @UpdateTime: 2026-08-05 23:05:06
+     *
+     * @Return: void
+     */
+    public function test_user_cannot_update_other_accounts_mcp_key_or_regular_api_token_scopes(): void
+    {
+        [$admin, $site] = $this->createAccount('mcp_update_scope_guard_user');
+        $other = $this->createSiteMember($site, 'mcp_update_scope_guard_other');
+        $this->openTestingPlanForSite($site, $other);
+        $otherMcpKey = $other->createToken(
+            '其他账号可改 MCP Key',
+            [ApiTokenService::MCP_CONNECT_SCOPE, 'tasks:read']
+        )->accessToken;
+        $otherMcpKey->forceFill(['site_id' => (int) $site->id])->save();
+        $regularToken = $admin->createToken('当前账号普通 API Token', ['tasks:read'])->accessToken;
+        $regularToken->forceFill(['site_id' => (int) $site->id])->save();
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.mcp-server.keys.scopes', ['keyId' => (int) $otherMcpKey->id]), [
+                'scopes' => ['materials:write'],
+            ])
+            ->assertRedirect()
+            ->assertSessionHasErrors();
+        $this->assertSame(
+            [ApiTokenService::MCP_CONNECT_SCOPE, 'tasks:read'],
+            (array) $otherMcpKey->refresh()->abilities
+        );
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.mcp-server.keys.scopes', ['keyId' => (int) $regularToken->id]), [
+                'scopes' => ['materials:write'],
+            ])
+            ->assertRedirect()
+            ->assertSessionHasErrors();
+        $this->assertSame(['tasks:read'], (array) $regularToken->refresh()->abilities);
     }
 
     /**

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Services\Api\ApiTokenService;
 use App\Services\Api\IdempotencyService;
 use App\Services\GeoFlow\ArticleGeoFlowService;
 use Illuminate\Http\JsonResponse;
@@ -62,7 +63,12 @@ class ArticleController extends BaseApiController
             return $cached;
         }
 
-        return $this->success($request, $articles->createArticle($request->all()), 201, 'POST /articles');
+        $payload = $request->all();
+        $article = $this->isMcpRequest($request)
+            ? $articles->createArticleFromMcp($payload)
+            : $articles->createArticle($payload);
+
+        return $this->success($request, $article, 201, 'POST /articles');
     }
 
     /**
@@ -132,5 +138,27 @@ class ArticleController extends BaseApiController
         }
 
         return $this->success($request, $articles->trashArticle($article), 200, 'POST /articles/{id}/trash');
+    }
+
+    /**
+     * @Name: isMcpRequest
+     *
+     * @Description: 根据 Token Scope 判断当前请求是否来自 MCP Key。MCP 创建文章自动通过审核，但不绕过后续公开发布所需的独立站内发布权限。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-08-06 00:04:31
+     *
+     * @UpdateTime: 2026-08-06 00:04:31
+     *
+     * @Param: Request $request 当前 API 请求
+     *
+     * @Return: bool 是否为 MCP Key 请求
+     */
+    private function isMcpRequest(Request $request): bool
+    {
+        $scopes = $this->auth($request)->token['scopes'] ?? [];
+
+        return is_array($scopes) && in_array(ApiTokenService::MCP_CONNECT_SCOPE, $scopes, true);
     }
 }

@@ -1,5 +1,5 @@
 /**
- * Created by 开发工具.
+ * Created by Codex.
  *
  * @Date: 2026-07-13
  * @Time: 16:38
@@ -307,6 +307,106 @@ void describe('GeoFlowApiClient', () => {
         ]);
     });
 
+    void it('完整映射 MCP 视频生成接口', async () => {
+        const requests: Array<{
+            path: string;
+            query: string;
+            method: string;
+            idempotencyKey: string | null;
+            body: unknown;
+        }> = [];
+        const fetcher: typeof fetch = (input, init) => {
+            const url = requestUrl(input);
+            requests.push({
+                path: url.pathname,
+                query: url.search,
+                method: init?.method || 'GET',
+                idempotencyKey: new Headers(init?.headers).get('X-Idempotency-Key'),
+                body: typeof init?.body === 'string' ? (JSON.parse(init.body) as unknown) : null,
+            });
+
+            return Promise.resolve(jsonResponse({ success: true, data: { ok: true } }));
+        };
+        const client = new GeoFlowApiClient(baseUrl, 'secret-key', 1_000, fetcher);
+
+        await client.listVideos({ page: 2, per_page: 10, status: 'success', search: '品牌' });
+        await client.createVideo(
+            {
+                subject: '策影GEO 品牌增长短视频',
+                script: '品牌增长视频脚本',
+                video_count: 2,
+                video_aspect: '9:16',
+                video_source: 'pexels',
+            },
+            'video-create-123',
+        );
+        await client.getVideo(21);
+
+        assert.deepEqual(requests, [
+            {
+                path: '/api/v1/mcp/videos',
+                query: '?page=2&per_page=10&status=success&search=%E5%93%81%E7%89%8C',
+                method: 'GET',
+                idempotencyKey: null,
+                body: null,
+            },
+            {
+                path: '/api/v1/mcp/videos',
+                query: '',
+                method: 'POST',
+                idempotencyKey: 'video-create-123',
+                body: {
+                    subject: '策影GEO 品牌增长短视频',
+                    script: '品牌增长视频脚本',
+                    video_count: 2,
+                    video_aspect: '9:16',
+                    video_source: 'pexels',
+                },
+            },
+            {
+                path: '/api/v1/mcp/videos/21',
+                query: '',
+                method: 'GET',
+                idempotencyKey: null,
+                body: null,
+            },
+        ]);
+    });
+
+    void it('映射文章发布到 GEO 用户站点接口', async () => {
+        const requests: Array<{ path: string; method: string; idempotencyKey: string | null; body: unknown }> = [];
+        const fetcher: typeof fetch = (input, init) => {
+            const url = requestUrl(input);
+            const headers = new Headers(init?.headers);
+            requests.push({
+                path: url.pathname,
+                method: init?.method || 'GET',
+                idempotencyKey: headers.get('X-Idempotency-Key'),
+                body: typeof init?.body === 'string' ? (JSON.parse(init.body) as unknown) : null,
+            });
+
+            return Promise.resolve(
+                jsonResponse({
+                    success: true,
+                    data: { id: 91, title: '站内发布文章', status: 'published', review_status: 'approved' },
+                }),
+            );
+        };
+        const client = new GeoFlowApiClient(baseUrl, 'secret-key', 1_000, fetcher);
+
+        const result = await client.publishArticleToSite(91, 'site-publish-123');
+
+        assert.equal(result.id, 91);
+        assert.deepEqual(requests, [
+            {
+                path: '/api/v1/mcp/articles/91/publish',
+                method: 'POST',
+                idempotencyKey: 'site-publish-123',
+                body: null,
+            },
+        ]);
+    });
+
     void it('使用派生幂等键创建 AI 文章并投递指定媒体渠道', async () => {
         const requests: Array<{ path: string; method: string; idempotencyKey: string | null; body: unknown }> = [];
         const fetcher: typeof fetch = (input, init) => {
@@ -368,7 +468,7 @@ void describe('GeoFlowApiClient', () => {
                     author_id: 6,
                     keywords: ['GEO', '媒体投递'],
                     status: 'draft',
-                    review_status: 'pending',
+                    review_status: 'approved',
                     is_ai_generated: 1,
                 },
             },

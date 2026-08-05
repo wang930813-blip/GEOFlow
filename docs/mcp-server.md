@@ -9,7 +9,7 @@ ceying-geo MCP Server 是独立 Node 服务，用于把 ceying-geo 已有用户�
 - 只通过 ceying-geo `/api/v1` 调用现有业务服务。
 - 使用专用 MCP Key 鉴权，Key 由 ceying-geo 用户侧创建并哈希保存。
 - 所有数据请求受 Key 绑定站点、创建账号和 scope 约束。
-- 不开放文章删除和审核能力；素材写入、素材删除、文章写入、媒体投稿与品牌诊断执行必须由 Key 显式授权。
+- 不开放文章删除和审核能力；素材写入、素材删除、文章写入、文章站内发布、媒体投稿、视频生成与品牌诊断执行必须由 Key 显式授权。
 - 正式品牌名称和推荐客户端配置名均为 `ceying-geo`。
 - `GEO`、`geo`、`GEOFlow`、`geoflow` 继续作为兼容触发名称，现有 `geo_*` 工具名保持不变。
 - 配套 Skill 定位为“策影GEO品牌增长智能体”，自然识别品牌或产品推广、竞争分析、品牌定位、AI 搜索可见性、内容资产、媒体传播和效果评估需求，不依赖用户显式输入 GEO 或 MCP。
@@ -35,13 +35,17 @@ ceying-geo MCP Server 是独立 Node 服务，用于把 ceying-geo 已有用户�
 | `geo_delete_material_items` | `materials:write` | 批量删除关键词、标题或图片条目 | 不扣费 |
 | `geo_list_articles` | `articles:read` | 分页查询文章 | 不扣费 |
 | `geo_get_article` | `articles:read` | 查询文章完整内容 | 不扣费 |
-| `geo_create_article` | `articles:write` | 保存外部 AI 已完成编写的文章 | 不扣费 |
+| `geo_create_article` | `articles:write` | 保存外部 AI 已完成编写的文章，自动通过审核但不公开发布 | 不扣费 |
+| `geo_publish_article_to_site` | `articles:site-publish` | 将未被拒绝的文章自动通过并发布到当前 GEO 用户站点 | 不扣费 |
 | `geo_list_media_channels` | `media:read` | 查询当前站点媒体渠道和实时售价 | 不扣费 |
 | `geo_get_media_channel` | `media:read` | 查询单个媒体渠道详情和实时售价 | 不扣费 |
 | `geo_list_media_submissions` | `media:read` | 查询当前账号投稿记录 | 不扣费 |
 | `geo_get_media_submission` | `media:read` | 查询投稿状态和发布链接 | 不扣费 |
 | `geo_submit_article_to_media` | `media:submit` | 将当前账号已有文章投递到指定渠道 | 按渠道实际售价扣费 |
 | `geo_publish_article_to_media` | `articles:write`、`media:submit` | 保存文章并投递指定渠道 | 按渠道实际售价扣费 |
+| `geo_list_videos` | `videos:read` | 分页查询当前账号的视频生成任务 | 不扣费 |
+| `geo_get_video` | `videos:read` | 查询视频生成状态和结果地址 | 不扣费 |
+| `geo_create_video` | `videos:write` | 创建视频生成任务 | 按生成数量扣减视频生成额度 |
 | `geo_list_brand_diagnoses` | `brand-diagnoses:read` | 分页查询当前账号的品牌诊断任务 | 不扣费 |
 | `geo_get_brand_diagnosis` | `brand-diagnoses:read` | 查询诊断进度、问题、回答、来源和排名 | 不扣费 |
 | `geo_create_brand_diagnosis` | `brand-diagnoses:write` | 创建品牌诊断问题生成任务 | 不扣费 |
@@ -107,10 +111,10 @@ Key 不得放入 URL、提示词、公开仓库或日志。生产环境必须使
 用户可在“账号与权益 > MCP Server”下载 `ceying-geo-content-operations` Skill。源码位于 `resources/skills/ceying-geo-content-operations`，下载时由应用生成版本化 ZIP，不包含 MCP Key、站点域名或用户数据。技术包名保持不变，用户侧角色名称为“策影GEO品牌增长智能体”。
 
 - Skill 正式名称：`ceying-geo-content-operations`。
-- 当前 Skill 版本：`2.1.1`。
-- 适配 ceying-geo MCP Server：`1.4.0` 及以上。
+- 当前 Skill 版本：`2.3.0`。
+- 适配 ceying-geo MCP Server：`1.5.0` 及以上。
 - 兼容触发名称：策影 GEO、GEO、geo、GEOFlow、geoflow。
-- 自然触发场景：品牌或产品推广、竞争对手分析、品牌定位评估、AI 搜索可见性、内容与媒体增长、推广效果评估。
+- 自然触发场景：品牌或产品推广、视频生成、文章站内发布、竞争对手分析、品牌定位评估、AI 搜索可见性、内容与媒体增长、推广效果评估。
 - MCP 自动安装：支持 MCP 连接管理或 Skill 依赖声明的客户端会由 Skill 主动检查、创建、保存和重载 `ceying-geo` Streamable HTTP 连接；未发现 `geo_*` 工具时引导用户获取当前站点地址、创建最小权限 Key，并在客户端安全区域填写。
 - 强制连接门禁：Skill 每次触发后首先检查实际工具。完全未发现 `geo_*` 时暂停品牌分析、路线图和业务资料追问，立即进入安装状态机；只有连接验证成功，或用户明确选择暂不安装、只做纯策略时，才能继续品牌咨询。
 - Skill 继续调用稳定的 `geo_*` 工具名，已有客户端无需迁移工具调用。
@@ -134,8 +138,10 @@ MCP 不建立新的费用体系，全部复用 ceying-geo 现有账号级套餐�
 - 任务启用 AI 配图时，按实际成功生成图片数量扣减 `ai_image_generations`。
 - 生成失败且未创建文章时，不扣文章生成额度。
 - 素材查询和素材管理不扣减业务额度。
+- `geo_publish_article_to_site` 将未被拒绝的文章自动标记为 `auto_approved` 并发布到当前 GEO 用户站点，不扣媒体投稿费用。
 - 创建品牌诊断和查询诊断结果不扣减业务额度。
 - `geo_confirm_brand_diagnosis` 成功确认问题时扣减一次当前账号套餐中的 `brand_diagnoses`，重复调用同一幂等请求不会重复扣减。
+- `geo_create_video` 按 `video_count` 扣减当前账号套餐中的 `video_generations`，重复调用同一幂等请求不会重复扣减。
 - 单次 MCP 投稿最多选择 20 个渠道。
 - 每篇文章按渠道实时售价逐笔扣费，提交失败按现有媒体结算规则自动退款。
 
@@ -240,7 +246,25 @@ location /mcp {
 
 媒体投稿前必须先读取渠道实时售价，并且只使用用户明确指定的媒体资源编号；重试同一操作时必须保持正文、渠道和 `idempotency_key` 不变。
 
-## 10. 素材字段与操作边界
+## 10. 文章站内发布与媒体投稿边界
+
+站内发布和媒体投稿是两条不同路径：
+
+- `geo_publish_article_to_site` 只把未被拒绝的文章置为 `published`，需要时自动写入 `review_status=auto_approved`，使其出现在当前 GEO 用户站点文章页，不创建媒体投稿订单，也不扣媒体投稿费用。
+- `geo_submit_article_to_media` 将已有文章投递到外部媒体渠道，按渠道实时售价扣费。
+- `geo_publish_article_to_media` 先保存已自动通过审核的 AI 文章，再投递到外部媒体渠道，按渠道实时售价扣费。
+
+站内发布执行顺序：
+
+1. 使用 `geo_list_articles` 或用户提供的文章编号定位文章。
+2. 使用 `geo_get_article` 核对标题、正文、分类、作者、`status` 和 `review_status`。
+3. 只要 `review_status` 不是 `rejected`，即可在用户确认后调用 `geo_publish_article_to_site`；MCP 发布会自动通过审核。
+4. 发布成功后读取返回的 `status`、`review_status`、`published_at` 和 `slug`，并告知用户文章已进入当前 GEO 用户站点。
+5. 如果文章已被人工拒绝，不要覆盖拒绝结论，提示用户先修正文章内容。
+
+媒体投稿前必须先读取渠道实时售价，并且只使用用户明确指定的媒体资源编号；重试同一操作时必须保持正文、渠道和 `idempotency_key` 不变。
+
+## 11. 素材字段与操作边界
 
 素材类型固定为：
 
@@ -260,7 +284,28 @@ location /mcp {
 5. 删除素材或素材条目前先确认编号和引用关系；仍被文章、任务或其他素材引用时，ceying-geo 会拒绝删除。
 6. 所有写操作重试必须保持 `idempotency_key` 和请求内容不变。
 
-## 11. 品牌诊断流程与边界
+## 12. 视频生成流程
+
+视频工具只访问 MCP Key 创建账号在绑定站点中的视频生成任务，不读取同站点其他账号的数据。MCP 当前只负责视频生成和结果查询，不发布到自媒体平台。
+
+执行顺序：
+
+1. 调用 `geo_create_video` 提交视频主题、脚本、比例、数量和可选封面图，保存返回的视频任务编号。
+2. 调用 `geo_get_video` 查询进度；`status=queued` 表示已入队，`status=processing` 表示生成中，`status=success` 表示可读取 `first_video_url`。
+3. 生成失败时读取 `failure_reason`，不要重复创建同一任务；需要重试时使用新的明确主题或用户确认后的新幂等键。
+
+状态说明：
+
+| 字段 | 值 | 含义 |
+|------|----|------|
+| `status` | `queued` | 视频生成任务已排队 |
+| `status` | `processing` | 视频生成中 |
+| `status` | `success` | 视频生成成功，可读取视频地址 |
+| `status` | `failed` | 视频生成失败，读取 `failure_reason` |
+
+`geo_create_video` 会按 `video_count` 扣减 `video_generations`。视频生成成功不等于已发布；如果用户需要发布视频，需要在 MCP 之外使用平台后台或其他已授权发布工具完成。
+
+## 13. 品牌诊断流程与边界
 
 品牌诊断工具只访问 MCP Key 创建账号在绑定站点中的用户侧诊断记录，不读取系统级 OpenAPI 任务，也不读取同站点其他账号的任务。
 

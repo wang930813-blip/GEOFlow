@@ -87,6 +87,30 @@ class ArticleGeoFlowService
         return $this->getArticle((int) $article->id);
     }
 
+    /**
+     * @Name: createArticleFromMcp
+     *
+     * @Description: MCP 专用文章上传入口。强制保存为已审核通过的草稿，取消人工审核环节，同时不授予直接公开发布能力，公开发布仍需调用独立 MCP 站内发布接口。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-08-06 00:04:31
+     *
+     * @UpdateTime: 2026-08-06 00:04:31
+     *
+     * @Param: array<string, mixed> $data MCP 提交的文章内容、作者和分类
+     *
+     * @Return: array<string, mixed> 已创建文章详情
+     */
+    public function createArticleFromMcp(array $data): array
+    {
+        $data['status'] = 'draft';
+        $data['review_status'] = 'approved';
+        $data['is_ai_generated'] = 1;
+
+        return $this->createArticle($data);
+    }
+
     public function getArticle(int $articleId): array
     {
         $article = Article::query()
@@ -209,6 +233,47 @@ class ArticleGeoFlowService
         $workflowState = ArticleWorkflow::normalizeState(
             'published',
             $reviewStatus,
+            $article['published_at'] ?? null
+        );
+
+        Article::query()->whereKey($articleId)->update([
+            'status' => $workflowState['status'],
+            'review_status' => $workflowState['review_status'],
+            'published_at' => $workflowState['published_at'],
+            'updated_at' => now(),
+        ]);
+
+        return $this->getArticle($articleId);
+    }
+
+    /**
+     * @Name: publishArticleFromMcp
+     *
+     * @Description: MCP 专用站内发布入口。当前账号和站点隔离由 API Token 中间件及模型 Scope 提供；发布时自动将未审核文章标记为 auto_approved，避免用户在 AI Agent 发布链路中重复进入人工审核。已被人工拒绝的文章不允许覆盖发布。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-08-05 21:12:19
+     *
+     * @UpdateTime: 2026-08-05 21:12:19
+     *
+     * @Param: int $articleId 当前账号文章编号
+     *
+     * @Return: array<string, mixed> 已发布文章详情
+     *
+     * @Throws ApiException 文章不存在或已被人工拒绝
+     */
+    public function publishArticleFromMcp(int $articleId): array
+    {
+        $article = $this->getArticleRecord($articleId);
+        $reviewStatus = (string) ($article['review_status'] ?? 'pending');
+        if ($reviewStatus === 'rejected') {
+            throw new ApiException('article_rejected', '当前文章已被拒绝，不能通过 MCP 直接发布', 409);
+        }
+
+        $workflowState = ArticleWorkflow::normalizeState(
+            'published',
+            $reviewStatus === 'approved' ? 'approved' : 'auto_approved',
             $article['published_at'] ?? null
         );
 

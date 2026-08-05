@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Created by 开发工具.
+ * Created by Codex.
  *
  * @Date: 2026-07-18
  *
@@ -217,11 +217,14 @@ class ApiTokenService
             'articles:read',
             'articles:write',
             'articles:publish',
+            'articles:site-publish',
             'media:read',
             'media:submit',
             'media:sync',
             'materials:read',
             'materials:write',
+            'videos:read',
+            'videos:write',
             'brand-diagnoses:read',
             'brand-diagnoses:write',
         ];

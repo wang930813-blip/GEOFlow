@@ -407,6 +407,9 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::get('skills/ceying-geo-content-operations/download', [McpServerController::class, 'downloadSkill'])
                 ->name('skills.download');
             Route::post('keys', [McpServerController::class, 'store'])->name('keys.store');
+            Route::post('keys/{keyId}/scopes', [McpServerController::class, 'updateScopes'])
+                ->name('keys.scopes')
+                ->whereNumber('keyId');
             Route::post('keys/{keyId}/revoke', [McpServerController::class, 'revoke'])
                 ->name('keys.revoke')
                 ->whereNumber('keyId');

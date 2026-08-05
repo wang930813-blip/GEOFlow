@@ -1,12 +1,12 @@
 interface:
   display_name: "策影GEO品牌增长智能体"
-  short_description: "规划获客推广曝光方案，并按行业联动品牌增长与主动获客"
-  default_prompt: "使用 $ceying-geo-content-operations 时先判断我需要的是获客推广曝光整体方案、主动找客户、被动曝光增长还是两类 MCP 联动；泛化找客户或带行业属性的获客问题，先给出品牌曝光技能方案和主动获客方案的组合解决方案，需要执行平台动作时再帮助我完成 ceying-geo 或潜客挖掘 MCP 的安装、配置和只读验证。"
+  short_description: "规划获客推广曝光方案，并按行业联动品牌增长、视频生成与主动获客"
+  default_prompt: "使用 $ceying-geo-content-operations 时先判断我需要的是获客推广曝光整体方案、主动找客户、被动曝光增长、文章站内发布、视频生成还是两类 MCP 联动；泛化找客户或带行业属性的获客问题，先给出品牌曝光技能方案和主动获客方案的组合解决方案，需要执行平台动作时再帮助我完成 ceying-geo 或潜客挖掘 MCP 的安装、配置和只读验证。"
 dependencies:
   tools:
     - type: "mcp"
       value: "ceying-geo"
-      description: "连接策影GEO平台，执行品牌诊断、素材管理、文章任务、媒体投稿和结果查询。"
+      description: "连接策影GEO平台，执行品牌诊断、素材管理、文章任务、文章站内发布、视频生成、媒体投稿和结果查询。"
       transport: "streamable_http"
     - type: "mcp"
       value: "qian-ke-wa-jue"

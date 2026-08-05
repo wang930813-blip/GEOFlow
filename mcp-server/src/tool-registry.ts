@@ -7,7 +7,7 @@
  * @Email: network@iyuanma.net
  *
  * @File： tool-registry.ts
- * @Description: 按 MCP Key scope 动态注册 ceying-geo 品牌增长、诊断、素材、文章、任务和媒体投稿工具。
+ * @Description: 按 MCP Key scope 动态注册 ceying-geo 品牌增长、诊断、素材、文章、视频、任务和媒体工具。
  */
 
 import { randomUUID } from 'node:crypto';
@@ -58,6 +58,18 @@ const brandDiagnosisQuestionSchema = z.object({
     id: z.number().int().positive().describe('通过 geo_get_brand_diagnosis 获取的问题编号'),
     question: z.string().trim().max(240).describe('确认后的问题文本，空字符串表示删除该问题'),
 });
+const videoSourceSchema = z.enum(['pexels', 'pixabay', 'local']);
+const videoAspectSchema = z.enum(['9:16', '16:9', '1:1']);
+const videoInputSchema = {
+    subject: z.string().trim().min(1).max(500).describe('视频主题，用于生成视频标题和任务主题'),
+    script: z.string().trim().max(10000).optional().describe('视频脚本，留空时由上游视频服务按主题生成'),
+    terms: z.string().trim().max(1000).optional().describe('视频素材关键词，多个关键词可用逗号或换行分隔'),
+    negative_terms: z.string().trim().max(1000).optional().describe('排除关键词，避免生成不需要的视频素材'),
+    video_source: videoSourceSchema.default('pexels').describe('视频素材来源'),
+    video_aspect: videoAspectSchema.default('9:16').describe('视频比例，短视频默认使用 9:16'),
+    video_count: z.number().int().min(1).max(5).default(1).describe('本次生成视频数量'),
+    cover_image: z.string().trim().max(1000).optional().describe('可选封面图地址，只作为视频生成任务元数据'),
+};
 
 /**
  * @Name: hasScope
@@ -166,7 +178,7 @@ async function executeTool(operation: () => Promise<unknown>): Promise<CallToolR
  *
  * @Author: cdkay
  * @CreateTime: 2026-07-13 16:38:47
- * @UpdateTime: 2026-07-29 15:41:12
+ * @UpdateTime: 2026-08-05 21:05:15
  *
  * @Param: GeoFlowApiClient client 当前请求专用 GEO API 客户端
  * @Param: GeoFlowAuthContext context 已验证 GEO 账号和站点上下文
@@ -192,9 +204,19 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
             '处理 AI 文章媒体投递时，先调用 geo_get_catalog 获取有效作者和分类，再调用 geo_list_media_channels 查询渠道编号与当前售价。由当前 AI 应用完成最终标题和正文后，优先调用 geo_publish_article_to_media 一次创建并投递。未获得明确媒体资源编号时禁止投稿；多渠道部分成功时只重投失败渠道；同一操作重试必须保持 idempotency_key 不变。',
         );
     }
+    if (hasScope(context, 'articles:site-publish')) {
+        instructions.push(
+            '处理文章站内发布时，先调用 geo_get_article 核对文章属于当前站点且内容正确；用户确认后调用 geo_publish_article_to_site 发布文章。MCP 站内发布不需要人工审核，会自动将未被拒绝的文章标记为 auto_approved 并发布；站内发布不扣媒体投稿费用，不调用审核接口，不覆盖已被人工拒绝的文章。',
+        );
+    }
     if (hasScope(context, 'brand-diagnoses:read') || hasScope(context, 'brand-diagnoses:write')) {
         instructions.push(
             '处理品牌诊断时先创建任务，再查询任务直到 raw_status 为 questions_ready；当前只支持豆包、DeepSeek、千问和文心一言，不得声称已完成 ChatGPT 实测。确认问题会消耗一次品牌诊断额度，必须在用户确认后调用 geo_confirm_brand_diagnosis；启动后继续查询直到 completed 或 failed。AI 答案中的占位品牌不自动等同于完整市场竞争对手，评分、来源、排名和竞品数据只能依据工具实际返回结果。',
+        );
+    }
+    if (hasScope(context, 'videos:read') || hasScope(context, 'videos:write')) {
+        instructions.push(
+            '处理视频增长内容时，先确认用户目标、主题、脚本和视频比例。创建视频会按 video_count 消耗视频生成额度；本 MCP 只负责生成和查询结果，不提供视频自媒体发布工具，不得声称已把视频发布到外部平台。',
         );
     }
 
@@ -202,7 +224,7 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
         {
             name: 'ceying-geo-mcp-server',
             title: `ceying-geo - ${context.site?.name || '当前站点'}`,
-            version: '1.4.0',
+            version: '1.5.0',
         },
         {
             instructions: instructions.join(''),
@@ -393,6 +415,58 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
                             questions,
                             idempotency_key || `mcp-brand-diagnosis-confirm-${randomUUID()}`,
                         ),
+                ),
+        );
+    }
+
+    if (hasScope(context, 'videos:read')) {
+        server.registerTool(
+            'geo_list_videos',
+            {
+                title: '查询视频生成任务',
+                description: '分页查询当前账号和站点的视频生成任务，可按状态、标题或主题筛选。',
+                inputSchema: {
+                    page: z.number().int().min(1).default(1).describe('页码'),
+                    per_page: z.number().int().min(1).max(100).default(20).describe('每页数量'),
+                    status: z.string().trim().min(1).max(32).optional().describe('视频生成任务状态'),
+                    search: z.string().trim().min(1).max(120).optional().describe('视频标题或主题关键词'),
+                },
+                annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
+            },
+            async ({ page, per_page, status, search }) =>
+                await executeTool(async () => await client.listVideos({ page, per_page, status, search })),
+        );
+
+        server.registerTool(
+            'geo_get_video',
+            {
+                title: '获取视频生成详情',
+                description: '查询单个视频生成任务的状态、进度、封面图和生成结果地址。',
+                inputSchema: {
+                    video_id: z.number().int().positive().describe('视频生成任务编号'),
+                },
+                annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
+            },
+            async ({ video_id }) => await executeTool(async () => await client.getVideo(video_id)),
+        );
+    }
+
+    if (hasScope(context, 'videos:write')) {
+        server.registerTool(
+            'geo_create_video',
+            {
+                title: '创建视频生成任务',
+                description:
+                    '创建视频生成任务并投递异步生成队列。调用后按 video_count 扣减视频生成额度，需继续查询状态直到 success 或 failed。',
+                inputSchema: {
+                    ...videoInputSchema,
+                    idempotency_key: optionalIdempotencyKeySchema,
+                },
+                annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
+            },
+            async ({ idempotency_key, ...video }) =>
+                await executeTool(
+                    async () => await client.createVideo(video, idempotency_key || `mcp-video-${randomUUID()}`),
                 ),
         );
     }
@@ -628,7 +702,7 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
             {
                 title: '保存 AI 编写的文章',
                 description:
-                    '保存外部 AI 应用已经完成编写的文章。调用前必须先用 geo_get_catalog 取得当前站点有效的作者和分类编号。',
+                    '保存外部 AI 应用已经完成编写的文章。MCP 上传文章会自动通过审核但不会公开发布；调用前必须先用 geo_get_catalog 取得当前站点有效的作者和分类编号。',
                 inputSchema: {
                     ...articleInputSchema,
                     idempotency_key: optionalIdempotencyKeySchema,
@@ -638,6 +712,30 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
             async ({ idempotency_key, ...article }) =>
                 await executeTool(
                     async () => await client.createArticle(article, idempotency_key || `mcp-article-${randomUUID()}`),
+                ),
+        );
+    }
+
+    if (hasScope(context, 'articles:site-publish')) {
+        server.registerTool(
+            'geo_publish_article_to_site',
+            {
+                title: '发布文章到 GEO 用户站点',
+                description:
+                    '将当前账号未被拒绝的文章发布到绑定的 GEO 用户站点。MCP 站内发布会自动标记为通过，不需要人工审核，不执行媒体投稿。',
+                inputSchema: {
+                    article_id: z.number().int().positive().describe('当前账号未被拒绝的文章编号'),
+                    idempotency_key: optionalIdempotencyKeySchema,
+                },
+                annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
+            },
+            async ({ article_id, idempotency_key }) =>
+                await executeTool(
+                    async () =>
+                        await client.publishArticleToSite(
+                            article_id,
+                            idempotency_key || `mcp-article-site-publish-${randomUUID()}`,
+                        ),
                 ),
         );
     }

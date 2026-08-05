@@ -21,6 +21,7 @@ namespace App\Http\Controllers\Admin;
 use App\Exceptions\ApiException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\StoreMcpKeyRequest;
+use App\Http\Requests\Admin\UpdateMcpKeyScopesRequest;
 use App\Models\Admin;
 use App\Models\Site;
 use App\Services\Mcp\McpKeyService;
@@ -225,6 +226,49 @@ class McpServerController extends Controller
             report($exception);
 
             return back()->withErrors('MCP Key 撤销失败，请稍后重试');
+        }
+    }
+
+    /**
+     * 修改 MCP Key 权限
+     * 为当前账号和当前站点已有 MCP Key 更新业务权限，Key 明文和有效期保持不变。
+     *
+     * @Url [POST] /geo_admin/mcp-server/keys/{keyId}/scopes
+     *      登录 是
+     *      keyId int 必选 MCP Key 编号
+     *      scopes array 必选 ceying-geo 业务权限列表
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-08-05 23:05:06
+     *
+     * @UpdateTime: 2026-08-05 23:05:06
+     *
+     * @Return RedirectResponse 权限更新结果
+     *
+     * @Throws ApiException MCP Key 不存在或不属于当前账号和站点
+     */
+    public function updateScopes(UpdateMcpKeyScopesRequest $request, int $keyId): RedirectResponse
+    {
+        $payload = $request->validated();
+
+        try {
+            $this->mcpKeyService->updateKeyScopes(
+                $this->admin(),
+                $this->site(),
+                $keyId,
+                (array) $payload['scopes'],
+            );
+
+            return redirect()
+                ->route('admin.mcp-server.index')
+                ->with('message', 'MCP Key 权限已更新，客户端重新加载后生效。');
+        } catch (ApiException $exception) {
+            return back()->withErrors($exception->getMessage())->withInput();
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return back()->withErrors('MCP Key 权限更新失败，请稍后重试')->withInput();
         }
     }
 

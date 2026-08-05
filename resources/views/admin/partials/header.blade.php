@@ -291,6 +291,7 @@
         'admin.plan-usages.index' => 'plan_usages',
         'admin.mcp-server.index' => 'mcp_server',
         'admin.mcp-server.keys.store' => 'mcp_server',
+        'admin.mcp-server.keys.scopes' => 'mcp_server',
         'admin.mcp-server.keys.revoke' => 'mcp_server',
         'admin.crebee-accounts.index' => 'crebee_accounts',
         'admin.crebee-accounts.requests.store' => 'crebee_accounts',

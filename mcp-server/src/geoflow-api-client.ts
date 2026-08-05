@@ -7,7 +7,7 @@
  * @Email: network@iyuanma.net
  *
  * @File： geoflow-api-client.ts
- * @Description: 封装 ceying-geo REST API 鉴权、超时、错误映射、品牌诊断、素材、文章、媒体渠道和投稿调用。
+ * @Description: 封装 ceying-geo REST API 鉴权、超时、错误映射、品牌诊断、素材、文章、视频生成、媒体渠道和发布调用。
  */
 
 import { randomUUID } from 'node:crypto';
@@ -93,6 +93,26 @@ export interface GeoFlowBrandDiagnosisInput {
 export interface GeoFlowBrandDiagnosisQuestionInput {
     id: number;
     question: string;
+}
+
+export interface GeoFlowVideoInput {
+    subject: string;
+    script?: string;
+    terms?: string;
+    negative_terms?: string;
+    video_source?: 'pexels' | 'pixabay' | 'local';
+    video_aspect?: '9:16' | '16:9' | '1:1';
+    video_count?: number;
+    cover_image?: string;
+}
+
+export interface GeoFlowVideoRecord extends Record<string, unknown> {
+    id: number;
+}
+
+export interface GeoFlowVideoCreationResult extends Record<string, unknown> {
+    video: GeoFlowVideoRecord;
+    billing: Record<string, unknown>;
 }
 
 export class GeoFlowApiError extends Error {
@@ -541,7 +561,7 @@ export class GeoFlowApiClient {
 
     /**
      * @Name: createArticle
-     * @Description: 将外部 AI 应用生成的最终文章保存到当前 GEO 账号和站点，固定标记为待审核的 AI 内容。
+     * @Description: 将外部 AI 应用生成的最终文章保存到当前 GEO 账号和站点，固定标记为已审核通过但未公开发布的 AI 内容。
      *
      * @Author: cdkay
      * @CreateTime: 2026-07-18 13:58:43
@@ -557,9 +577,28 @@ export class GeoFlowApiClient {
             body: {
                 ...input,
                 status: 'draft',
-                review_status: 'pending',
+                review_status: 'approved',
                 is_ai_generated: 1,
             },
+            idempotencyKey,
+        });
+    }
+
+    /**
+     * @Name: publishArticleToSite
+     * @Description: 将当前账号未被拒绝的文章发布到绑定的 GEO 用户站点，MCP 专用接口会自动标记为通过且不执行媒体投稿。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-08-05 18:12:22
+     * @UpdateTime: 2026-08-05 21:12:19
+     *
+     * @Param: number articleId 当前账号未被拒绝的文章编号
+     * @Param: string idempotencyKey 幂等键
+     * @Return: Promise<GeoFlowArticleRecord> 已发布文章
+     * @Throws GeoFlowApiError 文章不存在、已被拒绝或权限不足
+     */
+    public async publishArticleToSite(articleId: number, idempotencyKey: string): Promise<GeoFlowArticleRecord> {
+        return await this.request<GeoFlowArticleRecord>('POST', `mcp/articles/${articleId}/publish`, {
             idempotencyKey,
         });
     }
@@ -708,6 +747,58 @@ export class GeoFlowApiClient {
     }
 
     /**
+     * @Name: listVideos
+     * @Description: 分页查询当前账号和站点的视频生成任务，传递已验证的分页和筛选参数。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-08-05 18:12:22
+     * @UpdateTime: 2026-08-05 18:12:22
+     *
+     * @Param: Record<string, string | number | undefined> query 视频任务分页和筛选参数
+     * @Return: Promise<unknown> 视频生成任务分页结果
+     * @Throws GeoFlowApiError 权限或上游 API 调用失败
+     */
+    public async listVideos(query: Record<string, string | number | undefined>): Promise<unknown> {
+        return await this.request<unknown>('GET', 'mcp/videos', { query });
+    }
+
+    /**
+     * @Name: createVideo
+     * @Description: 为当前账号和站点创建视频生成任务，生成数量由现有套餐视频生成额度结算。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-08-05 18:12:22
+     * @UpdateTime: 2026-08-05 18:12:22
+     *
+     * @Param: GeoFlowVideoInput input 视频主题、脚本、比例、数量和封面配置
+     * @Param: string idempotencyKey 幂等键
+     * @Return: Promise<GeoFlowVideoCreationResult> 新建视频生成任务和额度影响
+     * @Throws GeoFlowApiError 参数、权限、额度或上游 API 调用失败
+     */
+    public async createVideo(input: GeoFlowVideoInput, idempotencyKey: string): Promise<GeoFlowVideoCreationResult> {
+        return await this.request<GeoFlowVideoCreationResult>('POST', 'mcp/videos', {
+            body: { ...input },
+            idempotencyKey,
+        });
+    }
+
+    /**
+     * @Name: getVideo
+     * @Description: 查询当前账号和站点内单个视频生成任务的状态、进度和生成结果地址。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-08-05 18:12:22
+     * @UpdateTime: 2026-08-05 18:12:22
+     *
+     * @Param: number videoId 视频生成任务编号
+     * @Return: Promise<unknown> 视频生成任务详情
+     * @Throws GeoFlowApiError 任务不存在、权限不足或上游 API 调用失败
+     */
+    public async getVideo(videoId: number): Promise<unknown> {
+        return await this.request<unknown>('GET', `mcp/videos/${videoId}`);
+    }
+
+    /**
      * @Name: request
      * @Description: 统一发送 ceying-geo API 请求，负责 Bearer 鉴权、请求编号、超时、幂等头和标准错误信封解析。
      *
@@ -732,7 +823,7 @@ export class GeoFlowApiClient {
             Accept: 'application/json',
             Authorization: `Bearer ${this.token}`,
             'X-Request-Id': randomUUID(),
-            'User-Agent': 'ceying-geo-MCP/1.4',
+            'User-Agent': 'ceying-geo-MCP/1.5',
         });
         if (options.body !== undefined) {
             headers.set('Content-Type', 'application/json');

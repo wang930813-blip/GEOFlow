@@ -16,7 +16,9 @@ use App\Http\Controllers\Api\V1\CatalogController;
 use App\Http\Controllers\Api\V1\CrebeeAgentController;
 use App\Http\Controllers\Api\V1\JobController;
 use App\Http\Controllers\Api\V1\MaterialController;
+use App\Http\Controllers\Api\V1\McpArticlePublicationController;
 use App\Http\Controllers\Api\V1\McpBrandDiagnosisController;
+use App\Http\Controllers\Api\V1\McpVideoGenerationController;
 use App\Http\Controllers\Api\V1\MediaResourceController;
 use App\Http\Controllers\Api\V1\MediaSubmissionController;
 use App\Http\Controllers\Api\V1\TaskController;
@@ -51,6 +53,20 @@ Route::prefix('v1')
                 Route::post('{run}/confirm', [McpBrandDiagnosisController::class, 'confirm'])
                     ->whereNumber('run')
                     ->middleware('api.scope:brand-diagnoses:write');
+            });
+
+            // MCP 专用业务接口：必须具备专用连接权限，并按独立 scope 动态开放工具
+            Route::prefix('mcp')->middleware('api.scope:mcp:connect')->group(function (): void {
+                Route::post('articles/{article}/publish', [McpArticlePublicationController::class, 'publish'])
+                    ->whereNumber('article')
+                    ->middleware('api.scope:articles:site-publish');
+                Route::get('videos', [McpVideoGenerationController::class, 'index'])
+                    ->middleware('api.scope:videos:read');
+                Route::post('videos', [McpVideoGenerationController::class, 'store'])
+                    ->middleware(['api.scope:videos:write', 'throttle:mcp-paid-write']);
+                Route::get('videos/{video}', [McpVideoGenerationController::class, 'show'])
+                    ->whereNumber('video')
+                    ->middleware('api.scope:videos:read');
             });
 
             // catalog:read — 下拉元数据（模型、提示词、库、作者、分类等）

@@ -40,8 +40,11 @@ class McpKeyService
         'materials:write',
         'articles:read',
         'articles:write',
+        'articles:site-publish',
         'media:read',
         'media:submit',
+        'videos:read',
+        'videos:write',
         'brand-diagnoses:read',
         'brand-diagnoses:write',
     ];
@@ -180,6 +183,52 @@ class McpKeyService
     }
 
     /**
+     * @Name: updateKeyScopes
+     *
+     * @Description: 修改当前账号在当前站点拥有的 MCP Key 业务权限；仅更新权限集合，不重置明文、不改变有效期和最近使用时间。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-08-05 23:05:06
+     *
+     * @UpdateTime: 2026-08-05 23:05:06
+     *
+     * @Param: Admin $admin 当前登录管理员
+     *
+     * @Param: Site $site 当前站点
+     *
+     * @Param: int $keyId MCP Key 数据库编号
+     *
+     * @Param: array<int, string> $scopes GEO 业务权限列表
+     *
+     * @Return: array<string, mixed> 更新后的 MCP Key 安全元数据
+     */
+    public function updateKeyScopes(Admin $admin, Site $site, int $keyId, array $scopes): array
+    {
+        $normalizedScopes = array_values(array_intersect(self::BUSINESS_SCOPES, $scopes));
+        if ($normalizedScopes === []) {
+            throw new ApiException('validation_failed', '至少选择一项 GEO 业务权限', 422);
+        }
+
+        $token = PersonalAccessToken::query()
+            ->where('tokenable_type', Admin::class)
+            ->where('tokenable_id', (int) $admin->id)
+            ->where('site_id', (int) $site->id)
+            ->whereKey($keyId)
+            ->first();
+
+        if (! $token instanceof PersonalAccessToken || ! $this->isMcpToken($token)) {
+            throw new ApiException('mcp_key_not_found', 'MCP Key 不存在', 404);
+        }
+
+        $token->forceFill([
+            'abilities' => [ApiTokenService::MCP_CONNECT_SCOPE, ...$normalizedScopes],
+        ])->save();
+
+        return $this->serializeKey($token->refresh());
+    }
+
+    /**
      * @Name: scopeCatalog
      *
      * @Description: 返回 ceying-geo MCP 可授权权限及其业务说明，作为用户侧权限选择的唯一来源。
@@ -188,7 +237,7 @@ class McpKeyService
      *
      * @CreateTime: 2026-07-13 16:38:47
      *
-     * @UpdateTime: 2026-07-29 15:41:12
+     * @UpdateTime: 2026-08-05 21:05:15
      *
      * @Return: array<string, array{label: string, description: string, risk: string}> 权限目录
      */
@@ -235,6 +284,11 @@ class McpKeyService
                 'description' => '允许外部 AI 应用将已完成编写的文章保存到当前站点。',
                 'risk' => '写入数据',
             ],
+            'articles:site-publish' => [
+                'label' => '文章站内发布',
+                'description' => '允许将当前账号未被拒绝的文章自动通过并发布到绑定的 GEO 用户站点。',
+                'risk' => '公开发布',
+            ],
             'media:read' => [
                 'label' => '媒体渠道读取',
                 'description' => '查询可投递媒体渠道、当前站点售价和投稿状态。',
@@ -244,6 +298,16 @@ class McpKeyService
                 'label' => '媒体投稿',
                 'description' => '允许将当前账号文章投递到指定媒体渠道。',
                 'risk' => '会扣除余额',
+            ],
+            'videos:read' => [
+                'label' => '视频读取',
+                'description' => '查询当前账号的视频生成任务和生成结果。',
+                'risk' => '只读',
+            ],
+            'videos:write' => [
+                'label' => '视频生成',
+                'description' => '创建视频生成任务。',
+                'risk' => '会消耗额度',
             ],
             'brand-diagnoses:read' => [
                 'label' => '品牌诊断读取',
@@ -267,7 +331,7 @@ class McpKeyService
      *
      * @CreateTime: 2026-07-13 16:38:47
      *
-     * @UpdateTime: 2026-07-29 15:41:12
+     * @UpdateTime: 2026-08-05 21:05:15
      *
      * @Return: array<int, array{name: string, scope: string, description: string, billing: string}> 工具目录
      */
@@ -292,12 +356,16 @@ class McpKeyService
             ['name' => 'geo_list_articles', 'scope' => 'articles:read', 'description' => '分页查询当前站点文章', 'billing' => '不扣费'],
             ['name' => 'geo_get_article', 'scope' => 'articles:read', 'description' => '查询单篇文章完整内容', 'billing' => '不扣费'],
             ['name' => 'geo_create_article', 'scope' => 'articles:write', 'description' => '保存外部 AI 已完成编写的文章', 'billing' => '不扣费'],
+            ['name' => 'geo_publish_article_to_site', 'scope' => 'articles:site-publish', 'description' => '将未被拒绝的文章自动通过并发布到当前 GEO 用户站点', 'billing' => '不扣费'],
             ['name' => 'geo_list_media_channels', 'scope' => 'media:read', 'description' => '查询可投稿媒体渠道和当前站点售价', 'billing' => '不扣费'],
             ['name' => 'geo_get_media_channel', 'scope' => 'media:read', 'description' => '查询单个媒体渠道详情和售价', 'billing' => '不扣费'],
             ['name' => 'geo_list_media_submissions', 'scope' => 'media:read', 'description' => '查询媒体投稿记录和最新状态', 'billing' => '不扣费'],
             ['name' => 'geo_get_media_submission', 'scope' => 'media:read', 'description' => '查询单个投稿订单和发布链接', 'billing' => '不扣费'],
             ['name' => 'geo_submit_article_to_media', 'scope' => 'media:submit', 'description' => '将当前账号已有文章投递到指定媒体渠道', 'billing' => '按渠道实际售价扣费，失败退款'],
             ['name' => 'geo_publish_article_to_media', 'scope' => 'articles:write + media:submit', 'description' => '保存 AI 文章并立即投递到指定媒体渠道', 'billing' => '按渠道实际售价扣费，失败退款'],
+            ['name' => 'geo_list_videos', 'scope' => 'videos:read', 'description' => '分页查询当前账号的视频生成任务', 'billing' => '不扣费'],
+            ['name' => 'geo_get_video', 'scope' => 'videos:read', 'description' => '查询单个视频生成任务的状态和生成结果地址', 'billing' => '不扣费'],
+            ['name' => 'geo_create_video', 'scope' => 'videos:write', 'description' => '创建视频生成任务并投递异步生成队列', 'billing' => '按生成数量扣减视频生成额度'],
             ['name' => 'geo_list_brand_diagnoses', 'scope' => 'brand-diagnoses:read', 'description' => '分页查询当前账号的品牌诊断任务', 'billing' => '不扣费'],
             ['name' => 'geo_get_brand_diagnosis', 'scope' => 'brand-diagnoses:read', 'description' => '查询诊断进度、问题、回答、来源和排名', 'billing' => '不扣费'],
             ['name' => 'geo_create_brand_diagnosis', 'scope' => 'brand-diagnoses:write', 'description' => '创建品牌诊断问题生成任务', 'billing' => '不扣费'],

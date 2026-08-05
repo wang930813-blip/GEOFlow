@@ -99,7 +99,7 @@ app.get('/health', (_request: Request, response: Response) => {
     response.json({
         status: 'ok',
         service: 'ceying-geo-mcp-server',
-        version: '1.4.0',
+        version: '1.5.0',
         protocol: 'streamable-http',
     });
 });

@@ -36,7 +36,7 @@
         <header class="flex flex-col gap-4 border-b border-gray-200 pb-6 sm:flex-row sm:items-end sm:justify-between">
             <div>
                 <h1 class="text-2xl font-bold text-gray-900">MCP Server</h1>
-                <p class="mt-1 text-sm text-gray-600">将当前站点的内容任务、素材、文章、媒体投稿和品牌诊断能力接入支持 MCP 的客户端。</p>
+                <p class="mt-1 text-sm text-gray-600">将当前站点的内容任务、素材、文章、文章站内发布、视频生成、媒体投稿和品牌诊断能力接入支持 MCP 的客户端。</p>
             </div>
             <div class="flex items-center gap-2 text-sm font-medium {{ $activeKeyCount > 0 ? 'text-emerald-700' : 'text-gray-500' }}">
                 <span class="h-2.5 w-2.5 rounded-full {{ $activeKeyCount > 0 ? 'bg-emerald-500' : 'bg-gray-300' }}"></span>
@@ -120,7 +120,7 @@
                         <div data-mcp-scope-grid class="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
                             @foreach ($scopeCatalog as $scope => $definition)
                                 <label data-mcp-scope-option class="flex min-h-[72px] cursor-pointer items-start gap-2.5 rounded-md border border-gray-200 px-3 py-2 transition-colors hover:border-blue-300 hover:bg-blue-50/40">
-                                    <input type="checkbox" name="scopes[]" value="{{ $scope }}" @checked(in_array($scope, old('scopes', ['catalog:read', 'tasks:read', 'jobs:read', 'materials:read', 'articles:read', 'media:read', 'brand-diagnoses:read']), true)) class="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                    <input type="checkbox" name="scopes[]" value="{{ $scope }}" @checked(in_array($scope, old('scopes', ['catalog:read', 'tasks:read', 'jobs:read', 'materials:read', 'articles:read', 'media:read', 'videos:read', 'brand-diagnoses:read']), true)) class="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
                                     <span class="min-w-0 flex-1">
                                         <span class="flex items-start justify-between gap-2">
                                             <span class="text-sm font-medium text-gray-900">{{ $definition['label'] }}</span>
@@ -181,6 +181,33 @@
                                                 <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium {{ $scopeTone }}" title="{{ $scope }}" aria-label="{{ $scopeLabel }}{{ $scopeRisk !== '' ? '，'.$scopeRisk : '' }}" data-mcp-key-scope-label="{{ $scope }}">{{ $scopeLabel }}</span>
                                             @endforeach
                                         </div>
+                                        <details class="group mt-3">
+                                            <summary class="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 [&::-webkit-details-marker]:hidden">
+                                                <i data-lucide="sliders-horizontal" class="h-3.5 w-3.5"></i>
+                                                修改权限
+                                            </summary>
+                                            <form action="{{ route('admin.mcp-server.keys.scopes', ['keyId' => $key['id']]) }}" method="POST" class="mt-3 rounded-md border border-gray-200 bg-gray-50 p-3" data-mcp-key-scope-form="{{ $key['id'] }}">
+                                                @csrf
+                                                <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                                                    @foreach ($scopeCatalog as $scope => $definition)
+                                                        <label class="flex min-h-[44px] cursor-pointer items-start gap-2 rounded-md border border-gray-200 bg-white px-2.5 py-2 transition-colors hover:border-blue-300 hover:bg-blue-50/40">
+                                                            <input type="checkbox" name="scopes[]" value="{{ $scope }}" @checked(in_array($scope, $key['scopes'], true)) class="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                                            <span class="min-w-0 flex-1">
+                                                                <span class="block text-xs font-medium leading-4 text-gray-900">{{ $definition['label'] }}</span>
+                                                                <span class="mt-0.5 inline-flex rounded-full px-1.5 py-0.5 text-[11px] leading-4 {{ $definition['risk'] === '只读' ? 'bg-gray-100 text-gray-600' : 'bg-amber-100 text-amber-800' }}">{{ $definition['risk'] }}</span>
+                                                            </span>
+                                                        </label>
+                                                    @endforeach
+                                                </div>
+                                                <div class="mt-3 flex flex-col gap-2 border-t border-gray-200 pt-3 sm:flex-row sm:items-center sm:justify-between">
+                                                    <p class="text-xs text-gray-500">保存后不会重新显示 Key 明文，客户端重新加载 MCP 连接后按新权限发现工具。</p>
+                                                    <button type="submit" class="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md bg-blue-600 px-3 text-xs font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                                                        <i data-lucide="save" class="h-3.5 w-3.5"></i>
+                                                        保存权限
+                                                    </button>
+                                                </div>
+                                            </form>
+                                        </details>
                                     </td>
                                     <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-600">{{ $key['last_used_at'] ?? '未使用' }}</td>
                                     <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-600">
@@ -222,10 +249,10 @@
 
             <ol class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 @foreach ([
-                    ['创建 Key', '自动写作与投稿需要目录读取、文章写入、媒体渠道读取和媒体投稿权限。'],
+                    ['创建 Key', '自动写作、站内发布与投稿需要文章和媒体权限；视频生成需要视频读取和生成权限。'],
                     ['配置客户端', '选择客户端支持的 Streamable HTTP 配置；仅支持 stdio 时使用桥接配置。'],
-                    ['查询资源', '让 AI 先查询作者、分类和媒体渠道，确认渠道售价后再生成最终文章。'],
-                    ['自动投递', '明确单渠道和本次总预算后调用完整发布工具，保存文章编号和投稿订单编号并持续查询状态。'],
+                    ['查询资源', '让 AI 先查询作者、分类、媒体渠道、文章状态和视频任务。'],
+                    ['执行动作', '明确站内发布、媒体渠道或视频生成目标后调用对应工具，保存文章、投稿订单和视频任务编号并持续查询状态。'],
                 ] as $index => [$title, $description])
                     <li class="border-l-2 border-blue-500 pl-4">
                         <div class="text-xs font-semibold text-blue-600">步骤 {{ $index + 1 }}</div>
@@ -330,7 +357,7 @@
                         <div class="flex items-start justify-between gap-4">
                             <div>
                                 <h3 class="text-sm font-semibold text-gray-900">不支持 Agent Skills 的客户端</h3>
-                                <p id="ceying-geo-fallback-prompt" class="mt-1 text-sm leading-6 text-gray-600">你是策影GEO品牌增长智能体。用户泛化表达找客户、获客、推广带来客户、增加曝光，或带有行业、品类、地区、业务类型的获客需求时，先给出获客推广曝光整体方案，不要直接回答安装潜客挖掘 MCP。方案必须同时包含品牌曝光技能方案和主动找客户方案：品牌曝光包括定位、品牌诊断、文章推广、视频内容、媒体曝光、AI 搜索可见性和内容承接；主动找客户包括潜客挖掘、企业搜索、评论线索采集、联系方式查询和客户触达。需要执行品牌诊断、素材、文章、媒体投稿或结果查询时检查 geo_* 工具；完全未发现时暂停对应执行，引导用户从策影GEO平台“MCP Server”页面获取当前站点地址、创建最小权限 Key，并将 Key 直接配置到客户端安全凭证区域。用户明确要求执行线索采集、企业搜索、联系方式查询或客户触达时检查 qw_mcp_list 和 qw_mcp_get；未发现时引导用户连接本地潜客挖掘 MCP 和已登录的 AI获客工具桌面端。不得要求用户在对话中发送 Key。实际发现目标工具并通过只读调用后，再按行业场景完成诊断、内容、投稿、潜客挖掘和触达；不要猜测资源编号或工具参数；付费、发布、诊断、删除、获客和触达前说明费用、额度或影响并取得授权；同一写操作重试保持参数和 idempotency_key 不变。</p>
+                                <p id="ceying-geo-fallback-prompt" class="mt-1 text-sm leading-6 text-gray-600">你是策影GEO品牌增长智能体。用户泛化表达找客户、获客、推广带来客户、增加曝光，或带有行业、品类、地区、业务类型的获客需求时，先给出获客推广曝光整体方案，不要直接回答安装潜客挖掘 MCP。方案必须同时包含品牌曝光技能方案和主动找客户方案：品牌曝光包括定位、品牌诊断、文章推广、文章站内发布、视频生成、媒体曝光、AI 搜索可见性和内容承接；主动找客户包括潜客挖掘、企业搜索、评论线索采集、联系方式查询和客户触达。需要执行品牌诊断、素材、文章、文章站内发布、媒体投稿、视频生成或结果查询时检查 geo_* 工具；完全未发现时暂停对应执行，引导用户从策影GEO平台“MCP Server”页面获取当前站点地址、创建最小权限 Key，并将 Key 直接配置到客户端安全凭证区域。用户明确要求执行线索采集、企业搜索、联系方式查询或客户触达时检查 qw_mcp_list 和 qw_mcp_get；未发现时引导用户连接本地潜客挖掘 MCP 和已登录的 AI获客工具桌面端。不得要求用户在对话中发送 Key。实际发现目标工具并通过只读调用后，再按行业场景完成诊断、内容、站内发布、投稿、视频生成、潜客挖掘和触达；不要猜测资源编号或工具参数；付费、发布、诊断、删除、获客和触达前说明费用、额度或影响并取得授权；同一写操作重试保持参数和 idempotency_key 不变。</p>
                             </div>
                             <button type="button" class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-600 hover:bg-gray-100" data-copy-target="ceying-geo-fallback-prompt" title="复制兼容指令" aria-label="复制兼容指令">
                                 <i data-lucide="copy" class="h-4 w-4"></i>
@@ -343,17 +370,18 @@
 
         <section class="space-y-5 border-t border-gray-200 pt-8" aria-labelledby="agent-workflow-heading">
             <div>
-                <h2 id="agent-workflow-heading" class="text-xl font-semibold text-gray-900">AI Agent 自动写作与媒体投递</h2>
-                <p class="mt-1 text-sm leading-6 text-gray-600">文章由已安装本 MCP 的 AI 应用生成，ceying-geo MCP 负责资源查询、文章保存、指定渠道投稿、费用结算和状态跟踪。</p>
+                <h2 id="agent-workflow-heading" class="text-xl font-semibold text-gray-900">AI Agent 自动写作、站内发布与媒体投递</h2>
+                <p class="mt-1 text-sm leading-6 text-gray-600">文章由已安装本 MCP 的 AI 应用生成，ceying-geo MCP 负责资源查询、文章保存、自动通过后的站内发布、指定渠道投稿、费用结算和状态跟踪。</p>
             </div>
 
-            <ol class="grid gap-5 md:grid-cols-2 xl:grid-cols-5">
+            <ol class="grid gap-5 md:grid-cols-2 xl:grid-cols-6">
                 @foreach ([
                     ['1', '读取目录', 'geo_get_catalog', '取得当前站点有效的作者编号和分类编号。'],
-                    ['2', '筛选渠道', 'geo_list_media_channels', '按媒体名称和分类筛选渠道，记录媒体资源编号与实时售价。'],
-                    ['3', '生成文章', 'AI 应用内部能力', '根据用户目标完成标题、正文、摘要、关键词和 SEO 描述。'],
-                    ['4', '保存并投稿', 'geo_publish_article_to_media', '保存文章并投递到指定渠道，单次最多选择 20 个渠道。'],
-                    ['5', '跟踪结果', 'geo_get_media_submission', '查询待安排、发布中、已发布、退稿等状态及最终发布链接。'],
+                    ['2', '生成文章', 'AI 应用内部能力', '根据用户目标完成标题、正文、摘要、关键词和 SEO 描述。'],
+                    ['3', '保存文章', 'geo_create_article', '保存为当前站点已审核草稿，不公开发布。'],
+                    ['4', '站内发布', 'geo_publish_article_to_site', '未被拒绝的文章可由 MCP 自动通过并发布到当前 GEO 用户站点，文章站内发布不扣费。'],
+                    ['5', '媒体投稿', 'geo_publish_article_to_media', '需要外部媒体曝光时保存文章并投递到指定渠道，单次最多选择 20 个渠道。'],
+                    ['6', '跟踪结果', 'geo_get_media_submission', '查询待安排、发布中、已发布、退稿等状态及最终发布链接。'],
                 ] as [$step, $title, $tool, $description])
                     <li class="border-l-2 border-blue-500 pl-4">
                         <div class="text-xs font-semibold text-blue-600">步骤 {{ $step }}</div>
@@ -366,13 +394,13 @@
 
             <div class="border-l-2 border-emerald-500 bg-emerald-50 px-4 py-3">
                 <h3 class="text-sm font-semibold text-emerald-900">可直接发送给 AI Agent 的任务</h3>
-                <p class="mt-2 text-sm leading-6 text-emerald-900">查询名称或分类符合要求的媒体渠道并展示实时售价，使用我明确指定的媒体资源编号，围绕目标主题编写完整文章并调用 <code>geo_publish_article_to_media</code>。返回文章编号、投稿订单编号、实际扣费和当前状态；未得到明确渠道编号前不要投稿。</p>
+                <p class="mt-2 text-sm leading-6 text-emerald-900">围绕目标主题编写完整文章，调用 <code>geo_create_article</code> 保存到当前站点；得到我确认后调用 <code>geo_publish_article_to_site</code> 自动通过并发布到 GEO 用户站点。若我还指定媒体渠道，再查询实时售价并调用 <code>geo_publish_article_to_media</code> 或 <code>geo_submit_article_to_media</code>，未得到明确渠道编号前不要投稿。</p>
             </div>
 
             <div class="grid gap-4 md:grid-cols-3">
                 <div class="border-l-2 border-gray-300 pl-4">
                     <h3 class="text-sm font-semibold text-gray-900">已有文章</h3>
-                    <p class="mt-1 text-sm leading-6 text-gray-600">使用 <code>geo_submit_article_to_media</code> 将已有文章投递到一个或多个明确指定的渠道。</p>
+                    <p class="mt-1 text-sm leading-6 text-gray-600">使用 <code>geo_publish_article_to_site</code> 发布未被拒绝的文章；使用 <code>geo_submit_article_to_media</code> 将已有文章投递到一个或多个明确指定的渠道。</p>
                 </div>
                 <div class="border-l-2 border-gray-300 pl-4">
                     <h3 class="text-sm font-semibold text-gray-900">部分成功</h3>
@@ -380,8 +408,34 @@
                 </div>
                 <div class="border-l-2 border-gray-300 pl-4">
                     <h3 class="text-sm font-semibold text-gray-900">安全重试</h3>
-                    <p class="mt-1 text-sm leading-6 text-gray-600">同一次操作重试时保持 <code>idempotency_key</code> 不变，防止网络超时导致文章或订单重复创建。</p>
+                    <p class="mt-1 text-sm leading-6 text-gray-600">同一次保存、站内发布或投稿操作重试时保持 <code>idempotency_key</code> 不变，防止网络超时导致文章或订单重复创建。</p>
                 </div>
+            </div>
+        </section>
+
+        <section class="space-y-5 border-t border-gray-200 pt-8" aria-labelledby="video-workflow-heading">
+            <div>
+                <h2 id="video-workflow-heading" class="text-xl font-semibold text-gray-900">AI Agent 视频生成</h2>
+                <p class="mt-1 text-sm leading-6 text-gray-600">视频由 ceying-geo 现有视频生成服务异步完成，MCP 负责创建任务和查询生成结果，不负责发布到自媒体平台。</p>
+            </div>
+
+            <ol class="grid gap-5 md:grid-cols-2">
+                @foreach ([
+                    ['1', '创建视频', 'geo_create_video', '提交主题、脚本、比例和生成数量，按 video_count 扣减视频生成额度。'],
+                    ['2', '查询结果', 'geo_get_video', '轮询 queued、processing、success 或 failed，读取 first_video_url。'],
+                ] as [$step, $title, $tool, $description])
+                    <li class="border-l-2 border-indigo-500 pl-4">
+                        <div class="text-xs font-semibold text-indigo-600">步骤 {{ $step }}</div>
+                        <h3 class="mt-1 text-sm font-semibold text-gray-900">{{ $title }}</h3>
+                        <code class="mt-2 block break-all text-xs text-indigo-700">{{ $tool }}</code>
+                        <p class="mt-2 text-sm leading-6 text-gray-600">{{ $description }}</p>
+                    </li>
+                @endforeach
+            </ol>
+
+            <div class="border-l-2 border-indigo-500 bg-indigo-50 px-4 py-3">
+                <h3 class="text-sm font-semibold text-indigo-900">可直接发送给 AI Agent 的视频任务</h3>
+                <p class="mt-2 text-sm leading-6 text-indigo-900">围绕我的品牌增长目标生成一条短视频，先调用 <code>geo_create_video</code> 创建任务并持续调用 <code>geo_get_video</code> 查询结果；生成成功后返回视频编号、视频地址、状态、进度和扣减额度。</p>
             </div>
         </section>
 
@@ -452,7 +506,7 @@
                     </tbody>
                 </table>
             </div>
-            <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+            <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
                 <div class="border-l-2 border-gray-300 pl-4">
                     <h3 class="text-sm font-semibold text-gray-900">Key 数量</h3>
                     <p class="mt-1 text-sm leading-6 text-gray-600">每个有效 MCP Key 计入当前账号规格的 API Token 数量上限，不产生调用次数费用。</p>
@@ -469,6 +523,10 @@
                     <h3 class="text-sm font-semibold text-gray-900">媒体投稿</h3>
                     <p class="mt-1 text-sm leading-6 text-gray-600">投稿前查询并展示渠道实时售价；获得用户授权后逐笔扣费，提交失败自动退款，渠道成功接单后以订单价格快照为准。</p>
                 </div>
+                <div class="border-l-2 border-indigo-500 pl-4">
+                    <h3 class="text-sm font-semibold text-gray-900">视频生成</h3>
+                    <p class="mt-1 text-sm leading-6 text-gray-600">创建视频按生成数量扣减视频生成额度；MCP 不提供视频自媒体发布能力。</p>
+                </div>
                 <div class="border-l-2 border-orange-400 pl-4">
                     <h3 class="text-sm font-semibold text-gray-900">品牌诊断</h3>
                     <p class="mt-1 text-sm leading-6 text-gray-600">创建和查询不扣额度；确认问题并启动正式诊断时，扣减当前账号一次品牌诊断额度。</p>
@@ -482,7 +540,7 @@
                 <ul class="mt-3 space-y-2 text-sm leading-6 text-gray-600">
                     <li>Key 只放在 Authorization 请求头，不要写入提示词、URL、公开仓库或日志。</li>
                     <li>公网 MCP 地址必须使用 HTTPS；HTTP 请求会被服务端拒绝。</li>
-                    <li>按客户端用途拆分 Key，并只授予实际需要的 scope；自动投稿 Key 才授予 articles:write 和 media:submit。</li>
+                    <li>按客户端用途拆分 Key，并只授予实际需要的 scope；文章站内发布 Key 才授予 articles:site-publish，自动投稿 Key 才授予 articles:write 和 media:submit，视频生成 Key 才授予 videos:write。</li>
                     <li>建议设置明确过期时间。设备丢失、配置泄露或人员变动时立即撤销 Key。</li>
                     <li>所有数据访问都受当前站点隔离约束，切换后台站点不会改变已创建 Key 的绑定站点。</li>
                 </ul>
