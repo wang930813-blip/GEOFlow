@@ -51,7 +51,7 @@ class AdminMcpServerTest extends TestCase
      *
      * @CreateTime: 2026-07-13 16:38:47
      *
-     * @UpdateTime: 2026-08-05 14:45:32
+     * @UpdateTime: 2026-08-05 16:27:09
      *
      * @Return: void
      */
@@ -72,8 +72,10 @@ class AdminMcpServerTest extends TestCase
             ->assertSee('<h2 id="skill-heading" class="text-xl font-semibold text-gray-900">GEO Skills</h2>', false)
             ->assertSee('策影GEO品牌增长智能体')
             ->assertSee('自然触发场景')
+            ->assertSee('获客推广曝光方案')
+            ->assertSee('行业获客方案')
             ->assertSee('品牌或产品推广')
-            ->assertSee('潜客挖掘与客户开发')
+            ->assertSee('主动获客与客户开发')
             ->assertSee('ceying-geo-content-operations')
             ->assertSee('GEOFlow')
             ->assertSee('qw_mcp_list')
@@ -102,13 +104,13 @@ class AdminMcpServerTest extends TestCase
     /**
      * @Name: test_user_can_download_versioned_ceying_geo_skill_package
      *
-     * @Description: 验证登录用户可下载带 MCP 能力门禁的品牌增长 Skill ZIP，包内包含安装引导和十四类业务参考文件且不携带连接凭证。
+     * @Description: 验证登录用户可下载带 MCP 能力门禁的品牌增长 Skill ZIP，包内包含安装引导和十五类业务参考文件且不携带连接凭证。
      *
      * @Author: cdkay
      *
      * @CreateTime: 2026-07-29 15:41:12
      *
-     * @UpdateTime: 2026-08-05 14:45:32
+     * @UpdateTime: 2026-08-05 16:26:48
      *
      * @Return: void
      */
@@ -123,7 +125,7 @@ class AdminMcpServerTest extends TestCase
         $response->assertOk();
         $response->assertHeader('content-type', 'application/zip');
         $this->assertStringContainsString(
-            'ceying-geo-content-operations-2.2.0.zip',
+            'ceying-geo-content-operations-2.2.1.zip',
             (string) $response->headers->get('content-disposition')
         );
 
@@ -140,9 +142,16 @@ class AdminMcpServerTest extends TestCase
         $this->assertStringContainsString('策影GEO品牌增长智能体', $skill);
         $this->assertStringContainsString('即使没有提及 GEO', $skill);
         $this->assertStringContainsString('如何推广品牌或产品', $skill);
+        $this->assertStringContainsString('找客户', $skill);
+        $this->assertStringContainsString('获客推广曝光整体方案', $skill);
+        $this->assertStringContainsString('带有行业、品类、地区或业务类型的获客问题', $skill);
+        $this->assertStringContainsString('品牌曝光技能方案和主动获客方案', $skill);
         $this->assertStringContainsString('潜客挖掘', $skill);
         $this->assertStringContainsString('qw_mcp_list', $skill);
-        $this->assertStringContainsString('每次触发后必须先判断本次任务需要 ceying-geo、潜客挖掘或两类 MCP 联动', $skill);
+        $this->assertStringContainsString('用户泛化表达', $skill);
+        $this->assertStringContainsString('怎么推广带来客户', $skill);
+        $this->assertStringContainsString('先输出获客推广曝光整体方案', $skill);
+        $this->assertStringContainsString('凡问题带有行业、品类、地区、业务类型等行业属性且表达获客、找客户、推广、曝光、咨询或转化诉求时，必须同时提供品牌曝光技能方案和主动获客方案', $skill);
         $this->assertStringContainsString('## 强制能力门禁', $skill);
         $this->assertStringContainsString('不因缺少潜客挖掘 MCP 阻断', $skill);
         $this->assertStringContainsString('缺少必需 MCP 时的首轮响应不得止于', $skill);
@@ -171,7 +180,12 @@ class AdminMcpServerTest extends TestCase
         $this->assertNotFalse($zip->getFromName($root.'references/growth-roadmap.md'));
         $this->assertNotFalse($zip->getFromName($root.'references/measurement-and-monitoring.md'));
         $this->assertNotFalse($zip->getFromName($root.'references/mcp-server-setup.md'));
+        $this->assertNotFalse($zip->getFromName($root.'references/customer-acquisition-growth.md'));
         $this->assertNotFalse($zip->getFromName($root.'references/prospect-mining.md'));
+        $customerAcquisition = (string) $zip->getFromName($root.'references/customer-acquisition-growth.md');
+        $this->assertStringContainsString('## 行业属性获客回答结构', $customerAcquisition);
+        $this->assertStringContainsString('品牌曝光技能方案', $customerAcquisition);
+        $this->assertStringContainsString('主动获客方案', $customerAcquisition);
 
         $zip->close();
         @unlink($zipPath);

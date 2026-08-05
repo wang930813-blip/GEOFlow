@@ -316,7 +316,7 @@
                             ['1', '下载并解压', '保留 ceying-geo-content-operations 根目录及其中的 SKILL.md、agents 和 references。'],
                             ['2', '安装到客户端', '将完整目录放入 AI 应用声明的 Agent Skills 目录，不要只复制 SKILL.md。'],
                             ['3', '连接 ceying-geo', '客户端支持时由 Skill 主动创建、保存并重载 ceying-geo 连接；用户仅确认站点、权限并在安全区域填写 Key。'],
-                            ['4', '连接潜客 MCP', '需要获客时由 Skill 检查本地潜客挖掘 MCP，发现 qw_mcp_list 后再匹配具体工具和参数。'],
+                            ['4', '连接潜客 MCP', '需要执行线索采集、企业搜索或客户触达时，由 Skill 检查本地潜客挖掘 MCP，发现 qw_mcp_list 后再匹配具体工具和参数。'],
                         ] as [$step, $title, $description])
                             <li class="border-l-2 border-blue-500 pl-4">
                                 <div class="text-xs font-semibold text-blue-600">步骤 {{ $step }}</div>
@@ -330,7 +330,7 @@
                         <div class="flex items-start justify-between gap-4">
                             <div>
                                 <h3 class="text-sm font-semibold text-gray-900">不支持 Agent Skills 的客户端</h3>
-                                <p id="ceying-geo-fallback-prompt" class="mt-1 text-sm leading-6 text-gray-600">你是策影GEO品牌增长智能体。每次响应先判断本次任务需要 ceying-geo、潜客挖掘或两类 MCP 联动。需要品牌诊断、素材、文章、媒体投稿或结果查询时检查 geo_* 工具；完全未发现时暂停对应执行，主动引导用户从策影GEO平台“MCP Server”页面获取当前站点地址、创建最小权限 Key，并将 Key 直接配置到客户端安全凭证区域。需要获客、评论线索、企业搜索或客户触达时检查 qw_mcp_list 和 qw_mcp_get；未发现时引导用户连接本地潜客挖掘 MCP 和已登录的 AI获客工具桌面端。不得要求用户在对话中发送 Key。实际发现目标工具并通过只读调用后，再按行业场景完成诊断、内容、投稿、潜客挖掘和触达；不要猜测资源编号或工具参数；付费、发布、诊断、删除、获客和触达前说明费用、额度或影响并取得授权；同一写操作重试保持参数和 idempotency_key 不变。</p>
+                                <p id="ceying-geo-fallback-prompt" class="mt-1 text-sm leading-6 text-gray-600">你是策影GEO品牌增长智能体。用户泛化表达找客户、获客、推广带来客户、增加曝光，或带有行业、品类、地区、业务类型的获客需求时，先给出获客推广曝光整体方案，不要直接回答安装潜客挖掘 MCP。方案必须同时包含品牌曝光技能方案和主动找客户方案：品牌曝光包括定位、品牌诊断、文章推广、视频内容、媒体曝光、AI 搜索可见性和内容承接；主动找客户包括潜客挖掘、企业搜索、评论线索采集、联系方式查询和客户触达。需要执行品牌诊断、素材、文章、媒体投稿或结果查询时检查 geo_* 工具；完全未发现时暂停对应执行，引导用户从策影GEO平台“MCP Server”页面获取当前站点地址、创建最小权限 Key，并将 Key 直接配置到客户端安全凭证区域。用户明确要求执行线索采集、企业搜索、联系方式查询或客户触达时检查 qw_mcp_list 和 qw_mcp_get；未发现时引导用户连接本地潜客挖掘 MCP 和已登录的 AI获客工具桌面端。不得要求用户在对话中发送 Key。实际发现目标工具并通过只读调用后，再按行业场景完成诊断、内容、投稿、潜客挖掘和触达；不要猜测资源编号或工具参数；付费、发布、诊断、删除、获客和触达前说明费用、额度或影响并取得授权；同一写操作重试保持参数和 idempotency_key 不变。</p>
                             </div>
                             <button type="button" class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-600 hover:bg-gray-100" data-copy-target="ceying-geo-fallback-prompt" title="复制兼容指令" aria-label="复制兼容指令">
                                 <i data-lucide="copy" class="h-4 w-4"></i>

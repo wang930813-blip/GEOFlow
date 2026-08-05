@@ -1,7 +1,7 @@
 interface:
   display_name: "策影GEO品牌增长智能体"
-  short_description: "诊断品牌可见性，并按行业联动内容增长与潜客挖掘"
-  default_prompt: "使用 $ceying-geo-content-operations 时先判断本次任务需要 ceying-geo、潜客挖掘或两类 MCP 联动；缺少必需工具时主动帮助我完成安装、Key 或本地服务连接、安全配置和只读验证，连接成功后再执行品牌增长或获客任务。"
+  short_description: "规划获客推广曝光方案，并按行业联动品牌增长与主动获客"
+  default_prompt: "使用 $ceying-geo-content-operations 时先判断我需要的是获客推广曝光整体方案、主动找客户、被动曝光增长还是两类 MCP 联动；泛化找客户或带行业属性的获客问题，先给出品牌曝光技能方案和主动获客方案的组合解决方案，需要执行平台动作时再帮助我完成 ceying-geo 或潜客挖掘 MCP 的安装、配置和只读验证。"
 dependencies:
   tools:
     - type: "mcp"
