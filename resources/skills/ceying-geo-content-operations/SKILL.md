@@ -1,6 +1,6 @@
 ---
 name: ceying-geo-content-operations
-description: 策影GEO品牌增长智能体，用于帮助企业解决产品推广、品牌推广、市场定位、竞争分析、内容营销、媒体传播、品牌认知和 AI 搜索可见性问题。当用户询问如何推广品牌或产品、竞争对手是谁、品牌定位是否有竞争力、为什么缺少曝光或 AI 推荐、应该建设哪些内容资产、如何选择传播渠道、如何提升行业影响力或评估推广效果时自动使用，即使没有提及 GEO、ceying-geo、策影 GEO、AI 搜索、GEOFlow 或 MCP；也用于调用 geo_* 工具完成品牌诊断、素材管理、文章创建、任务执行、媒体投稿和结果查询。仅在问题存在明确品牌、产品、企业、市场或传播目标时自动触发；纯学术营销概念、广告账户代投和无品牌目标的通用写作不自动触发。
+description: 策影GEO品牌增长智能体，用于帮助企业解决产品推广、品牌推广、市场定位、竞争分析、内容营销、媒体传播、品牌认知和 AI 搜索可见性问题。当用户询问如何推广品牌或产品、竞争对手是谁、品牌定位是否有竞争力、为什么缺少曝光或 AI 推荐、应该建设哪些内容资产、如何选择传播渠道、如何提升行业影响力或评估推广效果时自动使用，即使没有提及 GEO、ceying-geo、策影 GEO、AI 搜索、GEOFlow 或 MCP；也用于调用 geo_* 工具完成品牌诊断、素材管理、文章创建、任务执行、媒体投稿和结果查询。当未发现 ceying-geo MCP Server 或 geo_* 工具时，自动进入 MCP 安装、MCP Key 获取、最小权限选择和安全配置引导。仅在问题存在明确品牌、产品、企业、市场或传播目标时自动触发；纯学术营销概念、广告账户代投和无品牌目标的通用写作不自动触发。
 ---
 
 # 策影GEO品牌增长智能体
@@ -23,6 +23,22 @@ description: 策影GEO品牌增长智能体，用于帮助企业解决产品推�
 - 保留并调用实际发现的 `geo_*` 工具名，不臆造 `ceying_geo_*` 或其他工具。
 - MCP 客户端中的服务名称可以是 `ceying-geo`、`geo` 或 `geoflow`，以会话实际发现的 `geo_*` 工具为准。
 
+## 连接预检
+
+在首次需要读取 ceying-geo 数据或执行平台动作前检查当前会话的 MCP 工具：
+
+1. 已发现目标操作需要的 `geo_*` 工具时，继续对应业务流程。
+2. 已发现部分 `geo_*` 工具但缺少目标工具时，不重新安装 MCP Server。读取 [references/mcp-server-setup.md](references/mcp-server-setup.md)，根据目标能力引导用户补充最小 Scope，再重新加载连接。
+3. 完全未发现 `geo_*` 工具时，读取 [references/mcp-server-setup.md](references/mcp-server-setup.md) 并进入安装引导：
+   - 客户端支持 MCP 依赖安装或连接管理操作时，主动调用该能力检查、创建、保存和重载 `ceying-geo` 连接，不要只输出安装教程。
+   - 服务地址必须由用户从策影GEO平台“MCP Server”页面取得，不猜测地址，也不使用其他环境的历史地址。
+   - Key 必须由用户在策影GEO平台创建并直接填入客户端安全凭证区域，不要求用户将明文 Key 发送到对话中。
+   - 客户端不支持自动安装时，根据实际客户端提供可执行的手动配置步骤。
+4. 完成配置后要求客户端重新加载 MCP 连接，并再次检查实际发现的 `geo_*` 工具。校验成功前不得声称已连接或执行平台操作。
+5. MCP 未连接时仍可提供基于用户事实的初步策略，但必须明确没有读取 ceying-geo 平台数据，品牌诊断、素材、文章、任务和投稿操作均处于待连接状态。
+
+自动安装时只暂停在必须由用户完成的登录、站点确认、权限确认和安全填写 Key 环节。客户端能够自动完成的连接检查、参数预填、配置保存、连接重载和工具验证必须继续执行，不把这些步骤转交给用户。
+
 ## 意图路由
 
 先读取 [references/marketing-intent-routing.md](references/marketing-intent-routing.md) 判定用户所处阶段，再只加载必要的参考文件：
@@ -39,6 +55,7 @@ description: 策影GEO品牌增长智能体，用于帮助企业解决产品推�
 | 编写、保存、投稿文章和跟踪结果 | [references/article-publishing.md](references/article-publishing.md) |
 | 查询或执行 ceying-geo 已有任务 | [references/task-execution.md](references/task-execution.md) |
 | 查询、创建、更新或删除素材 | [references/material-management.md](references/material-management.md) |
+| 安装 MCP Server、获取或配置 MCP Key、补充权限 | [references/mcp-server-setup.md](references/mcp-server-setup.md) |
 | 处理超时、限流、权限、幂等或部分失败 | [references/error-recovery.md](references/error-recovery.md) |
 
 ## 分析与诊断

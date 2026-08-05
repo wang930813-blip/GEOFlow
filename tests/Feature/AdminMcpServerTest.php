@@ -100,13 +100,13 @@ class AdminMcpServerTest extends TestCase
     /**
      * @Name: test_user_can_download_versioned_ceying_geo_skill_package
      *
-     * @Description: 验证登录用户可下载完整品牌增长 Skill ZIP，包内包含主文件、客户端元数据和十二类业务参考文件且不携带连接凭证。
+     * @Description: 验证登录用户可下载完整品牌增长 Skill ZIP，包内包含 MCP 依赖声明、安装引导和十三类业务参考文件且不携带连接凭证。
      *
      * @Author: cdkay
      *
      * @CreateTime: 2026-07-29 15:41:12
      *
-     * @UpdateTime: 2026-08-05 09:57:26
+     * @UpdateTime: 2026-08-05 11:27:38
      *
      * @Return: void
      */
@@ -121,7 +121,7 @@ class AdminMcpServerTest extends TestCase
         $response->assertOk();
         $response->assertHeader('content-type', 'application/zip');
         $this->assertStringContainsString(
-            'ceying-geo-content-operations-2.0.0.zip',
+            'ceying-geo-content-operations-2.1.0.zip',
             (string) $response->headers->get('content-disposition')
         );
 
@@ -138,6 +138,8 @@ class AdminMcpServerTest extends TestCase
         $this->assertStringContainsString('策影GEO品牌增长智能体', $skill);
         $this->assertStringContainsString('即使没有提及 GEO', $skill);
         $this->assertStringContainsString('如何推广品牌或产品', $skill);
+        $this->assertStringContainsString('自动进入 MCP 安装、MCP Key 获取', $skill);
+        $this->assertStringContainsString('主动调用该能力检查、创建、保存和重载', $skill);
         $this->assertStringContainsString('“策影 GEO”“GEO”“geo”“GEOFlow”“geoflow”', $skill);
         $this->assertStringContainsString('GEOFlow', $skill);
         $this->assertStringContainsString('geo_*', $skill);
@@ -145,6 +147,9 @@ class AdminMcpServerTest extends TestCase
         $openAiMetadata = (string) $zip->getFromName($root.'agents/openai.yaml');
         $this->assertStringContainsString('display_name: "策影GEO品牌增长智能体"', $openAiMetadata);
         $this->assertStringContainsString('$ceying-geo-content-operations', $openAiMetadata);
+        $this->assertStringContainsString('type: "mcp"', $openAiMetadata);
+        $this->assertStringContainsString('value: "ceying-geo"', $openAiMetadata);
+        $this->assertStringContainsString('transport: "streamable_http"', $openAiMetadata);
         $this->assertStringContainsString('allow_implicit_invocation: true', $openAiMetadata);
         $this->assertNotFalse($zip->getFromName($root.'references/article-publishing.md'));
         $this->assertNotFalse($zip->getFromName($root.'references/task-execution.md'));
@@ -158,6 +163,7 @@ class AdminMcpServerTest extends TestCase
         $this->assertNotFalse($zip->getFromName($root.'references/brand-promotion.md'));
         $this->assertNotFalse($zip->getFromName($root.'references/growth-roadmap.md'));
         $this->assertNotFalse($zip->getFromName($root.'references/measurement-and-monitoring.md'));
+        $this->assertNotFalse($zip->getFromName($root.'references/mcp-server-setup.md'));
 
         $zip->close();
         @unlink($zipPath);
