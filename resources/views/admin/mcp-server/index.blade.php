@@ -293,7 +293,7 @@
                 </div>
                 <div>
                     <dt class="text-xs font-medium text-gray-500">适配服务</dt>
-                    <dd class="mt-1 text-sm font-medium text-gray-900">ceying-geo MCP {{ $mcpSkill['mcp_server_version'] }}+</dd>
+                    <dd class="mt-1 text-sm font-medium text-gray-900">ceying-geo MCP {{ $mcpSkill['mcp_server_version'] }}+；潜客挖掘 MCP 按场景启用</dd>
                 </div>
                 <div>
                     <dt class="text-xs font-medium text-gray-500">自然触发场景</dt>
@@ -301,7 +301,7 @@
                 </div>
                 <div>
                     <dt class="text-xs font-medium text-gray-500">工具兼容</dt>
-                    <dd class="mt-1 text-sm text-gray-700">继续使用现有 <code class="text-blue-700">geo_*</code> 工具名</dd>
+                    <dd class="mt-1 text-sm text-gray-700">继续使用 <code class="text-blue-700">geo_*</code>，潜客能力通过 <code class="text-blue-700">qw_mcp_list</code> 发现</dd>
                 </div>
             </dl>
 
@@ -311,11 +311,12 @@
                     <i data-lucide="chevron-down" class="h-4 w-4 shrink-0 text-gray-500 transition-transform group-open:rotate-180"></i>
                 </summary>
                 <div class="space-y-5 pt-4">
-                    <ol class="grid gap-4 md:grid-cols-3">
+                    <ol class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                         @foreach ([
                             ['1', '下载并解压', '保留 ceying-geo-content-operations 根目录及其中的 SKILL.md、agents 和 references。'],
                             ['2', '安装到客户端', '将完整目录放入 AI 应用声明的 Agent Skills 目录，不要只复制 SKILL.md。'],
-                            ['3', '自动连接并验证', '客户端支持时由 Skill 主动创建、保存并重载 ceying-geo 连接；用户仅确认站点、权限并在安全区域填写 Key。'],
+                            ['3', '连接 ceying-geo', '客户端支持时由 Skill 主动创建、保存并重载 ceying-geo 连接；用户仅确认站点、权限并在安全区域填写 Key。'],
+                            ['4', '连接潜客 MCP', '需要获客时由 Skill 检查本地潜客挖掘 MCP，发现 qw_mcp_list 后再匹配具体工具和参数。'],
                         ] as [$step, $title, $description])
                             <li class="border-l-2 border-blue-500 pl-4">
                                 <div class="text-xs font-semibold text-blue-600">步骤 {{ $step }}</div>
@@ -329,7 +330,7 @@
                         <div class="flex items-start justify-between gap-4">
                             <div>
                                 <h3 class="text-sm font-semibold text-gray-900">不支持 Agent Skills 的客户端</h3>
-                                <p id="ceying-geo-fallback-prompt" class="mt-1 text-sm leading-6 text-gray-600">你是策影GEO品牌增长智能体。每次响应首先检查当前会话是否发现 geo_* 工具。完全未发现时暂停品牌分析、路线图输出和业务信息追问，立即检查客户端 MCP 安装能力；能够自动配置时主动创建、保存并重载 ceying-geo 连接，否则逐步引导用户从策影GEO平台“MCP Server”页面获取当前站点地址、创建最小权限 Key，并将 Key 直接配置到客户端安全凭证区域。不得要求用户在对话中发送 Key。实际发现工具并通过只读调用后，再完成诊断、素材、文章、投稿和跟踪；不要猜测资源编号；投稿、执行任务、确认品牌诊断或删除素材前说明费用或影响并取得授权；同一写操作重试保持参数和 idempotency_key 不变。</p>
+                                <p id="ceying-geo-fallback-prompt" class="mt-1 text-sm leading-6 text-gray-600">你是策影GEO品牌增长智能体。每次响应先判断本次任务需要 ceying-geo、潜客挖掘或两类 MCP 联动。需要品牌诊断、素材、文章、媒体投稿或结果查询时检查 geo_* 工具；完全未发现时暂停对应执行，主动引导用户从策影GEO平台“MCP Server”页面获取当前站点地址、创建最小权限 Key，并将 Key 直接配置到客户端安全凭证区域。需要获客、评论线索、企业搜索或客户触达时检查 qw_mcp_list 和 qw_mcp_get；未发现时引导用户连接本地潜客挖掘 MCP 和已登录的 AI获客工具桌面端。不得要求用户在对话中发送 Key。实际发现目标工具并通过只读调用后，再按行业场景完成诊断、内容、投稿、潜客挖掘和触达；不要猜测资源编号或工具参数；付费、发布、诊断、删除、获客和触达前说明费用、额度或影响并取得授权；同一写操作重试保持参数和 idempotency_key 不变。</p>
                             </div>
                             <button type="button" class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-600 hover:bg-gray-100" data-copy-target="ceying-geo-fallback-prompt" title="复制兼容指令" aria-label="复制兼容指令">
                                 <i data-lucide="copy" class="h-4 w-4"></i>

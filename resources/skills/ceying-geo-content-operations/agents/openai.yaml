@@ -1,12 +1,16 @@
 interface:
   display_name: "策影GEO品牌增长智能体"
-  short_description: "诊断品牌可见性并规划、生成、发布和跟踪增长内容"
-  default_prompt: "使用 $ceying-geo-content-operations 时先检查 ceying-geo MCP 连接；未发现 geo_* 工具则主动帮助我完成安装、Key 安全配置和连接验证，连接成功后再分析品牌增长问题。"
+  short_description: "诊断品牌可见性，并按行业联动内容增长与潜客挖掘"
+  default_prompt: "使用 $ceying-geo-content-operations 时先判断本次任务需要 ceying-geo、潜客挖掘或两类 MCP 联动；缺少必需工具时主动帮助我完成安装、Key 或本地服务连接、安全配置和只读验证，连接成功后再执行品牌增长或获客任务。"
 dependencies:
   tools:
     - type: "mcp"
       value: "ceying-geo"
       description: "连接策影GEO平台，执行品牌诊断、素材管理、文章任务、媒体投稿和结果查询。"
+      transport: "streamable_http"
+    - type: "mcp"
+      value: "qian-ke-wa-jue"
+      description: "连接本地潜客挖掘 MCP，执行评论线索采集、企业获客、联系方式查询和客户触达。"
       transport: "streamable_http"
 policy:
   allow_implicit_invocation: true

@@ -51,7 +51,7 @@ class AdminMcpServerTest extends TestCase
      *
      * @CreateTime: 2026-07-13 16:38:47
      *
-     * @UpdateTime: 2026-08-05 09:57:26
+     * @UpdateTime: 2026-08-05 14:45:32
      *
      * @Return: void
      */
@@ -73,8 +73,10 @@ class AdminMcpServerTest extends TestCase
             ->assertSee('策影GEO品牌增长智能体')
             ->assertSee('自然触发场景')
             ->assertSee('品牌或产品推广')
+            ->assertSee('潜客挖掘与客户开发')
             ->assertSee('ceying-geo-content-operations')
             ->assertSee('GEOFlow')
+            ->assertSee('qw_mcp_list')
             ->assertSee('<h2 id="materials-heading" class="text-xl font-semibold text-gray-900">GEO 素材管理</h2>', false)
             ->assertSee(route('admin.mcp-server.skills.download'), false)
             ->assertSee('geo_run_task')
@@ -100,13 +102,13 @@ class AdminMcpServerTest extends TestCase
     /**
      * @Name: test_user_can_download_versioned_ceying_geo_skill_package
      *
-     * @Description: 验证登录用户可下载带强制 MCP 连接门禁的品牌增长 Skill ZIP，包内包含安装引导和十三类业务参考文件且不携带连接凭证。
+     * @Description: 验证登录用户可下载带 MCP 能力门禁的品牌增长 Skill ZIP，包内包含安装引导和十四类业务参考文件且不携带连接凭证。
      *
      * @Author: cdkay
      *
      * @CreateTime: 2026-07-29 15:41:12
      *
-     * @UpdateTime: 2026-08-05 13:47:27
+     * @UpdateTime: 2026-08-05 14:45:32
      *
      * @Return: void
      */
@@ -121,7 +123,7 @@ class AdminMcpServerTest extends TestCase
         $response->assertOk();
         $response->assertHeader('content-type', 'application/zip');
         $this->assertStringContainsString(
-            'ceying-geo-content-operations-2.1.1.zip',
+            'ceying-geo-content-operations-2.2.0.zip',
             (string) $response->headers->get('content-disposition')
         );
 
@@ -138,10 +140,12 @@ class AdminMcpServerTest extends TestCase
         $this->assertStringContainsString('策影GEO品牌增长智能体', $skill);
         $this->assertStringContainsString('即使没有提及 GEO', $skill);
         $this->assertStringContainsString('如何推广品牌或产品', $skill);
-        $this->assertStringContainsString('每次触发的第一步必须检查 ceying-geo MCP Server', $skill);
-        $this->assertStringContainsString('## 强制启动门禁', $skill);
-        $this->assertStringContainsString('暂停品牌诊断、增长路线图、内容生成和业务信息追问', $skill);
-        $this->assertStringContainsString('不得止于“当前 ceying-geo 未连接”', $skill);
+        $this->assertStringContainsString('潜客挖掘', $skill);
+        $this->assertStringContainsString('qw_mcp_list', $skill);
+        $this->assertStringContainsString('每次触发后必须先判断本次任务需要 ceying-geo、潜客挖掘或两类 MCP 联动', $skill);
+        $this->assertStringContainsString('## 强制能力门禁', $skill);
+        $this->assertStringContainsString('不因缺少潜客挖掘 MCP 阻断', $skill);
+        $this->assertStringContainsString('缺少必需 MCP 时的首轮响应不得止于', $skill);
         $this->assertStringContainsString('“策影 GEO”“GEO”“geo”“GEOFlow”“geoflow”', $skill);
         $this->assertStringContainsString('GEOFlow', $skill);
         $this->assertStringContainsString('geo_*', $skill);
@@ -151,6 +155,7 @@ class AdminMcpServerTest extends TestCase
         $this->assertStringContainsString('$ceying-geo-content-operations', $openAiMetadata);
         $this->assertStringContainsString('type: "mcp"', $openAiMetadata);
         $this->assertStringContainsString('value: "ceying-geo"', $openAiMetadata);
+        $this->assertStringContainsString('value: "qian-ke-wa-jue"', $openAiMetadata);
         $this->assertStringContainsString('transport: "streamable_http"', $openAiMetadata);
         $this->assertStringContainsString('allow_implicit_invocation: true', $openAiMetadata);
         $this->assertNotFalse($zip->getFromName($root.'references/article-publishing.md'));
@@ -166,6 +171,7 @@ class AdminMcpServerTest extends TestCase
         $this->assertNotFalse($zip->getFromName($root.'references/growth-roadmap.md'));
         $this->assertNotFalse($zip->getFromName($root.'references/measurement-and-monitoring.md'));
         $this->assertNotFalse($zip->getFromName($root.'references/mcp-server-setup.md'));
+        $this->assertNotFalse($zip->getFromName($root.'references/prospect-mining.md'));
 
         $zip->close();
         @unlink($zipPath);
