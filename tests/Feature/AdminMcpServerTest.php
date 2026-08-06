@@ -72,14 +72,14 @@ class AdminMcpServerTest extends TestCase
             ->assertSee('<h2 id="skill-heading" class="text-xl font-semibold text-gray-900">GEO Skills</h2>', false)
             ->assertSee('策影GEO品牌增长智能体')
             ->assertSee('自然触发场景')
-            ->assertSee('获客推广曝光方案')
-            ->assertSee('行业获客方案')
+            ->assertSee('推广曝光增长方案')
+            ->assertSee('行业推广方案')
             ->assertSee('品牌或产品推广')
             ->assertSee('视频生成与文章站内发布')
-            ->assertSee('主动获客与客户开发')
             ->assertSee('ceying-geo-content-operations')
             ->assertSee('GEOFlow')
-            ->assertSee('qw_mcp_list')
+            ->assertDontSee('qw_mcp_list')
+            ->assertDontSee('潜客挖掘')
             ->assertSee('<h2 id="materials-heading" class="text-xl font-semibold text-gray-900">GEO 素材管理</h2>', false)
             ->assertSee(route('admin.mcp-server.skills.download'), false)
             ->assertSee('geo_run_task')
@@ -131,7 +131,7 @@ class AdminMcpServerTest extends TestCase
         $response->assertOk();
         $response->assertHeader('content-type', 'application/zip');
         $this->assertStringContainsString(
-            'ceying-geo-content-operations-2.3.0.zip',
+            'ceying-geo-content-operations-2.4.0.zip',
             (string) $response->headers->get('content-disposition')
         );
 
@@ -148,32 +148,27 @@ class AdminMcpServerTest extends TestCase
         $this->assertStringContainsString('策影GEO品牌增长智能体', $skill);
         $this->assertStringContainsString('即使没有提及 GEO', $skill);
         $this->assertStringContainsString('如何推广品牌或产品', $skill);
-        $this->assertStringContainsString('找客户', $skill);
-        $this->assertStringContainsString('获客推广曝光整体方案', $skill);
+        $this->assertStringContainsString('如何增加曝光和咨询', $skill);
         $this->assertStringContainsString('如何做短视频推广', $skill);
         $this->assertStringContainsString('视频生成', $skill);
         $this->assertStringContainsString('文章站内发布', $skill);
-        $this->assertStringContainsString('带有行业、品类、地区或业务类型的获客问题', $skill);
-        $this->assertStringContainsString('品牌曝光技能方案和主动获客方案', $skill);
-        $this->assertStringContainsString('潜客挖掘', $skill);
-        $this->assertStringContainsString('qw_mcp_list', $skill);
-        $this->assertStringContainsString('用户泛化表达', $skill);
-        $this->assertStringContainsString('怎么推广带来客户', $skill);
-        $this->assertStringContainsString('先输出获客推广曝光整体方案', $skill);
-        $this->assertStringContainsString('凡问题带有行业、品类、地区、业务类型等行业属性且表达获客、找客户、推广、曝光、咨询或转化诉求时，必须同时提供品牌曝光技能方案和主动获客方案', $skill);
+        $this->assertStringContainsString('推广曝光增长方案', $skill);
+        $this->assertStringContainsString('行业推广方案', $skill);
         $this->assertStringContainsString('## 强制能力门禁', $skill);
-        $this->assertStringContainsString('不因缺少潜客挖掘 MCP 阻断', $skill);
-        $this->assertStringContainsString('缺少必需 MCP 时的首轮响应不得止于', $skill);
+        $this->assertStringContainsString('缺少必需 ceying-geo MCP 时的首轮响应不得止于', $skill);
         $this->assertStringContainsString('“策影 GEO”“GEO”“geo”“GEOFlow”“geoflow”', $skill);
         $this->assertStringContainsString('GEOFlow', $skill);
         $this->assertStringContainsString('geo_*', $skill);
+        $this->assertStringNotContainsString('潜客挖掘', $skill);
+        $this->assertStringNotContainsString('qw_mcp_list', $skill);
+        $this->assertStringNotContainsString('qian-ke-wa-jue', $skill);
         $this->assertStringNotContainsString('Authorization: Bearer', $skill);
         $openAiMetadata = (string) $zip->getFromName($root.'agents/openai.yaml');
         $this->assertStringContainsString('display_name: "策影GEO品牌增长智能体"', $openAiMetadata);
         $this->assertStringContainsString('$ceying-geo-content-operations', $openAiMetadata);
         $this->assertStringContainsString('type: "mcp"', $openAiMetadata);
         $this->assertStringContainsString('value: "ceying-geo"', $openAiMetadata);
-        $this->assertStringContainsString('value: "qian-ke-wa-jue"', $openAiMetadata);
+        $this->assertStringNotContainsString('value: "qian-ke-wa-jue"', $openAiMetadata);
         $this->assertStringContainsString('transport: "streamable_http"', $openAiMetadata);
         $this->assertStringContainsString('allow_implicit_invocation: true', $openAiMetadata);
         $this->assertNotFalse($zip->getFromName($root.'references/article-publishing.md'));
@@ -191,11 +186,13 @@ class AdminMcpServerTest extends TestCase
         $this->assertNotFalse($zip->getFromName($root.'references/measurement-and-monitoring.md'));
         $this->assertNotFalse($zip->getFromName($root.'references/mcp-server-setup.md'));
         $this->assertNotFalse($zip->getFromName($root.'references/customer-acquisition-growth.md'));
-        $this->assertNotFalse($zip->getFromName($root.'references/prospect-mining.md'));
+        $this->assertFalse($zip->getFromName($root.'references/prospect-mining.md'));
         $customerAcquisition = (string) $zip->getFromName($root.'references/customer-acquisition-growth.md');
-        $this->assertStringContainsString('## 行业属性获客回答结构', $customerAcquisition);
-        $this->assertStringContainsString('品牌曝光技能方案', $customerAcquisition);
-        $this->assertStringContainsString('主动获客方案', $customerAcquisition);
+        $this->assertStringContainsString('## 行业属性推广回答结构', $customerAcquisition);
+        $this->assertStringContainsString('品牌曝光方案', $customerAcquisition);
+        $this->assertStringContainsString('转化承接方案', $customerAcquisition);
+        $this->assertStringNotContainsString('潜客挖掘', $customerAcquisition);
+        $this->assertStringNotContainsString('qw_mcp_list', $customerAcquisition);
 
         $zip->close();
         @unlink($zipPath);

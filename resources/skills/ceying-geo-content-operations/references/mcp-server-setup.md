@@ -4,7 +4,7 @@
 
 建立名称为 `ceying-geo` 的 MCP 连接，并确认当前会话发现目标业务所需的 `geo_*` 工具。Skill 不内置服务地址或凭证，因为服务地址取决于实际部署，MCP Key 绑定具体账号、站点和权限。
 
-本文件只处理 ceying-geo MCP Server。潜客挖掘、本地获客工具、企业搜索和客户触达所需的独立 MCP 连接，读取 [prospect-mining.md](prospect-mining.md) 的连接预检，不使用 ceying-geo 的 MCP Key 代替。
+本文件只处理 ceying-geo MCP Server。不要在平台 Skill 中引导安装、配置或调用与 ceying-geo 无关的 MCP。
 
 ## 未连接时的首轮动作
 
