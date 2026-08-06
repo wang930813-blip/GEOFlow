@@ -213,6 +213,86 @@ void describe('ceying-geo MCP 工具注册', () => {
         }
     });
 
+    void it('未传幂等键时自动投稿工具按相同文章和渠道生成稳定幂等键', async () => {
+        const requests: Array<{ path: string; idempotencyKey: string | null }> = [];
+        const fetcher: typeof fetch = (input, init) => {
+            const url = input instanceof URL ? input : input instanceof Request ? new URL(input.url) : new URL(input);
+            requests.push({
+                path: url.pathname,
+                idempotencyKey: new Headers(init?.headers).get('X-Idempotency-Key'),
+            });
+
+            if (url.pathname === '/api/v1/articles') {
+                return Promise.resolve(
+                    new Response(
+                        JSON.stringify({
+                            success: true,
+                            data: { id: 91, title: 'AI 自动投稿文章' },
+                        }),
+                        {
+                            status: 201,
+                            headers: { 'Content-Type': 'application/json' },
+                        },
+                    ),
+                );
+            }
+
+            return Promise.resolve(
+                new Response(
+                    JSON.stringify({
+                        success: true,
+                        data: {
+                            submissions: [{ id: 301, media_resource_id: 8 }],
+                            errors: [],
+                        },
+                    }),
+                    {
+                        status: 201,
+                        headers: { 'Content-Type': 'application/json' },
+                    },
+                ),
+            );
+        };
+        const publicationContext: GeoFlowAuthContext = {
+            ...context,
+            token: {
+                ...context.token,
+                scopes: ['mcp:connect', 'catalog:read', 'articles:write', 'media:submit'],
+            },
+        };
+        const server = createGeoMcpServer(createClient(fetcher), publicationContext);
+        const client = new Client({ name: 'publication-idempotency-check', version: '1.0.0' });
+        const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+        const payload = {
+            title: 'AI 自动投稿文章',
+            content: '# 正文',
+            category_id: 5,
+            author_id: 6,
+            media_resource_ids: [8, 9],
+            remark: '自动投稿',
+        };
+
+        await server.connect(serverTransport);
+        await client.connect(clientTransport);
+
+        try {
+            await client.callTool({ name: 'geo_publish_article_to_media', arguments: payload });
+            await client.callTool({ name: 'geo_publish_article_to_media', arguments: payload });
+
+            assert.deepEqual(
+                requests.map((request) => request.path),
+                ['/api/v1/articles', '/api/v1/media/submissions', '/api/v1/articles', '/api/v1/media/submissions'],
+            );
+            assert.equal(requests[0]?.idempotencyKey, requests[2]?.idempotencyKey);
+            assert.equal(requests[1]?.idempotencyKey, requests[3]?.idempotencyKey);
+            assert.match(requests[0]?.idempotencyKey || '', /^mcp-publication-[a-f0-9]{48}:article$/u);
+            assert.match(requests[1]?.idempotencyKey || '', /^mcp-publication-[a-f0-9]{48}:submission$/u);
+        } finally {
+            await client.close();
+            await server.close();
+        }
+    });
+
     void it('具备文章发布权限时发现 GEO 用户站点发布工具', async () => {
         const sitePublishContext: GeoFlowAuthContext = {
             ...context,

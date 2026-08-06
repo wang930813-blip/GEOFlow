@@ -10,7 +10,7 @@
  * @Description: 按 MCP Key scope 动态注册 ceying-geo 品牌增长、诊断、素材、文章、视频、任务和媒体工具。
  */
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import * as z from 'zod/v4';
@@ -70,6 +70,74 @@ const videoInputSchema = {
     video_count: z.number().int().min(1).max(5).default(1).describe('本次生成视频数量'),
     cover_image: z.string().trim().max(1000).optional().describe('可选封面图地址，只作为视频生成任务元数据'),
 };
+
+/**
+ * @Name: normalizeIdempotencyPayload
+ * @Description: 递归排序对象键，生成稳定的幂等摘要输入；数组保持原顺序，避免改变确认问题和渠道列表等有序业务语义。
+ *
+ * @Author: cdkay
+ * @CreateTime: 2026-08-06 10:55:22
+ * @UpdateTime: 2026-08-06 10:55:22
+ *
+ * @Param: unknown value 待规范化的工具参数
+ * @Return: unknown 规范化后的幂等摘要输入
+ */
+function normalizeIdempotencyPayload(value: unknown): unknown {
+    if (Array.isArray(value)) {
+        return value.map((item) => normalizeIdempotencyPayload(item));
+    }
+    if (typeof value !== 'object' || value === null) {
+        return value;
+    }
+
+    const normalized: Record<string, unknown> = {};
+    for (const key of Object.keys(value).sort()) {
+        const item = (value as Record<string, unknown>)[key];
+        if (item !== undefined) {
+            normalized[key] = normalizeIdempotencyPayload(item);
+        }
+    }
+
+    return normalized;
+}
+
+/**
+ * @Name: stableIdempotencyKey
+ * @Description: 在调用方未传幂等键时，根据工具名和业务参数生成稳定幂等键，避免 AI 客户端自动重试导致重复创建文章或投稿订单。
+ *
+ * @Author: cdkay
+ * @CreateTime: 2026-08-06 10:55:22
+ * @UpdateTime: 2026-08-06 10:55:22
+ *
+ * @Param: string prefix 工具场景前缀
+ * @Param: unknown payload 工具业务参数
+ * @Return: string 满足 GEO API 字符集要求的稳定幂等键
+ */
+function stableIdempotencyKey(prefix: string, payload: unknown): string {
+    const normalizedPayload = JSON.stringify(normalizeIdempotencyPayload(payload));
+    const digest = createHash('sha256').update(`${prefix}:${normalizedPayload}`).digest('hex').slice(0, 48);
+
+    return `${prefix}-${digest}`;
+}
+
+/**
+ * @Name: resolveIdempotencyKey
+ * @Description: 优先使用客户端显式幂等键；缺省时使用稳定派生键，保证同一工具参数重复调用可以命中 GEO API 幂等缓存。
+ *
+ * @Author: cdkay
+ * @CreateTime: 2026-08-06 10:55:22
+ * @UpdateTime: 2026-08-06 10:55:22
+ *
+ * @Param: string | undefined idempotencyKey 客户端传入幂等键
+ * @Param: string prefix 工具场景前缀
+ * @Param: unknown payload 工具业务参数
+ * @Return: string 最终幂等键
+ */
+function resolveIdempotencyKey(idempotencyKey: string | undefined, prefix: string, payload: unknown): string {
+    const key = idempotencyKey?.trim();
+
+    return key && key.length > 0 ? key : stableIdempotencyKey(prefix, payload);
+}
 
 /**
  * @Name: hasScope
@@ -711,7 +779,11 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
             },
             async ({ idempotency_key, ...article }) =>
                 await executeTool(
-                    async () => await client.createArticle(article, idempotency_key || `mcp-article-${randomUUID()}`),
+                    async () =>
+                        await client.createArticle(
+                            article,
+                            resolveIdempotencyKey(idempotency_key, 'mcp-article', article),
+                        ),
                 ),
         );
     }
@@ -734,7 +806,7 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
                     async () =>
                         await client.publishArticleToSite(
                             article_id,
-                            idempotency_key || `mcp-article-site-publish-${randomUUID()}`,
+                            resolveIdempotencyKey(idempotency_key, 'mcp-article-site-publish', { article_id }),
                         ),
                 ),
         );
@@ -843,7 +915,11 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
                             article_id,
                             media_resource_ids,
                             remark,
-                            idempotency_key || `mcp-submission-${randomUUID()}`,
+                            resolveIdempotencyKey(idempotency_key, 'mcp-submission', {
+                                article_id,
+                                media_resource_ids,
+                                remark,
+                            }),
                         ),
                 ),
         );
@@ -875,7 +951,11 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
                             article,
                             media_resource_ids,
                             remark,
-                            idempotency_key || `mcp-publication-${randomUUID()}`,
+                            resolveIdempotencyKey(idempotency_key, 'mcp-publication', {
+                                article,
+                                media_resource_ids,
+                                remark,
+                            }),
                         ),
                 ),
         );
