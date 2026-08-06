@@ -511,6 +511,9 @@ class BrandDiagnosisController extends Controller
         $platformData = $this->recordPlatformData($run);
         $allPlatformData = $platformData['all'];
         $brandProfile = $this->displayableBrandProfile($run);
+        $showFailureDetails = $this->shouldShowFailureDetails($run);
+        $errorMessage = $showFailureDetails ? $this->recordErrorMessage($run) : '';
+        $resultErrors = $showFailureDetails ? $this->recordResultErrors($run) : [];
 
         return [
             'id' => (int) $run->id,
@@ -526,6 +529,9 @@ class BrandDiagnosisController extends Controller
             'created_at' => $run->created_at?->format('Y-m-d H:i:s') ?? '',
             'expanded' => $expanded,
             'has_report' => (string) $run->status === 'completed',
+            'error_message' => $errorMessage,
+            'error_summary' => $this->recordErrorSummary($errorMessage, $resultErrors),
+            'result_errors' => $resultErrors,
             'metrics' => $allPlatformData['metrics'],
             'questions' => $questions,
             'sources' => $allPlatformData['sources'],
@@ -544,6 +550,7 @@ class BrandDiagnosisController extends Controller
     {
         $metrics = $this->storedMetrics($run);
         $platformData = $this->summaryPlatformData($run, $metrics);
+        $errorMessage = $this->shouldShowFailureDetails($run) ? $this->recordErrorMessage($run) : '';
 
         return [
             'id' => (int) $run->id,
@@ -559,6 +566,9 @@ class BrandDiagnosisController extends Controller
             'created_at' => $run->created_at?->format('Y-m-d H:i:s') ?? '',
             'expanded' => false,
             'has_report' => (string) $run->status === 'completed',
+            'error_message' => $errorMessage,
+            'error_summary' => $this->recordErrorSummary($errorMessage, []),
+            'result_errors' => [],
             'metrics' => $metrics,
             'questions' => [],
             'sources' => [],
@@ -568,6 +578,61 @@ class BrandDiagnosisController extends Controller
             'platform_data' => $platformData,
             'can_manage_official_links' => auth('admin')->user()?->isSuperAdmin() ?? false,
         ];
+    }
+
+    private function shouldShowFailureDetails(BrandDiagnosisRun $run): bool
+    {
+        return (string) $run->status === 'failed';
+    }
+
+    private function recordErrorMessage(BrandDiagnosisRun $run): string
+    {
+        return $this->normalizeErrorText((string) ($run->error_message ?? ''));
+    }
+
+    /**
+     * @return list<array{platform:string,platform_key:string,question_rank:int,question:string,error:string}>
+     */
+    private function recordResultErrors(BrandDiagnosisRun $run): array
+    {
+        return $run->questions
+            ->flatMap(function ($question): Collection {
+                return $question->results
+                    ->where('status', 'failed')
+                    ->map(function ($result) use ($question): array {
+                        return [
+                            'platform' => $this->platformLabel((string) $result->platform),
+                            'platform_key' => (string) $result->platform,
+                            'question_rank' => (int) $question->sort_order,
+                            'question' => (string) $question->question,
+                            'error' => $this->normalizeErrorText((string) ($result->error_message ?? '')),
+                        ];
+                    });
+            })
+            ->filter(static fn (array $row): bool => $row['error'] !== '')
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  list<array{error:string}>  $resultErrors
+     */
+    private function recordErrorSummary(string $runError, array $resultErrors): string
+    {
+        $summary = $runError !== ''
+            ? $runError
+            : (string) ($resultErrors[0]['error'] ?? '');
+        $summary = trim((string) preg_replace('/\s+/u', ' ', $summary));
+
+        return mb_strimwidth($summary, 0, 180, '...', 'UTF-8');
+    }
+
+    private function normalizeErrorText(string $message): string
+    {
+        $message = trim(str_replace(["\r\n", "\r"], "\n", $message));
+        $message = preg_replace("/\n{3,}/u", "\n\n", $message) ?? $message;
+
+        return mb_strimwidth($message, 0, 2000, '...', 'UTF-8');
     }
 
     /**

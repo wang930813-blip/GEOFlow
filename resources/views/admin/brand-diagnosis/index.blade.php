@@ -224,6 +224,10 @@
                             $recordQuestions = $record['questions'] ?? [];
                             $recordSources = $record['sources'] ?? [];
                             $recordConversations = $record['conversations'] ?? [];
+                            $recordErrorSummary = trim((string) ($record['error_summary'] ?? ''));
+                            $recordErrorMessage = trim((string) ($record['error_message'] ?? ''));
+                            $recordResultErrors = is_array($record['result_errors'] ?? null) ? $record['result_errors'] : [];
+                            $recordHasFailureDetails = $recordErrorMessage !== '' || count($recordResultErrors) > 0;
                             $recordPlatformOptions = $record['platform_options'] ?? [['value' => 'all', 'label' => '全部平台']];
                             $recordPlatformData = $record['platform_data'] ?? [];
                             $recordMentionRateRanking = $record['rankings']['mention_rate'] ?? [];
@@ -292,7 +296,43 @@
                                 </div>
                             </div>
 
+                            @if ($recordErrorSummary !== '')
+                                <div class="px-4 pb-4">
+                                    <div class="flex min-w-0 items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                                        <i data-lucide="alert-triangle" class="h-3.5 w-3.5 shrink-0"></i>
+                                        <span class="shrink-0 font-semibold">失败原因：</span>
+                                        <span class="truncate" title="{{ $recordErrorSummary }}">{{ $recordErrorSummary }}</span>
+                                    </div>
+                                </div>
+                            @endif
+
                             <div data-record-detail @class(['hidden' => ! $record['expanded'], 'border-t border-slate-200 bg-white p-4'])>
+                                @if ($recordHasFailureDetails)
+                                    <section class="mb-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                                        <div class="flex items-center gap-2 font-semibold">
+                                            <i data-lucide="alert-triangle" class="h-4 w-4 shrink-0"></i>
+                                            <span>诊断失败原因</span>
+                                        </div>
+                                        @if ($recordErrorMessage !== '')
+                                            <p class="mt-2 whitespace-pre-wrap leading-6">{{ $recordErrorMessage }}</p>
+                                        @endif
+                                        @if (count($recordResultErrors) > 0)
+                                            <div class="mt-3 space-y-2">
+                                                @foreach ($recordResultErrors as $errorRow)
+                                                    <div class="rounded-md border border-red-200 bg-white/70 px-3 py-2">
+                                                        <div class="text-xs font-semibold text-red-800">
+                                                            {{ $errorRow['platform'] ?? 'AI模型' }} / 问题 {{ $errorRow['question_rank'] ?? '-' }}
+                                                        </div>
+                                                        @if (trim((string) ($errorRow['question'] ?? '')) !== '')
+                                                            <div class="mt-1 text-xs text-red-600">{{ $errorRow['question'] }}</div>
+                                                        @endif
+                                                        <div class="mt-1 whitespace-pre-wrap text-xs leading-5 text-red-700">{{ $errorRow['error'] ?? '' }}</div>
+                                                    </div>
+                                                @endforeach
+                                            </div>
+                                        @endif
+                                    </section>
+                                @endif
                                 <div class="rounded-lg border border-slate-200 bg-orange-50/40 px-3 py-2 text-xs text-gray-600">
                                     记录 #{{ $record['id'] }} 当前状态：{{ $record['status'] }}。诊断完成后会展示所选模型真实联网回答和引用来源。
                                 </div>
@@ -365,7 +405,11 @@
                                         >{{ old('questions.'.$question['id'], $question['text']) }}</textarea>
                                     </label>
                                 @empty
+                                    @if (($record['raw_status'] ?? '') === 'failed')
+                                        <div class="rounded-lg border border-dashed border-red-200 bg-red-50 px-4 py-8 text-center text-sm text-red-600 lg:col-span-2">问题生成失败，未生成可诊断问题。请根据上方失败原因调整品牌词或模型配置后重新诊断。</div>
+                                    @else
                                     <div class="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-gray-500 lg:col-span-2">AI 问题生成后会显示在这里。</div>
+                                    @endif
                                 @endforelse
                             </div>
                         </form>

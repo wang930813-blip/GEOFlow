@@ -481,6 +481,106 @@ class AdminBrandDiagnosisPageTest extends TestCase
         $this->assertStringNotContainsString(route('admin.brand-diagnosis.report.download', ['run' => $failedRun->id]), $html);
     }
 
+    public function test_failed_brand_diagnosis_record_displays_failure_reason(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('brand_failure_reason_admin');
+        $profileFailedRun = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => '策影少儿编程',
+            'platforms' => ['doubao', 'deepseek'],
+            'status' => 'failed',
+            'total_questions' => 0,
+            'completed_questions' => 0,
+            'failed_questions' => 0,
+            'error_message' => '未检索到可用品牌介绍，请更换更明确的品牌词后重试。',
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+            'created_at' => now(),
+        ]);
+        $modelFailedRun = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => '模型调用失败品牌',
+            'platforms' => ['doubao'],
+            'status' => 'failed',
+            'total_questions' => 1,
+            'completed_questions' => 0,
+            'failed_questions' => 1,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+            'created_at' => now()->subMinute(),
+        ]);
+        $completedRun = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => '已完成残留错误品牌',
+            'platforms' => ['doubao'],
+            'status' => 'completed',
+            'total_questions' => 2,
+            'completed_questions' => 1,
+            'failed_questions' => 1,
+            'error_message' => '历史完成记录残留错误不应展示',
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+            'created_at' => now()->addMinute(),
+        ]);
+        $completedQuestion = $completedRun->questions()->create([
+            'site_id' => (int) $site->id,
+            'question' => '完成记录问题？',
+            'question_type' => '选择',
+            'sort_order' => 1,
+            'status' => 'failed',
+        ]);
+        $completedQuestion->results()->create([
+            'site_id' => (int) $site->id,
+            'run_id' => (int) $completedRun->id,
+            'platform' => 'doubao',
+            'answer' => null,
+            'brand_mentioned' => false,
+            'mention_count' => 0,
+            'mention_rank' => 0,
+            'sentiment' => 'neutral',
+            'status' => 'failed',
+            'error_message' => '完成记录模型错误不应展示',
+            'checked_at' => now(),
+        ]);
+        $question = $modelFailedRun->questions()->create([
+            'site_id' => (int) $site->id,
+            'question' => '儿童编程哪家好？',
+            'question_type' => '选择',
+            'sort_order' => 1,
+            'status' => 'failed',
+        ]);
+        $question->results()->create([
+            'site_id' => (int) $site->id,
+            'run_id' => (int) $modelFailedRun->id,
+            'platform' => 'doubao',
+            'answer' => null,
+            'brand_mentioned' => false,
+            'mention_count' => 0,
+            'mention_rank' => 0,
+            'sentiment' => 'neutral',
+            'status' => 'failed',
+            'error_message' => '豆包 brand diagnosis request failed: HTTP 401 insufficient quota',
+            'checked_at' => now(),
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.brand-diagnosis.index'))
+            ->assertOk()
+            ->assertSee('失败原因')
+            ->assertSee('未检索到可用品牌介绍，请更换更明确的品牌词后重试。')
+            ->assertSee('问题生成失败，未生成可诊断问题。')
+            ->assertSee('豆包 brand diagnosis request failed: HTTP 401 insufficient quota')
+            ->assertSee('模型调用失败品牌')
+            ->assertSee('记录 #'.$profileFailedRun->id)
+            ->assertSee('已完成残留错误品牌')
+            ->assertDontSee('历史完成记录残留错误不应展示')
+            ->assertDontSee('完成记录模型错误不应展示');
+    }
+
     public function test_brand_diagnosis_record_only_links_to_report_after_completion(): void
     {
         [$admin, $site] = $this->createAdminWithSite('brand_report_pending_link_admin');
