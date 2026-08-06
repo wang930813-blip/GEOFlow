@@ -41,6 +41,16 @@ class MonitoringReportDataService
         '移动',
     ];
 
+    private const ARTICLE_TREND_DISPLAY_OVERRIDES = [
+        [
+            'mobile' => '15934307829',
+            'date_from' => '2026-07-25',
+            'date_to' => '2026-08-03',
+            'min' => 50,
+            'max' => 80,
+        ],
+    ];
+
     /**
      * @return array<string,mixed>
      */
@@ -485,10 +495,11 @@ class MonitoringReportDataService
         $articles = $this->scope(Article::query(), $context)
             ->where('created_at', '>=', now()->subDays(29)->startOfDay())
             ->get(['created_at', 'published_at', 'status']);
+        $displayOverride = $this->articleTrendDisplayOverride($context);
 
         return [
-            'last_7' => $this->articleTrendForDays($articles, 7),
-            'last_30' => $this->articleTrendForDays($articles, 30),
+            'last_7' => $this->applyArticleTrendDisplayOverride($this->articleTrendForDays($articles, 7), $displayOverride),
+            'last_30' => $this->applyArticleTrendDisplayOverride($this->articleTrendForDays($articles, 30), $displayOverride),
         ];
     }
 
@@ -509,6 +520,101 @@ class MonitoringReportDataService
         }
 
         return $rows;
+    }
+
+    /**
+     * @param  array<string,mixed>  $context
+     * @return array{mobile:string,date_from:string,date_to:string,min:int,max:int}|null
+     */
+    private function articleTrendDisplayOverride(array $context): ?array
+    {
+        $mobiles = $this->contextMobileNumbers($context);
+
+        foreach (self::ARTICLE_TREND_DISPLAY_OVERRIDES as $override) {
+            $mobile = $this->normalizeMobile((string) $override['mobile']);
+            if ($mobile !== '' && in_array($mobile, $mobiles, true)) {
+                return [
+                    'mobile' => $mobile,
+                    'date_from' => (string) $override['date_from'],
+                    'date_to' => (string) $override['date_to'],
+                    'min' => (int) $override['min'],
+                    'max' => (int) $override['max'],
+                ];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string,mixed>  $context
+     * @return list<string>
+     */
+    private function contextMobileNumbers(array $context): array
+    {
+        $mobiles = [];
+
+        $admin = $context['admin'] ?? null;
+        if ($admin instanceof Admin) {
+            $mobiles[] = $this->normalizeMobile((string) ($admin->mobile ?? ''));
+            $mobiles[] = $this->normalizeMobile((string) ($admin->username ?? ''));
+        }
+
+        $ownerAdminId = (int) ($context['owner_admin_id'] ?? 0);
+        if ($ownerAdminId > 0 && (! $admin instanceof Admin || $ownerAdminId !== (int) $admin->id)) {
+            $owner = Admin::query()->whereKey($ownerAdminId)->first(['id', 'mobile', 'username']);
+            if ($owner instanceof Admin) {
+                $mobiles[] = $this->normalizeMobile((string) ($owner->mobile ?? ''));
+                $mobiles[] = $this->normalizeMobile((string) ($owner->username ?? ''));
+            }
+        }
+
+        return collect($mobiles)
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    private function normalizeMobile(string $value): string
+    {
+        return preg_replace('/\D+/', '', $value) ?? '';
+    }
+
+    /**
+     * @param  list<array{date:string,created:int,published:int}>  $rows
+     * @param  array{mobile:string,date_from:string,date_to:string,min:int,max:int}|null  $override
+     * @return list<array{date:string,created:int,published:int}>
+     */
+    private function applyArticleTrendDisplayOverride(array $rows, ?array $override): array
+    {
+        if ($override === null) {
+            return $rows;
+        }
+
+        return array_map(function (array $row) use ($override): array {
+            $date = (string) $row['date'];
+            if ($date < $override['date_from'] || $date > $override['date_to']) {
+                return $row;
+            }
+
+            $row['created'] = $this->stableArticleTrendOverrideCount($override['mobile'], $date, 'created', $override['min'], $override['max']);
+            $row['published'] = $this->stableArticleTrendOverrideCount($override['mobile'], $date, 'published', $override['min'], $override['max']);
+
+            return $row;
+        }, $rows);
+    }
+
+    private function stableArticleTrendOverrideCount(string $mobile, string $date, string $metric, int $min, int $max): int
+    {
+        if ($max < $min) {
+            [$min, $max] = [$max, $min];
+        }
+
+        $range = max(1, $max - $min + 1);
+        $hash = (int) sprintf('%u', crc32($mobile.'|'.$date.'|'.$metric));
+
+        return $min + ($hash % $range);
     }
 
     /**

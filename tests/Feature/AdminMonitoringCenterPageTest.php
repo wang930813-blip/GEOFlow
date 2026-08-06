@@ -15,6 +15,7 @@ use App\Models\Site;
 use App\Services\MonitoringCenter\MonitoringReportRenderer;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
 class AdminMonitoringCenterPageTest extends TestCase
@@ -398,6 +399,76 @@ class AdminMonitoringCenterPageTest extends TestCase
         $this->assertStringContainsString('trendAxisLabelsForPeriod(dates, days)', $html);
     }
 
+    public function test_enterprise_article_trend_uses_display_override_for_target_mobile(): void
+    {
+        $this->travelTo(Carbon::parse('2026-08-06 12:00:00'));
+
+        [$admin, $site] = $this->createAdminWithSite('monitoring_qianyicheng_admin');
+        $admin->forceFill([
+            'mobile' => '15934307829',
+            'display_name' => '北京乾亿承文化科技股份有限公司',
+        ])->save();
+
+        KeywordLibrary::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'qianyicheng keyword library',
+            'company_name' => '北京乾亿承文化科技股份有限公司',
+            'status' => 'active',
+            'keyword_count' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $html = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.monitoring-center.index'))
+            ->assertOk()
+            ->getContent();
+
+        $payload = $this->monitoringReportPayload($html);
+        $last30 = collect(data_get($payload, 'trend.last_30', []))->keyBy('date');
+
+        foreach ($this->qianyichengOverrideDates() as $date) {
+            $this->assertArrayHasKey($date, $last30);
+            $this->assertGreaterThanOrEqual(50, (int) $last30[$date]['created']);
+            $this->assertLessThanOrEqual(80, (int) $last30[$date]['created']);
+            $this->assertGreaterThanOrEqual(50, (int) $last30[$date]['published']);
+            $this->assertLessThanOrEqual(80, (int) $last30[$date]['published']);
+        }
+
+        $last7 = collect(data_get($payload, 'trend.last_7', []))->keyBy('date');
+        foreach (['2026-08-01', '2026-08-02', '2026-08-03'] as $date) {
+            $this->assertArrayHasKey($date, $last7);
+            $this->assertGreaterThanOrEqual(50, (int) $last7[$date]['created']);
+            $this->assertLessThanOrEqual(80, (int) $last7[$date]['created']);
+            $this->assertGreaterThanOrEqual(50, (int) $last7[$date]['published']);
+            $this->assertLessThanOrEqual(80, (int) $last7[$date]['published']);
+        }
+    }
+
+    public function test_enterprise_article_trend_does_not_override_other_accounts(): void
+    {
+        $this->travelTo(Carbon::parse('2026-08-06 12:00:00'));
+
+        [$admin, $site] = $this->createAdminWithSite('monitoring_regular_article_trend_admin');
+
+        $html = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.monitoring-center.index'))
+            ->assertOk()
+            ->getContent();
+
+        $payload = $this->monitoringReportPayload($html);
+        $last30 = collect(data_get($payload, 'trend.last_30', []))->keyBy('date');
+
+        foreach ($this->qianyichengOverrideDates() as $date) {
+            $this->assertArrayHasKey($date, $last30);
+            $this->assertSame(0, (int) $last30[$date]['created']);
+            $this->assertSame(0, (int) $last30[$date]['published']);
+        }
+    }
+
     public function test_enterprise_report_replaces_static_search_rows_even_when_dynamic_rows_are_empty(): void
     {
         config(['geoflow.monitoring_search_report_virtual_data_enabled' => false]);
@@ -667,6 +738,43 @@ class AdminMonitoringCenterPageTest extends TestCase
         $this->assertNotFalse($end);
 
         return substr($html, (int) $start, (int) $end - (int) $start + 6);
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function monitoringReportPayload(string $html): array
+    {
+        $matched = preg_match(
+            '/window\.__MONITORING_REPORT__\s*=\s*(\{.*?\});\s*window\.__MONITORING_SEARCH_REPORT_USE_VIRTUAL__/s',
+            $html,
+            $matches
+        );
+        $this->assertSame(1, $matched);
+
+        $payload = json_decode((string) $matches[1], true, 512, JSON_THROW_ON_ERROR);
+        $this->assertIsArray($payload);
+
+        return $payload;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function qianyichengOverrideDates(): array
+    {
+        return [
+            '2026-07-25',
+            '2026-07-26',
+            '2026-07-27',
+            '2026-07-28',
+            '2026-07-29',
+            '2026-07-30',
+            '2026-07-31',
+            '2026-08-01',
+            '2026-08-02',
+            '2026-08-03',
+        ];
     }
 
     /**
