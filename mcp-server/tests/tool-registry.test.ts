@@ -214,11 +214,12 @@ void describe('ceying-geo MCP 工具注册', () => {
     });
 
     void it('未传幂等键时自动投稿工具按相同文章和渠道生成稳定幂等键', async () => {
-        const requests: Array<{ path: string; idempotencyKey: string | null }> = [];
+        const requests: Array<{ path: string; method: string; idempotencyKey: string | null }> = [];
         const fetcher: typeof fetch = (input, init) => {
             const url = input instanceof URL ? input : input instanceof Request ? new URL(input.url) : new URL(input);
             requests.push({
                 path: url.pathname,
+                method: init?.method || 'GET',
                 idempotencyKey: new Headers(init?.headers).get('X-Idempotency-Key'),
             });
 
@@ -231,6 +232,24 @@ void describe('ceying-geo MCP 工具注册', () => {
                         }),
                         {
                             status: 201,
+                            headers: { 'Content-Type': 'application/json' },
+                        },
+                    ),
+                );
+            }
+
+            if ((init?.method || 'GET') === 'GET' && url.pathname === '/api/v1/media/submissions') {
+                return Promise.resolve(
+                    new Response(
+                        JSON.stringify({
+                            success: true,
+                            data: {
+                                items: [],
+                                pagination: { page: 1, per_page: 20, total: 0, total_pages: 0 },
+                            },
+                        }),
+                        {
+                            status: 200,
                             headers: { 'Content-Type': 'application/json' },
                         },
                     ),
@@ -257,7 +276,7 @@ void describe('ceying-geo MCP 工具注册', () => {
             ...context,
             token: {
                 ...context.token,
-                scopes: ['mcp:connect', 'catalog:read', 'articles:write', 'media:submit'],
+                scopes: ['mcp:connect', 'catalog:read', 'articles:write', 'media:read', 'media:submit'],
             },
         };
         const server = createGeoMcpServer(createClient(fetcher), publicationContext);
@@ -280,13 +299,22 @@ void describe('ceying-geo MCP 工具注册', () => {
             await client.callTool({ name: 'geo_publish_article_to_media', arguments: payload });
 
             assert.deepEqual(
-                requests.map((request) => request.path),
-                ['/api/v1/articles', '/api/v1/media/submissions', '/api/v1/articles', '/api/v1/media/submissions'],
+                requests.map((request) => `${request.method} ${request.path}`),
+                [
+                    'POST /api/v1/articles',
+                    'GET /api/v1/media/submissions',
+                    'GET /api/v1/media/submissions',
+                    'POST /api/v1/media/submissions',
+                    'POST /api/v1/articles',
+                    'GET /api/v1/media/submissions',
+                    'GET /api/v1/media/submissions',
+                    'POST /api/v1/media/submissions',
+                ],
             );
-            assert.equal(requests[0]?.idempotencyKey, requests[2]?.idempotencyKey);
-            assert.equal(requests[1]?.idempotencyKey, requests[3]?.idempotencyKey);
+            assert.equal(requests[0]?.idempotencyKey, requests[4]?.idempotencyKey);
+            assert.equal(requests[3]?.idempotencyKey, requests[7]?.idempotencyKey);
             assert.match(requests[0]?.idempotencyKey || '', /^mcp-publication-[a-f0-9]{48}:article$/u);
-            assert.match(requests[1]?.idempotencyKey || '', /^mcp-publication-[a-f0-9]{48}:submission$/u);
+            assert.match(requests[3]?.idempotencyKey || '', /^mcp-publication-[a-f0-9]{48}:submission$/u);
         } finally {
             await client.close();
             await server.close();

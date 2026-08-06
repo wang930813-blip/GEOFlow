@@ -41,8 +41,8 @@ ceying-geo MCP Server 是独立 Node 服务，用于把 ceying-geo 已有用户�
 | `geo_get_media_channel` | `media:read` | 查询单个媒体渠道详情和实时售价 | 不扣费 |
 | `geo_list_media_submissions` | `media:read` | 查询当前账号投稿记录 | 不扣费 |
 | `geo_get_media_submission` | `media:read` | 查询投稿状态和发布链接 | 不扣费 |
-| `geo_submit_article_to_media` | `media:submit` | 将当前账号已有文章投递到指定渠道 | 按渠道实际售价扣费 |
-| `geo_publish_article_to_media` | `articles:write`、`media:submit` | 保存文章并投递指定渠道 | 按渠道实际售价扣费 |
+| `geo_submit_article_to_media` | `media:read`、`media:submit` | 将当前账号已有文章投递到指定渠道，提交前检查已有订单避免重复投稿 | 按渠道实际售价扣费 |
+| `geo_publish_article_to_media` | `articles:write`、`media:read`、`media:submit` | 保存文章并投递指定渠道，提交前检查已有订单避免重复投稿 | 按渠道实际售价扣费 |
 | `geo_list_videos` | `videos:read` | 分页查询当前账号的视频生成任务 | 不扣费 |
 | `geo_get_video` | `videos:read` | 查询视频生成状态和结果地址 | 不扣费 |
 | `geo_create_video` | `videos:write` | 创建视频生成任务 | 按生成数量扣减视频生成额度 |
@@ -244,15 +244,15 @@ location /mcp {
 
 执行任务后应保存返回的执行记录编号，并通过 `geo_get_task_run` 查询最终状态。不要在未确认状态前重复投递相同任务。
 
-媒体投稿前必须先读取渠道实时售价，并且只使用用户明确指定的媒体资源编号；重试同一操作时必须保持正文、渠道和 `idempotency_key` 不变。
+媒体投稿前必须先读取渠道实时售价，并且只使用用户明确指定的媒体资源编号；MCP 投稿工具会先查询同文章同渠道已有投稿记录，已有进行中或已生效订单时不重复提交；重试同一操作时必须保持正文、渠道和 `idempotency_key` 不变。
 
 ## 10. 文章站内发布与媒体投稿边界
 
 站内发布和媒体投稿是两条不同路径：
 
 - `geo_publish_article_to_site` 只把未被拒绝的文章置为 `published`，需要时自动写入 `review_status=auto_approved`，使其出现在当前 GEO 用户站点文章页，不创建媒体投稿订单，也不扣媒体投稿费用。
-- `geo_submit_article_to_media` 将已有文章投递到外部媒体渠道，按渠道实时售价扣费。
-- `geo_publish_article_to_media` 先保存已自动通过审核的 AI 文章，再投递到外部媒体渠道，按渠道实时售价扣费。
+- `geo_submit_article_to_media` 将已有文章投递到外部媒体渠道，按渠道实时售价扣费，提交前检查已有订单避免重复投稿。
+- `geo_publish_article_to_media` 先保存已自动通过审核的 AI 文章，再投递到外部媒体渠道，按渠道实时售价扣费，提交前检查已有订单避免重复投稿。
 
 站内发布执行顺序：
 
@@ -262,7 +262,7 @@ location /mcp {
 4. 发布成功后读取返回的 `status`、`review_status`、`published_at` 和 `slug`，并告知用户文章已进入当前 GEO 用户站点。
 5. 如果文章已被人工拒绝，不要覆盖拒绝结论，提示用户先修正文章内容。
 
-媒体投稿前必须先读取渠道实时售价，并且只使用用户明确指定的媒体资源编号；重试同一操作时必须保持正文、渠道和 `idempotency_key` 不变。
+媒体投稿前必须先读取渠道实时售价，并且只使用用户明确指定的媒体资源编号；MCP 投稿工具会先查询同文章同渠道已有投稿记录，已有进行中或已生效订单时不重复提交；重试同一操作时必须保持正文、渠道和 `idempotency_key` 不变。
 
 ## 11. 素材字段与操作边界
 

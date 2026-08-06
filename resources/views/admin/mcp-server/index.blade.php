@@ -540,7 +540,7 @@
                 <ul class="mt-3 space-y-2 text-sm leading-6 text-gray-600">
                     <li>Key 只放在 Authorization 请求头，不要写入提示词、URL、公开仓库或日志。</li>
                     <li>公网 MCP 地址必须使用 HTTPS；HTTP 请求会被服务端拒绝。</li>
-                    <li>按客户端用途拆分 Key，并只授予实际需要的 scope；文章站内发布 Key 才授予 articles:site-publish，自动投稿 Key 才授予 articles:write 和 media:submit，视频生成 Key 才授予 videos:write。</li>
+                    <li>按客户端用途拆分 Key，并只授予实际需要的 scope；文章站内发布 Key 才授予 articles:site-publish，自动投稿 Key 才授予 articles:write、media:read 和 media:submit，视频生成 Key 才授予 videos:write。</li>
                     <li>建议设置明确过期时间。设备丢失、配置泄露或人员变动时立即撤销 Key。</li>
                     <li>所有数据访问都受当前站点隔离约束，切换后台站点不会改变已创建 Key 的绑定站点。</li>
                 </ul>

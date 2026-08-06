@@ -71,6 +71,12 @@ export interface GeoFlowMediaSubmissionResult extends Record<string, unknown> {
     errors: unknown[];
 }
 
+export interface GeoFlowMediaSubmissionRecord extends Record<string, unknown> {
+    id: number;
+    media_resource_id: number;
+    status: string;
+}
+
 export type GeoFlowMaterialType =
     'categories' | 'authors' | 'keyword-libraries' | 'title-libraries' | 'image-libraries' | 'knowledge-bases';
 
@@ -125,6 +131,81 @@ export class GeoFlowApiError extends Error {
         super(message);
         this.name = 'GeoFlowApiError';
     }
+}
+
+const reusableMediaSubmissionStatuses = new Set(['submitting', 'submitted', 'publishing', 'published', 'appealing']);
+
+/**
+ * @Name: isRecord
+ * @Description: 判断未知值是否为普通对象，供 MCP 客户端解析 GEO API 返回的投稿列表结构。
+ *
+ * @Author: cdkay
+ * @CreateTime: 2026-08-06 11:48:17
+ * @UpdateTime: 2026-08-06 12:09:02
+ *
+ * @Param: unknown value 待判断值
+ * @Return: value is Record<string, unknown> 是否为对象记录
+ */
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * @Name: toMediaSubmissionRecord
+ * @Description: 将投稿列表中的未知条目转换为可用于重复投稿保护的最小结构。
+ *
+ * @Author: cdkay
+ * @CreateTime: 2026-08-06 11:48:17
+ * @UpdateTime: 2026-08-06 12:09:02
+ *
+ * @Param: unknown value GEO API 投稿条目
+ * @Return: GeoFlowMediaSubmissionRecord | null 可识别投稿记录
+ */
+function toMediaSubmissionRecord(value: unknown): GeoFlowMediaSubmissionRecord | null {
+    if (!isRecord(value)) {
+        return null;
+    }
+
+    const id = Number(value.id);
+    const mediaResourceId = Number(value.media_resource_id);
+    const status = typeof value.status === 'string' ? value.status.trim() : '';
+    if (
+        !Number.isInteger(id) ||
+        id <= 0 ||
+        !Number.isInteger(mediaResourceId) ||
+        mediaResourceId <= 0 ||
+        status === ''
+    ) {
+        return null;
+    }
+
+    return {
+        ...value,
+        id,
+        media_resource_id: mediaResourceId,
+        status,
+    };
+}
+
+/**
+ * @Name: extractMediaSubmissionItems
+ * @Description: 从媒体投稿分页响应中提取投稿记录，缺失或格式不匹配时返回空数组。
+ *
+ * @Author: cdkay
+ * @CreateTime: 2026-08-06 11:48:17
+ * @UpdateTime: 2026-08-06 12:09:02
+ *
+ * @Param: unknown payload GEO API 投稿分页响应
+ * @Return: GeoFlowMediaSubmissionRecord[] 可识别投稿记录列表
+ */
+function extractMediaSubmissionItems(payload: unknown): GeoFlowMediaSubmissionRecord[] {
+    if (!isRecord(payload) || !Array.isArray(payload.items)) {
+        return [];
+    }
+
+    return payload.items
+        .map((item) => toMediaSubmissionRecord(item))
+        .filter((item): item is GeoFlowMediaSubmissionRecord => item !== null);
 }
 
 export class GeoFlowApiClient {
@@ -641,7 +722,7 @@ export class GeoFlowApiClient {
      *
      * @Author: cdkay
      * @CreateTime: 2026-07-18 13:58:43
-     * @UpdateTime: 2026-07-18 15:37:25
+     * @UpdateTime: 2026-08-06 12:09:02
      *
      * @Param: number articleId 当前账号文章编号
      * @Param: number[] mediaResourceIds 目标媒体资源编号
@@ -651,6 +732,96 @@ export class GeoFlowApiClient {
      * @Throws GeoFlowApiError 文章、渠道、余额、订阅或上游媒体接口校验失败
      */
     public async submitArticleToMedia(
+        articleId: number,
+        mediaResourceIds: number[],
+        remark: string,
+        idempotencyKey: string,
+    ): Promise<GeoFlowMediaSubmissionResult> {
+        const reusableSubmissions = await this.reusableMediaSubmissions(articleId, mediaResourceIds);
+        const reusableResourceIds = new Set(reusableSubmissions.map((submission) => submission.media_resource_id));
+        const remainingResourceIds = mediaResourceIds.filter(
+            (mediaResourceId) => !reusableResourceIds.has(mediaResourceId),
+        );
+        if (remainingResourceIds.length === 0) {
+            return {
+                submissions: reusableSubmissions,
+                errors: [],
+            };
+        }
+
+        const submissionIdempotencyKey =
+            reusableSubmissions.length > 0
+                ? `${idempotencyKey}:remaining-${remainingResourceIds.join('-')}`
+                : idempotencyKey;
+        const result = await this.createMediaSubmission(
+            articleId,
+            remainingResourceIds,
+            remark,
+            submissionIdempotencyKey,
+        );
+
+        return {
+            submissions: [...reusableSubmissions, ...result.submissions],
+            errors: result.errors,
+        };
+    }
+
+    /**
+     * @Name: reusableMediaSubmissions
+     * @Description: 查询同一文章和媒体渠道是否已有进行中或已生效投稿，防止 MCP Agent 在失败重试或多轮调用中重复创建投稿订单。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-08-06 11:48:17
+     * @UpdateTime: 2026-08-06 12:09:02
+     *
+     * @Param: number articleId 当前账号文章编号
+     * @Param: number[] mediaResourceIds 目标媒体资源编号
+     * @Return: Promise<GeoFlowMediaSubmissionRecord[]> 已存在且不应重复提交的投稿记录
+     * @Throws GeoFlowApiError 投稿记录查询失败
+     */
+    private async reusableMediaSubmissions(
+        articleId: number,
+        mediaResourceIds: number[],
+    ): Promise<GeoFlowMediaSubmissionRecord[]> {
+        const reusableSubmissions: GeoFlowMediaSubmissionRecord[] = [];
+        const uniqueMediaResourceIds = [...new Set(mediaResourceIds)];
+
+        for (const mediaResourceId of uniqueMediaResourceIds) {
+            const payload = await this.listMediaSubmissions({
+                page: 1,
+                per_page: 20,
+                article_id: articleId,
+                media_resource_id: mediaResourceId,
+            });
+            const existing = extractMediaSubmissionItems(payload).find(
+                (submission) =>
+                    submission.media_resource_id === mediaResourceId &&
+                    reusableMediaSubmissionStatuses.has(submission.status),
+            );
+            if (existing !== undefined) {
+                reusableSubmissions.push(existing);
+            }
+        }
+
+        return reusableSubmissions;
+    }
+
+    /**
+     * @Name: createMediaSubmission
+     * @Description: 按既有 GEO API 创建媒体投稿订单，不做业务去重，由调用方完成 MCP 专属只读预检。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-08-06 11:48:17
+     * @UpdateTime: 2026-08-06 12:09:02
+     *
+     * @Param: number articleId 当前账号文章编号
+     * @Param: number[] mediaResourceIds 目标媒体资源编号
+     * @Param: string remark 投稿备注
+     * @Param: string idempotencyKey 幂等键
+     * @Return: Promise<GeoFlowMediaSubmissionResult> 投稿订单和逐渠道错误
+     * @Throws GeoFlowApiError 文章、渠道、余额、订阅或上游媒体接口校验失败
+     */
+    private async createMediaSubmission(
         articleId: number,
         mediaResourceIds: number[],
         remark: string,
@@ -672,7 +843,7 @@ export class GeoFlowApiClient {
      *
      * @Author: cdkay
      * @CreateTime: 2026-07-18 13:58:43
-     * @UpdateTime: 2026-07-18 15:37:25
+     * @UpdateTime: 2026-08-06 12:09:02
      *
      * @Param: GeoFlowArticleInput input 已完成生成的文章内容、作者和分类
      * @Param: number[] mediaResourceIds 目标媒体资源编号

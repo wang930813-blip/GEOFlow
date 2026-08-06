@@ -72,10 +72,7 @@ class ChaoJiMeiJieClient implements MediaPlatformClient
             'sn' => (string) $submission->agent_order_sn,
             'resource_id' => (int) $resource->external_resource_id,
             'title' => (string) $submission->title_snapshot,
-            'content' => route('media-submission-preview.show', [
-                'submission' => (int) $submission->id,
-                'token' => (string) $submission->preview_token,
-            ]),
+            'content' => $this->previewUrl($submission),
         ];
 
         if (trim($remark) !== '') {
@@ -90,6 +87,30 @@ class ChaoJiMeiJieClient implements MediaPlatformClient
         }
 
         return $this->post($this->path((string) $submission->source_type, 'order'), $payload);
+    }
+
+    /**
+     * @Name: previewUrl
+     * @Description: 使用 APP_URL 生成第三方媒体可访问的投稿预览地址，避免 MCP 容器内网 Host 被写入 content 字段导致 URL 格式校验失败。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-08-06 11:49:00
+     * @UpdateTime: 2026-08-06 12:09:02
+     *
+     * @Param: MediaSubmission $submission 投稿订单
+     * @Return: string 第三方媒体抓取正文使用的公网预览地址
+     */
+    private function previewUrl(MediaSubmission $submission): string
+    {
+        $baseUrl = rtrim((string) config('app.url'), '/');
+        if (preg_match('#^https?://#i', $baseUrl) !== 1) {
+            throw new RuntimeException('APP_URL 必须配置为可公网访问的 http 或 https 地址');
+        }
+
+        return $baseUrl.route('media-submission-preview.show', [
+            'submission' => (int) $submission->id,
+            'token' => (string) $submission->preview_token,
+        ], false);
     }
 
     /**

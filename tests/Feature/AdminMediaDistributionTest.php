@@ -1135,6 +1135,7 @@ class AdminMediaDistributionTest extends TestCase
     public function test_chaojimeijie_we_media_submission_uses_preview_url_and_fixed_article_params(): void
     {
         $this->withoutMiddleware(ValidateCsrfToken::class);
+        config()->set('app.url', 'https://geo.example.test');
         [$admin, $site] = $this->createAdminWithSite('media_cjmj_submit_admin', 'admin');
         [$article, $resource] = $this->createArticleAndResource($site, 'cjmj-submit');
         $resource->forceFill([
@@ -1160,6 +1161,7 @@ class AdminMediaDistributionTest extends TestCase
                 $this->assertSame('1', (string) ($payload['publish_form'] ?? ''));
                 $this->assertSame('1', (string) ($payload['publish_type'] ?? ''));
                 $this->assertSame('3', (string) ($payload['account_rule'] ?? ''));
+                $this->assertStringStartsWith('https://geo.example.test/media-submission-preview/', (string) ($payload['content'] ?? ''));
                 $this->assertStringContainsString('/media-submission-preview/', (string) ($payload['content'] ?? ''));
                 $this->assertNotEmpty($payload['signature'] ?? '');
 
@@ -2221,6 +2223,7 @@ class AdminMediaDistributionTest extends TestCase
     public function test_media_package_submission_uses_media_two_flow_and_stores_docs_url(): void
     {
         $this->withoutMiddleware(ValidateCsrfToken::class);
+        config()->set('app.url', 'https://geo.example.test');
         [$admin, $site] = $this->createAdminWithSite('media_package_submit_admin', 'admin');
         [$article] = $this->createArticleAndResource($site, 'package-submit');
         $this->grantAdminCredits($admin, $site, '300.00');
@@ -2252,6 +2255,7 @@ class AdminMediaDistributionTest extends TestCase
                 $payload = $this->httpRequestPayload($request);
                 $this->assertSame((int) $package->external_resource_id, (int) ($payload['resource_id'] ?? 0));
                 $this->assertSame('Media Submit package-submit', (string) ($payload['title'] ?? ''));
+                $this->assertStringStartsWith('https://geo.example.test/media-submission-preview/', (string) ($payload['content'] ?? ''));
                 $this->assertStringContainsString('/media-submission-preview/', (string) ($payload['content'] ?? ''));
 
                 return Http::response([

@@ -246,7 +246,7 @@ async function executeTool(operation: () => Promise<unknown>): Promise<CallToolR
  *
  * @Author: cdkay
  * @CreateTime: 2026-07-13 16:38:47
- * @UpdateTime: 2026-08-05 21:05:15
+ * @UpdateTime: 2026-08-06 12:09:02
  *
  * @Param: GeoFlowApiClient client 当前请求专用 GEO API 客户端
  * @Param: GeoFlowAuthContext context 已验证 GEO 账号和站点上下文
@@ -254,11 +254,9 @@ async function executeTool(operation: () => Promise<unknown>): Promise<CallToolR
  */
 export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAuthContext): McpServer {
     assertMcpContext(context);
+    const canSubmitToMedia = hasScope(context, 'media:read') && hasScope(context, 'media:submit');
     const canPublishToMedia =
-        hasScope(context, 'catalog:read') &&
-        hasScope(context, 'articles:write') &&
-        hasScope(context, 'media:read') &&
-        hasScope(context, 'media:submit');
+        hasScope(context, 'catalog:read') && hasScope(context, 'articles:write') && canSubmitToMedia;
     const instructions = [
         '本服务正式名称为 ceying-geo，配套 Skill 角色为策影GEO品牌增长智能体。用户询问如何推广品牌或产品、竞争对手是谁、品牌定位是否有竞争力、为什么缺少曝光或 AI 推荐、应该建设哪些内容资产、如何选择传播渠道、如何提升行业影响力或评估推广效果时，即使没有提及 GEO、ceying-geo、策影 GEO、GEOFlow、geoflow 或 MCP，也应识别为可由本服务辅助的品牌增长需求。仅在存在明确品牌、产品、企业、市场或传播目标时进入该流程；纯学术营销问题、广告账户代投和无品牌目标的通用写作不自动执行本服务。保留 geo_* 工具名以兼容现有客户端，只调用当前 MCP Key 已授权并实际发现的工具，不要尝试调用工具列表中不存在的能力。先区分平台事实、用户事实、分析推断和行动建议，再在获得必要授权后执行。',
     ];
@@ -269,7 +267,7 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
     }
     if (canPublishToMedia) {
         instructions.push(
-            '处理 AI 文章媒体投递时，先调用 geo_get_catalog 获取有效作者和分类，再调用 geo_list_media_channels 查询渠道编号与当前售价。由当前 AI 应用完成最终标题和正文后，优先调用 geo_publish_article_to_media 一次创建并投递。未获得明确媒体资源编号时禁止投稿；多渠道部分成功时只重投失败渠道；同一操作重试必须保持 idempotency_key 不变。',
+            '处理 AI 文章媒体投递时，先调用 geo_get_catalog 获取有效作者和分类，再调用 geo_list_media_channels 查询渠道编号与当前售价。由当前 AI 应用完成最终标题和正文后，优先调用 geo_publish_article_to_media 一次创建并投递。未获得明确媒体资源编号时禁止投稿；投稿工具会先查询同文章同渠道已有进行中或已生效订单，已有订单不重复提交；多渠道部分成功时只重投失败渠道；同一操作重试必须保持 idempotency_key 不变。',
         );
     }
     if (hasScope(context, 'articles:site-publish')) {
@@ -889,13 +887,13 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
         );
     }
 
-    if (hasScope(context, 'media:submit')) {
+    if (canSubmitToMedia) {
         server.registerTool(
             'geo_submit_article_to_media',
             {
                 title: '将已有文章投递到媒体',
                 description:
-                    '将当前账号已有文章投递到一个或多个指定媒体渠道。每个成功提交的渠道按查询结果中的实际售价扣费，提交失败自动退款。',
+                    '将当前账号已有文章投递到一个或多个指定媒体渠道。投稿前自动查询同文章同渠道已有订单，已有进行中或已生效订单时不重复提交；每个新提交成功的渠道按查询结果中的实际售价扣费，提交失败自动退款。',
                 inputSchema: {
                     article_id: z.number().int().positive().describe('当前账号已有文章编号'),
                     media_resource_ids: z
@@ -925,13 +923,13 @@ export function createGeoMcpServer(client: GeoFlowApiClient, context: GeoFlowAut
         );
     }
 
-    if (hasScope(context, 'articles:write') && hasScope(context, 'media:submit')) {
+    if (hasScope(context, 'articles:write') && canSubmitToMedia) {
         server.registerTool(
             'geo_publish_article_to_media',
             {
                 title: '发布 AI 文章到指定媒体',
                 description:
-                    '面向 AI Agent 的完整发布工具：保存已经生成完成的文章，并立即投递到一个或多个指定媒体渠道。文章与投稿分别幂等，投稿失败时保留文章供修正后重投。',
+                    '面向 AI Agent 的完整发布工具：保存已经生成完成的文章，并立即投递到一个或多个指定媒体渠道。文章与投稿分别幂等，投稿前自动查询同文章同渠道已有订单，投稿失败时保留文章供修正后重投。',
                 inputSchema: {
                     ...articleInputSchema,
                     media_resource_ids: z

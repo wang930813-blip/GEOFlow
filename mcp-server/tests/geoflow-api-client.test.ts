@@ -426,6 +426,18 @@ void describe('GeoFlowApiClient', () => {
                 );
             }
 
+            if ((init?.method || 'GET') === 'GET' && url.pathname === '/api/v1/media/submissions') {
+                return Promise.resolve(
+                    jsonResponse({
+                        success: true,
+                        data: {
+                            items: [],
+                            pagination: { page: 1, per_page: 20, total: 0, total_pages: 0 },
+                        },
+                    }),
+                );
+            }
+
             return Promise.resolve(
                 jsonResponse(
                     {
@@ -474,6 +486,18 @@ void describe('GeoFlowApiClient', () => {
             },
             {
                 path: '/api/v1/media/submissions',
+                method: 'GET',
+                idempotencyKey: null,
+                body: null,
+            },
+            {
+                path: '/api/v1/media/submissions',
+                method: 'GET',
+                idempotencyKey: null,
+                body: null,
+            },
+            {
+                path: '/api/v1/media/submissions',
                 method: 'POST',
                 idempotencyKey: 'publication-123:submission',
                 body: {
@@ -481,6 +505,90 @@ void describe('GeoFlowApiClient', () => {
                     media_resource_ids: [8, 9],
                     remark: '自动投稿',
                 },
+            },
+        ]);
+    });
+
+    void it('已有同文章同渠道投稿记录时不重复创建媒体投稿订单', async () => {
+        const requests: Array<{ path: string; method: string; idempotencyKey: string | null; body: unknown }> = [];
+        const fetcher: typeof fetch = (input, init) => {
+            const url = requestUrl(input);
+            const headers = new Headers(init?.headers);
+            const body = typeof init?.body === 'string' ? (JSON.parse(init.body) as unknown) : null;
+            requests.push({
+                path: url.pathname,
+                method: init?.method || 'GET',
+                idempotencyKey: headers.get('X-Idempotency-Key'),
+                body,
+            });
+
+            if (url.pathname === '/api/v1/articles') {
+                return Promise.resolve(
+                    jsonResponse({ success: true, data: { id: 91, title: 'AI 渠道文章', status: 'draft' } }, 201),
+                );
+            }
+
+            return Promise.resolve(
+                jsonResponse({
+                    success: true,
+                    data: {
+                        items: [
+                            {
+                                id: 150,
+                                media_resource_id: 8,
+                                status: 'submitted',
+                                external_order_nid: 'CJMJ202608060001',
+                            },
+                        ],
+                        pagination: { page: 1, per_page: 20, total: 1, total_pages: 1 },
+                    },
+                }),
+            );
+        };
+        const client = new GeoFlowApiClient(baseUrl, 'secret-key', 1_000, fetcher);
+
+        const result = await client.publishArticleToMedia(
+            {
+                title: 'AI 渠道文章',
+                content: '# 正文',
+                category_id: 5,
+                author_id: 6,
+            },
+            [8],
+            '自动投稿',
+            'publication-existing-123',
+        );
+
+        assert.equal(result.article.id, 91);
+        assert.deepEqual(result.errors, []);
+        assert.deepEqual(result.submissions, [
+            {
+                id: 150,
+                media_resource_id: 8,
+                status: 'submitted',
+                external_order_nid: 'CJMJ202608060001',
+            },
+        ]);
+        assert.deepEqual(requests, [
+            {
+                path: '/api/v1/articles',
+                method: 'POST',
+                idempotencyKey: 'publication-existing-123:article',
+                body: {
+                    title: 'AI 渠道文章',
+                    content: '# 正文',
+                    category_id: 5,
+                    author_id: 6,
+                    status: 'draft',
+                    review_status: 'approved',
+                    is_ai_generated: 1,
+                },
+            },
+            {
+                path: '/api/v1/media/submissions',
+                method: 'GET',
+                idempotencyKey: null,
+                body: null,
             },
         ]);
     });
