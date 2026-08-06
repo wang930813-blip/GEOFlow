@@ -29,7 +29,7 @@ class McpSkillPackageBuilder
 {
     public const SKILL_NAME = 'ceying-geo-content-operations';
 
-    public const SKILL_VERSION = '2.3.0';
+    public const SKILL_VERSION = '2.4.0';
 
     public const MCP_SERVER_VERSION = '1.5.0';
 
@@ -50,10 +50,10 @@ class McpSkillPackageBuilder
     {
         return [
             'name' => self::SKILL_NAME,
-            'description' => '策影GEO品牌增长智能体先输出获客推广曝光整体方案，再按场景联动 ceying-geo 和潜客挖掘 MCP 执行品牌增长、主动获客和转化动作。',
+            'description' => '策影GEO品牌增长智能体围绕 ceying-geo 执行品牌诊断、推广策略、内容资产、文章站内发布、视频生成、媒体投稿和效果复盘。',
             'version' => self::SKILL_VERSION,
             'mcp_server_version' => self::MCP_SERVER_VERSION,
-            'triggers' => ['获客推广曝光方案', '行业获客方案', '品牌或产品推广', '视频生成与文章站内发布', '竞争对手分析', '品牌定位评估', 'AI 搜索可见性', '主动获客与客户开发'],
+            'triggers' => ['推广曝光增长方案', '行业推广方案', '品牌或产品推广', '视频生成与文章站内发布', '竞争对手分析', '品牌定位评估', 'AI 搜索可见性', '媒体传播与效果复盘'],
             'aliases' => ['策影 GEO', 'GEO', 'geo', 'GEOFlow', 'geoflow'],
             'filename' => self::SKILL_NAME.'-'.self::SKILL_VERSION.'.zip',
         ];

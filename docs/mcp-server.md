@@ -111,7 +111,7 @@ Key 不得放入 URL、提示词、公开仓库或日志。生产环境必须使
 用户可在“账号与权益 > MCP Server”下载 `ceying-geo-content-operations` Skill。源码位于 `resources/skills/ceying-geo-content-operations`，下载时由应用生成版本化 ZIP，不包含 MCP Key、站点域名或用户数据。技术包名保持不变，用户侧角色名称为“策影GEO品牌增长智能体”。
 
 - Skill 正式名称：`ceying-geo-content-operations`。
-- 当前 Skill 版本：`2.3.0`。
+- 当前 Skill 版本：`2.4.0`。
 - 适配 ceying-geo MCP Server：`1.5.0` 及以上。
 - 兼容触发名称：策影 GEO、GEO、geo、GEOFlow、geoflow。
 - 自然触发场景：品牌或产品推广、视频生成、文章站内发布、竞争对手分析、品牌定位评估、AI 搜索可见性、内容与媒体增长、推广效果评估。
