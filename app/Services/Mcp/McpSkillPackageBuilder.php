@@ -29,7 +29,7 @@ class McpSkillPackageBuilder
 {
     public const SKILL_NAME = 'ceying-geo-content-operations';
 
-    public const SKILL_VERSION = '2.4.0';
+    public const SKILL_VERSION = '2.4.1';
 
     public const MCP_SERVER_VERSION = '1.5.0';
 
@@ -42,7 +42,7 @@ class McpSkillPackageBuilder
      *
      * @CreateTime: 2026-07-29 15:41:12
      *
-     * @UpdateTime: 2026-08-05 18:12:22
+     * @UpdateTime: 2026-08-10 15:40:21
      *
      * @Return: array{name:string,description:string,version:string,mcp_server_version:string,triggers:array<int,string>,aliases:array<int,string>,filename:string} Skill 元数据
      */
@@ -50,10 +50,10 @@ class McpSkillPackageBuilder
     {
         return [
             'name' => self::SKILL_NAME,
-            'description' => '策影GEO品牌增长智能体围绕 ceying-geo 执行品牌诊断、推广策略、内容资产、文章站内发布、视频生成、媒体投稿和效果复盘。',
+            'description' => '策影GEO品牌增长智能体以品牌增长为核心，覆盖品牌建设和推广执行；品牌诊断是其中一项检测能力，并可围绕 ceying-geo 执行推广策略、广告软文、文章站内发布、视频生成、媒体投稿和效果复盘。',
             'version' => self::SKILL_VERSION,
             'mcp_server_version' => self::MCP_SERVER_VERSION,
-            'triggers' => ['推广曝光增长方案', '行业推广方案', '品牌或产品推广', '视频生成与文章站内发布', '竞争对手分析', '品牌定位评估', 'AI 搜索可见性', '媒体传播与效果复盘'],
+            'triggers' => ['品牌建设与推广执行', '品牌增长目标', '广告软文与宣传稿', '发布到站点或官网', '推广曝光增长方案', '行业推广方案', '品牌或产品推广', '服务与项目推广', '视频生成与文章站内发布', '品牌诊断检测', '竞争对手分析', '品牌定位评估', 'AI 搜索可见性', '媒体传播与效果复盘'],
             'aliases' => ['策影 GEO', 'GEO', 'geo', 'GEOFlow', 'geoflow'],
             'filename' => self::SKILL_NAME.'-'.self::SKILL_VERSION.'.zip',
         ];

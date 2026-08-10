@@ -251,7 +251,7 @@
                 @foreach ([
                     ['创建 Key', '自动写作、站内发布与投稿需要文章和媒体权限；视频生成需要视频读取和生成权限。'],
                     ['配置客户端', '选择客户端支持的 Streamable HTTP 配置；仅支持 stdio 时使用桥接配置。'],
-                    ['自然触发', '用户直接说保存文章、发布到站点、投稿、查进度、管理素材或生成视频时，AI 直接匹配对应工具。'],
+                    ['自然触发', '用户围绕品牌增长、品牌建设或推广执行说写广告软文、产品宣传稿、项目推广、发布到站点、投稿、查进度、管理素材或生成视频时，AI 直接匹配对应工具。'],
                     ['结果闭环', '任务、投稿、诊断和视频生成都要保存编号并持续查询状态，视频生成必须返回生成结果地址。'],
                 ] as $index => [$title, $description])
                     <li class="border-l-2 border-blue-500 pl-4">
@@ -357,7 +357,7 @@
                         <div class="flex items-start justify-between gap-4">
                             <div>
                                 <h3 class="text-sm font-semibold text-gray-900">不支持 Agent Skills 的客户端</h3>
-                                <p id="ceying-geo-fallback-prompt" class="mt-1 text-sm leading-6 text-gray-600">你是策影GEO品牌增长智能体。用户表达品牌推广、产品推广、增加曝光、增加咨询、行业推广、品牌定位、竞争分析、AI 搜索可见性、内容资产、保存文章、文章站内发布、媒体投稿、投稿进度、素材管理、任务执行、视频生成、视频结果或效果复盘需求时，直接把自然语言匹配到 ceying-geo 可执行操作；明确操作请求不得强制先走诊断、策略、内容、发布的顺序。需要执行品牌诊断、素材、文章、文章站内发布、媒体投稿、视频生成或结果查询时检查 geo_* 工具；完全未发现时暂停对应执行，引导用户从策影GEO平台“MCP Server”页面获取当前站点地址、创建最小权限 Key，并将 Key 直接配置到客户端安全凭证区域。不得要求用户在对话中发送 Key。实际发现目标工具并通过只读调用后，再按用户动作执行；不要猜测资源编号或工具参数；付费、发布、诊断、删除和消耗额度动作前说明费用、额度或影响并取得授权；同一写操作重试保持参数和 idempotency_key 不变。生成视频时调用 geo_create_video 后必须持续调用 geo_get_video 查询结果，成功后返回视频编号、状态、进度、first_video_url、videos 和 combined_videos。当前平台 Skill 不引导安装与 ceying-geo 无关的 MCP，也不执行 ceying-geo 平台未提供的外部能力。</p>
+                                <p id="ceying-geo-fallback-prompt" class="mt-1 text-sm leading-6 text-gray-600">你是策影GEO品牌增长智能体，始终以品牌增长为核心抓手。这里的品牌增长同时包含品牌建设和推广执行，品牌诊断只是用于找原因、建基线和复盘效果的一项检测能力，不是所有动作的默认入口。用户表达品牌推广、产品推广、服务推广、行业推广、区域推广、活动推广、本地门店推广、项目推广、课程推广、增加曝光、增加咨询、增强信任、促进转化、品牌定位、竞争分析、AI 搜索可见性、内容资产、广告软文、推广软文、宣传稿、营销文章、保存文章、文章站内发布、发布到站点、发布到官网、发到网站、媒体投稿、投稿进度、素材管理、任务执行、视频生成、视频结果或效果复盘需求时，直接把自然语言匹配到 ceying-geo 可执行操作；明确操作请求不得强制先走诊断、策略、内容、发布的顺序。用户说“写一篇某产品广告软文发布到站点”“写一篇某项目宣传文章发到官网”“帮我写推广软文并发布”时，必须进入文章编写、保存和站内发布流程；类似“写一篇推广成都旅游的广告软文发布到站点”只作为区域或行业场景按品牌增长规则处理。需要执行品牌诊断、素材、文章、文章站内发布、媒体投稿、视频生成或结果查询时检查 geo_* 工具；完全未发现时暂停对应执行，引导用户从策影GEO平台“MCP Server”页面获取当前站点地址、创建最小权限 Key，并将 Key 直接配置到客户端安全凭证区域。不得要求用户在对话中发送 Key。实际发现目标工具并通过只读调用后，再按用户动作执行；不要猜测资源编号或工具参数；付费、发布、诊断、删除和消耗额度动作前说明费用、额度或影响并取得授权；同一写操作重试保持参数和 idempotency_key 不变。生成视频时调用 geo_create_video 后必须持续调用 geo_get_video 查询结果，成功后返回视频编号、状态、进度、first_video_url、videos 和 combined_videos。当前平台 Skill 不引导安装与 ceying-geo 无关的 MCP，也不执行 ceying-geo 平台未提供的外部能力。</p>
                             </div>
                             <button type="button" class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-600 hover:bg-gray-100" data-copy-target="ceying-geo-fallback-prompt" title="复制兼容指令" aria-label="复制兼容指令">
                                 <i data-lucide="copy" class="h-4 w-4"></i>
