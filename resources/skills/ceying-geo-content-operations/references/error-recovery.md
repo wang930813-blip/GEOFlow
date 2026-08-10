@@ -12,6 +12,8 @@
 | `429` | 按服务端提示等待并降低调用频率，不并发重试。 |
 | `502`、`504` | 将结果视为未知，先查询业务状态；确需重放时使用原参数和原幂等键。 |
 
+查询、查看进度或查看结果类请求只允许调用读取工具。除非用户明确再次授权，不得因为查询失败而创建新任务、新文章、新投稿、新诊断或新视频。
+
 ## 幂等记录
 
 在当前会话中为每个写操作保留以下信息，直到取得明确结果：
@@ -39,7 +41,17 @@
 | 查询或执行任务 | `tasks:read`、`tasks:write`、`jobs:read` |
 | 查询或管理素材 | `materials:read`、`materials:write` |
 | 查询或保存文章 | `articles:read`、`articles:write` |
+| 发布文章到站点 | `articles:read`、`articles:site-publish` |
 | 查询渠道与投稿 | `media:read`、`media:submit` |
+| 查询或生成视频 | `videos:read`、`videos:write` |
 | 查询或执行品牌诊断 | `brand-diagnoses:read`、`brand-diagnoses:write` |
 
 只建议当前目标真正需要的权限，不要求用户无条件授予全部 Scope。
+
+## 视频结果未知
+
+1. `geo_create_video` 返回后响应中断或后续查询超时时，使用已保存的视频任务编号调用 `geo_get_video`。
+2. 不重复调用 `geo_create_video`，除非平台明确返回失败且用户要求重新生成。
+3. 如果状态仍为 `queued` 或 `processing`，报告当前进度和下一次查询动作。
+4. 如果状态为 `success`，必须返回 `first_video_url`、`videos` 和 `combined_videos`。
+5. 如果状态为 `failed`，返回失败原因和可重试范围。

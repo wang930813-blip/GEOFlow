@@ -1,5 +1,16 @@
 # AI 品牌可见性诊断
 
+## 直达触发
+
+| 用户表达 | 直接动作 | 工具 |
+| --- | --- | --- |
+| 诊断品牌为什么搜不到、为什么 AI 不推荐 | 创建诊断问题任务 | `geo_create_brand_diagnosis` -> `geo_get_brand_diagnosis` |
+| 查诊断任务、最近诊断过哪些品牌 | 查询诊断列表 | `geo_list_brand_diagnoses` |
+| 看诊断问题、看诊断结果、查诊断进度 | 查询诊断详情 | `geo_get_brand_diagnosis` |
+| 确认这些问题、开始正式诊断 | 确认并启动诊断 | `geo_confirm_brand_diagnosis` -> `geo_get_brand_diagnosis` |
+
+命中查询动作时只读取数据，不启动正式诊断。命中确认动作时必须先说明会消耗一次品牌诊断额度。
+
 ## 诊断维度
 
 诊断围绕四类问题组织，但只根据用户资料和 MCP 实际返回结果下结论：

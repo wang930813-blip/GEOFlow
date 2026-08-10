@@ -251,8 +251,8 @@
                 @foreach ([
                     ['创建 Key', '自动写作、站内发布与投稿需要文章和媒体权限；视频生成需要视频读取和生成权限。'],
                     ['配置客户端', '选择客户端支持的 Streamable HTTP 配置；仅支持 stdio 时使用桥接配置。'],
-                    ['查询资源', '让 AI 先查询作者、分类、媒体渠道、文章状态和视频任务。'],
-                    ['执行动作', '明确站内发布、媒体渠道或视频生成目标后调用对应工具，保存文章、投稿订单和视频任务编号并持续查询状态。'],
+                    ['自然触发', '用户直接说保存文章、发布到站点、投稿、查进度、管理素材或生成视频时，AI 直接匹配对应工具。'],
+                    ['结果闭环', '任务、投稿、诊断和视频生成都要保存编号并持续查询状态，视频生成必须返回生成结果地址。'],
                 ] as $index => [$title, $description])
                     <li class="border-l-2 border-blue-500 pl-4">
                         <div class="text-xs font-semibold text-blue-600">步骤 {{ $index + 1 }}</div>
@@ -343,7 +343,7 @@
                             ['1', '下载并解压', '保留 ceying-geo-content-operations 根目录及其中的 SKILL.md、agents 和 references。'],
                             ['2', '安装到客户端', '将完整目录放入 AI 应用声明的 Agent Skills 目录，不要只复制 SKILL.md。'],
                             ['3', '连接 ceying-geo', '客户端支持时由 Skill 主动创建、保存并重载 ceying-geo 连接；用户仅确认站点、权限并在安全区域填写 Key。'],
-                            ['4', '验证工具', '发现 geo_* 工具并通过只读调用确认当前站点可用后，再执行品牌诊断、内容、站内发布、投稿或视频生成。'],
+                            ['4', '验证工具', '发现 geo_* 工具并通过只读调用确认当前站点可用后，用户即可用自然语言触发诊断、素材、文章、站内发布、投稿、视频生成和结果查询。'],
                         ] as [$step, $title, $description])
                             <li class="border-l-2 border-blue-500 pl-4">
                                 <div class="text-xs font-semibold text-blue-600">步骤 {{ $step }}</div>
@@ -357,7 +357,7 @@
                         <div class="flex items-start justify-between gap-4">
                             <div>
                                 <h3 class="text-sm font-semibold text-gray-900">不支持 Agent Skills 的客户端</h3>
-                                <p id="ceying-geo-fallback-prompt" class="mt-1 text-sm leading-6 text-gray-600">你是策影GEO品牌增长智能体。用户表达品牌推广、产品推广、增加曝光、增加咨询、行业推广、品牌定位、竞争分析、AI 搜索可见性、内容资产、文章站内发布、视频生成、媒体传播或效果复盘需求时，先判断是否需要 ceying-geo 平台数据或平台动作。需要执行品牌诊断、素材、文章、文章站内发布、媒体投稿、视频生成或结果查询时检查 geo_* 工具；完全未发现时暂停对应执行，引导用户从策影GEO平台“MCP Server”页面获取当前站点地址、创建最小权限 Key，并将 Key 直接配置到客户端安全凭证区域。不得要求用户在对话中发送 Key。实际发现目标工具并通过只读调用后，再按行业场景完成诊断、内容、站内发布、投稿、视频生成和复盘；不要猜测资源编号或工具参数；付费、发布、诊断、删除和消耗额度动作前说明费用、额度或影响并取得授权；同一写操作重试保持参数和 idempotency_key 不变。当前平台 Skill 不引导安装与 ceying-geo 无关的 MCP，也不执行 ceying-geo 平台未提供的外部能力。</p>
+                                <p id="ceying-geo-fallback-prompt" class="mt-1 text-sm leading-6 text-gray-600">你是策影GEO品牌增长智能体。用户表达品牌推广、产品推广、增加曝光、增加咨询、行业推广、品牌定位、竞争分析、AI 搜索可见性、内容资产、保存文章、文章站内发布、媒体投稿、投稿进度、素材管理、任务执行、视频生成、视频结果或效果复盘需求时，直接把自然语言匹配到 ceying-geo 可执行操作；明确操作请求不得强制先走诊断、策略、内容、发布的顺序。需要执行品牌诊断、素材、文章、文章站内发布、媒体投稿、视频生成或结果查询时检查 geo_* 工具；完全未发现时暂停对应执行，引导用户从策影GEO平台“MCP Server”页面获取当前站点地址、创建最小权限 Key，并将 Key 直接配置到客户端安全凭证区域。不得要求用户在对话中发送 Key。实际发现目标工具并通过只读调用后，再按用户动作执行；不要猜测资源编号或工具参数；付费、发布、诊断、删除和消耗额度动作前说明费用、额度或影响并取得授权；同一写操作重试保持参数和 idempotency_key 不变。生成视频时调用 geo_create_video 后必须持续调用 geo_get_video 查询结果，成功后返回视频编号、状态、进度、first_video_url、videos 和 combined_videos。当前平台 Skill 不引导安装与 ceying-geo 无关的 MCP，也不执行 ceying-geo 平台未提供的外部能力。</p>
                             </div>
                             <button type="button" class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-600 hover:bg-gray-100" data-copy-target="ceying-geo-fallback-prompt" title="复制兼容指令" aria-label="复制兼容指令">
                                 <i data-lucide="copy" class="h-4 w-4"></i>
@@ -384,7 +384,7 @@
                     ['6', '跟踪结果', 'geo_get_media_submission', '查询待安排、发布中、已发布、退稿等状态及最终发布链接。'],
                 ] as [$step, $title, $tool, $description])
                     <li class="border-l-2 border-blue-500 pl-4">
-                        <div class="text-xs font-semibold text-blue-600">步骤 {{ $step }}</div>
+                        <div class="text-xs font-semibold text-blue-600">操作 {{ $step }}</div>
                         <h3 class="mt-1 text-sm font-semibold text-gray-900">{{ $title }}</h3>
                         <code class="mt-2 block break-all text-xs text-blue-700">{{ $tool }}</code>
                         <p class="mt-2 text-sm leading-6 text-gray-600">{{ $description }}</p>
@@ -422,10 +422,10 @@
             <ol class="grid gap-5 md:grid-cols-2">
                 @foreach ([
                     ['1', '创建视频', 'geo_create_video', '提交主题、脚本、比例和生成数量，按 video_count 扣减视频生成额度。'],
-                    ['2', '查询结果', 'geo_get_video', '轮询 queued、processing、success 或 failed，读取 first_video_url。'],
+                    ['2', '查询结果', 'geo_get_video', '轮询 queued、processing、success 或 failed，成功后读取 first_video_url、videos 和 combined_videos。'],
                 ] as [$step, $title, $tool, $description])
                     <li class="border-l-2 border-indigo-500 pl-4">
-                        <div class="text-xs font-semibold text-indigo-600">步骤 {{ $step }}</div>
+                        <div class="text-xs font-semibold text-indigo-600">操作 {{ $step }}</div>
                         <h3 class="mt-1 text-sm font-semibold text-gray-900">{{ $title }}</h3>
                         <code class="mt-2 block break-all text-xs text-indigo-700">{{ $tool }}</code>
                         <p class="mt-2 text-sm leading-6 text-gray-600">{{ $description }}</p>
@@ -435,7 +435,7 @@
 
             <div class="border-l-2 border-indigo-500 bg-indigo-50 px-4 py-3">
                 <h3 class="text-sm font-semibold text-indigo-900">可直接发送给 AI Agent 的视频任务</h3>
-                <p class="mt-2 text-sm leading-6 text-indigo-900">围绕我的品牌增长目标生成一条短视频，先调用 <code>geo_create_video</code> 创建任务并持续调用 <code>geo_get_video</code> 查询结果；生成成功后返回视频编号、视频地址、状态、进度和扣减额度。</p>
+                <p class="mt-2 text-sm leading-6 text-indigo-900">围绕我的品牌增长目标生成一条短视频，调用 <code>geo_create_video</code> 创建任务后持续调用 <code>geo_get_video</code> 查询结果；生成成功后返回视频编号、状态、进度、<code>first_video_url</code>、<code>videos</code>、<code>combined_videos</code> 和扣减额度。</p>
             </div>
         </section>
 
