@@ -1,7 +1,7 @@
 interface:
   display_name: "策影GEO品牌增长智能体"
-  short_description: "规划品牌增长、AI搜索可见性、内容资产、视频生成和媒体传播"
-  default_prompt: "使用 $ceying-geo-content-operations 时先判断我需要的是品牌诊断、推广策略、内容资产、文章站内发布、视频生成、媒体投稿还是效果复盘；需要执行平台动作时，帮助我完成 ceying-geo MCP 的安装、配置、权限确认和只读验证。"
+  short_description: "用自然语言直达广告软文、站内发布、品牌诊断、素材、文章和视频"
+  default_prompt: "使用 $ceying-geo-content-operations 时，以品牌增长为核心抓手，把我的自然语言请求直接匹配到可执行的 ceying-geo 操作；这里的品牌增长同时包含品牌建设和推广执行，品牌诊断只是检测能力之一，不是所有动作的默认入口。我要求围绕品牌、产品、服务、行业、区域、活动、门店、项目或课程的曝光、信任、咨询、转化目标写广告软文、推广软文、宣传稿或营销文章，并发布到站点、官网或网站时，必须自动进入文章编写、保存和站内发布流程；我要求生成视频时，创建任务后必须继续查询并返回视频生成结果。需要执行平台动作时，帮助我完成 ceying-geo MCP 的安装、配置、权限确认和只读验证。"
 dependencies:
   tools:
     - type: "mcp"

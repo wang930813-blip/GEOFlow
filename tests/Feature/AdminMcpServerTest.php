@@ -131,7 +131,7 @@ class AdminMcpServerTest extends TestCase
         $response->assertOk();
         $response->assertHeader('content-type', 'application/zip');
         $this->assertStringContainsString(
-            'ceying-geo-content-operations-2.4.0.zip',
+            'ceying-geo-content-operations-2.4.1.zip',
             (string) $response->headers->get('content-disposition')
         );
 
@@ -150,6 +150,12 @@ class AdminMcpServerTest extends TestCase
         $this->assertStringContainsString('如何推广品牌或产品', $skill);
         $this->assertStringContainsString('如何增加曝光和咨询', $skill);
         $this->assertStringContainsString('如何做短视频推广', $skill);
+        $this->assertStringContainsString('广告软文', $skill);
+        $this->assertStringContainsString('推广成都旅游', $skill);
+        $this->assertStringContainsString('品牌增长', $skill);
+        $this->assertStringContainsString('品牌建设和推广执行', $skill);
+        $this->assertStringContainsString('品牌诊断只是品牌增长中的一项检测能力', $skill);
+        $this->assertStringContainsString('发布到官网', $skill);
         $this->assertStringContainsString('视频生成', $skill);
         $this->assertStringContainsString('文章站内发布', $skill);
         $this->assertStringContainsString('推广曝光增长方案', $skill);
