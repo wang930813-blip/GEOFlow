@@ -529,6 +529,26 @@ class AdminMonitoringCenterPageTest extends TestCase
             ->assertDontSee('收录词不存在');
     }
 
+    public function test_snapshot_voucher_renders_result_by_id_for_other_direct_admin(): void
+    {
+        [$owner, $site] = $this->createAdminWithSite('snapshot_direct_owner_admin');
+        $viewer = $this->createAdmin('snapshot_other_direct_admin');
+        $viewer->forceFill(['role' => 'direct_admin'])->save();
+        $result = $this->createBrandDiagnosisSnapshot($owner, $site);
+
+        $response = $this->actingAs($viewer, 'admin')
+            ->get(route('admin.snapshot-voucher.show', ['id' => (int) $result->id]));
+
+        $response
+            ->assertOk()
+            ->assertSee('class="brand"', false)
+            ->assertSee('DeepSeek', false)
+            ->assertSee('class="question-bubble"', false)
+            ->assertSee('<article class="answer">', false)
+            ->assertSee('href="https://chat.deepseek.com/"', false)
+            ->assertDontSee('class="empty-card"', false);
+    }
+
     public function test_snapshot_voucher_can_be_viewed_without_admin_login(): void
     {
         [$owner, $site] = $this->createAdminWithSite('snapshot_public_owner_admin');
