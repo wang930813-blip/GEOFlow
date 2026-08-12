@@ -498,6 +498,39 @@ class BrandDiagnosisAnswerSnapshotTest extends TestCase
         $this->assertNotNull($secondResult->fresh()->official_share_updated_at);
     }
 
+    public function test_super_admin_can_save_qianwen_my_cn_official_link(): void
+    {
+        $result = $this->createResult([
+            'platform' => 'qianwen',
+            'answer' => 'Qianwen answer.',
+            'brand_mentioned' => false,
+            'mention_count' => 0,
+            'mention_rank' => 0,
+            'sentiment' => 'neutral',
+        ]);
+        $officialUrl = 'https://qianwen.my.cn/share/chat/96d80bb1791e4a9b81bee5cb4c264434';
+        $superAdmin = Admin::query()->create([
+            'username' => 'snapshot_qianwen_my_cn_super',
+            'password' => 'secret-123',
+            'email' => 'snapshot-qianwen-my-cn-super@example.com',
+            'display_name' => 'Snapshot Qianwen My CN Super',
+            'role' => 'super_admin',
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->put('/geo_admin/brand-diagnosis/'.$result->run_id.'/official-links', [
+                'official_links' => [
+                    $result->id => $officialUrl,
+                ],
+            ])
+            ->assertRedirect('/geo_admin/brand-diagnosis/'.$result->run_id.'/official-links')
+            ->assertSessionDoesntHaveErrors()
+            ->assertSessionHas('message');
+
+        $this->assertSame($officialUrl, $result->fresh()->official_share_url);
+    }
+
     public function test_official_link_must_match_the_results_platform_domain(): void
     {
         $result = $this->createResult();
