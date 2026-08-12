@@ -238,6 +238,7 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::get('{videoGeneration}', [VideoGenerationController::class, 'show'])->name('show')->whereNumber('videoGeneration');
             Route::get('{videoGeneration}/download', [VideoGenerationController::class, 'download'])->name('download')->whereNumber('videoGeneration');
             Route::post('{videoGeneration}/cover', [VideoGenerationController::class, 'updateCover'])->name('cover.update')->whereNumber('videoGeneration');
+            Route::delete('{videoGeneration}', [VideoGenerationController::class, 'destroy'])->name('destroy')->whereNumber('videoGeneration');
             Route::post('{videoGeneration}/self-media/publish', [VideoSelfMediaPublishController::class, 'store'])
                 ->name('self-media.publish')
                 ->whereNumber('videoGeneration');

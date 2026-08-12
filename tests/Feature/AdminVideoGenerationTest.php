@@ -165,6 +165,69 @@ class AdminVideoGenerationTest extends TestCase
         $response->assertDontSee('name="video_source"', false);
     }
 
+    public function test_user_can_delete_own_video_generation_job_from_list(): void
+    {
+        [$admin, $site] = $this->provisionSubscribedAdmin('video_generation_delete_owner', videoQuota: 1, crebeeQuota: 1);
+        $video = $this->completedVideo($site, $admin, 'Deletable video');
+        $deleteUrl = url('/geo_admin/video-generations/'.(int) $video->id);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.video-generations.index'))
+            ->assertOk()
+            ->assertSee('action="'.$deleteUrl.'"', false)
+            ->assertSee('data-lucide="trash-2"', false);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->from(route('admin.video-generations.index'))
+            ->delete('/geo_admin/video-generations/'.(int) $video->id)
+            ->assertRedirect(route('admin.video-generations.index'))
+            ->assertSessionHas('message');
+
+        $this->assertDatabaseMissing('video_generation_jobs', [
+            'id' => (int) $video->id,
+        ]);
+    }
+
+    public function test_user_cannot_delete_another_users_video_generation_job(): void
+    {
+        [$owner, $ownerSite] = $this->provisionSubscribedAdmin('video_generation_delete_first_owner', videoQuota: 1, crebeeQuota: 1);
+        $video = $this->completedVideo($ownerSite, $owner, 'Other owner video');
+        [$otherAdmin, $otherSite] = $this->provisionSubscribedAdmin('video_generation_delete_other_owner', videoQuota: 1, crebeeQuota: 1);
+
+        $this->actingAs($otherAdmin, 'admin')
+            ->withSession(['current_site_id' => (int) $otherSite->id])
+            ->delete('/geo_admin/video-generations/'.(int) $video->id)
+            ->assertNotFound();
+
+        $this->assertDatabaseHas('video_generation_jobs', [
+            'id' => (int) $video->id,
+        ]);
+    }
+
+    public function test_agent_admin_cannot_delete_video_generation_job(): void
+    {
+        [$owner, $site] = $this->provisionSubscribedAdmin('video_generation_agent_delete_owner', videoQuota: 1, crebeeQuota: 1);
+        $video = $this->completedVideo($site, $owner, 'Agent protected video');
+        $agent = Admin::query()->create([
+            'username' => 'video_generation_agent_delete',
+            'password' => 'secret-123',
+            'email' => 'video-generation-agent-delete@example.com',
+            'display_name' => 'Video Generation Agent Delete',
+            'role' => 'agent_admin',
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($agent, 'admin')
+            ->delete('/geo_admin/video-generations/'.(int) $video->id)
+            ->assertForbidden();
+
+        $this->assertDatabaseHas('video_generation_jobs', [
+            'id' => (int) $video->id,
+        ]);
+    }
+
     public function test_start_video_generation_job_calls_api_and_dispatches_polling(): void
     {
         Queue::fake();
