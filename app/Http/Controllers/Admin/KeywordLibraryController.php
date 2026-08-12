@@ -78,6 +78,7 @@ class KeywordLibraryController extends Controller
             'inclusionResults' => $this->loadLatestInclusionResults($libraryId),
             'inclusionDailyReports' => $this->loadDailyInclusionReports($libraryId),
             'inclusionRealtime' => $this->inclusionRealtimeConfig($libraryId),
+            'inclusionPlatforms' => $this->inclusionPlatformLabels(),
         ]);
     }
 
@@ -915,7 +916,7 @@ class KeywordLibraryController extends Controller
 
     private function normalizePlatforms(array $platforms): array
     {
-        $allowed = ['doubao', 'qianwen', 'deepseek'];
+        $allowed = array_keys($this->inclusionPlatformLabels());
         $normalized = collect($platforms)
             ->map(static fn (mixed $platform): string => strtolower(trim((string) $platform)))
             ->filter(static fn (string $platform): bool => in_array($platform, $allowed, true))
@@ -924,6 +925,20 @@ class KeywordLibraryController extends Controller
             ->all();
 
         return $normalized !== [] ? $normalized : $allowed;
+    }
+
+    /**
+     * @return array<string,string>
+     */
+    private function inclusionPlatformLabels(): array
+    {
+        return [
+            'doubao' => '豆包',
+            'qianwen' => '千问',
+            'deepseek' => 'DeepSeek',
+            'yuanbao' => '腾讯元宝',
+            'wenxin' => '文心一言',
+        ];
     }
 
     private function loadInclusionRuns(int $libraryId): Collection
@@ -1048,12 +1063,7 @@ class KeywordLibraryController extends Controller
 
     private function platformLabel(string $platform): string
     {
-        return match (strtolower($platform)) {
-            'doubao' => '豆包',
-            'qianwen' => '千问',
-            'deepseek' => 'DeepSeek',
-            default => strtoupper($platform),
-        };
+        return $this->inclusionPlatformLabels()[strtolower($platform)] ?? strtoupper($platform);
     }
 
     /**
