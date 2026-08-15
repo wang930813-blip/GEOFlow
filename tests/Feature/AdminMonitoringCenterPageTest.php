@@ -12,6 +12,7 @@ use App\Models\KnowledgeBase;
 use App\Models\KeywordLibrary;
 use App\Models\MonitoringReportShare;
 use App\Models\Site;
+use App\Models\SiteSetting;
 use App\Services\MonitoringCenter\MonitoringReportRenderer;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -44,6 +45,25 @@ class AdminMonitoringCenterPageTest extends TestCase
             '/assets/monitoring-center/ceying-ai-logo1.png?v='.$version,
             $html
         );
+    }
+
+    public function test_monitoring_center_uses_current_site_report_logo_when_configured(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('monitoring_custom_logo_admin');
+
+        SiteSetting::withoutGlobalScope('current_site')->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'setting_key' => 'monitoring_report_logo',
+            'setting_value' => 'https://cdn.example.com/client-report-logo.png',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.monitoring-center.index'))
+            ->assertOk()
+            ->assertSee('src="https://cdn.example.com/client-report-logo.png"', false)
+            ->assertDontSee('/assets/monitoring-center/ceying-ai-logo1.png', false);
     }
 
     public function test_industry_report_header_keeps_space_between_title_and_company_meta(): void
@@ -447,6 +467,44 @@ class AdminMonitoringCenterPageTest extends TestCase
         }
     }
 
+    public function test_enterprise_article_trend_uses_display_override_for_registered_target_mobile(): void
+    {
+        $this->travelTo(Carbon::parse('2026-08-15 12:00:00'));
+
+        [$admin, $site] = $this->createAdminWithSite('monitoring_registered_target_admin');
+        $admin->forceFill([
+            'mobile' => '17780529472',
+            'display_name' => 'monitoring registered target',
+        ])->save();
+
+        $html = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.monitoring-center.index'))
+            ->assertOk()
+            ->getContent();
+
+        $payload = $this->monitoringReportPayload($html);
+        $last30 = collect(data_get($payload, 'trend.last_30', []));
+
+        $this->assertSame('2026-07-17', (string) data_get($last30->first(), 'date'));
+        $this->assertSame('2026-08-15', (string) data_get($last30->last(), 'date'));
+
+        foreach ($last30 as $row) {
+            $this->assertGreaterThanOrEqual(50, (int) $row['created']);
+            $this->assertLessThanOrEqual(80, (int) $row['created']);
+            $this->assertGreaterThanOrEqual(50, (int) $row['published']);
+            $this->assertLessThanOrEqual(80, (int) $row['published']);
+        }
+
+        $last7 = collect(data_get($payload, 'trend.last_7', []));
+        foreach ($last7 as $row) {
+            $this->assertGreaterThanOrEqual(50, (int) $row['created']);
+            $this->assertLessThanOrEqual(80, (int) $row['created']);
+            $this->assertGreaterThanOrEqual(50, (int) $row['published']);
+            $this->assertLessThanOrEqual(80, (int) $row['published']);
+        }
+    }
+
     public function test_enterprise_article_trend_does_not_override_other_accounts(): void
     {
         $this->travelTo(Carbon::parse('2026-08-06 12:00:00'));
@@ -694,6 +752,13 @@ class AdminMonitoringCenterPageTest extends TestCase
         [$admin, $site] = $this->createAdminWithSite('monitoring_public_share');
         $token = 'publicsharetoken123';
 
+        SiteSetting::withoutGlobalScope('current_site')->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'setting_key' => 'monitoring_report_logo',
+            'setting_value' => 'https://cdn.example.com/share-report-logo.png',
+        ]);
+
         MonitoringReportShare::query()->create([
             'token_hash' => hash('sha256', $token),
             'report_type' => 'enterprise',
@@ -721,6 +786,7 @@ class AdminMonitoringCenterPageTest extends TestCase
 
         $this->get(route('monitoring-report-share.show', ['token' => $token]))
             ->assertOk()
+            ->assertSee('src="https://cdn.example.com/share-report-logo.png"', false)
             ->assertSee('公开分享快照公司')
             ->assertSee('window.__MONITORING_REPORT__', false)
             ->assertDontSee(route('admin.login'), false);

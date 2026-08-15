@@ -7,6 +7,8 @@ use App\Models\Admin;
 use App\Models\AdminPlanSubscription;
 use App\Models\Site;
 use App\Models\SitePlanSubscription;
+use App\Models\SiteSetting;
+use App\Services\MonitoringCenter\MonitoringReportLogoResolver;
 use App\Support\AdminWeb;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -19,6 +21,10 @@ use Illuminate\View\View;
 
 class SiteManagementController extends Controller
 {
+    public function __construct(
+        private readonly MonitoringReportLogoResolver $reportLogoResolver
+    ) {}
+
     public function index(): View
     {
         $admin = $this->authorizedAdmin();
@@ -43,6 +49,7 @@ class SiteManagementController extends Controller
             'sites' => $sites,
             'admins' => $admins,
             'accountPlanSubscriptionsBySite' => $this->accountPlanSubscriptionsBySite($sites),
+            'monitoringReportLogosBySite' => $this->monitoringReportLogosBySite($sites),
             'isAgentSiteManager' => $isAgentSiteManager,
             'isSuperSiteManager' => $admin->isSuperAdmin(),
         ]);
@@ -53,7 +60,7 @@ class SiteManagementController extends Controller
         $admin = $this->authorizedAdmin();
         $payload = $this->validatedPayload($request, null, $admin);
 
-        DB::transaction(function () use ($payload): void {
+        DB::transaction(function () use ($admin, $payload): void {
             $site = Site::query()->create(Arr::only($payload, [
                 'owner_admin_id',
                 'name',
@@ -64,6 +71,7 @@ class SiteManagementController extends Controller
             ]));
 
             $this->syncMembers($site, $payload);
+            $this->saveMonitoringReportLogo($admin, $site, $payload);
         });
 
         return redirect()->route('admin.sites.manage.index')->with('message', '站点已创建');
@@ -76,7 +84,7 @@ class SiteManagementController extends Controller
 
         $payload = $this->validatedPayload($request, $site, $admin);
 
-        DB::transaction(function () use ($site, $payload): void {
+        DB::transaction(function () use ($admin, $site, $payload): void {
             $site->update(Arr::only($payload, [
                 'owner_admin_id',
                 'name',
@@ -87,6 +95,7 @@ class SiteManagementController extends Controller
             ]));
 
             $this->syncMembers($site, $payload);
+            $this->saveMonitoringReportLogo($admin, $site, $payload);
         });
 
         return redirect()->route('admin.sites.manage.index')->with('message', '站点已更新');
@@ -128,13 +137,16 @@ class SiteManagementController extends Controller
     }
 
     /**
-     * @return array{owner_admin_id:int|null,name:string,domain:string,status:string,customer_mode:string,agent_admin_id:int|null,member_ids:array<int,int>}
+     * @return array{owner_admin_id:int|null,name:string,domain:string,status:string,customer_mode:string,agent_admin_id:int|null,member_ids:array<int,int>,monitoring_report_logo:string}
      */
     private function validatedPayload(Request $request, ?Site $site = null, ?Admin $actor = null): array
     {
         $actor ??= $this->authorizedAdmin();
+        $domainInput = $site instanceof Site
+            ? (string) $site->domain
+            : (string) $request->input('domain', '');
         $request->merge([
-            'domain' => $this->normalizeDomain((string) $request->input('domain', '')),
+            'domain' => $this->normalizeDomain($domainInput),
         ]);
 
         $ownerExistsRule = $actor->isAgentAdmin()
@@ -161,11 +173,23 @@ class SiteManagementController extends Controller
             'owner_admin_id' => [$actor->isAgentAdmin() ? 'required' : 'nullable', 'integer', $ownerExistsRule],
             'member_ids' => ['nullable', 'array'],
             'member_ids.*' => ['integer', $memberExistsRule],
+            'monitoring_report_logo' => ['nullable', 'string', 'max:500'],
         ], [
             'name.required' => '请填写站点名称',
             'domain.regex' => '前台域名只填写域名，不要包含路径或特殊字符',
             'status.in' => '站点状态不正确',
         ]);
+
+        $postedReportLogo = trim((string) ($payload['monitoring_report_logo'] ?? ''));
+        $monitoringReportLogo = $actor->isSuperAdmin()
+            ? $this->reportLogoResolver->normalizeLogoUrl($postedReportLogo)
+            : '';
+
+        if ($actor->isSuperAdmin() && $postedReportLogo !== '' && $monitoringReportLogo === '') {
+            throw ValidationException::withMessages([
+                'monitoring_report_logo' => '监测中心报表 Logo 只支持 http(s) 图片地址或站内绝对路径',
+            ]);
+        }
 
         if (($payload['domain'] ?? '') !== '') {
             $domainExists = Site::query()
@@ -208,6 +232,7 @@ class SiteManagementController extends Controller
             'customer_mode' => $customerMode,
             'agent_admin_id' => $agentAdminId,
             'member_ids' => $memberIds,
+            'monitoring_report_logo' => $monitoringReportLogo,
         ];
     }
 
@@ -226,6 +251,56 @@ class SiteManagementController extends Controller
         }
 
         $site->members()->sync($syncPayload);
+    }
+
+    /**
+     * @param  Collection<int,Site>  $sites
+     * @return Collection<int,string>
+     */
+    private function monitoringReportLogosBySite(Collection $sites): Collection
+    {
+        $siteIds = $sites->pluck('id')->map(fn ($id): int => (int) $id)->filter()->unique()->values();
+        if ($siteIds->isEmpty()) {
+            return collect();
+        }
+
+        return SiteSetting::withoutGlobalScope('current_site')
+            ->whereIn('site_id', $siteIds)
+            ->where('setting_key', MonitoringReportLogoResolver::SETTING_KEY)
+            ->pluck('setting_value', 'site_id')
+            ->map(fn ($value): string => $this->reportLogoResolver->normalizeLogoUrl((string) $value));
+    }
+
+    /**
+     * @param  array{owner_admin_id:int|null,monitoring_report_logo:string}  $payload
+     */
+    private function saveMonitoringReportLogo(Admin $actor, Site $site, array $payload): void
+    {
+        if (! $actor->isSuperAdmin()) {
+            return;
+        }
+
+        $logoUrl = (string) ($payload['monitoring_report_logo'] ?? '');
+        $query = SiteSetting::withoutGlobalScope('current_site')
+            ->where('site_id', (int) $site->id)
+            ->where('setting_key', MonitoringReportLogoResolver::SETTING_KEY);
+
+        if ($logoUrl === '') {
+            $query->delete();
+
+            return;
+        }
+
+        SiteSetting::withoutGlobalScope('current_site')->updateOrCreate(
+            [
+                'site_id' => (int) $site->id,
+                'setting_key' => MonitoringReportLogoResolver::SETTING_KEY,
+            ],
+            [
+                'owner_admin_id' => (int) ($payload['owner_admin_id'] ?? 0) ?: null,
+                'setting_value' => $logoUrl,
+            ]
+        );
     }
 
     private function normalizeDomain(string $value): string

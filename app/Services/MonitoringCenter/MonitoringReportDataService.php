@@ -49,6 +49,13 @@ class MonitoringReportDataService
             'min' => 50,
             'max' => 80,
         ],
+        [
+            'mobile' => '17780529472',
+            'date_from' => '2026-07-15',
+            'date_to' => '2026-08-15',
+            'min' => 50,
+            'max' => 80,
+        ],
     ];
 
     /**

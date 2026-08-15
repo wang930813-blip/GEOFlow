@@ -3,13 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Models\MonitoringReportShare;
+use App\Services\MonitoringCenter\MonitoringReportLogoResolver;
 use App\Services\MonitoringCenter\MonitoringReportRenderer;
 use Illuminate\Http\Response;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 class MonitoringReportShareController extends Controller
 {
-    public function show(string $token, MonitoringReportRenderer $renderer): Response
+    public function show(string $token, MonitoringReportRenderer $renderer, MonitoringReportLogoResolver $logoResolver): Response
     {
         $token = trim($token);
         if ($token === '') {
@@ -37,6 +38,7 @@ class MonitoringReportShareController extends Controller
                 'enterprise_url' => $url,
                 'industry_url' => $url,
                 'is_shared_view' => true,
+                'report_logo_url' => $logoResolver->logoUrlForSiteId((int) ($share->site_id ?? 0)),
             ]
         ), 200, [
             'Content-Type' => 'text/html; charset=UTF-8',
