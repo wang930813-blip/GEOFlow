@@ -660,9 +660,8 @@ class MonitoringReportDataService
             ->where('answer', '<>', '')
             ->orderByDesc('checked_at')
             ->orderByDesc('id')
-            ->limit(80)
             ->get()
-            ->map(function (BrandDiagnosisResult $result) use ($articles, $companyName): array {
+            ->flatMap(function (BrandDiagnosisResult $result) use ($articles, $companyName): array {
                 $question = (string) ($result->question?->question ?? '');
                 $relatedArticles = $this->relatedArticles($articles, $question, $companyName);
                 $target = $this->searchRowTargetBrandName($result, $companyName);
@@ -671,13 +670,12 @@ class MonitoringReportDataService
                 $snapshotToken = trim((string) ($result->snapshot_token ?? ''));
                 $hasTargetBrandMention = $this->hasTargetBrandMention($result, $target);
 
-                return [
+                $baseRow = [
                     'id' => (int) $result->id,
                     'question' => $question,
                     'platform_key' => (string) $result->platform,
                     'platform' => $this->platformLabel((string) $result->platform),
                     'platform_url' => $this->platformUrl((string) $result->platform),
-                    'terminal' => 'PC',
                     'date' => $checkedAt?->format('Y-m-d') ?? '',
                     'time' => $checkedAt?->format('Y-m-d H:i:s') ?? '',
                     'target' => $target,
@@ -693,6 +691,15 @@ class MonitoringReportDataService
                         ? route('admin.snapshot-voucher.show', ['id' => (int) $result->id])
                         : '',
                 ];
+
+                return collect(self::SEARCH_REPORT_TERMINALS)
+                    ->map(function (string $terminal) use ($baseRow): array {
+                        $row = $baseRow;
+                        $row['terminal'] = $terminal;
+
+                        return $row;
+                    })
+                    ->all();
             })
             ->values()
             ->all();

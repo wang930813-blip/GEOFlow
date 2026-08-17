@@ -295,6 +295,79 @@ class AdminMonitoringCenterPageTest extends TestCase
         $this->assertStringNotContainsString('/brand-diagnosis/snapshot/'.$matchedResult->snapshot_token, $html);
     }
 
+    public function test_enterprise_search_report_includes_all_rows_and_mirrors_pc_rows_to_mobile(): void
+    {
+        config(['geoflow.monitoring_search_report_virtual_data_enabled' => false]);
+
+        [$admin, $site] = $this->createAdminWithSite('monitoring_search_report_full_rows_admin');
+
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => 'Full Rows Brand',
+            'platforms' => ['doubao'],
+            'status' => 'completed',
+            'total_questions' => 81,
+            'completed_questions' => 81,
+            'failed_questions' => 0,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+            'completed_at' => now(),
+        ]);
+
+        for ($index = 1; $index <= 81; $index++) {
+            $question = BrandDiagnosisQuestion::query()->create([
+                'site_id' => (int) $site->id,
+                'owner_admin_id' => (int) $admin->id,
+                'run_id' => (int) $run->id,
+                'question' => 'Full rows question '.$index,
+                'question_type' => 'brand',
+                'sort_order' => $index,
+                'status' => 'completed',
+            ]);
+
+            BrandDiagnosisResult::query()->create([
+                'site_id' => (int) $site->id,
+                'owner_admin_id' => (int) $admin->id,
+                'run_id' => (int) $run->id,
+                'question_id' => (int) $question->id,
+                'platform' => 'doubao',
+                'answer' => 'Full Rows Brand answer '.$index,
+                'brand_mentioned' => true,
+                'mention_count' => 1,
+                'mention_rank' => 1,
+                'sentiment' => 'positive',
+                'status' => 'success',
+                'checked_at' => now()->subSeconds($index),
+            ]);
+        }
+
+        $html = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.monitoring-center.index'))
+            ->assertOk()
+            ->getContent();
+
+        $payload = $this->monitoringReportPayload($html);
+        $rows = collect(data_get($payload, 'search_rows', []));
+
+        $this->assertCount(162, $rows);
+        $this->assertSame(81, $rows->where('terminal', 'PC')->count());
+        $this->assertSame(81, $rows->reject(fn (array $row): bool => (string) $row['terminal'] === 'PC')->count());
+        $this->assertSame(
+            $rows->where('terminal', 'PC')->pluck('id')->sort()->values()->all(),
+            $rows->reject(fn (array $row): bool => (string) $row['terminal'] === 'PC')->pluck('id')->sort()->values()->all()
+        );
+
+        $filters = collect(data_get($payload, 'platform_filters', []));
+        $this->assertSame(162, (int) data_get($filters->first(), 'total'));
+        $doubaoFilters = $filters->where('platform_key', 'doubao')->where('total', 81)->values();
+        $this->assertCount(2, $doubaoFilters);
+        $this->assertSame(1, $doubaoFilters->where('terminal', 'PC')->count());
+        $this->assertSame(1, $doubaoFilters->reject(fn (array $row): bool => (string) $row['terminal'] === 'PC')->count());
+    }
+
     public function test_monitoring_center_virtual_switch_only_keeps_search_report_static(): void
     {
         config(['geoflow.monitoring_search_report_virtual_data_enabled' => true]);
