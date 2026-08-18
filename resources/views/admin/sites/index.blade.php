@@ -117,7 +117,17 @@
             </div>
 
             <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-slate-200">
+                <table class="min-w-[1120px] table-fixed divide-y divide-slate-200">
+                    <colgroup>
+                        <col class="w-48">
+                        <col class="w-56">
+                        <col class="w-40">
+                        <col class="w-28">
+                        <col class="w-44">
+                        <col class="w-24">
+                        <col class="w-24">
+                        <col class="w-36">
+                    </colgroup>
                     <thead class="bg-slate-50">
                         <tr>
                             <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">站点</th>
@@ -139,10 +149,10 @@
                             @endphp
                             <tr>
                                 <td class="px-5 py-4 align-top">
-                                    <div class="text-sm font-semibold text-gray-900">{{ $site->name }}</div>
+                                    <div class="truncate text-sm font-semibold text-gray-900" title="{{ $site->name }}">{{ $site->name }}</div>
                                     <div class="mt-1 text-xs text-gray-400">ID: {{ $site->id }}</div>
                                 </td>
-                                <td class="px-5 py-4 align-top text-sm text-gray-600">
+                                <td class="break-all px-5 py-4 align-top text-sm text-gray-600">
                                     @if ((string) $site->domain !== '')
                                         {{ $site->domain }}
                                     @else
@@ -173,12 +183,12 @@
                                         <span class="inline-flex rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-700">停用</span>
                                     @endif
                                 </td>
-                                <td class="px-5 py-4 align-top text-right">
+                                <td class="w-36 px-4 py-4 align-top text-right">
                                     <form method="POST" action="{{ route('admin.sites.manage.destroy', ['site' => $site->id]) }}" class="mb-2 inline-block" onsubmit="return confirm('确定删除该站点吗？删除后会取消关联开通记录并移除站点成员。');">
                                         @csrf
                                         <button type="submit" class="text-sm font-medium text-red-600 hover:text-red-800">删除</button>
                                     </form>
-                                    <div class="inline-flex items-center justify-end gap-3">
+                                    <div class="inline-flex items-center justify-end gap-2 whitespace-nowrap">
                                         <button type="button" data-open-site-edit-modal="{{ $site->id }}" class="text-sm font-medium text-indigo-600 hover:text-indigo-800">编辑</button>
                                         <form method="POST" action="{{ route('admin.sites.manage.toggle-status', ['site' => $site->id]) }}" class="inline">
                                             @csrf
@@ -197,6 +207,11 @@
                     </tbody>
                 </table>
             </div>
+            @if ($sites->hasPages())
+                <div class="border-t border-slate-200 px-5 py-4">
+                    {{ $sites->onEachSide(1)->links() }}
+                </div>
+            @endif
         </section>
 
         @foreach ($sites as $site)

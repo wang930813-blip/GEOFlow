@@ -368,6 +368,38 @@ class PlatformPlanSubscriptionTest extends TestCase
         ]);
     }
 
+    public function test_customer_opening_records_are_paginated_and_newest_first(): void
+    {
+        config(['geoflow.admin_items_per_page' => 2]);
+
+        $superAdmin = $this->createAdmin('subscription_page_root_admin', 'super_admin');
+        $owner = $this->createAdmin('subscription_page_owner', 'direct_admin');
+        $plan = $this->createPlan('Subscription Page Plan', [
+            'credits' => ['quota_value' => 100, 'quota_period' => 'cycle', 'unit' => 'points'],
+        ]);
+        $oldSite = $this->createSite('Old Subscription Site', $owner);
+        $middleSite = $this->createSite('Middle Subscription Site', $owner);
+        $newSite = $this->createSite('Newest Subscription Site', $owner);
+
+        $oldSubscription = $this->createSubscriptionWithCreatedAt($oldSite, $plan, $owner, now()->subDays(3));
+        $middleSubscription = $this->createSubscriptionWithCreatedAt($middleSite, $plan, $owner, now()->subDays(2));
+        $newSubscription = $this->createSubscriptionWithCreatedAt($newSite, $plan, $owner, now()->subDay());
+
+        $response = $this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.plan-subscriptions.index'));
+
+        $subscriptions = $response->viewData('subscriptions');
+
+        $response->assertOk();
+        $this->assertInstanceOf(\Illuminate\Pagination\LengthAwarePaginator::class, $subscriptions);
+        $this->assertSame(
+            [(int) $newSubscription->id, (int) $middleSubscription->id],
+            $subscriptions->getCollection()->pluck('id')->map(fn ($id): int => (int) $id)->all()
+        );
+        $this->assertSame(3, $subscriptions->total());
+        $this->assertFalse($subscriptions->getCollection()->contains('id', (int) $oldSubscription->id));
+    }
+
     /**
      * @param  array<string,array{quota_value:int,quota_period:string,unit:string}>  $resources
      */
@@ -421,5 +453,31 @@ class PlatformPlanSubscriptionTest extends TestCase
         $site->members()->attach((int) $owner->id, ['role' => 'owner']);
 
         return $site;
+    }
+
+    private function createSubscriptionWithCreatedAt(
+        Site $site,
+        PlatformPlan $plan,
+        Admin $owner,
+        \Carbon\CarbonInterface $createdAt
+    ): \App\Models\SitePlanSubscription {
+        $subscription = \App\Models\SitePlanSubscription::query()->create([
+            'site_id' => (int) $site->id,
+            'plan_id' => (int) $plan->id,
+            'mode' => 'direct',
+            'owner_admin_id' => (int) $owner->id,
+            'assigned_by_admin_id' => (int) $owner->id,
+            'status' => 'active',
+            'starts_at' => $createdAt,
+            'ends_at' => $createdAt->copy()->addMonth(),
+            'entitlements_snapshot' => [],
+            'remark' => '',
+        ]);
+        $subscription->forceFill([
+            'created_at' => $createdAt,
+            'updated_at' => $createdAt,
+        ])->save();
+
+        return $subscription;
     }
 }

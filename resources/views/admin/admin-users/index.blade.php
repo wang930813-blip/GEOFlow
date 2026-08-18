@@ -189,6 +189,11 @@
                     </tbody>
                 </table>
             </div>
+            @if ($admins->hasPages())
+                <div class="border-t border-gray-200 px-6 py-4">
+                    {{ $admins->onEachSide(1)->links() }}
+                </div>
+            @endif
         </div>
     </div>
 

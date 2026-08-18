@@ -144,6 +144,11 @@
                     </tbody>
                 </table>
             </div>
+            @if ($subscriptions->hasPages())
+                <div class="border-t border-slate-200 px-5 py-4">
+                    {{ $subscriptions->onEachSide(1)->links() }}
+                </div>
+            @endif
         </section>
     </div>
 @endsection

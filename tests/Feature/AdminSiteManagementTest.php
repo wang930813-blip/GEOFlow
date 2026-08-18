@@ -483,6 +483,36 @@ class AdminSiteManagementTest extends TestCase
         ]);
     }
 
+    public function test_site_management_list_is_paginated_newest_first_and_table_layout_is_constrained(): void
+    {
+        config(['geoflow.admin_items_per_page' => 2]);
+
+        $superAdmin = $this->createAdmin('platform_site_pagination_root', 'super_admin');
+        $owner = $this->createAdmin('site_pagination_owner', 'direct_admin');
+
+        $oldSite = $this->createSiteWithCreatedAt('Paginated Old Site', $owner, now()->subDays(3));
+        $middleSite = $this->createSiteWithCreatedAt('Paginated Middle Site', $owner, now()->subDays(2));
+        $newSite = $this->createSiteWithCreatedAt('Paginated New Site', $owner, now()->subDay());
+
+        $response = $this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.sites.manage.index'));
+
+        $sites = $response->viewData('sites');
+
+        $response
+            ->assertOk()
+            ->assertSee('min-w-[1120px] table-fixed', false)
+            ->assertSee('<col class="w-36">', false);
+
+        $this->assertInstanceOf(\Illuminate\Pagination\LengthAwarePaginator::class, $sites);
+        $this->assertSame(
+            [(int) $newSite->id, (int) $middleSite->id],
+            $sites->getCollection()->pluck('id')->map(fn ($id): int => (int) $id)->all()
+        );
+        $this->assertSame(3, $sites->total());
+        $this->assertFalse($sites->getCollection()->contains('id', (int) $oldSite->id));
+    }
+
     public function test_super_admin_can_soft_delete_site_from_management_page(): void
     {
         $this->withoutMiddleware(ValidateCsrfToken::class);
@@ -534,5 +564,23 @@ class AdminSiteManagementTest extends TestCase
             'status' => 'active',
             'created_by' => $creator?->id,
         ]);
+    }
+
+    private function createSiteWithCreatedAt(string $name, Admin $owner, \Carbon\CarbonInterface $createdAt): Site
+    {
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $owner->id,
+            'name' => $name,
+            'domain' => str($name)->slug().'.geo.xinzhidi.cn',
+            'status' => 'active',
+            'customer_mode' => 'direct',
+        ]);
+        $site->members()->attach((int) $owner->id, ['role' => 'owner']);
+        $site->forceFill([
+            'created_at' => $createdAt,
+            'updated_at' => $createdAt,
+        ])->save();
+
+        return $site;
     }
 }

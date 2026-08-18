@@ -29,6 +29,7 @@ class SiteManagementController extends Controller
     {
         $admin = $this->authorizedAdmin();
         $isAgentSiteManager = $admin->isAgentAdmin();
+        $perPage = max(1, min(100, (int) config('geoflow.admin_items_per_page', 20)));
 
         $sites = $this->visibleSitesQuery($admin)
             ->with([
@@ -37,8 +38,11 @@ class SiteManagementController extends Controller
                 'planSubscriptions' => fn ($query) => $query->with('plan:id,name,code')->latest()->limit(1),
             ])
             ->withCount('members')
-            ->orderBy('id')
-            ->get();
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->paginate($perPage)
+            ->withQueryString();
+        $siteCollection = $sites->getCollection();
 
         $admins = $this->manageableAdminsQuery($admin)->get();
 
@@ -48,8 +52,8 @@ class SiteManagementController extends Controller
             'adminSiteName' => AdminWeb::siteName(),
             'sites' => $sites,
             'admins' => $admins,
-            'accountPlanSubscriptionsBySite' => $this->accountPlanSubscriptionsBySite($sites),
-            'monitoringReportLogosBySite' => $this->monitoringReportLogosBySite($sites),
+            'accountPlanSubscriptionsBySite' => $this->accountPlanSubscriptionsBySite($siteCollection),
+            'monitoringReportLogosBySite' => $this->monitoringReportLogosBySite($siteCollection),
             'isAgentSiteManager' => $isAgentSiteManager,
             'isSuperSiteManager' => $admin->isSuperAdmin(),
         ]);

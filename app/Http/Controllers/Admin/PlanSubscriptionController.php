@@ -25,6 +25,8 @@ class PlanSubscriptionController extends Controller
 
     public function index(): View
     {
+        $perPage = max(1, min(100, (int) config('geoflow.admin_items_per_page', 20)));
+
         return view('admin.plan-subscriptions.index', [
             'pageTitle' => '客户开通',
             'activeMenu' => 'plan_subscriptions',
@@ -32,8 +34,9 @@ class PlanSubscriptionController extends Controller
             'subscriptions' => SitePlanSubscription::query()
                 ->with(['site:id,name,customer_mode,plan_status', 'plan:id,name,code', 'ownerAdmin:id,username,display_name'])
                 ->orderByDesc('created_at')
-                ->limit(100)
-                ->get(),
+                ->orderByDesc('id')
+                ->paginate($perPage)
+                ->withQueryString(),
             'sites' => Site::query()->orderBy('id')->get(['id', 'name', 'customer_mode']),
             'plans' => PlatformPlan::query()->where('status', 'active')->with('entitlements')->orderBy('sort_order')->orderBy('id')->get(),
             'admins' => Admin::query()->where('status', 'active')->orderBy('username')->get(['id', 'username', 'display_name', 'role']),
