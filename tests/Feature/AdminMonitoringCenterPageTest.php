@@ -795,8 +795,9 @@ class AdminMonitoringCenterPageTest extends TestCase
         }
     }
 
-    public function test_monitoring_center_share_endpoint_creates_snapshot_link_for_current_site(): void
+    public function test_monitoring_center_share_endpoint_creates_expiring_link_for_current_site(): void
     {
+        $this->travelTo(Carbon::parse('2026-08-19 10:00:00'));
         $this->withoutMiddleware(ValidateCsrfToken::class);
 
         [$admin, $site] = $this->createAdminWithSite('monitoring_share_creator');
@@ -816,11 +817,11 @@ class AdminMonitoringCenterPageTest extends TestCase
         $this->assertSame('industry', (string) $share->report_type);
         $this->assertSame((int) $site->id, (int) $share->site_id);
         $this->assertSame((int) $admin->id, (int) $share->created_by_admin_id);
-        $this->assertSame('monitoring_share_creator', (string) data_get($share->payload, 'context.company_name'));
+        $this->assertSame('2026-08-26 10:00:00', $share->expires_at?->format('Y-m-d H:i:s'));
         $this->assertStringContainsString('/monitoring-report/share/', (string) $response->json('url'));
     }
 
-    public function test_monitoring_report_share_link_is_public_and_renders_snapshot_payload(): void
+    public function test_monitoring_report_share_link_is_public_and_renders_realtime_report_data(): void
     {
         [$admin, $site] = $this->createAdminWithSite('monitoring_public_share');
         $token = 'publicsharetoken123';
@@ -832,6 +833,18 @@ class AdminMonitoringCenterPageTest extends TestCase
             'setting_value' => 'https://cdn.example.com/share-report-logo.png',
         ]);
 
+        KeywordLibrary::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'Realtime share keyword library',
+            'company_name' => 'Realtime Share Brand',
+            'domain_keyword' => 'realtime monitoring',
+            'status' => 'active',
+            'keyword_count' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
         MonitoringReportShare::query()->create([
             'token_hash' => hash('sha256', $token),
             'report_type' => 'enterprise',
@@ -841,7 +854,7 @@ class AdminMonitoringCenterPageTest extends TestCase
             'title' => 'Enterprise report snapshot',
             'payload' => [
                 'context' => [
-                    'company_name' => '公开分享快照公司',
+                    'company_name' => 'Stale Snapshot Brand',
                     'site_name' => (string) $site->name,
                     'date' => '2026-07-13',
                     'updated_at' => '2026-07-13 10:00',
@@ -860,9 +873,32 @@ class AdminMonitoringCenterPageTest extends TestCase
         $this->get(route('monitoring-report-share.show', ['token' => $token]))
             ->assertOk()
             ->assertSee('src="https://cdn.example.com/share-report-logo.png"', false)
-            ->assertSee('公开分享快照公司')
+            ->assertSee('Realtime Share Brand')
+            ->assertDontSee('Stale Snapshot Brand')
             ->assertSee('window.__MONITORING_REPORT__', false)
             ->assertDontSee(route('admin.login'), false);
+    }
+
+    public function test_monitoring_report_share_link_with_legacy_null_expiry_expires_after_seven_days(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('monitoring_legacy_expired_share');
+        $token = 'legacyexpiredsharetoken123';
+
+        $share = MonitoringReportShare::query()->create([
+            'token_hash' => hash('sha256', $token),
+            'report_type' => 'enterprise',
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'created_by_admin_id' => (int) $admin->id,
+            'title' => 'Legacy report share',
+            'payload' => [],
+            'use_virtual_search_report_data' => false,
+            'expires_at' => null,
+        ]);
+        $share->forceFill(['created_at' => now()->subDays(8)])->save();
+
+        $this->get(route('monitoring-report-share.show', ['token' => $token]))
+            ->assertNotFound();
     }
 
     private function createAdmin(string $username = 'monitoring_center_admin'): Admin

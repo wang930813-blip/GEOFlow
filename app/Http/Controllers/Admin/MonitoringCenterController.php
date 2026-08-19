@@ -71,6 +71,7 @@ class MonitoringCenterController extends Controller
             'title' => trim($reportLabel.($companyName !== '' ? ' - '.$companyName : '')),
             'payload' => $reportData,
             'use_virtual_search_report_data' => $useVirtualSearchReportData,
+            'expires_at' => now()->addDays(7),
         ]);
 
         return response()->json([
