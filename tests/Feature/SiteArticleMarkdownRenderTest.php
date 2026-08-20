@@ -8,6 +8,7 @@ use App\Models\Category;
 use App\Models\SiteSetting;
 use App\Support\Site\ArticleHtmlPresenter;
 use App\Support\Site\SiteSettingsBag;
+use App\Support\Site\SiteThemeCatalog;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -280,5 +281,123 @@ MD);
             ->assertSee('data-home-poster-carousel', false)
             ->assertSee('https://example.com/english-banner.jpg', false)
             ->assertSee('English Banner');
+    }
+
+    public function test_technology_theme_keeps_frontend_article_category_and_seo_contracts(): void
+    {
+        $themeIds = collect(app(SiteThemeCatalog::class)->all())->pluck('id')->all();
+        $this->assertContains('tech-insight-20260819', $themeIds);
+
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'active_theme'],
+            ['setting_value' => 'tech-insight-20260819']
+        );
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'site_name'],
+            ['setting_value' => 'Tech Contract Site']
+        );
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'site_description'],
+            ['setting_value' => 'Tech contract SEO description']
+        );
+        SiteSettingsBag::forget();
+
+        $category = Category::query()->create([
+            'name' => 'Tech Category',
+            'slug' => 'tech-category',
+        ]);
+        $author = Author::query()->create([
+            'name' => 'Tech Author',
+        ]);
+        $article = Article::query()->create([
+            'title' => 'Tech Contract Article',
+            'slug' => 'tech-contract-article',
+            'excerpt' => 'Tech contract article excerpt.',
+            'content' => "## Contract Heading\n\n| Layer | Status |\n| --- | --- |\n| Article data | Preserved |",
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+            'is_featured' => true,
+            'is_hot' => true,
+            'published_at' => now(),
+        ]);
+
+        $this->get(route('site.home'))
+            ->assertOk()
+            ->assertSee('tech-insight-theme', false)
+            ->assertSee('themes/tech-insight-20260819/theme.css', false)
+            ->assertSee('Tech Contract Site')
+            ->assertSee('Tech Contract Article')
+            ->assertSee('Tech Category')
+            ->assertSee('<meta name="description" content="Tech contract SEO description">', false);
+
+        $this->get(route('site.category', $category->slug))
+            ->assertOk()
+            ->assertSee('tech-insight-theme', false)
+            ->assertSee('Tech Category')
+            ->assertSee('Tech Contract Article')
+            ->assertSee('href="'.route('site.article', $article->slug).'"', false);
+
+        $this->get(route('site.article', $article->slug))
+            ->assertOk()
+            ->assertSee('tech-insight-theme', false)
+            ->assertSee('Tech Contract Article')
+            ->assertSee('Tech Author')
+            ->assertSee('<table class="article-table">', false)
+            ->assertSee('<link rel="canonical" href="'.route('site.article', $article->slug).'">', false);
+    }
+
+    public function test_technology_theme_homepage_uses_banner_brand_intro_and_content_grid(): void
+    {
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'active_theme'],
+            ['setting_value' => 'tech-insight-20260819']
+        );
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'site_name'],
+            ['setting_value' => 'Tech Insight Corp']
+        );
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'site_description'],
+            ['setting_value' => 'A concise technology homepage for knowledge-driven publishing.']
+        );
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'site_keywords'],
+            ['setting_value' => 'AI内容,技术官网,品牌发布']
+        );
+        SiteSettingsBag::forget();
+
+        $category = Category::query()->create([
+            'name' => 'Product Updates',
+            'slug' => 'product-updates',
+        ]);
+        $author = Author::query()->create([
+            'name' => 'Editorial Team',
+        ]);
+        Article::query()->create([
+            'title' => 'Release Notes for Tech Insight',
+            'slug' => 'release-notes-tech-insight',
+            'excerpt' => 'A short update for the homepage flow.',
+            'content' => "## Release Notes\n\n| Item | Status |\n| --- | --- |\n| Homepage | Updated |",
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+            'is_featured' => true,
+            'published_at' => now(),
+        ]);
+
+        $this->get(route('site.home'))
+            ->assertOk()
+            ->assertSee('tx-banner-carousel', false)
+            ->assertSee('tx-brand-intro', false)
+            ->assertSee('tx-content-grid', false)
+            ->assertSee('tech-banner-service.png', false)
+            ->assertSee('tech-banner-future.png', false)
+            ->assertSee('Tech Insight Corp')
+            ->assertSee('A concise technology homepage for knowledge-driven publishing.')
+            ->assertSee('AI内容')
+            ->assertSee('Release Notes for Tech Insight');
     }
 }
