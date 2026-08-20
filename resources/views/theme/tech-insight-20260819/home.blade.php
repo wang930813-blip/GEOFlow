@@ -86,23 +86,12 @@
                 @endif
             </section>
 
-            <section class="tx-brand-intro">
-                <div class="tx-brand-intro__copy">
-                    <span class="tx-eyebrow">品牌介绍</span>
-                    <h2>{{ $siteTitle }}</h2>
-                    @if($siteSubtitle !== '')
-                        <strong>{{ $siteSubtitle }}</strong>
-                    @endif
-                    <p>{{ $siteDescription !== '' ? $siteDescription : __('site.home_hero_fallback') }}</p>
-                </div>
-            </section>
-
             <div id="txContentGrid" class="tx-content-grid">
                 <section class="tx-content-main">
                     <div class="tx-home-section-head">
                         <div>
-                            <span class="tx-eyebrow">{{ __('site.home_latest') }}</span>
-                            <h3>{{ $viewTitle }}</h3>
+                            <span class="tx-eyebrow">资讯</span>
+                            <h3>最新资讯</h3>
                         </div>
                     </div>
 
@@ -157,7 +146,7 @@
                     </div>
                 </section>
 
-                @include('theme.tech-insight-20260819.partials.sidebar', ['showFeedPanel' => $isDefaultHome])
+                @include('theme.tech-insight-20260819.partials.sidebar', ['showFeedPanel' => $isDefaultHome, 'showCategoryCloud' => false])
             </div>
         @else
             <div class="tx-page-head">
@@ -170,7 +159,7 @@
                     <h1>{{ __('site.category_not_found') }}</h1>
                     <p>{{ $pageDescription }}</p>
                 @else
-                    <span class="tx-eyebrow">{{ __('site.home_latest') }}</span>
+                    <span class="tx-eyebrow">资讯</span>
                     <h1>{{ $viewTitle }}</h1>
                     <p>{{ $pageDescription }}</p>
                 @endif

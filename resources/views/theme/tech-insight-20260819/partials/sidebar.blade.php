@@ -8,6 +8,9 @@
     $feedTitle = trim((string) (($siteSubtitle ?? '') !== '' ? $siteSubtitle : ($siteTitle ?? 'GEOFlow')));
     $feedDescription = trim((string) ($siteDescription ?? ''));
 @endphp
+@php
+    $showCategoryCloud = $showCategoryCloud ?? true;
+@endphp
 <aside class="tx-sidebar">
     @if(!empty($showFeedPanel))
         <section class="tx-panel tx-signal-panel">
@@ -21,7 +24,7 @@
 
     <section class="tx-panel">
         <div class="tx-section-heading">
-            <span>{{ $sidebarHotArticles->isNotEmpty() ? __('site.home_hot') : __('site.home_latest') }}</span>
+            <span>{{ $sidebarHotArticles->isNotEmpty() ? '热门资讯' : '最新资讯' }}</span>
         </div>
         <div class="tx-rank-list">
             @forelse($sidebarArticles as $hotArticle)
@@ -35,7 +38,7 @@
         </div>
     </section>
 
-    @if($navCategoriesCollection->isNotEmpty())
+    @if($showCategoryCloud && $navCategoriesCollection->isNotEmpty())
         <section class="tx-panel" id="txSidebarCategories">
             <div class="tx-section-heading">
                 <span>{{ __('front.nav.categories') }}</span>

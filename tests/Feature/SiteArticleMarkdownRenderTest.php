@@ -348,7 +348,7 @@ MD);
             ->assertSee('<link rel="canonical" href="'.route('site.article', $article->slug).'">', false);
     }
 
-    public function test_technology_theme_homepage_uses_banner_brand_intro_and_content_grid(): void
+    public function test_technology_theme_fixed_pages_use_banner_and_content_structure(): void
     {
         SiteSetting::query()->updateOrCreate(
             ['setting_key' => 'active_theme'],
@@ -361,6 +361,14 @@ MD);
         SiteSetting::query()->updateOrCreate(
             ['setting_key' => 'site_description'],
             ['setting_value' => 'A concise technology homepage for knowledge-driven publishing.']
+        );
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'contact_info'],
+            ['setting_value' => "support@example.com\n400-000-0000"]
+        );
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'company_address'],
+            ['setting_value' => 'Shanghai Test Address']
         );
         SiteSetting::query()->updateOrCreate(
             ['setting_key' => 'site_keywords'],
@@ -391,13 +399,36 @@ MD);
         $this->get(route('site.home'))
             ->assertOk()
             ->assertSee('tx-banner-carousel', false)
-            ->assertSee('tx-brand-intro', false)
+            ->assertDontSee('tx-brand-intro', false)
+            ->assertDontSee('tx-topic-section', false)
             ->assertSee('tx-content-grid', false)
             ->assertSee('tech-banner-service.png', false)
             ->assertSee('tech-banner-future.png', false)
             ->assertSee('Tech Insight Corp')
             ->assertSee('A concise technology homepage for knowledge-driven publishing.')
-            ->assertSee('AI内容')
             ->assertSee('Release Notes for Tech Insight');
+
+        $this->get(route('site.news'))
+            ->assertOk()
+            ->assertSee('tx-page-hero', false)
+            ->assertSee('tx-topic-section', false)
+            ->assertSee('tx-topic-card', false)
+            ->assertSee('Product Updates')
+            ->assertSee('Release Notes for Tech Insight');
+
+        $this->get(route('site.about'))
+            ->assertOk()
+            ->assertSee('tx-page-hero', false)
+            ->assertSee('tx-about-grid', false)
+            ->assertSee('tx-about-main', false)
+            ->assertSee('Tech Insight Corp')
+            ->assertSee('A concise technology homepage for knowledge-driven publishing.');
+
+        $this->get(route('site.contact'))
+            ->assertOk()
+            ->assertSee('tx-page-hero', false)
+            ->assertSee('tx-contact-grid', false)
+            ->assertSee('support@example.com')
+            ->assertSee('Shanghai Test Address');
     }
 }

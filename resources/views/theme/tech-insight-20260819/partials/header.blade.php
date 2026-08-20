@@ -1,6 +1,11 @@
 @php
-    $path = request()->path();
-    $isHome = $path === '' || $path === '/';
+    $activeNav = $activeNav ?? (request()->routeIs('site.news', 'site.category', 'site.article') ? 'news' : (request()->routeIs('site.about') ? 'about' : (request()->routeIs('site.contact') ? 'contact' : 'home')));
+    $navItems = [
+        ['key' => 'home', 'label' => __('front.nav.home'), 'url' => route('site.home')],
+        ['key' => 'news', 'label' => '资讯', 'url' => route('site.news')],
+        ['key' => 'about', 'label' => '关于我们', 'url' => route('site.about')],
+        ['key' => 'contact', 'label' => '联系我们', 'url' => route('site.contact')],
+    ];
 @endphp
 <header class="tx-header">
     <a href="#mainContent" class="tx-skip">跳到正文</a>
@@ -14,9 +19,8 @@
         </a>
 
         <nav class="tx-nav" aria-label="Primary">
-            <a href="{{ route('site.home') }}" class="{{ $isHome ? 'is-active' : '' }}">{{ __('front.nav.home') }}</a>
-            @foreach($navCategories->take(5) as $categoryItem)
-                <a href="{{ route('site.category', $categoryItem->slug) }}" class="{{ request()->is('category/'.$categoryItem->slug) ? 'is-active' : '' }}">{{ $categoryItem->name }}</a>
+            @foreach($navItems as $item)
+                <a href="{{ $item['url'] }}" class="{{ $activeNav === $item['key'] ? 'is-active' : '' }}">{{ $item['label'] }}</a>
             @endforeach
         </nav>
 
@@ -32,9 +36,8 @@
     </div>
     <div id="txMobileNav" class="tx-mobile-nav" hidden>
         <div class="tx-shell tx-mobile-panel">
-            <a href="{{ route('site.home') }}" class="{{ $isHome ? 'is-active' : '' }}">{{ __('front.nav.home') }}</a>
-            @foreach($navCategories as $categoryItem)
-                <a href="{{ route('site.category', $categoryItem->slug) }}" class="{{ request()->is('category/'.$categoryItem->slug) ? 'is-active' : '' }}">{{ $categoryItem->name }}</a>
+            @foreach($navItems as $item)
+                <a href="{{ $item['url'] }}" class="{{ $activeNav === $item['key'] ? 'is-active' : '' }}">{{ $item['label'] }}</a>
             @endforeach
         </div>
     </div>
