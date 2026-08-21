@@ -1370,6 +1370,56 @@ html {
   line-height: 1.75;
 }
 
+.tx-home-brand {
+  margin-top: 2px;
+}
+
+.tx-home-brand .tx-about-main {
+  min-height: 260px;
+  display: grid;
+  align-content: center;
+}
+
+.tx-home-news {
+  display: grid;
+  gap: 18px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, .96), rgba(248, 252, 255, .94)),
+    #fff;
+}
+
+.tx-home-news .tx-home-section-head {
+  padding-bottom: 16px;
+}
+
+.tx-home-news .tx-home-section-head h3 {
+  font-size: 24px;
+}
+
+.tx-home-news .tx-article-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.tx-home-news .tx-article-card {
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+}
+
+.tx-home-news .tx-card-visual {
+  min-height: 150px;
+}
+
+.tx-home-news .tx-card-title {
+  font-size: 18px;
+}
+
+.tx-home-news .tx-card-summary {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .tx-contact-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1569,6 +1619,10 @@ html {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .tx-home-news .tx-article-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .tx-about-grid,
   .tx-contact-grid,
   .tx-payment-grid {
@@ -1616,6 +1670,10 @@ html {
   }
 
   .tx-article-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tx-home-news .tx-article-grid {
     grid-template-columns: 1fr;
   }
 
