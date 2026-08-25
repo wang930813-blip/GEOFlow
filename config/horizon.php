@@ -98,6 +98,7 @@ return [
 
     'waits' => [
         'redis:geoflow' => 60,
+        'redis:self-media' => 60,
     ],
 
     /*
@@ -199,7 +200,7 @@ return [
     'defaults' => [
         'supervisor-1' => [
             'connection' => 'redis',
-            'queue' => ['geoflow', 'distribution'],
+            'queue' => ['geoflow', 'distribution', 'self-media'],
             'balance' => 'auto',
             'autoScalingStrategy' => 'time',
             'maxProcesses' => 1,

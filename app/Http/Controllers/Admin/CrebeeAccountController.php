@@ -7,7 +7,11 @@ use App\Models\Admin;
 use App\Models\CrebeeAccount;
 use App\Models\CrebeeAgent;
 use App\Models\CrebeeBindRequest;
+use App\Models\SelfMediaAccount;
+use App\Models\SelfMediaAuthSession;
 use App\Models\Site;
+use App\Services\SelfMedia\SelfMediaAccountService;
+use App\Services\SelfMedia\SelfMediaAuthorizationService;
 use App\Support\AdminDataScope;
 use App\Support\AdminWeb;
 use App\Support\Crebee\SelfMediaPlatformCatalog;
@@ -17,15 +21,25 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
+use RuntimeException;
+use Throwable;
 
 class CrebeeAccountController extends Controller
 {
-    public function __construct(private readonly AdminDataScope $adminDataScope) {}
+    public function __construct(
+        private readonly AdminDataScope $adminDataScope,
+        private readonly SelfMediaAccountService $selfMediaAccountService,
+        private readonly SelfMediaAuthorizationService $selfMediaAuthorizationService,
+    ) {}
 
     public function index(Request $request): View
     {
         $admin = $request->user('admin');
         abort_unless($admin instanceof Admin, 403);
+
+        if ((bool) config('aitoearn.enabled', false)) {
+            return $this->aiToEarnIndex($request, $admin);
+        }
 
         $site = app(CurrentSite::class)->get();
 
@@ -86,6 +100,150 @@ class CrebeeAccountController extends Controller
             'boundAccounts' => $boundAccounts,
             'platformLabels' => $this->platformLabels(),
         ]);
+    }
+
+    public function startAiToEarnAuthorization(Request $request): RedirectResponse
+    {
+        $admin = $request->user('admin');
+        abort_unless($admin instanceof Admin, 403);
+        abort_if($admin->isAgentAdmin(), 403);
+        abort_unless((bool) config('aitoearn.enabled', false), 404);
+
+        $site = app(CurrentSite::class)->get();
+        abort_unless($site instanceof Site && $this->adminBelongsToSite($admin, $site), 403);
+
+        $platforms = array_keys($this->selfMediaAccountService->platformCatalog());
+        $payload = $request->validate([
+            'platform' => ['required', 'string', Rule::in($platforms)],
+        ], [
+            'platform.required' => '请选择要授权的平台',
+            'platform.in' => '暂不支持该自媒体平台',
+        ]);
+
+        try {
+            $session = $this->selfMediaAuthorizationService->start(
+                $admin,
+                $site,
+                (string) $payload['platform'],
+                route('admin.crebee-accounts.aitoearn.authorizations.callback')
+            );
+        } catch (RuntimeException $exception) {
+            return back()->withErrors(['platform' => $exception->getMessage()]);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return back()->withErrors(['platform' => '授权链接创建失败，请稍后重试']);
+        }
+
+        $authorizationUrl = (string) $session->authorization_url;
+        if (str_starts_with(strtolower($authorizationUrl), 'data:image/')) {
+            return redirect()
+                ->route('admin.crebee-accounts.index')
+                ->with('message', '授权二维码已生成，请扫码完成授权后同步状态');
+        }
+
+        return redirect()->away($authorizationUrl);
+    }
+
+    public function handleAiToEarnAuthorizationCallback(Request $request): RedirectResponse
+    {
+        abort_unless((bool) config('aitoearn.enabled', false), 404);
+
+        $sessionId = $this->aiToEarnCallbackSessionId($request);
+        if ($sessionId === '') {
+            return redirect()
+                ->route('admin.crebee-accounts.index')
+                ->with('message', '授权已返回，请同步状态确认账号');
+        }
+
+        $session = SelfMediaAuthSession::query()
+            ->where('provider', 'aitoearn')
+            ->where('session_id', $sessionId)
+            ->orderByDesc('id')
+            ->first();
+
+        if (! $session instanceof SelfMediaAuthSession) {
+            return redirect()
+                ->route('admin.crebee-accounts.index')
+                ->withErrors(['platform' => '授权回调未匹配到本地授权记录，请重新发起授权']);
+        }
+
+        try {
+            $this->selfMediaAuthorizationService->refresh($session);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return redirect()
+                ->route('admin.crebee-accounts.index')
+                ->withErrors(['platform' => '授权回调同步失败：'.$exception->getMessage()]);
+        }
+
+        return redirect()
+            ->route('admin.crebee-accounts.index')
+            ->with('message', '授权已返回，账号状态已同步');
+    }
+
+    public function refreshAiToEarnAuthorization(SelfMediaAuthSession $session, Request $request): RedirectResponse
+    {
+        $admin = $request->user('admin');
+        abort_unless($admin instanceof Admin, 403);
+        abort_unless((bool) config('aitoearn.enabled', false), 404);
+        $this->assertVisibleAiToEarnAuthSession($session, $admin);
+
+        try {
+            $session = $this->selfMediaAuthorizationService->refresh($session);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return back()->withErrors(['platform' => '授权状态同步失败：'.$exception->getMessage()]);
+        }
+
+        $message = (string) $session->status === 'authorized'
+            ? '授权已完成，账号已同步'
+            : '授权状态已同步：'.$this->aiToEarnAuthStatusName((string) $session->status);
+
+        return redirect()->route('admin.crebee-accounts.index')->with('message', $message);
+    }
+
+    public function syncAiToEarnAccounts(Request $request): RedirectResponse
+    {
+        $admin = $request->user('admin');
+        abort_unless($admin instanceof Admin, 403);
+        abort_if($admin->isAgentAdmin(), 403);
+        abort_unless((bool) config('aitoearn.enabled', false), 404);
+
+        $site = app(CurrentSite::class)->get();
+        abort_unless($site instanceof Site && $this->adminBelongsToSite($admin, $site), 403);
+
+        try {
+            $accounts = $this->selfMediaAccountService->syncOwnerAccounts($admin, $site);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return back()->withErrors(['platform' => '账号同步失败：'.$exception->getMessage()]);
+        }
+
+        return redirect()
+            ->route('admin.crebee-accounts.index')
+            ->with('message', '已同步 '.$accounts->count().' 个授权账号');
+    }
+
+    public function unbindAiToEarnAccount(SelfMediaAccount $account, Request $request): RedirectResponse
+    {
+        $admin = $request->user('admin');
+        abort_unless($admin instanceof Admin, 403);
+        abort_unless((bool) config('aitoearn.enabled', false), 404);
+
+        if (! $admin->isSuperAdmin()) {
+            abort_if((int) $account->owner_admin_id !== (int) $admin->id, 404);
+        }
+
+        $account->forceFill([
+            'status' => 'unbound',
+            'auth_status' => 'unbound',
+        ])->save();
+
+        return redirect()->route('admin.crebee-accounts.index')->with('message', '自媒体账号已解绑');
     }
 
     public function storeRequest(Request $request): RedirectResponse
@@ -273,9 +431,190 @@ class CrebeeAccountController extends Controller
         return redirect()->route('admin.crebee-accounts.index')->with('message', '自媒体账号已解绑');
     }
 
+    private function aiToEarnIndex(Request $request, Admin $admin): View
+    {
+        $site = app(CurrentSite::class)->get();
+        abort_unless($site instanceof Site || $admin->isSuperAdmin() || $admin->isAgentAdmin(), 403);
+
+        $platforms = $this->selfMediaAccountService->platformCatalog();
+        $platformKeys = array_keys($platforms);
+        $boundAccounts = $this->visibleAiToEarnAccounts($admin, $site)
+            ->with(['owner:id,username,display_name,role', 'site:id,name'])
+            ->whereIn('platform', $platformKeys)
+            ->orderByDesc('bound_at')
+            ->orderByDesc('id')
+            ->paginate(10, ['*'], 'bound_page')
+            ->withQueryString();
+
+        $authSessions = $this->visibleAiToEarnAuthSessions($admin, $site)
+            ->with(['owner:id,username,display_name,role', 'confirmedAccount:id,account_name,external_account_id'])
+            ->whereIn('platform', $platformKeys)
+            ->orderByDesc('id')
+            ->paginate(10, ['*'], 'session_page')
+            ->withQueryString();
+
+        $platformStates = $this->aiToEarnPlatformStates($admin, $site, $platformKeys);
+
+        return view('admin.self-media-accounts.index', [
+            'pageTitle' => '自媒体账号授权',
+            'activeMenu' => 'crebee_accounts',
+            'adminSiteName' => AdminWeb::siteName(),
+            'site' => $site,
+            'platforms' => $platforms,
+            'platformStates' => $platformStates,
+            'boundAccounts' => $boundAccounts,
+            'authSessions' => $authSessions,
+            'platformLabels' => collect($platforms)->mapWithKeys(fn (array $platform, string $key): array => [$key => (string) ($platform['label'] ?? $key)])->all(),
+            'canAuthorize' => $site instanceof Site && ! $admin->isAgentAdmin() && ! $admin->isSuperAdmin(),
+            'canManage' => $admin->isSuperAdmin(),
+            'apiConfigured' => trim((string) config('aitoearn.api_key', '')) !== '',
+            'scopeLabel' => $admin->isSuperAdmin()
+                ? '全部站点'
+                : ($site instanceof Site ? (string) $site->name : '代理下属用户'),
+        ]);
+    }
+
     private function canManageBindings(Admin $admin): bool
     {
         return $admin->isSuperAdmin();
+    }
+
+    private function aiToEarnCallbackSessionId(Request $request): string
+    {
+        foreach (['sessionId', 'session_id', 'authSessionId', 'auth_session_id'] as $key) {
+            $value = trim((string) $request->input($key, ''));
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        return '';
+    }
+
+    private function visibleAiToEarnAccounts(Admin $admin, ?Site $site): Builder
+    {
+        $query = SelfMediaAccount::query()->where('provider', 'aitoearn');
+
+        if ($admin->isSuperAdmin()) {
+            return $query;
+        }
+
+        if ($site instanceof Site) {
+            $query->where('site_id', (int) $site->id);
+        } else {
+            $this->adminDataScope->applySiteScope($query, $admin);
+        }
+
+        if ($admin->isAgentAdmin()) {
+            return $query;
+        }
+
+        return $query->where('owner_admin_id', (int) $admin->id);
+    }
+
+    private function visibleAiToEarnAuthSessions(Admin $admin, ?Site $site): Builder
+    {
+        $query = SelfMediaAuthSession::query()->where('provider', 'aitoearn');
+
+        if ($admin->isSuperAdmin()) {
+            return $query;
+        }
+
+        if ($site instanceof Site) {
+            $query->where('site_id', (int) $site->id);
+        } else {
+            $this->adminDataScope->applySiteScope($query, $admin);
+        }
+
+        if ($admin->isAgentAdmin()) {
+            return $query;
+        }
+
+        return $query->where('owner_admin_id', (int) $admin->id);
+    }
+
+    /**
+     * @param  array<int,string>  $platformKeys
+     * @return array<string,array<string,mixed>>
+     */
+    private function aiToEarnPlatformStates(Admin $admin, ?Site $site, array $platformKeys): array
+    {
+        if (! $site instanceof Site) {
+            return collect($platformKeys)
+                ->mapWithKeys(static fn (string $platform): array => [$platform => [
+                    'status' => 'available',
+                    'account' => null,
+                    'session' => null,
+                ]])
+                ->all();
+        }
+
+        $accounts = SelfMediaAccount::query()
+            ->where('site_id', (int) $site->id)
+            ->where('owner_admin_id', (int) $admin->id)
+            ->where('provider', 'aitoearn')
+            ->where('status', 'bound')
+            ->whereIn('platform', $platformKeys)
+            ->orderByDesc('bound_at')
+            ->orderByDesc('id')
+            ->get()
+            ->keyBy('platform');
+
+        $sessions = SelfMediaAuthSession::query()
+            ->where('site_id', (int) $site->id)
+            ->where('owner_admin_id', (int) $admin->id)
+            ->where('provider', 'aitoearn')
+            ->whereIn('platform', $platformKeys)
+            ->orderByDesc('id')
+            ->get()
+            ->groupBy('platform');
+
+        $states = [];
+        foreach ($platformKeys as $platform) {
+            $account = $accounts->get($platform);
+            $session = $sessions->get($platform)?->first();
+            $status = 'available';
+
+            if ($account instanceof SelfMediaAccount && (string) $account->auth_status === 'authorized') {
+                $status = 'bound';
+            } elseif ($session instanceof SelfMediaAuthSession) {
+                $status = (string) $session->status;
+            }
+
+            $states[$platform] = [
+                'status' => $status,
+                'account' => $account,
+                'session' => $session,
+            ];
+        }
+
+        return $states;
+    }
+
+    private function assertVisibleAiToEarnAuthSession(SelfMediaAuthSession $session, Admin $admin): void
+    {
+        if ($admin->isSuperAdmin()) {
+            return;
+        }
+
+        $site = app(CurrentSite::class)->get();
+        abort_unless($site instanceof Site, 403);
+        abort_if((int) $session->site_id !== (int) $site->id, 404);
+
+        if (! $admin->isAgentAdmin()) {
+            abort_if((int) $session->owner_admin_id !== (int) $admin->id, 404);
+        }
+    }
+
+    private function aiToEarnAuthStatusName(string $status): string
+    {
+        return match ($status) {
+            'authorized' => '已授权',
+            'pending' => '授权中',
+            'failed' => '授权失败',
+            'expired' => '已过期',
+            default => $status,
+        };
     }
 
     private function visibleBoundAccounts(Admin $admin, ?Site $site): Builder

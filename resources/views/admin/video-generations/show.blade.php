@@ -2,6 +2,10 @@
 
 @section('content')
     @php
+        $selfMediaAccountInputName = (string) ($selfMediaAccountInputName ?? 'crebee_account_ids');
+    @endphp
+
+    @php
         $statusClass = fn (string $status): string => match ($status) {
             'success' => 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100',
             'failed' => 'bg-red-50 text-red-700 ring-1 ring-red-100',
@@ -136,10 +140,11 @@
                             @php
                                 $platform = (string) $account->platform;
                                 $logoPath = $selfMediaPlatformLogos[$platform] ?? \App\Support\Crebee\SelfMediaPlatformCatalog::logoPath($platform);
-                                $accountName = trim((string) $account->account_name) ?: (string) $account->crebee_account_id;
+                                $externalAccountId = (string) ($account->crebee_account_id ?? $account->external_account_id ?? '');
+                                $accountName = trim((string) $account->account_name) ?: $externalAccountId;
                             @endphp
                             <label class="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 p-3 hover:border-indigo-200 hover:bg-indigo-50/40">
-                                <input type="checkbox" name="crebee_account_ids[]" value="{{ $account->id }}" class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                                <input type="checkbox" name="{{ $selfMediaAccountInputName }}[]" value="{{ $account->id }}" class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
                                 <span class="relative flex h-11 w-11 shrink-0 items-center justify-center">
                                     @if((string) $account->avatar !== '')
                                         <img src="{{ $account->avatar }}" alt="" class="h-10 w-10 rounded-full border border-slate-200 object-cover" referrerpolicy="no-referrer">

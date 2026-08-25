@@ -60,6 +60,7 @@ use App\Http\Controllers\Site\ArticleController as SiteArticleController;
 use App\Http\Controllers\Site\CategoryController as SiteCategoryController;
 use App\Http\Controllers\Site\HomeController;
 use App\Http\Controllers\Site\PageController;
+use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
@@ -94,6 +95,9 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
     // 通用入口与语言切换
     Route::get('locale/{locale}', [AdminAuthController::class, 'switchLocale'])->name('locale.switch');
     Route::get('snapshot-voucher', [SnapshotVoucherController::class, 'show'])->name('snapshot-voucher.show');
+    Route::match(['get', 'post'], 'crebee-accounts/aitoearn/authorizations/callback', [CrebeeAccountController::class, 'handleAiToEarnAuthorizationCallback'])
+        ->withoutMiddleware([ValidateCsrfToken::class])
+        ->name('crebee-accounts.aitoearn.authorizations.callback');
 
     Route::get('/', function () {
         return Auth::guard('admin')->check()
@@ -430,6 +434,16 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
         });
         Route::prefix('crebee-accounts')->name('crebee-accounts.')->group(function () {
             Route::get('/', [CrebeeAccountController::class, 'index'])->name('index');
+            Route::post('aitoearn/authorizations', [CrebeeAccountController::class, 'startAiToEarnAuthorization'])
+                ->name('aitoearn.authorizations.start');
+            Route::post('aitoearn/auth-sessions/{session}/sync', [CrebeeAccountController::class, 'refreshAiToEarnAuthorization'])
+                ->name('aitoearn.auth-sessions.sync')
+                ->whereNumber('session');
+            Route::post('aitoearn/accounts/sync', [CrebeeAccountController::class, 'syncAiToEarnAccounts'])
+                ->name('aitoearn.accounts.sync');
+            Route::post('aitoearn/accounts/{account}/unbind', [CrebeeAccountController::class, 'unbindAiToEarnAccount'])
+                ->name('aitoearn.accounts.unbind')
+                ->whereNumber('account');
             Route::post('requests', [CrebeeAccountController::class, 'storeRequest'])->name('requests.store');
             Route::post('requests/{bindRequest}/processing', [CrebeeAccountController::class, 'markRequestProcessing'])
                 ->name('requests.processing')
