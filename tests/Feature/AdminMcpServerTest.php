@@ -116,7 +116,7 @@ class AdminMcpServerTest extends TestCase
      *
      * @CreateTime: 2026-07-29 15:41:12
      *
-     * @UpdateTime: 2026-08-05 16:26:48
+     * @UpdateTime: 2026-08-25 14:55:10
      *
      * @Return: void
      */
@@ -191,14 +191,16 @@ class AdminMcpServerTest extends TestCase
         $this->assertNotFalse($zip->getFromName($root.'references/growth-roadmap.md'));
         $this->assertNotFalse($zip->getFromName($root.'references/measurement-and-monitoring.md'));
         $this->assertNotFalse($zip->getFromName($root.'references/mcp-server-setup.md'));
-        $this->assertNotFalse($zip->getFromName($root.'references/customer-acquisition-growth.md'));
+        $this->assertNotFalse($zip->getFromName($root.'references/promotion-exposure-growth.md'));
+        $this->assertFalse($zip->getFromName($root.'references/customer-acquisition-growth.md'));
         $this->assertFalse($zip->getFromName($root.'references/prospect-mining.md'));
-        $customerAcquisition = (string) $zip->getFromName($root.'references/customer-acquisition-growth.md');
-        $this->assertStringContainsString('## 行业属性推广回答结构', $customerAcquisition);
-        $this->assertStringContainsString('品牌曝光方案', $customerAcquisition);
-        $this->assertStringContainsString('转化承接方案', $customerAcquisition);
-        $this->assertStringNotContainsString('潜客挖掘', $customerAcquisition);
-        $this->assertStringNotContainsString('qw_mcp_list', $customerAcquisition);
+        $promotionExposure = (string) $zip->getFromName($root.'references/promotion-exposure-growth.md');
+        $this->assertStringContainsString('## 行业属性推广回答结构', $promotionExposure);
+        $this->assertStringContainsString('品牌曝光方案', $promotionExposure);
+        $this->assertStringContainsString('转化承接方案', $promotionExposure);
+        $this->assertStringNotContainsString('潜客挖掘', $promotionExposure);
+        $this->assertStringNotContainsString('qw_mcp_list', $promotionExposure);
+        $this->assertStringNotContainsString('customer-acquisition-growth', $promotionExposure);
 
         $zip->close();
         @unlink($zipPath);
