@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\Admin;
+use App\Models\Prompt;
+use App\Models\Site;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
@@ -21,6 +23,7 @@ class AdminUsersManagementTest extends TestCase
             ->assertOk()
             ->assertSee(__('admin.button.edit'))
             ->assertSee(__('admin.button.delete'))
+            ->assertSee(route('admin.plan-usages.index', ['keyword' => $standardAdmin->username]), false)
             ->assertSee(route('admin.admin-users.delete', ['adminId' => $standardAdmin->id]), false);
     }
 
@@ -84,7 +87,7 @@ class AdminUsersManagementTest extends TestCase
         $this->assertTrue(Hash::check('new-secret-123', $standardAdmin->password));
     }
 
-    public function test_super_admin_can_delete_standard_admin(): void
+    public function test_super_admin_soft_deletes_standard_admin(): void
     {
         $superAdmin = $this->createAdmin('root_admin', 'super_admin');
         $standardAdmin = $this->createAdmin('editor_admin', 'admin');
@@ -93,12 +96,121 @@ class AdminUsersManagementTest extends TestCase
             ->post(route('admin.admin-users.delete', ['adminId' => $standardAdmin->id]))
             ->assertRedirect(route('admin.admin-users.index'));
 
-        $this->assertDatabaseMissing('admins', [
+        $this->assertSoftDeleted('admins', [
             'id' => $standardAdmin->id,
+        ]);
+        $this->assertNull(Admin::query()->find($standardAdmin->id));
+        $this->assertNotNull(Admin::withTrashed()->find($standardAdmin->id));
+    }
+
+    public function test_deleting_direct_user_soft_deletes_owned_sites_and_cancels_active_subscriptions(): void
+    {
+        $superAdmin = $this->createAdmin('delete_direct_root', 'super_admin');
+        $direct = $this->createAdmin('delete_direct_owner', 'direct_admin', $superAdmin);
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $direct->id,
+            'name' => 'Direct Owned Site',
+            'status' => 'active',
+            'customer_mode' => 'direct',
+        ]);
+        $site->members()->attach((int) $direct->id, ['role' => 'owner']);
+        $this->openTestingPlanForSite($site, $direct);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.admin-users.delete', ['adminId' => $direct->id]))
+            ->assertRedirect(route('admin.admin-users.index'));
+
+        $this->assertSoftDeleted('admins', ['id' => (int) $direct->id]);
+        $this->assertSoftDeleted('sites', ['id' => (int) $site->id]);
+        $this->assertDatabaseMissing('site_members', [
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $direct->id,
+        ]);
+        $this->assertDatabaseHas('admin_plan_subscriptions', [
+            'admin_id' => (int) $direct->id,
+            'site_id' => (int) $site->id,
+            'status' => 'cancelled',
+        ]);
+        $this->assertDatabaseHas('site_plan_subscriptions', [
+            'site_id' => (int) $site->id,
+            'status' => 'cancelled',
         ]);
     }
 
-    private function createAdmin(string $username, string $role): Admin
+    public function test_super_admin_cannot_delete_agent_that_still_has_child_users(): void
+    {
+        $superAdmin = $this->createAdmin('delete_agent_root', 'super_admin');
+        $agent = $this->createAdmin('delete_agent_owner', 'agent_admin', $superAdmin);
+        $child = $this->createAdmin('delete_agent_child', 'site_user', $agent);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.admin-users.delete', ['adminId' => $agent->id]))
+            ->assertSessionHasErrors();
+
+        $this->assertNotSoftDeleted('admins', ['id' => (int) $agent->id]);
+        $this->assertNotSoftDeleted('admins', ['id' => (int) $child->id]);
+    }
+
+    public function test_admin_user_list_shows_account_ownership_for_agent_direct_and_member_users(): void
+    {
+        $superAdmin = $this->createAdmin('owner_root_admin', 'super_admin');
+        $agent = $this->createAdmin('owner_agent_admin', 'agent_admin', $superAdmin);
+        $direct = $this->createAdmin('owner_direct_admin', 'direct_admin', $superAdmin);
+        $member = $this->createAdmin('owner_agent_member', 'site_user', $agent);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.admin-users.index'))
+            ->assertOk()
+            ->assertSee('归属')
+            ->assertSee('平台代理')
+            ->assertSee('平台直客')
+            ->assertSee('代理：owner_agent_admin')
+            ->assertSee('平台管理');
+
+        $this->assertSame((int) $agent->id, (int) $member->created_by);
+        $this->assertSame((int) $superAdmin->id, (int) $direct->created_by);
+    }
+
+    public function test_creating_agent_admin_copies_four_default_content_prompts_to_agent_scope(): void
+    {
+        $superAdmin = $this->createAdmin('prompt_agent_root', 'super_admin');
+        Prompt::withoutEvents(fn (): Prompt => Prompt::query()->withoutGlobalScope('current_site')->create([
+            'site_id' => null,
+            'owner_admin_id' => null,
+            'name' => '平台新增正文提示词',
+            'type' => 'content',
+            'content' => 'This custom platform prompt must not be copied to agents by default.',
+            'variables' => '',
+        ]));
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.admin-users.store'), [
+                'username' => 'prompt_agent_owner',
+                'display_name' => 'Prompt Agent Owner',
+                'email' => 'prompt-agent-owner@example.com',
+                'role' => 'agent_admin',
+                'password' => 'secret-123',
+                'confirm_password' => 'secret-123',
+            ])
+            ->assertRedirect(route('admin.admin-users.index'));
+
+        $agent = Admin::query()->where('username', 'prompt_agent_owner')->firstOrFail();
+        $promptNames = Prompt::query()
+            ->withoutGlobalScope('current_site')
+            ->where('owner_admin_id', (int) $agent->id)
+            ->whereNull('site_id')
+            ->where('type', 'content')
+            ->orderBy('name')
+            ->pluck('name')
+            ->all();
+
+        $this->assertSame(
+            collect($this->defaultContentPromptNames())->sort()->values()->all(),
+            $promptNames
+        );
+    }
+
+    private function createAdmin(string $username, string $role, ?Admin $creator = null): Admin
     {
         return Admin::query()->create([
             'username' => $username,
@@ -107,6 +219,20 @@ class AdminUsersManagementTest extends TestCase
             'display_name' => $username,
             'role' => $role,
             'status' => 'active',
+            'created_by' => $creator?->id,
         ]);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function defaultContentPromptNames(): array
+    {
+        return [
+            'GEO Marketing · Trust-Based Article Generation (English)',
+            'GEO Ranking-Style Article Generation (English)',
+            'GEO营销学·信任型正文生成',
+            'GEO榜单型正文生成',
+        ];
     }
 }

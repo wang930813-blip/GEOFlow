@@ -2017,3 +2017,124 @@
             padding: 12px 14px;
         }
     }
+
+
+/* === Footer contact block (新增：联系方式 / 微信支付宝 / 公司地址 / 官网备注) === */
+.tt-footer-contact {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 24px;
+    padding: 28px 0 20px;
+    border-bottom: 1px solid #eef0f3;
+    color: #5f6b7a;
+    font-size: 13px;
+    line-height: 1.7;
+}
+
+.tt-footer-contact-block {
+    min-width: 0;
+}
+
+.tt-footer-contact-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #181c24;
+    margin-bottom: 10px;
+    letter-spacing: 0.02em;
+}
+
+.tt-footer-contact-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.tt-footer-contact-list li {
+    margin-bottom: 4px;
+    word-break: break-all;
+}
+
+.tt-footer-contact-text {
+    margin: 0;
+    word-break: break-word;
+}
+
+.tt-footer-contact-remark .tt-footer-contact-text {
+    white-space: normal;
+}
+
+.tt-footer-contact-payments {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.tt-footer-payment {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    width: 96px;
+}
+
+.tt-footer-payment img,
+.tt-footer-payment-placeholder {
+    width: 96px;
+    height: 96px;
+    object-fit: cover;
+    border-radius: 4px;
+    border: 1px solid #e6e8eb;
+    background: #fafbfc;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    color: #86909c;
+    text-align: center;
+    padding: 4px;
+}
+
+.tt-footer-payment-meta {
+    text-align: center;
+    width: 100%;
+}
+
+.tt-footer-payment-name {
+    display: block;
+    color: #181c24;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.tt-footer-payment-account {
+    display: block;
+    font-size: 11px;
+    color: #86909c;
+    word-break: break-all;
+    margin-top: 2px;
+}
+
+@media (max-width: 768px) {
+    .tt-footer-contact {
+        grid-template-columns: 1fr;
+        gap: 16px;
+        padding: 20px 0 12px;
+    }
+}
+
+.tt-thumb {
+    overflow: hidden;
+}
+
+.tt-thumb.has-image {
+    background: #f5f5f5;
+    color: inherit;
+}
+
+.tt-thumb img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    min-height: 90px;
+    object-fit: cover;
+}

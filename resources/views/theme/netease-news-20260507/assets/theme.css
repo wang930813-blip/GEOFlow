@@ -254,6 +254,69 @@
     line-height: 1.75;
 }
 
+.ne-home-poster-carousel {
+    position: relative;
+    overflow: hidden;
+    min-height: 260px;
+    border: 1px solid var(--ne-line);
+    border-radius: 4px;
+    background: #f5f5f5;
+}
+
+.ne-home-poster-slide {
+    display: none;
+    position: relative;
+    min-height: 260px;
+    color: #fff;
+}
+
+.ne-home-poster-slide.is-active {
+    display: block;
+}
+
+.ne-home-poster-slide img {
+    display: block;
+    width: 100%;
+    height: 320px;
+    object-fit: cover;
+}
+
+.ne-home-poster-caption {
+    position: absolute;
+    left: 18px;
+    right: 18px;
+    bottom: 16px;
+    border-radius: 3px;
+    background: rgb(0 0 0 / 62%);
+    padding: 10px 13px;
+    color: #fff;
+    font-size: 16px;
+    line-height: 1.45;
+    font-weight: 700;
+}
+
+.ne-home-poster-dots {
+    position: absolute;
+    right: 16px;
+    bottom: 16px;
+    z-index: 2;
+    display: flex;
+    gap: 7px;
+}
+
+.ne-home-poster-dots button {
+    width: 8px;
+    height: 8px;
+    border: 0;
+    border-radius: 999px;
+    background: rgb(255 255 255 / 70%);
+}
+
+.ne-home-poster-dots button.is-active {
+    width: 22px;
+    background: var(--ne-red);
+}
+
 .ne-home-headlines {
     display: grid;
     align-content: start;
@@ -489,6 +552,19 @@
     color: var(--ne-red);
     font-size: 32px;
     font-weight: 900;
+    overflow: hidden;
+}
+
+.ne-thumb.has-image {
+    background: #f5f5f5;
+}
+
+.ne-thumb img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    min-height: 90px;
+    object-fit: cover;
 }
 
 .ne-sidebar,

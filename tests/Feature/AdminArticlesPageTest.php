@@ -4,8 +4,11 @@ namespace Tests\Feature;
 
 use App\Models\Admin;
 use App\Models\Article;
+use App\Models\ArticleDistribution;
 use App\Models\Author;
 use App\Models\Category;
+use App\Models\DistributionChannel;
+use App\Models\Site;
 use App\Models\SiteSetting;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -59,6 +62,51 @@ class AdminArticlesPageTest extends TestCase
             ->assertSee(__('admin.article_create.page_heading'));
     }
 
+    public function test_article_edit_form_previews_normalized_markdown_for_existing_articles(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'articles_markdown_admin',
+            'password' => 'secret-123',
+            'email' => 'articles-markdown@example.com',
+            'display_name' => 'Articles Markdown Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'Markdown Preview Site',
+            'status' => 'active',
+        ]);
+        $site->members()->attach((int) $admin->id, ['role' => 'owner']);
+        $category = Category::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Markdown Category',
+            'slug' => 'markdown-preview-category',
+        ]);
+        $author = Author::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Markdown Author',
+        ]);
+        $article = Article::query()->create([
+            'site_id' => (int) $site->id,
+            'title' => 'Markdown Preview Article',
+            'slug' => 'markdown-preview-article',
+            'excerpt' => '',
+            'content' => "##标题缺少空格\n\n** 核心结论： **正文紧跟粗体。",
+            'category_id' => (int) $category->id,
+            'author_id' => (int) $author->id,
+            'status' => 'draft',
+            'review_status' => 'pending',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.articles.edit', ['articleId' => (int) $article->id]))
+            ->assertOk()
+            ->assertSee("## 标题缺少空格\n\n**核心结论：** 正文紧跟粗体。", false)
+            ->assertDontSee('** 核心结论： **正文紧跟粗体。', false);
+    }
+
     public function test_admin_can_save_article_hot_and_featured_flags(): void
     {
         $admin = Admin::query()->create([
@@ -76,8 +124,17 @@ class AdminArticlesPageTest extends TestCase
         $author = Author::query()->create([
             'name' => 'GEOFlow',
         ]);
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'Article Flags Site',
+            'status' => 'active',
+        ]);
+        $site->members()->attach((int) $admin->id, ['role' => 'owner']);
+        $category->forceFill(['site_id' => (int) $site->id])->save();
+        $author->forceFill(['site_id' => (int) $site->id])->save();
 
         $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
             ->post(route('admin.articles.store'), [
                 'title' => '推荐标记测试文章',
                 'excerpt' => '摘要',
@@ -93,10 +150,57 @@ class AdminArticlesPageTest extends TestCase
             ])
             ->assertRedirect();
 
-        $article = Article::query()->where('title', '推荐标记测试文章')->firstOrFail();
+        $article = Article::withoutGlobalScopes()->where('title', '推荐标记测试文章')->firstOrFail();
 
         $this->assertTrue((bool) $article->is_hot);
         $this->assertTrue((bool) $article->is_featured);
+    }
+
+    public function test_admin_can_save_article_cover_image(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'articles_cover_admin',
+            'password' => 'secret-123',
+            'email' => 'articles-cover@example.com',
+            'display_name' => 'Articles Cover Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $category = Category::query()->create([
+            'name' => '科技资讯',
+            'slug' => 'tech-cover',
+        ]);
+        $author = Author::query()->create([
+            'name' => 'GEOFlow',
+        ]);
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'Article Cover Site',
+            'status' => 'active',
+        ]);
+        $site->members()->attach((int) $admin->id, ['role' => 'owner']);
+        $category->forceFill(['site_id' => (int) $site->id])->save();
+        $author->forceFill(['site_id' => (int) $site->id])->save();
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.articles.store'), [
+                'title' => '封面图测试文章',
+                'excerpt' => '摘要',
+                'cover_image' => 'https://cdn.example.com/cover.jpg',
+                'content' => '正文',
+                'keywords' => 'GEO',
+                'meta_description' => 'Meta',
+                'category_id' => $category->id,
+                'author_id' => $author->id,
+                'status' => 'published',
+                'review_status' => 'approved',
+            ])
+            ->assertRedirect();
+
+        $article = Article::withoutGlobalScopes()->where('title', '封面图测试文章')->firstOrFail();
+
+        $this->assertSame('https://cdn.example.com/cover.jpg', (string) $article->cover_image);
     }
 
     public function test_article_list_shows_hot_and_featured_badges(): void
@@ -109,14 +213,23 @@ class AdminArticlesPageTest extends TestCase
             'role' => 'admin',
             'status' => 'active',
         ]);
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'Article Badges Site',
+            'status' => 'active',
+        ]);
+        $site->members()->attach((int) $admin->id, ['role' => 'owner']);
         $category = Category::query()->create([
+            'site_id' => (int) $site->id,
             'name' => '科技资讯',
             'slug' => 'tech',
         ]);
         $author = Author::query()->create([
+            'site_id' => (int) $site->id,
             'name' => 'GEOFlow',
         ]);
         Article::query()->create([
+            'site_id' => (int) $site->id,
             'title' => '后台标签展示文章',
             'slug' => 'admin-badges-article',
             'excerpt' => '摘要',
@@ -131,10 +244,216 @@ class AdminArticlesPageTest extends TestCase
         ]);
 
         $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
             ->get(route('admin.articles.index'))
             ->assertOk()
             ->assertSee(__('admin.articles.badge.hot'))
             ->assertSee(__('admin.articles.badge.featured'));
+    }
+
+    public function test_article_list_shows_distribution_status_badge(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'articles_distribution_status_admin',
+            'password' => 'secret-123',
+            'email' => 'articles-distribution-status@example.com',
+            'display_name' => 'Articles Distribution Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'Article Distribution Site',
+            'status' => 'active',
+        ]);
+        $site->members()->attach((int) $admin->id, ['role' => 'owner']);
+        $category = Category::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => '分发分类',
+            'slug' => 'distribution-category',
+        ]);
+        $author = Author::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'GEOFlow',
+        ]);
+        $channel = DistributionChannel::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => '目标站点',
+            'domain' => 'target.example.com',
+            'endpoint_url' => 'https://target.example.com/geoflow/agent',
+            'status' => 'active',
+        ]);
+        $article = Article::query()->create([
+            'site_id' => (int) $site->id,
+            'title' => '分发状态展示文章',
+            'slug' => 'distribution-status-article',
+            'excerpt' => '摘要',
+            'content' => '正文',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+            'published_at' => now(),
+        ]);
+        ArticleDistribution::query()->create([
+            'site_id' => (int) $site->id,
+            'article_id' => $article->id,
+            'distribution_channel_id' => $channel->id,
+            'action' => 'publish',
+            'status' => 'synced',
+            'idempotency_key' => 'article-list-synced',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.articles.index'))
+            ->assertOk()
+            ->assertSee(__('admin.distribution.article_status.synced'));
+    }
+
+    public function test_article_date_filters_render_native_date_inputs_and_accept_slash_input(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'articles_date_filter_admin',
+            'password' => 'secret-123',
+            'email' => 'articles-date-filter@example.com',
+            'display_name' => 'Articles Date Filter Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'Article Date Filter Site',
+            'status' => 'active',
+        ]);
+        $site->members()->attach((int) $admin->id, ['role' => 'owner']);
+        $category = Category::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Date Filter Category',
+            'slug' => 'date-filter-category',
+        ]);
+        $author = Author::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Date Filter Author',
+        ]);
+
+        $insideArticle = Article::query()->create([
+            'site_id' => (int) $site->id,
+            'title' => 'Inside Date Range Article',
+            'slug' => 'inside-date-range-article',
+            'excerpt' => 'Inside',
+            'content' => 'Inside content',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+        ]);
+        $insideArticle->created_at = '2026-05-27 10:00:00';
+        $insideArticle->save();
+
+        $outsideArticle = Article::query()->create([
+            'site_id' => (int) $site->id,
+            'title' => 'Outside Date Range Article',
+            'slug' => 'outside-date-range-article',
+            'excerpt' => 'Outside',
+            'content' => 'Outside content',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+        ]);
+        $outsideArticle->created_at = '2026-05-25 10:00:00';
+        $outsideArticle->save();
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.articles.index', [
+                'date_from' => '2026/05/27',
+                'date_to' => '2026/05/27',
+            ]))
+            ->assertOk()
+            ->assertSee('Inside Date Range Article')
+            ->assertDontSee('Outside Date Range Article')
+            ->assertSee('type="date" name="date_from" value="2026-05-27"', false)
+            ->assertSee('type="date" name="date_to" value="2026-05-27"', false)
+            ->assertDontSee('placeholder="yyyy/mm/dd"', false);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.articles.index', [
+                'trashed' => 1,
+                'date_from' => '2026/05/27',
+                'date_to' => '2026/05/27',
+            ]))
+            ->assertOk()
+            ->assertSee('type="date" name="date_from" value="2026-05-27"', false)
+            ->assertSee('type="date" name="date_to" value="2026-05-27"', false);
+    }
+
+    public function test_article_list_can_be_filtered_by_category(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'articles_category_filter_admin',
+            'password' => 'secret-123',
+            'email' => 'articles-category-filter@example.com',
+            'display_name' => 'Articles Category Filter Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'Article Category Filter Site',
+            'status' => 'active',
+        ]);
+        $site->members()->attach((int) $admin->id, ['role' => 'owner']);
+        $selectedCategory = Category::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Selected Category',
+            'slug' => 'selected-category',
+        ]);
+        $otherCategory = Category::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Other Category',
+            'slug' => 'other-category',
+        ]);
+        $author = Author::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Category Filter Author',
+        ]);
+
+        Article::query()->create([
+            'site_id' => (int) $site->id,
+            'title' => 'Selected Category Article',
+            'slug' => 'selected-category-article',
+            'excerpt' => 'Selected',
+            'content' => 'Selected category content',
+            'category_id' => $selectedCategory->id,
+            'author_id' => $author->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+        ]);
+        Article::query()->create([
+            'site_id' => (int) $site->id,
+            'title' => 'Other Category Article',
+            'slug' => 'other-category-article',
+            'excerpt' => 'Other',
+            'content' => 'Other category content',
+            'category_id' => $otherCategory->id,
+            'author_id' => $author->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.articles.index', [
+                'category_id' => (int) $selectedCategory->id,
+            ]))
+            ->assertOk()
+            ->assertSee('name="category_id"', false)
+            ->assertSee('Selected Category Article')
+            ->assertDontSee('Other Category Article')
+            ->assertSee('value="'.((int) $selectedCategory->id).'" selected', false);
     }
 
     public function test_admin_brand_stays_geoflow_when_public_site_name_changes(): void

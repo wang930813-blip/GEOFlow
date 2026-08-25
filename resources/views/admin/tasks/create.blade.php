@@ -6,6 +6,12 @@
     $hasCategories = (bool) ($hasCategories ?? true);
     $categoryCreateUrl = (string) ($categoryCreateUrl ?? route('admin.categories.create'));
     $t = static fn (string $key, array $replace = []): string => __("admin.$key", $replace);
+    $selectedDistributionChannelIds = collect(old('distribution_channel_ids', $taskForm['distribution_channel_ids'] ?? []))
+        ->map(static fn ($id): string => (string) $id)
+        ->all();
+    $publishScope = (string) old('publish_scope', (string) ($taskForm['publish_scope'] ?? 'local_and_distribution'));
+    $scheduledPublishEnabled = old('scheduled_publish_enabled', (string) ($taskForm['scheduled_publish_enabled'] ?? '0'));
+    $scheduledPublishAt = (string) old('scheduled_publish_at', (string) ($taskForm['scheduled_publish_at'] ?? ''));
 @endphp
 
 @section('content')
@@ -60,7 +66,7 @@
                                     <option value="">{{ $t('task_create.option.select_title_library') }}</option>
                                     @foreach ($formOptions['titleLibraries'] as $library)
                                         <option value="{{ $library['id'] }}" @selected((string) old('title_library_id', (string) ($taskForm['title_library_id'] ?? '')) === (string) $library['id'])>
-                                            {{ $t('task_create.option.library_count', ['name' => $library['name'], 'count' => $library['count']]) }}
+                                            {{ $t('task_create.option.library_count', ['name' => $library['name'], 'count' => $library['count']]) }}{{ ($library['keyword_library_name'] ?? '') !== '' ? ' - GEO: '.(($library['company_name'] ?? '') !== '' ? $library['company_name'] : $library['keyword_library_name']) : '' }}
                                         </option>
                                     @endforeach
                                 </select>
@@ -71,6 +77,18 @@
                                     <option value="active" @selected(old('status', (string) ($taskForm['status'] ?? 'active')) === 'active')>{{ $t('task_create.option.status_active') }}</option>
                                     <option value="paused" @selected(old('status', (string) ($taskForm['status'] ?? 'active')) === 'paused')>{{ $t('task_create.option.status_paused') }}</option>
                                 </select>
+                            </div>
+                            <div class="md:col-span-2">
+                                <label for="fixed_title_id" class="block text-sm font-medium text-gray-700">{{ $t('task_create.field.fixed_title') }}</label>
+                                <select name="fixed_title_id" id="fixed_title_id" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" data-selected-title-id="{{ old('fixed_title_id', (string) ($taskForm['fixed_title_id'] ?? '')) }}">
+                                    <option value="">{{ $t('task_create.option.select_title') }}</option>
+                                    @foreach ($formOptions['titles'] as $titleOption)
+                                        <option value="{{ $titleOption['id'] }}" data-library-id="{{ $titleOption['library_id'] }}" @selected((string) old('fixed_title_id', (string) ($taskForm['fixed_title_id'] ?? '')) === (string) $titleOption['id'])>
+                                            {{ $titleOption['title'] }}{{ ($titleOption['keyword'] ?? '') !== '' ? ' - '.$titleOption['keyword'] : '' }}
+                                        </option>
+                                    @endforeach
+                                </select>
+                                <p class="mt-1 text-sm text-gray-500">{{ $t('task_create.help.fixed_title') }}</p>
                             </div>
                         </div>
                     </div>
@@ -138,7 +156,16 @@
                     </div>
                     <div class="px-6 py-4">
                         @php($imageCountValue = (string) old('image_count', (string) ($taskForm['image_count'] ?? '1')))
+                        @php($imageModeValue = (string) old('image_mode', (string) ($taskForm['image_mode'] ?? 'library')))
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <label for="image_mode" class="block text-sm font-medium text-gray-700">配图模式</label>
+                                <select name="image_mode" id="image_mode" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                                    <option value="none" @selected($imageModeValue === 'none')>不插入配图</option>
+                                    <option value="library" @selected($imageModeValue === 'library')>使用图片库</option>
+                                    <option value="ai" @selected($imageModeValue === 'ai')>AI 生成配图</option>
+                                </select>
+                            </div>
                             <div>
                                 <label for="image_library_id" class="block text-sm font-medium text-gray-700">{{ $t('task_create.field.image_library') }}</label>
                                 <select name="image_library_id" id="image_library_id" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
@@ -149,6 +176,16 @@
                                         </option>
                                     @endforeach
                                 </select>
+                            </div>
+                            <div>
+                                <label for="ai_image_model_id" class="block text-sm font-medium text-gray-700">AI 图片模型</label>
+                                <select name="ai_image_model_id" id="ai_image_model_id" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                                    <option value="">请选择图片模型</option>
+                                    @foreach (($formOptions['aiImageModels'] ?? []) as $model)
+                                        <option value="{{ $model['id'] }}" @selected((string) old('ai_image_model_id', (string) ($taskForm['ai_image_model_id'] ?? '')) === (string) $model['id'])>{{ $model['name'] }}</option>
+                                    @endforeach
+                                </select>
+                                <p class="mt-1 text-sm text-gray-500">图片模型在“AI 模型管理”中新增，类型选择 Image。</p>
                             </div>
                             <div>
                                 <label for="image_count" class="block text-sm font-medium text-gray-700">{{ $t('task_create.field.image_count') }}</label>
@@ -173,7 +210,7 @@
                     </div>
                     <div class="px-6 py-4">
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div>
+                            <div id="need-review-option">
                                 <div class="flex items-center">
                                     <input type="checkbox" name="need_review" id="need_review" @checked((bool) old('need_review', (bool) ($taskForm['need_review'] ?? false)))
                                            class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
@@ -187,7 +224,78 @@
                                        class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
                                 <p class="mt-1 text-sm text-gray-500">{{ $t('task_create.help.publish_interval') }}</p>
                             </div>
+                            <div id="scheduled-publish-section" class="md:col-span-2 rounded-md border border-blue-100 bg-blue-50/60 px-4 py-3">
+                                <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                    <div id="scheduled-publish-option">
+                                        <div class="flex items-center">
+                                            <input type="checkbox" name="scheduled_publish_enabled" id="scheduled_publish_enabled" value="1" @checked((string) $scheduledPublishEnabled === '1')
+                                                   class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
+                                            <label for="scheduled_publish_enabled" class="ml-2 block text-sm font-medium text-gray-900">{{ $t('task_create.field.scheduled_publish_enabled') }}</label>
+                                        </div>
+                                        <p class="mt-1 text-sm text-gray-500">{{ $t('task_create.help.scheduled_publish_enabled') }}</p>
+                                    </div>
+                                    <div>
+                                        <label for="scheduled_publish_at" class="block text-sm font-medium text-gray-700">{{ $t('task_create.field.scheduled_publish_at') }}</label>
+                                        <input type="datetime-local" name="scheduled_publish_at" id="scheduled_publish_at" value="{{ $scheduledPublishAt }}"
+                                               class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                                        <p class="mt-1 text-sm text-gray-500">{{ $t('task_create.help.scheduled_publish_at') }}</p>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
+                    </div>
+                </div>
+
+                <div class="bg-white shadow rounded-lg">
+                    <div class="px-6 py-4 border-b border-gray-200">
+                        <h3 class="text-lg font-medium text-gray-900">{{ $t('task_create.section.distribution_title') }}</h3>
+                        <p class="mt-1 text-sm text-gray-600">{{ $t('task_create.section.distribution_desc') }}</p>
+                    </div>
+                    <div class="px-6 py-4">
+                        <fieldset class="mb-5">
+                            <legend class="text-sm font-medium text-gray-900">{{ $t('task_create.distribution.scope_title') }}</legend>
+                            <p class="mt-1 text-sm text-gray-500">{{ $t('task_create.distribution.scope_help') }}</p>
+                            <div class="mt-4 grid grid-cols-1 gap-3">
+                                <label class="flex cursor-pointer gap-3 rounded-md border border-gray-200 px-4 py-3 text-sm hover:border-blue-300 hover:bg-blue-50">
+                                    <input type="radio" name="publish_scope" value="local_and_distribution" @checked($publishScope === 'local_and_distribution') class="mt-1 h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500">
+                                    <span>
+                                        <span class="block font-medium text-gray-900">{{ $t('task_create.distribution.scope_local_and_distribution') }}</span>
+                                        <span class="block text-gray-500">{{ $t('task_create.distribution.scope_local_and_distribution_desc') }}</span>
+                                    </span>
+                                </label>
+                                <label class="flex cursor-pointer gap-3 rounded-md border border-gray-200 px-4 py-3 text-sm hover:border-blue-300 hover:bg-blue-50">
+                                    <input type="radio" name="publish_scope" value="distribution_only" @checked($publishScope === 'distribution_only') class="mt-1 h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500">
+                                    <span>
+                                        <span class="block font-medium text-gray-900">{{ $t('task_create.distribution.scope_distribution_only') }}</span>
+                                        <span class="block text-gray-500">{{ $t('task_create.distribution.scope_distribution_only_desc') }}</span>
+                                    </span>
+                                </label>
+                                <label class="flex cursor-pointer gap-3 rounded-md border border-gray-200 px-4 py-3 text-sm hover:border-blue-300 hover:bg-blue-50">
+                                    <input type="radio" name="publish_scope" value="local_only" @checked($publishScope === 'local_only') class="mt-1 h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500">
+                                    <span>
+                                        <span class="block font-medium text-gray-900">{{ $t('task_create.distribution.scope_local_only') }}</span>
+                                        <span class="block text-gray-500">{{ $t('task_create.distribution.scope_local_only_desc') }}</span>
+                                    </span>
+                                </label>
+                            </div>
+                        </fieldset>
+
+                        @if (! empty($formOptions['distributionChannels']))
+                            <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                @foreach ($formOptions['distributionChannels'] as $channel)
+                                    @php($channelId = (string) $channel['id'])
+                                    <label class="flex items-start gap-3 rounded-md border border-gray-200 px-4 py-3 text-sm hover:border-blue-300 hover:bg-blue-50">
+                                        <input type="checkbox" name="distribution_channel_ids[]" value="{{ $channelId }}" @checked(in_array($channelId, $selectedDistributionChannelIds, true))
+                                               class="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                        <span class="min-w-0">
+                                            <span class="block font-medium text-gray-900">{{ $channel['name'] }}</span>
+                                            <span class="block break-all text-gray-500">{{ $channel['domain'] }}</span>
+                                        </span>
+                                    </label>
+                                @endforeach
+                            </div>
+                            <p class="mt-3 text-sm text-gray-500">{{ $t('task_create.distribution.help') }}</p>
+                        @endif
                     </div>
                 </div>
 
@@ -341,26 +449,62 @@
             }
 
             const imageLibrarySelect = document.getElementById('image_library_id');
+            const imageModeSelect = document.getElementById('image_mode');
+            const aiImageModelSelect = document.getElementById('ai_image_model_id');
             const imageCountSelect = document.getElementById('image_count');
+            const needReviewOption = document.getElementById('need-review-option');
             const needReviewCheckbox = document.getElementById('need_review');
             const publishIntervalInput = document.getElementById('publish_interval');
+            const scheduledPublishSection = document.getElementById('scheduled-publish-section');
+            const scheduledPublishOption = document.getElementById('scheduled-publish-option');
+            const scheduledPublishCheckbox = document.getElementById('scheduled_publish_enabled');
+            const scheduledPublishAtInput = document.getElementById('scheduled_publish_at');
+            const publishScopeRadios = document.querySelectorAll('input[name="publish_scope"]');
             const articleLimitInput = document.getElementById('article_limit');
             const draftLimitInput = document.getElementById('draft_limit');
             const fixedCategorySection = document.getElementById('fixed-category-section');
             const fixedCategorySelect = document.getElementById('fixed_category_id');
             const categoryModeRadios = document.querySelectorAll('input[name="category_mode"]');
+            const titleLibrarySelect = document.getElementById('title_library_id');
+            const fixedTitleSelect = document.getElementById('fixed_title_id');
             const form = document.querySelector('form');
 
             if (!form) {
                 return;
             }
 
-            function toggleImageCountByLibrary() {
-                if (!imageLibrarySelect.value) {
+            function toggleImageControls() {
+                const mode = imageModeSelect.value || 'library';
+                const usesLibrary = mode === 'library';
+                const usesAi = mode === 'ai';
+
+                imageLibrarySelect.disabled = !usesLibrary;
+                aiImageModelSelect.disabled = !usesAi;
+                imageCountSelect.disabled = mode === 'none';
+                imageLibrarySelect.parentElement.style.opacity = usesLibrary ? '1' : '0.5';
+                aiImageModelSelect.parentElement.style.opacity = usesAi ? '1' : '0.5';
+                imageCountSelect.parentElement.style.opacity = mode === 'none' ? '0.5' : '1';
+                aiImageModelSelect.required = usesAi;
+
+                if (mode === 'none') {
                     imageCountSelect.value = '0';
-                    imageCountSelect.disabled = true;
-                } else {
-                    imageCountSelect.disabled = false;
+                    imageLibrarySelect.value = '';
+                    aiImageModelSelect.value = '';
+                    return;
+                }
+
+                if (usesLibrary) {
+                    aiImageModelSelect.value = '';
+                    if (!imageLibrarySelect.value) {
+                        imageCountSelect.value = '0';
+                    } else if (imageCountSelect.value === '0') {
+                        imageCountSelect.value = '1';
+                    }
+                    return;
+                }
+
+                if (usesAi) {
+                    imageLibrarySelect.value = '';
                     if (imageCountSelect.value === '0') {
                         imageCountSelect.value = '1';
                     }
@@ -375,6 +519,58 @@
                     publishIntervalInput.disabled = false;
                     publishIntervalInput.parentElement.style.opacity = '1';
                 }
+            }
+
+            function selectedPublishScope() {
+                const selected = document.querySelector('input[name="publish_scope"]:checked');
+
+                return selected ? selected.value : 'local_and_distribution';
+            }
+
+            function setOptionDisabledState(element, disabled) {
+                if (!element) {
+                    return;
+                }
+
+                element.style.opacity = disabled ? '0.5' : '1';
+                element.classList.toggle('cursor-not-allowed', disabled);
+            }
+
+            function syncReviewPublishExclusion(changedBy = null) {
+                const enabledForScope = selectedPublishScope() === 'local_only';
+
+                if (!enabledForScope) {
+                    scheduledPublishCheckbox.checked = false;
+                } else if (changedBy === 'need_review' && needReviewCheckbox.checked) {
+                    scheduledPublishCheckbox.checked = false;
+                } else if (changedBy === 'scheduled_publish' && scheduledPublishCheckbox.checked) {
+                    needReviewCheckbox.checked = false;
+                } else if (changedBy === null && scheduledPublishCheckbox.checked && needReviewCheckbox.checked) {
+                    needReviewCheckbox.checked = false;
+                }
+
+                const reviewDisabled = enabledForScope && scheduledPublishCheckbox.checked;
+                const scheduledDisabled = !enabledForScope || needReviewCheckbox.checked;
+
+                needReviewCheckbox.disabled = reviewDisabled;
+                scheduledPublishCheckbox.disabled = scheduledDisabled;
+
+                scheduledPublishSection.classList.toggle('hidden', !enabledForScope);
+                scheduledPublishSection.style.opacity = enabledForScope ? '1' : '0.55';
+                scheduledPublishAtInput.disabled = scheduledDisabled || !scheduledPublishCheckbox.checked;
+                scheduledPublishAtInput.required = !scheduledDisabled && scheduledPublishCheckbox.checked;
+                setOptionDisabledState(needReviewOption, reviewDisabled);
+                setOptionDisabledState(scheduledPublishOption, scheduledDisabled);
+
+                if (scheduledDisabled) {
+                    scheduledPublishAtInput.required = false;
+                }
+
+                togglePublishInterval();
+            }
+
+            function toggleScheduledPublishControls() {
+                syncReviewPublishExclusion();
             }
 
             function handleCategoryModeChange() {
@@ -401,8 +597,39 @@
                 }
             }
 
-            imageLibrarySelect.addEventListener('change', toggleImageCountByLibrary);
-            needReviewCheckbox.addEventListener('change', togglePublishInterval);
+            function syncFixedTitleOptions() {
+                const selectedLibraryId = titleLibrarySelect.value;
+                const selectedTitleId = fixedTitleSelect.dataset.selectedTitleId || fixedTitleSelect.value;
+                let selectedTitleStillVisible = false;
+
+                Array.from(fixedTitleSelect.options).forEach((option) => {
+                    if (!option.value) {
+                        option.hidden = false;
+                        return;
+                    }
+
+                    const visible = option.dataset.libraryId === selectedLibraryId;
+                    option.hidden = !visible;
+                    if (visible && option.value === selectedTitleId) {
+                        selectedTitleStillVisible = true;
+                    }
+                });
+
+                fixedTitleSelect.value = selectedTitleStillVisible ? selectedTitleId : '';
+                fixedTitleSelect.disabled = !selectedLibraryId;
+                fixedTitleSelect.parentElement.style.opacity = selectedLibraryId ? '1' : '0.6';
+                fixedTitleSelect.dataset.selectedTitleId = fixedTitleSelect.value;
+            }
+
+            imageModeSelect.addEventListener('change', toggleImageControls);
+            imageLibrarySelect.addEventListener('change', toggleImageControls);
+            titleLibrarySelect.addEventListener('change', syncFixedTitleOptions);
+            fixedTitleSelect.addEventListener('change', () => {
+                fixedTitleSelect.dataset.selectedTitleId = fixedTitleSelect.value;
+            });
+            needReviewCheckbox.addEventListener('change', () => syncReviewPublishExclusion('need_review'));
+            scheduledPublishCheckbox.addEventListener('change', () => syncReviewPublishExclusion('scheduled_publish'));
+            publishScopeRadios.forEach((radio) => radio.addEventListener('change', () => syncReviewPublishExclusion('publish_scope')));
             articleLimitInput.addEventListener('input', syncDraftLimitMax);
             categoryModeRadios.forEach((radio) => radio.addEventListener('change', handleCategoryModeChange));
 
@@ -431,6 +658,12 @@
                     return;
                 }
 
+                if (imageModeSelect.value === 'ai' && !aiImageModelSelect.value) {
+                    alert('请选择 AI 图片模型');
+                    event.preventDefault();
+                    return;
+                }
+
                 if (Number(draftLimitInput.value || 0) > Number(articleLimitInput.value || 0)) {
                     alert(@json(__('admin.task_create.error.draft_limit_too_large')));
                     event.preventDefault();
@@ -442,8 +675,9 @@
                 }
             });
 
-            toggleImageCountByLibrary();
-            togglePublishInterval();
+            toggleImageControls();
+            syncFixedTitleOptions();
+            syncReviewPublishExclusion();
             handleCategoryModeChange();
             syncDraftLimitMax();
         });

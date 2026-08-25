@@ -9,13 +9,17 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Laravel\Sanctum\HasApiTokens;
 
 class Admin extends Authenticatable
 {
     use HasApiTokens;
+    use SoftDeletes;
 
     protected $table = 'admins';
 
@@ -28,6 +32,7 @@ class Admin extends Authenticatable
         'username',
         'password',
         'email',
+        'mobile',
         'display_name',
         'role',
         'status',
@@ -44,6 +49,7 @@ class Admin extends Authenticatable
             'welcome_dismissed_at' => 'datetime',
             'created_by' => 'integer',
             'password' => 'hashed',
+            'deleted_at' => 'datetime',
         ];
     }
 
@@ -72,6 +78,21 @@ class Admin extends Authenticatable
         return in_array($role, ['super_admin', 'superadmin'], true);
     }
 
+    public function isAgentAdmin(): bool
+    {
+        return trim(strtolower((string) ($this->role ?? ''))) === 'agent_admin';
+    }
+
+    public function isDirectAdmin(): bool
+    {
+        return trim(strtolower((string) ($this->role ?? ''))) === 'direct_admin';
+    }
+
+    public function isSiteUser(): bool
+    {
+        return trim(strtolower((string) ($this->role ?? ''))) === 'site_user';
+    }
+
     public function creator(): BelongsTo
     {
         return $this->belongsTo(self::class, 'created_by');
@@ -82,8 +103,25 @@ class Admin extends Authenticatable
         return $this->hasMany(AdminActivityLog::class, 'admin_id');
     }
 
+    public function sites(): BelongsToMany
+    {
+        return $this->belongsToMany(Site::class, 'site_members')
+            ->withPivot('role')
+            ->withTimestamps();
+    }
+
     public function articleReviews(): HasMany
     {
         return $this->hasMany(ArticleReview::class, 'admin_id');
+    }
+
+    public function accountPlanSubscriptions(): HasMany
+    {
+        return $this->hasMany(AdminPlanSubscription::class, 'admin_id');
+    }
+
+    public function creditAccount(): HasOne
+    {
+        return $this->hasOne(AdminCreditAccount::class, 'admin_id');
     }
 }

@@ -39,6 +39,27 @@ MD);
         $this->assertStringContainsString('type="checkbox"', $html);
     }
 
+    public function test_article_markdown_repairs_common_ai_spacing_outside_fenced_code_blocks(): void
+    {
+        $html = ArticleHtmlPresenter::markdownToHtml(<<<'MD'
+##标题缺少空格
+
+** 核心结论： **正文紧跟粗体。
+
+**适用建议：**正文同样紧跟粗体。
+
+```markdown
+##代码中的标题保持原样
+** 代码示例： **正文
+```
+MD);
+
+        $this->assertStringContainsString('<h2>标题缺少空格</h2>', $html);
+        $this->assertStringContainsString('<strong>核心结论：</strong> 正文紧跟粗体。', $html);
+        $this->assertStringContainsString('<strong>适用建议：</strong> 正文同样紧跟粗体。', $html);
+        $this->assertStringContainsString("##代码中的标题保持原样\n** 代码示例： **正文", html_entity_decode($html));
+    }
+
     public function test_published_article_page_outputs_normalized_image_url(): void
     {
         $category = Category::query()->create([
@@ -156,5 +177,108 @@ MD);
             ->assertSee('GEOFlow Feed')
             ->assertSee('GEOFlow Demo')
             ->assertSee('Demo homepage description');
+    }
+
+    public function test_netease_theme_renders_configured_homepage_carousel(): void
+    {
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'active_theme'],
+            ['setting_value' => 'netease-news-20260507']
+        );
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'home_carousel_slides'],
+            ['setting_value' => json_encode([
+                [
+                    'image_url' => 'https://example.com/net-ease-banner.jpg',
+                    'title' => 'NetEase Banner',
+                    'link_url' => '',
+                    'enabled' => true,
+                ],
+            ], JSON_UNESCAPED_UNICODE)]
+        );
+        SiteSettingsBag::forget();
+
+        $this->get(route('site.home'))
+            ->assertOk()
+            ->assertSee('data-home-poster-carousel', false)
+            ->assertSee('https://example.com/net-ease-banner.jpg', false)
+            ->assertSee('NetEase Banner');
+    }
+
+    public function test_netease_homepage_article_cards_use_cover_image_before_category_initial(): void
+    {
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'active_theme'],
+            ['setting_value' => 'netease-news-20260507']
+        );
+        SiteSettingsBag::forget();
+
+        $category = Category::query()->create([
+            'name' => '品牌资讯',
+            'slug' => 'brand-news',
+        ]);
+        $author = Author::query()->create([
+            'name' => 'GEOFlow',
+        ]);
+
+        Article::query()->create([
+            'title' => '有封面文章',
+            'slug' => 'homepage-cover-card',
+            'excerpt' => '有封面摘要',
+            'content' => '有封面正文',
+            'cover_image' => 'uploads/images/2026/07/cover.jpg',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+            'is_featured' => true,
+            'published_at' => now(),
+        ]);
+        Article::query()->create([
+            'title' => '无封面文章',
+            'slug' => 'homepage-initial-card',
+            'excerpt' => '无封面摘要',
+            'content' => '无封面正文',
+            'cover_image' => '',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+            'is_featured' => true,
+            'published_at' => now()->subMinute(),
+        ]);
+
+        $this->get(route('site.home'))
+            ->assertOk()
+            ->assertSee('class="ne-thumb has-image"', false)
+            ->assertSee('src="/storage/uploads/images/2026/07/cover.jpg"', false)
+            ->assertSee('href="'.route('site.article', 'homepage-initial-card').'" class="ne-thumb"', false)
+            ->assertSee('品');
+    }
+
+    public function test_english_netease_theme_renders_configured_homepage_carousel(): void
+    {
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'active_theme'],
+            ['setting_value' => 'tdwh-netease-news-en-20260508']
+        );
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'home_carousel_slides'],
+            ['setting_value' => json_encode([
+                [
+                    'image_url' => 'https://example.com/english-banner.jpg',
+                    'title' => 'English Banner',
+                    'link_url' => '',
+                    'enabled' => true,
+                ],
+            ], JSON_UNESCAPED_UNICODE)]
+        );
+        SiteSettingsBag::forget();
+
+        $this->get(route('site.home'))
+            ->assertOk()
+            ->assertSee('data-home-poster-carousel', false)
+            ->assertSee('https://example.com/english-banner.jpg', false)
+            ->assertSee('English Banner');
     }
 }

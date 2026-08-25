@@ -3,41 +3,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ __('admin.login.title') }} — {{ $adminSiteName }}</title>
+    <title>{{ __('admin.login.title') }} - {{ $adminSiteName }}</title>
     <script src="{{ asset('js/tailwindcss.play-cdn.js') }}"></script>
     <script src="{{ asset('js/lucide.min.js') }}"></script>
-    <style>
-        body {
-            background: radial-gradient(circle at top left, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0) 32%),
-                radial-gradient(circle at bottom right, rgba(229, 231, 235, 0.72), rgba(229, 231, 235, 0) 30%),
-                linear-gradient(180deg, #f5f5f7 0%, #e5e7eb 100%);
-            min-height: 100vh;
-        }
-        .login-form {
-            background: rgba(255, 255, 255, 0.82);
-            backdrop-filter: blur(24px) saturate(180%);
-            border: 1px solid rgba(209, 213, 219, 0.9);
-            box-shadow: 0 24px 60px rgba(15, 23, 42, 0.08);
-        }
-        .login-badge {
-            background: linear-gradient(180deg, #6b7280 0%, #374151 100%);
-        }
-    </style>
+    <link rel="stylesheet" href="{{ asset('assets/css/admin.css') }}?v={{ filemtime(public_path('assets/css/admin.css')) }}">
 </head>
-<body class="overflow-hidden">
+<body class="admin-ui admin-login-page overflow-hidden">
 <div class="fixed right-4 top-4 z-50">
-    <select onchange="window.location.href=this.value" class="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-600 shadow-sm">
-        @foreach (\App\Support\AdminWeb::supportedLocales() as $localeCode => $localeLabel)
-            <option value="{{ route('admin.locale.switch', ['locale' => $localeCode]) }}" @selected(app()->getLocale() === $localeCode)>
-                {{ $localeLabel }}
-            </option>
-        @endforeach
-    </select>
+    <div class="relative" data-admin-locale-menu>
+        <button onclick="toggleLocaleMenu()" type="button" class="flex h-8 items-center gap-1.5 rounded-md border border-gray-300 bg-white px-2.5 text-xs font-medium text-gray-600 shadow-sm hover:bg-gray-50">
+            <i data-lucide="languages" class="h-3.5 w-3.5"></i>
+            <span>{{ \App\Support\AdminWeb::supportedLocales()[app()->getLocale()] ?? app()->getLocale() }}</span>
+            <i data-lucide="chevron-down" class="h-3 w-3"></i>
+        </button>
+        <div id="locale-menu" class="admin-menu-panel hidden absolute right-0 mt-2 w-40 overflow-hidden rounded-md border bg-white py-1 z-50">
+            @foreach (\App\Support\AdminWeb::supportedLocales() as $localeCode => $localeLabel)
+                <a href="{{ route('admin.locale.switch', ['locale' => $localeCode]) }}"
+                   class="flex items-center justify-between gap-2 rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                    <span class="truncate">{{ $localeLabel }}</span>
+                    @if(app()->getLocale() === $localeCode)
+                        <i data-lucide="check" class="h-4 w-4 shrink-0"></i>
+                    @endif
+                </a>
+            @endforeach
+        </div>
+    </div>
 </div>
 <div class="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md px-4">
-    <div class="rounded-2xl p-8 login-form">
+    <div class="rounded-lg p-8 login-form">
         <div class="text-center mb-8">
-            <div class="login-badge w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+            <div class="login-badge w-16 h-16 rounded-md flex items-center justify-center mx-auto mb-4">
                 <i data-lucide="shield-check" class="w-8 h-8 text-white"></i>
             </div>
             <h1 class="text-2xl font-bold text-gray-900 mb-2">{{ __('admin.login.title') }}</h1>
@@ -75,10 +70,16 @@
                 </span>
                 <span class="text-xs text-gray-400">{{ __('admin.login.remember_30_days_hint') }}</span>
             </label>
-            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg">
+            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-md">
                 {{ __('admin.login.submit') }}
             </button>
         </form>
+        @if ($registrationAvailable ?? false)
+            <div class="mt-6 border-t border-gray-200 pt-5 text-center text-sm text-gray-600">
+                <span>还没有账号？</span>
+                <a href="{{ route('admin.register') }}" class="font-medium text-blue-600 hover:text-blue-700">注册账号</a>
+            </div>
+        @endif
     </div>
     <div class="text-center mt-6">
         <a href="{{ url('/') }}" class="text-gray-600 hover:text-gray-900 text-sm">{{ __('admin.login.back_home') }}</a>
@@ -87,6 +88,20 @@
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         if (typeof lucide !== 'undefined') lucide.createIcons();
+    });
+
+    function toggleLocaleMenu() {
+        const menu = document.getElementById('locale-menu');
+        if (menu) {
+            menu.classList.toggle('hidden');
+        }
+    }
+
+    document.addEventListener('click', function (event) {
+        const localeMenu = document.getElementById('locale-menu');
+        if (localeMenu && ! event.target.closest('[onclick="toggleLocaleMenu()"]') && ! localeMenu.contains(event.target)) {
+            localeMenu.classList.add('hidden');
+        }
     });
 </script>
 </body>

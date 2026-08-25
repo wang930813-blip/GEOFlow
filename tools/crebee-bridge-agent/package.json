@@ -1,0 +1,13 @@
+{
+  "private": true,
+  "name": "geoflow-crebee-bridge-agent",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.mjs",
+    "check": "node --check src/index.mjs && node --check src/config.mjs && node --check src/cloud-client.mjs && node --check src/crebee-client.mjs && node --check src/job-runner.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

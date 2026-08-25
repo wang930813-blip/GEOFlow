@@ -3,7 +3,9 @@
 namespace Tests\Feature;
 
 use App\Models\Admin;
+use App\Models\PlatformPlan;
 use App\Models\SensitiveWord;
+use App\Models\Site;
 use App\Models\SiteSetting;
 use App\Support\AdminWeb;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
@@ -34,25 +36,341 @@ class AdminSiteSettingsPageTest extends TestCase
             ->assertSee('value="'.AdminWeb::basePath().'"', false);
     }
 
-    public function test_standard_admin_cannot_update_analytics_code(): void
+    public function test_super_admin_can_update_admin_display_settings_independently(): void
     {
         $this->withoutMiddleware(ValidateCsrfToken::class);
 
-        SiteSetting::query()->create([
-            'setting_key' => 'analytics_code',
-            'setting_value' => '<script>existing()</script>',
+        $admin = Admin::query()->create([
+            'username' => 'site_display_copy_root',
+            'password' => 'secret-123',
+            'email' => 'site-display-copy-root@example.com',
+            'display_name' => 'Site Display Copy Root',
+            'role' => 'super_admin',
+            'status' => 'active',
         ]);
 
+        $response = $this->actingAs($admin, 'admin')
+            ->get(route('admin.site-settings.index'));
+
+        $response
+            ->assertOk()
+            ->assertSee('data-open-admin-display-settings', false)
+            ->assertSee('data-open-admin-registration-settings', false)
+            ->assertSee('name="admin_quick_start_title"', false)
+            ->assertSee('name="media_platform_1_label"', false);
+
+        $this->assertSame(1, substr_count($response->getContent(), 'name="admin_quick_start_title"'));
+        $this->assertSame(1, substr_count($response->getContent(), 'name="media_platform_1_label"'));
+        $this->assertSame(1, substr_count($response->getContent(), 'name="admin_registration_enabled"'));
+        $this->assertSame(1, substr_count($response->getContent(), 'name="admin_registration_experience_plan_id"'));
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.site-settings.admin-display'), [
+                'site_name' => 'Frontend Site',
+                'site_subtitle' => '',
+                'site_description' => '',
+                'site_keywords' => '',
+                'copyright_info' => '',
+                'site_logo' => '',
+                'site_favicon' => '',
+                'analytics_code' => '',
+                'seo_title_template' => '{title} - {site_name}',
+                'seo_description_template' => '{description}',
+                'featured_limit' => 6,
+                'per_page' => 12,
+                'admin_base_path' => AdminWeb::basePath(),
+                'admin_quick_start_eyebrow' => 'Operator Launch',
+                'admin_quick_start_title' => 'Launch custom AI production',
+                'admin_quick_start_subtitle' => 'Prepare model, assets and tasks.',
+                'admin_footer_brand' => 'Acme Console',
+                'admin_footer_version' => '9.9.1',
+                'media_platform_1_label' => 'Authority Plus',
+                'media_platform_2_label' => 'Quality Plus',
+            ])
+            ->assertRedirect(route('admin.site-settings.index'));
+
+        foreach ([
+            'admin_quick_start_eyebrow' => 'Operator Launch',
+            'admin_quick_start_title' => 'Launch custom AI production',
+            'admin_quick_start_subtitle' => 'Prepare model, assets and tasks.',
+            'admin_footer_brand' => 'Acme Console',
+            'admin_footer_version' => '9.9.1',
+            'media_platform_1_label' => 'Authority Plus',
+            'media_platform_2_label' => 'Quality Plus',
+        ] as $key => $value) {
+            $this->assertSame(
+                $value,
+                (string) SiteSetting::withoutGlobalScope('current_site')
+                    ->whereNull('site_id')
+                    ->where('setting_key', $key)
+                    ->value('setting_value')
+            );
+        }
+    }
+
+    public function test_non_super_admin_cannot_view_or_update_admin_display_settings(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+
+        [$admin, $site] = $this->createAdminWithSite('site_display_copy_admin');
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => $site->id])
+            ->get(route('admin.site-settings.index'))
+            ->assertOk()
+            ->assertDontSee('name="admin_quick_start_title"', false)
+            ->assertDontSee('name="media_platform_1_label"', false);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => $site->id])
+            ->post(route('admin.site-settings.update'), [
+                'site_name' => 'Frontend Site',
+                'site_subtitle' => '',
+                'site_description' => '',
+                'site_keywords' => '',
+                'copyright_info' => '',
+                'site_logo' => '',
+                'site_favicon' => '',
+                'analytics_code' => '',
+                'seo_title_template' => '{title} - {site_name}',
+                'seo_description_template' => '{description}',
+                'featured_limit' => 6,
+                'per_page' => 12,
+                'admin_base_path' => AdminWeb::basePath(),
+                'admin_quick_start_title' => 'Should Not Save',
+                'media_platform_1_label' => 'Should Not Save',
+            ])
+            ->assertRedirect(route('admin.site-settings.index'));
+
+        $this->assertFalse(
+            SiteSetting::withoutGlobalScope('current_site')
+                ->whereNull('site_id')
+                ->whereIn('setting_key', ['admin_quick_start_title', 'media_platform_1_label'])
+                ->exists()
+        );
+    }
+
+    public function test_super_admin_can_update_registration_settings_independently(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+
         $admin = Admin::query()->create([
-            'username' => 'site_analytics_admin',
+            'username' => 'site_registration_settings_root',
             'password' => 'secret-123',
-            'email' => 'site-analytics-admin@example.com',
-            'display_name' => 'Site Analytics Admin',
-            'role' => 'admin',
+            'email' => 'site-registration-settings-root@example.com',
+            'display_name' => 'Site Registration Settings Root',
+            'role' => 'super_admin',
+            'status' => 'active',
+        ]);
+        $plan = PlatformPlan::query()->create([
+            'name' => 'Registration Trial Plan',
+            'code' => 'registration-trial',
+            'audience' => 'direct',
+            'status' => 'active',
+            'duration_days' => 30,
+            'sort_order' => 10,
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.site-settings.registration'), [
+                'admin_registration_enabled' => '1',
+                'admin_registration_experience_plan_id' => (string) $plan->id,
+            ])
+            ->assertRedirect(route('admin.site-settings.index'));
+
+        $this->assertSame(
+            '1',
+            (string) SiteSetting::withoutGlobalScope('current_site')
+                ->whereNull('site_id')
+                ->where('setting_key', 'admin_registration_enabled')
+                ->value('setting_value')
+        );
+        $this->assertSame(
+            (string) $plan->id,
+            (string) SiteSetting::withoutGlobalScope('current_site')
+                ->whereNull('site_id')
+                ->where('setting_key', 'admin_registration_experience_plan_id')
+                ->value('setting_value')
+        );
+    }
+
+    public function test_site_settings_main_save_does_not_update_admin_display_or_registration_settings(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+
+        $admin = Admin::query()->create([
+            'username' => 'site_settings_root_main_save',
+            'password' => 'secret-123',
+            'email' => 'site-settings-root-main-save@example.com',
+            'display_name' => 'Site Settings Root Main Save',
+            'role' => 'super_admin',
             'status' => 'active',
         ]);
 
         $this->actingAs($admin, 'admin')
+            ->post(route('admin.site-settings.update'), [
+                'site_name' => 'Frontend Site',
+                'site_subtitle' => '',
+                'site_description' => '',
+                'site_keywords' => '',
+                'copyright_info' => '',
+                'site_logo' => '',
+                'site_favicon' => '',
+                'analytics_code' => '',
+                'seo_title_template' => '{title} - {site_name}',
+                'seo_description_template' => '{description}',
+                'featured_limit' => 6,
+                'per_page' => 12,
+                'admin_base_path' => AdminWeb::basePath(),
+                'admin_quick_start_title' => 'Should Not Save From Main Form',
+                'admin_registration_enabled' => '1',
+            ])
+            ->assertRedirect(route('admin.site-settings.index'));
+
+        $this->assertFalse(
+            SiteSetting::withoutGlobalScope('current_site')
+                ->whereNull('site_id')
+                ->whereIn('setting_key', ['admin_quick_start_title', 'admin_registration_enabled'])
+                ->exists()
+        );
+    }
+
+    public function test_admin_can_update_current_site_public_domain(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+
+        $admin = Admin::query()->create([
+            'username' => 'site_domain_admin',
+            'password' => 'secret-123',
+            'email' => 'site-domain-admin@example.com',
+            'display_name' => 'Site Domain Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $site = Site::query()->create([
+            'owner_admin_id' => $admin->id,
+            'name' => 'Domain Site',
+            'status' => 'active',
+        ]);
+        $site->members()->attach($admin->id, ['role' => 'owner']);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => $site->id])
+            ->post(route('admin.site-settings.update'), [
+                'site_name' => 'Frontend Site',
+                'public_domain' => 'https://Client-A.Example.test/some/path',
+                'site_subtitle' => '',
+                'site_description' => '',
+                'site_keywords' => '',
+                'copyright_info' => '',
+                'site_logo' => '',
+                'site_favicon' => '',
+                'analytics_code' => '',
+                'seo_title_template' => '{title} - {site_name}',
+                'seo_description_template' => '{description}',
+                'featured_limit' => 6,
+                'per_page' => 12,
+                'admin_base_path' => AdminWeb::basePath(),
+            ])
+            ->assertRedirect(route('admin.site-settings.index'));
+
+        $this->assertSame('client-a.example.test', (string) $site->fresh()->domain);
+    }
+
+    public function test_direct_admin_and_site_user_can_access_site_settings_but_cannot_change_domain_settings(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+
+        foreach (['direct_admin', 'site_user'] as $role) {
+            [$admin, $site] = $this->createAdminWithSite('site_domain_locked_'.$role, $role);
+            $site->forceFill(['domain' => 'locked-'.$role.'.example.test'])->save();
+
+            SiteSetting::query()->updateOrCreate(
+                ['site_id' => $site->id, 'setting_key' => 'admin_base_path'],
+                ['setting_value' => AdminWeb::basePath()]
+            );
+
+            $this->actingAs($admin, 'admin')
+                ->withSession(['current_site_id' => $site->id])
+                ->get(route('admin.ai.configurator'))
+                ->assertForbidden();
+
+            $settingsResponse = $this->actingAs($admin, 'admin')
+                ->withSession(['current_site_id' => $site->id])
+                ->get(route('admin.site-settings.index'));
+
+            $settingsResponse
+                ->assertOk()
+                ->assertSee('name="public_domain"', false)
+                ->assertSee('data-copy-public-domain', false)
+                ->assertSee('locked-'.$role.'.example.test')
+                ->assertSee('name="admin_base_path"', false)
+                ->assertSee('disabled', false);
+
+            $this->actingAs($admin, 'admin')
+                ->withSession(['current_site_id' => $site->id])
+                ->post(route('admin.site-settings.update'), [
+                    'site_name' => 'Locked Site '.$role,
+                    'public_domain' => 'changed-'.$role.'.example.test',
+                    'site_subtitle' => '',
+                    'site_description' => '',
+                    'site_keywords' => '',
+                    'copyright_info' => '',
+                    'site_logo' => '',
+                    'site_favicon' => '',
+                    'analytics_code' => '',
+                    'seo_title_template' => '{title} - {site_name}',
+                    'seo_description_template' => '{description}',
+                    'featured_limit' => 6,
+                    'per_page' => 12,
+                    'admin_base_path' => 'changed-admin-path',
+                ])
+                ->assertRedirect(route('admin.site-settings.index'));
+
+            $this->assertSame('locked-'.$role.'.example.test', (string) $site->fresh()->domain);
+            $this->assertSame(
+                AdminWeb::basePath(),
+                (string) SiteSetting::withoutGlobalScope('current_site')
+                    ->where('site_id', $site->id)
+                    ->where('setting_key', 'admin_base_path')
+                    ->value('setting_value')
+            );
+
+            $this->actingAs($admin, 'admin')
+                ->withSession(['current_site_id' => $site->id])
+                ->post(route('admin.site-settings.update'), [
+                    'site_name' => 'Locked Site Without Disabled Fields '.$role,
+                    'site_subtitle' => '',
+                    'site_description' => '',
+                    'site_keywords' => '',
+                    'copyright_info' => '',
+                    'site_logo' => '',
+                    'site_favicon' => '',
+                    'analytics_code' => '',
+                    'seo_title_template' => '{title} - {site_name}',
+                    'seo_description_template' => '{description}',
+                    'featured_limit' => 6,
+                    'per_page' => 12,
+                ])
+                ->assertRedirect(route('admin.site-settings.index'));
+
+            $this->assertSame('locked-'.$role.'.example.test', (string) $site->fresh()->domain);
+        }
+    }
+
+    public function test_standard_admin_cannot_update_analytics_code(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+        [$admin, $site] = $this->createAdminWithSite('site_analytics_admin');
+
+        SiteSetting::query()->create([
+            'site_id' => $site->id,
+            'setting_key' => 'analytics_code',
+            'setting_value' => '<script>existing()</script>',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => $site->id])
             ->post(route('admin.site-settings.update'), [
                 'site_name' => 'Frontend Site',
                 'site_subtitle' => '',
@@ -72,7 +390,10 @@ class AdminSiteSettingsPageTest extends TestCase
 
         $this->assertSame(
             '<script>existing()</script>',
-            (string) SiteSetting::query()->where('setting_key', 'analytics_code')->value('setting_value')
+            (string) SiteSetting::withoutGlobalScope('current_site')
+                ->where('site_id', $site->id)
+                ->where('setting_key', 'analytics_code')
+                ->value('setting_value')
         );
     }
 
@@ -80,41 +401,41 @@ class AdminSiteSettingsPageTest extends TestCase
     {
         $this->withoutMiddleware(ValidateCsrfToken::class);
 
-        $admin = Admin::query()->create([
-            'username' => 'site_sensitive_admin',
-            'password' => 'secret-123',
-            'email' => 'site-sensitive-admin@example.com',
-            'display_name' => 'Site Sensitive Admin',
-            'role' => 'admin',
-            'status' => 'active',
-        ]);
+        [$admin, $site] = $this->createAdminWithSite('site_sensitive_admin');
 
         $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => $site->id])
             ->get(route('admin.site-settings.sensitive-words'))
             ->assertOk()
             ->assertSee(__('admin.security.page_title'));
 
         $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => $site->id])
             ->get(route('admin.security-settings.index'))
             ->assertRedirect(route('admin.site-settings.sensitive-words'));
 
         $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => $site->id])
             ->post(route('admin.site-settings.sensitive-words.store'), [
                 'words' => "测试敏感词\n测试敏感词\n另一个敏感词",
             ])
             ->assertRedirect(route('admin.site-settings.sensitive-words'));
 
-        $this->assertDatabaseHas('sensitive_words', ['word' => '测试敏感词']);
-        $this->assertDatabaseHas('sensitive_words', ['word' => '另一个敏感词']);
-        $this->assertSame(2, SensitiveWord::query()->count());
+        $this->assertDatabaseHas('sensitive_words', ['site_id' => $site->id, 'word' => '测试敏感词']);
+        $this->assertDatabaseHas('sensitive_words', ['site_id' => $site->id, 'word' => '另一个敏感词']);
+        $this->assertSame(2, SensitiveWord::withoutGlobalScope('current_site')->where('site_id', $site->id)->count());
 
-        $word = SensitiveWord::query()->where('word', '测试敏感词')->firstOrFail();
+        $word = SensitiveWord::withoutGlobalScope('current_site')
+            ->where('site_id', $site->id)
+            ->where('word', '测试敏感词')
+            ->firstOrFail();
 
         $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => $site->id])
             ->post(route('admin.site-settings.sensitive-words.delete', ['wordId' => $word->id]))
             ->assertRedirect(route('admin.site-settings.sensitive-words'));
 
-        $this->assertDatabaseMissing('sensitive_words', ['word' => '测试敏感词']);
+        $this->assertDatabaseMissing('sensitive_words', ['site_id' => $site->id, 'word' => '测试敏感词']);
     }
 
     public function test_admin_base_path_rejects_unsafe_value(): void
@@ -205,5 +526,25 @@ class AdminSiteSettingsPageTest extends TestCase
         $this->assertSame('Home Banner', $slides[0]['title']);
         $this->assertSame('/article/demo', $slides[0]['link_url']);
         $this->assertTrue($slides[0]['enabled']);
+    }
+
+    private function createAdminWithSite(string $username, string $role = 'admin'): array
+    {
+        $admin = Admin::query()->create([
+            'username' => $username,
+            'password' => 'secret-123',
+            'email' => $username.'@example.com',
+            'display_name' => $username,
+            'role' => $role,
+            'status' => 'active',
+        ]);
+        $site = Site::query()->create([
+            'owner_admin_id' => $admin->id,
+            'name' => $username.' Site',
+            'status' => 'active',
+        ]);
+        $site->members()->attach($admin->id, ['role' => 'owner']);
+
+        return [$admin, $site];
     }
 }

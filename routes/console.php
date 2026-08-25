@@ -21,3 +21,8 @@ Schedule::command('horizon:snapshot')->everyFiveMinutes();
  * GeoFlow 任务调度：每分钟扫描一次可执行任务并入队（对齐 bak cron 逻辑）。
  */
 Schedule::command('geoflow:schedule-tasks')->everyMinute();
+
+/**
+ * 分发媒体订单同步：定时刷新第三方未完成订单状态。
+ */
+Schedule::command('media-distribution:sync-submissions --limit=100')->everyThirtyMinutes()->withoutOverlapping();

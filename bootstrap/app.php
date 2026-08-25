@@ -10,11 +10,20 @@ use App\Exceptions\ApiException;
 use App\Http\Middleware\AdminWebLocale;
 use App\Http\Middleware\AssignApiRequestId;
 use App\Http\Middleware\AuthenticateAdminWeb;
+use App\Http\Middleware\AuthenticateBrandDiagnosisOpenApi;
 use App\Http\Middleware\AuthenticateApiToken;
+use App\Http\Middleware\AuthenticateCrebeeAgent;
+use App\Http\Middleware\AutoFollowRedirectBody;
+use App\Http\Middleware\EnsureAgentAdmin;
+use App\Http\Middleware\EnsureAiConfigurationManager;
 use App\Http\Middleware\EnsureApiScope;
+use App\Http\Middleware\EnsureCurrentSite;
 use App\Http\Middleware\EnsureSuperAdmin;
 use App\Http\Middleware\LogAdminActivity;
+use App\Http\Middleware\RecordSiteViewLog;
+use App\Http\Middleware\ResolveFrontendSiteByDomain;
 use App\Http\Middleware\SiteWebLocale;
+use App\Services\Api\IdempotencyService;
 use App\Support\ApiResponse;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Application;
@@ -23,6 +32,7 @@ use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -34,21 +44,46 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->trustProxies(
+            at: env('TRUSTED_PROXIES') ?: null,
+            headers: Request::HEADER_X_FORWARDED_FOR
+                | Request::HEADER_X_FORWARDED_HOST
+                | Request::HEADER_X_FORWARDED_PORT
+                | Request::HEADER_X_FORWARDED_PROTO
+                | Request::HEADER_X_FORWARDED_PREFIX
+        );
+
+        $middleware->web(append: [
+            AutoFollowRedirectBody::class,
+        ]);
+
         $middleware->alias([
             // 生成/透传 X-Request-Id，并写入响应头
             'api.request_id' => AssignApiRequestId::class,
             // Authorization: Bearer，解析 Sanctum token 并注入 ApiAuthContext
             'api.auth' => AuthenticateApiToken::class,
+            // 品牌诊断开放 API：固定 X-Api-Key 鉴权，不绑定站点
+            'brand-diagnosis.api-key' => AuthenticateBrandDiagnosisOpenApi::class,
             // 校验 Token scopes，如 api.scope:catalog:read
             'api.scope' => EnsureApiScope::class,
+            'crebee.agent' => AuthenticateCrebeeAgent::class,
             // Blade 后台：管理员会话鉴权（失败跳转 admin.login）
             'admin.auth' => AuthenticateAdminWeb::class,
             // Blade 后台：session locale
             'admin.locale' => AdminWebLocale::class,
+            // Blade 后台：当前站点上下文
+            'admin.site' => EnsureCurrentSite::class,
             // 前台：固定 public_locale（默认 zh_CN）
             'site.locale' => SiteWebLocale::class,
+            // 前台：保存访问日志，供数据分析模块统计 PV、路径和爬虫类型
+            'site.domain' => ResolveFrontendSiteByDomain::class,
+            'site.view_log' => RecordSiteViewLog::class,
             // Blade 后台：仅超级管理员
             'admin.super' => EnsureSuperAdmin::class,
+            // Blade 后台：仅代理管理员
+            'admin.agent' => EnsureAgentAdmin::class,
+            // Blade 后台：可管理 AI 配置的账号（超管、代理）
+            'admin.ai_config_manager' => EnsureAiConfigurationManager::class,
             // Blade 后台：写操作日志
             'admin.activity' => LogAdminActivity::class,
         ]);
@@ -87,17 +122,36 @@ return Application::configure(basePath: dirname(__DIR__))
 
             $rid = (string) ($request->attributes->get('request_id') ?? Str::uuid()->toString());
 
-            return ApiResponse::error(
+            $response = ApiResponse::error(
                 $e->getErrorCode(),
                 $e->getMessage(),
                 $rid,
                 $e->getHttpStatus(),
                 $e->getDetails()
             )->withHeaders(['X-Request-Id' => $rid]);
+
+            try {
+                IdempotencyService::rememberApiException($request, $response);
+            } catch (Throwable $idempotencyException) {
+                Log::error('幂等异常响应保存失败', [
+                    'exception' => $idempotencyException::class,
+                    'request_id' => $rid,
+                ]);
+            }
+
+            return $response;
+        });
+
+        $exceptions->render(function (ValidationException $e, Request $request) {
+            if ($request->is('api/*')) {
+                IdempotencyService::releaseValidationReservation($request);
+            }
+
+            return null;
         });
 
         $exceptions->render(function (Throwable $e, Request $request) {
-            if (! $request->is('api/*') || $e instanceof ApiException) {
+            if (! $request->is('api/*') || $e instanceof ApiException || $e instanceof ValidationException) {
                 return null;
             }
 

@@ -2,17 +2,21 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToSite;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class AdminActivityLog extends Model
 {
+    use BelongsToSite;
+
     public const UPDATED_AT = null;
 
     protected $table = 'admin_activity_logs';
 
     protected $fillable = [
         'admin_id',
+        'site_id',
         'admin_username',
         'admin_role',
         'action',
@@ -28,6 +32,7 @@ class AdminActivityLog extends Model
     {
         return [
             'admin_id' => 'integer',
+            'site_id' => 'integer',
             'target_id' => 'integer',
         ];
     }

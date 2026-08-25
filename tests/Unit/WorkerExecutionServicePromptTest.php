@@ -55,6 +55,22 @@ class WorkerExecutionServicePromptTest extends TestCase
         $this->assertStringContainsString('Please output only the final article body in Markdown.', $prompt);
     }
 
+    public function test_final_instruction_does_not_force_references_when_knowledge_exists(): void
+    {
+        $prompt = $this->renderContentPrompt(
+            'How to choose a software development vendor?',
+            'software development vendor',
+            'Evaluate the following points: prototype, scope, delivery and maintenance.',
+            'Source URL: https://example.test/vendor-guide. Fact: mature vendors define scope, milestones and acceptance criteria.'
+        );
+
+        $this->assertStringContainsString('Do not output only a checklist, outline, or prompt instructions.', $prompt);
+        $this->assertStringContainsString('Reference knowledge:', $prompt);
+        $this->assertStringContainsString('Source URL: https://example.test/vendor-guide.', $prompt);
+        $this->assertStringNotContainsString('include a "References" section', $prompt);
+        $this->assertStringNotContainsString('Do not invent sources.', $prompt);
+    }
+
     public function test_unknown_template_blocks_are_preserved_for_future_extensions(): void
     {
         $prompt = $this->renderContentPrompt(

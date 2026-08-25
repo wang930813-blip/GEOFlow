@@ -12,6 +12,16 @@
                     <p class="mt-1 text-sm text-gray-600">{{ $knowledgeBase->name }}</p>
                 </div>
             </div>
+            @if ($hasDefaultEmbeddingModel ?? false)
+                <form method="POST" action="{{ route('admin.knowledge-bases.chunks.refresh', ['knowledgeBaseId' => (int) $knowledgeBase->id]) }}" onsubmit="return confirm(@js(__('admin.knowledge_bases.confirm_refresh_chunks', ['name' => $knowledgeBase->name])));">
+                    @csrf
+                    <input type="hidden" name="redirect_to" value="detail">
+                    <button type="submit" class="inline-flex items-center px-4 py-2 border border-emerald-200 text-sm font-medium rounded-md text-emerald-700 bg-emerald-50 hover:bg-emerald-100">
+                        <i data-lucide="refresh-cw" class="w-4 h-4 mr-2"></i>
+                        {{ __('admin.knowledge_bases.refresh_chunks') }}
+                    </button>
+                </form>
+            @endif
         </div>
 
         <div class="bg-white shadow rounded-lg mb-6">

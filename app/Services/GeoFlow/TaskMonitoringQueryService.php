@@ -2,9 +2,12 @@
 
 namespace App\Services\GeoFlow;
 
+use App\Models\Admin;
 use App\Models\Task;
 use App\Models\TaskRun;
 use App\Models\WorkerHeartbeat;
+use App\Support\AdminDataScope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -18,7 +21,8 @@ use Illuminate\Support\Facades\DB;
 class TaskMonitoringQueryService
 {
     public function __construct(
-        private readonly HorizonMetricsAdapter $horizonMetrics
+        private readonly HorizonMetricsAdapter $horizonMetrics,
+        private readonly AdminDataScope $adminDataScope,
     ) {}
 
     /**
@@ -31,15 +35,15 @@ class TaskMonitoringQueryService
      *     recent_runs:list<array<string,mixed>>
      * }
      */
-    public function buildAdminOverview(): array
+    public function buildAdminOverview(?Admin $admin = null): array
     {
-        $tasks = $this->listTaskMonitoringRows();
+        $tasks = $this->listTaskMonitoringRows($admin);
 
         return [
             'tasks' => $tasks,
             'queue_overview' => $this->horizonMetrics->queueOverview('geoflow'),
             'worker_overview' => $this->workerOverview(),
-            'recent_runs' => $this->recentRuns(),
+            'recent_runs' => $this->recentRuns($admin),
         ];
     }
 
@@ -48,9 +52,9 @@ class TaskMonitoringQueryService
      *
      * @return list<array<string,mixed>>
      */
-    public function buildTaskSnapshot(): array
+    public function buildTaskSnapshot(?Admin $admin = null): array
     {
-        return $this->listTaskMonitoringRows();
+        return $this->listTaskMonitoringRows($admin);
     }
 
     /**
@@ -103,14 +107,25 @@ class TaskMonitoringQueryService
     /**
      * @return list<array<string,mixed>>
      */
-    private function listTaskMonitoringRows(): array
+    private function listTaskMonitoringRows(?Admin $admin = null): array
     {
         /** @var Collection<int, Task> $tasks */
-        $tasks = Task::query()
+        $tasks = $this->visibleTaskQuery($admin)
             ->orderByDesc('created_at')
             ->get();
 
         return $this->decorateTasks($tasks)->values()->all();
+    }
+
+    private function visibleTaskQuery(?Admin $admin = null): Builder
+    {
+        $query = Task::query();
+
+        if ($admin instanceof Admin) {
+            $this->adminDataScope->applySiteScope($query, $admin);
+        }
+
+        return $query;
     }
 
     /**
@@ -145,6 +160,27 @@ class TaskMonitoringQueryService
                     'published_articles' => (int) ($row->published_articles ?? 0),
                     'draft_articles' => (int) ($row->draft_articles ?? 0),
                     'publishable_drafts' => (int) ($row->publishable_drafts ?? 0),
+                ],
+            ]);
+
+        // 分发统计（文章维度）：用于任务列表快速暴露远程同步结果。
+        $distributionStats = DB::table('article_distributions')
+            ->join('articles', 'articles.id', '=', 'article_distributions.article_id')
+            ->selectRaw("
+                articles.task_id,
+                COUNT(*) AS distribution_total_count,
+                SUM(CASE WHEN article_distributions.status = 'synced' THEN 1 ELSE 0 END) AS distribution_synced_count,
+                SUM(CASE WHEN article_distributions.status = 'failed' THEN 1 ELSE 0 END) AS distribution_failed_count
+            ")
+            ->whereIn('articles.task_id', $taskIds)
+            ->whereNull('articles.deleted_at')
+            ->groupBy('articles.task_id')
+            ->get()
+            ->mapWithKeys(fn ($row): array => [
+                (int) $row->task_id => [
+                    'distribution_total_count' => (int) ($row->distribution_total_count ?? 0),
+                    'distribution_synced_count' => (int) ($row->distribution_synced_count ?? 0),
+                    'distribution_failed_count' => (int) ($row->distribution_failed_count ?? 0),
                 ],
             ]);
 
@@ -187,9 +223,10 @@ class TaskMonitoringQueryService
             ->whereIn('id', $tasks->pluck('ai_model_id')->filter()->all())
             ->pluck('name', 'id');
 
-        return $tasks->map(function (Task $task) use ($articleStats, $runStats, $latestRuns, $titleNames, $modelNames): array {
+        return $tasks->map(function (Task $task) use ($articleStats, $distributionStats, $runStats, $latestRuns, $titleNames, $modelNames): array {
             $taskId = (int) $task->id;
             $articles = $articleStats->get($taskId, ['total_articles' => 0, 'published_articles' => 0, 'draft_articles' => 0, 'publishable_drafts' => 0]);
+            $distributions = $distributionStats->get($taskId, ['distribution_total_count' => 0, 'distribution_synced_count' => 0, 'distribution_failed_count' => 0]);
             $runs = $runStats->get($taskId, ['pending_jobs' => 0, 'running_jobs' => 0, 'completed_jobs' => 0, 'failed_jobs' => 0]);
             /** @var TaskRun|null $latestRun */
             $latestRun = $latestRuns->get($taskId);
@@ -204,13 +241,17 @@ class TaskMonitoringQueryService
                 'id' => $taskId,
                 'name' => (string) $task->name,
                 'status' => (string) ($task->status ?? 'paused'),
+                'publish_scope' => (string) ($task->publish_scope ?? 'local_and_distribution'),
                 'title_library_id' => $this->nullableInt($task->title_library_id),
+                'fixed_title_id' => $this->nullableInt($task->fixed_title_id),
                 'prompt_id' => $this->nullableInt($task->prompt_id),
                 'ai_model_id' => $this->nullableInt($task->ai_model_id),
                 'knowledge_base_id' => $this->nullableInt($task->knowledge_base_id),
                 'author_id' => $this->nullableInt($task->author_id),
                 'image_library_id' => $this->nullableInt($task->image_library_id),
+                'image_mode' => (string) ($task->image_mode ?? 'library'),
                 'image_count' => (int) ($task->image_count ?? 0),
+                'ai_image_model_id' => $this->nullableInt($task->ai_image_model_id),
                 'need_review' => (int) ($task->need_review ?? 1),
                 'auto_keywords' => (int) ($task->auto_keywords ?? 1),
                 'auto_description' => (int) ($task->auto_description ?? 1),
@@ -239,6 +280,9 @@ class TaskMonitoringQueryService
                 'published_articles' => (int) $articles['published_articles'],
                 'draft_articles' => (int) $articles['draft_articles'],
                 'publishable_drafts' => (int) $articles['publishable_drafts'],
+                'distribution_total_count' => (int) $distributions['distribution_total_count'],
+                'distribution_synced_count' => (int) $distributions['distribution_synced_count'],
+                'distribution_failed_count' => (int) $distributions['distribution_failed_count'],
                 'pending_jobs' => (int) $runs['pending_jobs'],
                 'running_jobs' => (int) $runs['running_jobs'],
                 'batch_success_count' => (int) $runs['completed_jobs'],
@@ -281,6 +325,10 @@ class TaskMonitoringQueryService
             return 'pending';
         }
 
+        if (($task->status ?? 'paused') === 'completed') {
+            return 'completed';
+        }
+
         if (($task->status ?? 'paused') === 'paused') {
             return 'idle';
         }
@@ -304,7 +352,7 @@ class TaskMonitoringQueryService
         }
 
         if ($createdCount >= $articleLimit) {
-            return 'limit_reached';
+            return 'waiting_review';
         }
 
         $latestStatus = (string) ($latestRun?->status ?? '');
@@ -342,15 +390,19 @@ class TaskMonitoringQueryService
     /**
      * @return list<array<string,mixed>>
      */
-    private function recentRuns(): array
+    private function recentRuns(?Admin $admin = null): array
     {
-        return TaskRun::query()
+        $query = TaskRun::query()
             ->select(['id', 'task_id', 'status', 'error_message', 'created_at'])
             ->with(['task:id,name'])
+            ->when($admin instanceof Admin, function (Builder $query) use ($admin): void {
+                $query->whereIn('task_id', $this->visibleTaskQuery($admin)->select('tasks.id'));
+            })
             ->orderByDesc('created_at')
             ->orderByDesc('id')
-            ->limit(5)
-            ->get()
+            ->limit(5);
+
+        return $query->get()
             ->map(static fn (TaskRun $row): array => [
                 'id' => (int) $row->id,
                 'task_id' => (int) $row->task_id,

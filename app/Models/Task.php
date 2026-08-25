@@ -2,19 +2,30 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToSite;
+use App\Models\Concerns\BelongsToAdminOwner;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Task extends Model
 {
+    use BelongsToSite;
+    use BelongsToAdminOwner;
+
     protected $table = 'tasks';
 
     protected $fillable = [
+        'site_id',
+        'owner_admin_id',
         'name',
         'title_library_id',
+        'fixed_title_id',
         'image_library_id',
+        'image_mode',
         'image_count',
+        'ai_image_model_id',
         'prompt_id',
         'ai_model_id',
         'author_id',
@@ -29,6 +40,7 @@ class Task extends Model
         'is_loop',
         'model_selection_mode',
         'status',
+        'publish_scope',
         'created_count',
         'published_count',
         'loop_count',
@@ -49,8 +61,13 @@ class Task extends Model
     {
         return [
             'title_library_id' => 'integer',
+            'fixed_title_id' => 'integer',
+            'site_id' => 'integer',
+            'owner_admin_id' => 'integer',
             'image_library_id' => 'integer',
+            'image_mode' => 'string',
             'image_count' => 'integer',
+            'ai_image_model_id' => 'integer',
             'prompt_id' => 'integer',
             'ai_model_id' => 'integer',
             'author_id' => 'integer',
@@ -82,6 +99,11 @@ class Task extends Model
         return $this->belongsTo(TitleLibrary::class, 'title_library_id');
     }
 
+    public function fixedTitle(): BelongsTo
+    {
+        return $this->belongsTo(Title::class, 'fixed_title_id');
+    }
+
     public function imageLibrary(): BelongsTo
     {
         return $this->belongsTo(ImageLibrary::class, 'image_library_id');
@@ -95,6 +117,11 @@ class Task extends Model
     public function aiModel(): BelongsTo
     {
         return $this->belongsTo(AiModel::class, 'ai_model_id');
+    }
+
+    public function aiImageModel(): BelongsTo
+    {
+        return $this->belongsTo(AiModel::class, 'ai_image_model_id');
     }
 
     public function author(): BelongsTo
@@ -130,5 +157,12 @@ class Task extends Model
     public function taskRuns(): HasMany
     {
         return $this->hasMany(TaskRun::class, 'task_id');
+    }
+
+    public function distributionChannels(): BelongsToMany
+    {
+        return $this->belongsToMany(DistributionChannel::class, 'task_distribution_channels')
+            ->withPivot(['trigger', 'remote_status', 'failure_policy', 'max_attempts'])
+            ->withTimestamps();
     }
 }

@@ -15,11 +15,11 @@
     @endif
     <link rel="canonical" href="{{ $canonicalUrl ?? url()->current() }}">
     @stack('head')
-    <script src="{{ asset('js/tailwindcss.play-cdn.js') }}"></script>
-    <link rel="stylesheet" href="{{ asset('assets/css/style.css') }}">
-    <link rel="stylesheet" href="{{ asset('assets/css/custom.css') }}">
-    <link rel="stylesheet" href="{{ asset('themes/toutiao-news-20260426/theme.css') }}">
-    <script src="{{ asset('js/lucide.min.js') }}"></script>
+    <script src="/js/tailwindcss.play-cdn.js"></script>
+    <link rel="stylesheet" href="/assets/css/style.css?v={{ filemtime(public_path('assets/css/style.css')) }}">
+    <link rel="stylesheet" href="/themes/toutiao-news-20260426/theme.css?v={{ filemtime(public_path('themes/toutiao-news-20260426/theme.css')) }}">
+    <link rel="stylesheet" href="/assets/css/custom.css?v={{ filemtime(public_path('assets/css/custom.css')) }}">
+    <script src="/js/lucide.min.js"></script>
     @if(!empty($headAnalyticsCode))
         {!! $headAnalyticsCode !!}
     @endif
@@ -42,14 +42,14 @@
         {!! json_encode($websiteSchema, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT) !!}
     </script>
 </head>
-<body class="tt-body">
+<body class="site-ui tt-body">
     @include('theme.toutiao-news-20260426.partials.header')
     <main class="tt-main">
         @yield('content')
     </main>
     @include('theme.toutiao-news-20260426.partials.footer')
     @stack('scripts')
-    <script src="{{ asset('assets/js/main.js') }}"></script>
-    <script src="{{ asset('themes/toutiao-news-20260426/theme.js') }}" defer></script>
+    <script src="/assets/js/main.js"></script>
+    <script src="/themes/toutiao-news-20260426/theme.js" defer></script>
 </body>
 </html>

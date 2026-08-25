@@ -3,12 +3,14 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\KnowledgeBase;
 use App\Models\KnowledgeChunk;
 use App\Models\Task;
 use App\Services\GeoFlow\KnowledgeChunkSyncService;
 use App\Support\AdminWeb;
+use App\Support\AiConfigurationScope;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -24,7 +26,10 @@ use Illuminate\View\View;
  */
 class KnowledgeBaseController extends Controller
 {
-    public function __construct(private readonly KnowledgeChunkSyncService $chunkSyncService) {}
+    public function __construct(
+        private readonly KnowledgeChunkSyncService $chunkSyncService,
+        private readonly AiConfigurationScope $aiConfigurationScope
+    ) {}
 
     /**
      * 列表页。
@@ -38,6 +43,7 @@ class KnowledgeBaseController extends Controller
             'knowledgeBases' => $this->loadKnowledgeBases(),
             'stats' => $this->loadStats(),
             'hasDefaultEmbeddingModel' => $this->hasDefaultEmbeddingModel(),
+            'canManageAiConfig' => $this->canManageAiConfig(),
         ]);
     }
 
@@ -71,6 +77,8 @@ class KnowledgeBaseController extends Controller
             'relatedTasks' => $this->loadRelatedTasks($knowledgeBaseId),
             'chunkStats' => $this->loadChunkStats($knowledgeBaseId),
             'chunkPreviewRows' => $this->loadChunkPreviewRows($knowledgeBaseId),
+            'hasDefaultEmbeddingModel' => $this->hasDefaultEmbeddingModel(),
+            'canManageAiConfig' => $this->canManageAiConfig(),
         ]);
     }
 
@@ -263,14 +271,15 @@ class KnowledgeBaseController extends Controller
         return redirect()->route('admin.knowledge-bases.index')->with('message', __('admin.knowledge_bases.message.delete_success'));
     }
 
-    public function refreshChunks(int $knowledgeBaseId): RedirectResponse
+    public function refreshChunks(Request $request, int $knowledgeBaseId): RedirectResponse
     {
         $knowledgeBase = KnowledgeBase::query()->whereKey($knowledgeBaseId)->firstOrFail();
         $content = trim((string) ($knowledgeBase->content ?? ''));
+        $redirectRoute = $this->refreshChunksRedirectRoute($request, $knowledgeBaseId);
 
         if ($content === '') {
             return redirect()
-                ->route('admin.knowledge-bases.index')
+                ->to($redirectRoute)
                 ->withErrors(__('admin.knowledge_bases.error.content_required'));
         }
 
@@ -281,7 +290,7 @@ class KnowledgeBaseController extends Controller
 
             if ($chunkCount > 0 && $vectorizedCount < $chunkCount) {
                 return redirect()
-                    ->route('admin.knowledge-bases.index')
+                    ->to($redirectRoute)
                     ->withErrors(__('admin.knowledge_bases.error.embedding_sync_partial', [
                         'chunks' => $chunkCount,
                         'vectorized' => $vectorizedCount,
@@ -289,7 +298,7 @@ class KnowledgeBaseController extends Controller
             }
 
             return redirect()
-                ->route('admin.knowledge-bases.index')
+                ->to($redirectRoute)
                 ->with('message', __('admin.knowledge_bases.message.chunks_refreshed', [
                     'chunks' => $chunkCount,
                     'vectorized' => $vectorizedCount,
@@ -298,7 +307,7 @@ class KnowledgeBaseController extends Controller
             report($exception);
 
             return redirect()
-                ->route('admin.knowledge-bases.index')
+                ->to($redirectRoute)
                 ->withErrors(__('admin.knowledge_bases.message.chunks_refresh_error', [
                     'message' => $exception->getMessage(),
                 ]));
@@ -341,10 +350,27 @@ class KnowledgeBaseController extends Controller
      */
     private function hasDefaultEmbeddingModel(): bool
     {
-        return AiModel::query()
-            ->where('status', 'active')
-            ->whereRaw("COALESCE(NULLIF(model_type, ''), 'chat') = 'embedding'")
+        return $this->aiConfigurationScope->applyCurrentConsumerScope(
+            AiModel::query()->withoutGlobalScope('current_site'),
+            'ai_models.owner_admin_id'
+        )
+            ->activeStatus()
+            ->embeddingType()
             ->exists();
+    }
+
+    private function canManageAiConfig(): bool
+    {
+        $admin = request()->user('admin');
+
+        return $admin instanceof Admin && $this->aiConfigurationScope->canManage($admin);
+    }
+
+    private function refreshChunksRedirectRoute(Request $request, int $knowledgeBaseId): string
+    {
+        return $request->input('redirect_to') === 'detail'
+            ? route('admin.knowledge-bases.detail', ['knowledgeBaseId' => $knowledgeBaseId])
+            : route('admin.knowledge-bases.index');
     }
 
     /**

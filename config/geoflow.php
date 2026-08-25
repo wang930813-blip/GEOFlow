@@ -14,9 +14,9 @@ $updateMetadataUrl = $updateMetadataUrl !== '' ? $updateMetadataUrl : $defaultUp
 return [
 
     // 站点展示名称（页眉、标题等）
-    'site_name' => env('SITE_NAME', 'GEOFlow'),
+    'site_name' => env('SITE_NAME', 'GEO'),
     // 站点完整/副标题文案
-    'site_full_name' => env('SITE_FULL_NAME', 'GEOFlow'),
+    'site_full_name' => env('SITE_FULL_NAME', 'GEO'),
     // 站点根 URL，用于生成绝对链接（末尾无斜杠）
     'site_url' => rtrim((string) env('SITE_URL', 'http://localhost'), '/'),
     // SEO 描述
@@ -33,13 +33,21 @@ return [
     'default_theme' => env('GEOFLOW_DEFAULT_THEME', 'toutiao-news-20260426'),
 
     // 当前系统版本（底部展示、GitHub 更新检查对比）
-    'app_version' => env('GEOFLOW_APP_VERSION', '1.2.0'),
+    'app_version' => env('GEOFLOW_APP_VERSION', '2.0'),
     // 欢迎弹窗「介绍」文案版本：变更后所有管理员会再次看到介绍弹窗
-    'welcome_intro_version' => env('GEOFLOW_WELCOME_INTRO_VERSION', '1.2.0'),
+    'welcome_intro_version' => env('GEOFLOW_WELCOME_INTRO_VERSION', '2.0'),
     // GitHub version.json 地址；默认每天检查一次，可通过 GEOFLOW_UPDATE_CHECK_ENABLED=false 关闭
     'update_check_enabled' => filter_var(env('GEOFLOW_UPDATE_CHECK_ENABLED', env('APP_ENV') !== 'testing'), FILTER_VALIDATE_BOOLEAN),
     'update_metadata_url' => $updateMetadataUrl,
     'update_metadata_cache_ttl_seconds' => (int) env('GEOFLOW_UPDATE_METADATA_CACHE_TTL', 86400),
+    'operation_guide_url' => env('GEOFLOW_OPERATION_GUIDE_URL', ''),
+    'operation_guide_agent_url' => env('GEOFLOW_OPERATION_GUIDE_AGENT_URL', ''),
+    'operation_guide_user_url' => env('GEOFLOW_OPERATION_GUIDE_USER_URL', ''),
+    'customer_site_domain_base' => trim((string) env('GEOFLOW_CUSTOMER_SITE_DOMAIN_BASE', 'geo.xinzhidi.cn'), " \t\n\r\0\x0B."),
+    'monitoring_search_report_virtual_data_enabled' => filter_var(
+        env('GEOFLOW_MONITORING_SEARCH_REPORT_VIRTUAL_DATA', false),
+        FILTER_VALIDATE_BOOLEAN
+    ),
 
     // 前台列表每页条数
     'items_per_page' => (int) env('GEOFLOW_ITEMS_PER_PAGE', 12),
@@ -58,6 +66,11 @@ return [
     'upload_url' => env('GEOFLOW_UPLOAD_URL', '/assets/images/'),
     // 单文件上传最大字节数
     'max_upload_bytes' => (int) env('GEOFLOW_MAX_UPLOAD_BYTES', 2 * 1024 * 1024),
+
+    'image_host' => [
+        'upload_url' => env('IMAGE_HOST_UPLOAD_URL', ''),
+        'token' => env('IMAGE_HOST_TOKEN', ''),
+    ],
 
     // 是否启用 GEOFlow 业务层缓存
     'cache_enabled' => filter_var(env('GEOFLOW_CACHE_ENABLED', true), FILTER_VALIDATE_BOOLEAN),
@@ -82,6 +95,14 @@ return [
     'api_login_rate_limit_decay_seconds' => (int) env('GEOFLOW_API_LOGIN_RATE_LIMIT_DECAY', 60),
     // API Token 默认有效期（天）
     'api_token_default_ttl_days' => (int) env('GEOFLOW_API_TOKEN_DEFAULT_TTL_DAYS', 30),
+    // 机器 API 按来源 IP 每分钟最大请求数
+    'machine_api_ip_rate_limit_per_minute' => (int) env('GEOFLOW_MACHINE_API_IP_RATE_LIMIT_PER_MINUTE', 300),
+    // 已认证 API Token 每分钟最大请求数
+    'api_token_rate_limit_per_minute' => (int) env('GEOFLOW_API_TOKEN_RATE_LIMIT_PER_MINUTE', 120),
+    // MCP 媒体投稿等付费写操作每个 Token 每分钟最大请求数
+    'mcp_paid_write_rate_limit_per_minute' => (int) env('GEOFLOW_MCP_PAID_WRITE_RATE_LIMIT_PER_MINUTE', 10),
+    // 用户侧展示的独立 ceying-geo MCP Server Streamable HTTP 地址
+    'mcp_server_public_url' => env('MCP_SERVER_PUBLIC_URL', 'http://localhost:18082/mcp'),
     // 会话空闲超时（秒）
     'session_timeout_seconds' => (int) env('GEOFLOW_SESSION_TIMEOUT', 2592000),
 

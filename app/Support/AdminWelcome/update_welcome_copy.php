@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 return static function (array $welcomeState): array {
     $updateState = $welcomeState['update'] ?? [];
-    $defaultVersion = (string) config('geoflow.welcome_intro_version', '1.2.0');
+    $defaultVersion = (string) config('geoflow.welcome_intro_version', '2.0');
     $currentVersion = (string) ($updateState['current_version'] ?? $defaultVersion);
     $latestVersion = (string) ($updateState['latest_version'] ?? '');
     $payload = is_array($updateState['payload'] ?? null) ? $updateState['payload'] : [];
@@ -43,12 +43,12 @@ return static function (array $welcomeState): array {
                 'changelog_link' => '更新日志',
             ],
             'letter' => [
-                'title' => 'GEOFlow 有新版本可更新',
+                'title' => 'GEO 有新版本可更新',
                 'subtitle' => '当前版本 v'.$currentVersion.'，最新版本 v'.$latestVersion.'。',
                 'blocks' => [
                     [
                         'type' => 'paragraph',
-                        'content' => $titleZh !== '' ? $titleZh : '后台已经检测到 GEOFlow 上游仓库有一个新版本可用。',
+                        'content' => $titleZh !== '' ? $titleZh : '后台已经检测到 GEO 上游仓库有一个新版本可用。',
                     ],
                     [
                         'type' => 'paragraph',
@@ -81,12 +81,12 @@ return static function (array $welcomeState): array {
                 'changelog_link' => 'Changelog',
             ],
             'letter' => [
-                'title' => 'A new GEOFlow version is available',
+                'title' => 'A new GEO version is available',
                 'subtitle' => 'Current version v'.$currentVersion.', latest version v'.$latestVersion.'.',
                 'blocks' => [
                     [
                         'type' => 'paragraph',
-                        'content' => $titleEn !== '' ? $titleEn : 'The admin has detected that a newer GEOFlow release is available in the upstream repository.',
+                        'content' => $titleEn !== '' ? $titleEn : 'The admin has detected that a newer GEO release is available in the upstream repository.',
                     ],
                     [
                         'type' => 'paragraph',

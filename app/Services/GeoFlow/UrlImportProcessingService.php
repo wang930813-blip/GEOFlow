@@ -12,6 +12,8 @@ use App\Models\Title;
 use App\Models\TitleLibrary;
 use App\Models\UrlImportJob;
 use App\Models\UrlImportJobLog;
+use App\Support\AiConfigurationScope;
+use App\Support\CurrentSite;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
 use DOMDocument;
@@ -26,7 +28,10 @@ final class UrlImportProcessingService
 {
     private const AI_ANALYSIS_MAX_ATTEMPTS = 3;
 
-    public function __construct(private readonly ApiKeyCrypto $apiKeyCrypto) {}
+    public function __construct(
+        private readonly ApiKeyCrypto $apiKeyCrypto,
+        private readonly AiConfigurationScope $aiConfigurationScope
+    ) {}
 
     /**
      * @return array{url:string,host:string}
@@ -61,7 +66,7 @@ final class UrlImportProcessingService
     public function assertAnalysisModelReady(): AiModel
     {
         $lastException = null;
-        foreach ($this->resolveAnalysisModels() as $model) {
+        foreach ($this->resolveAnalysisModels(null, $this->aiConfigurationScope->currentOwnerAdminIdForConsumer()) as $model) {
             try {
                 $this->prepareAiRuntime($model);
 
@@ -81,9 +86,9 @@ final class UrlImportProcessingService
     /**
      * @return Collection<int, AiModel>
      */
-    private function assertAnalysisModelsReady(): Collection
+    private function assertAnalysisModelsReady(?int $siteId = null, ?int $ownerAdminId = null): Collection
     {
-        $models = $this->resolveAnalysisModels();
+        $models = $this->resolveAnalysisModels($siteId, $ownerAdminId);
         if ($models->isEmpty()) {
             throw new \RuntimeException(__('admin.url_import.error.ai_model_required'));
         }
@@ -219,8 +224,13 @@ final class UrlImportProcessingService
             throw new \RuntimeException(__('admin.url_import.error.ai_titles_missing'));
         }
 
-        $summary = DB::transaction(function () use ($baseName, $knowledgeContent, $analysis, $keywords, $titles): array {
+        $summary = DB::transaction(function () use ($job, $baseName, $knowledgeContent, $analysis, $keywords, $titles): array {
+            $siteId = (int) ($job->site_id ?? 0) ?: null;
+            $ownerAdminId = (int) ($job->owner_admin_id ?? 0) ?: null;
+
             $knowledgeBase = KnowledgeBase::query()->create([
+                'site_id' => $siteId,
+                'owner_admin_id' => $ownerAdminId,
                 'name' => $baseName.' 知识库',
                 'description' => (string) ($analysis['summary'] ?? ''),
                 'content' => $knowledgeContent,
@@ -233,6 +243,8 @@ final class UrlImportProcessingService
             ]);
 
             $keywordLibrary = KeywordLibrary::query()->create([
+                'site_id' => $siteId,
+                'owner_admin_id' => $ownerAdminId,
                 'name' => $baseName.' 关键词库',
                 'description' => 'URL智能采集自动生成',
                 'keyword_count' => 0,
@@ -240,12 +252,19 @@ final class UrlImportProcessingService
             foreach ($keywords as $keyword) {
                 Keyword::query()->firstOrCreate(
                     ['library_id' => (int) $keywordLibrary->id, 'keyword' => $keyword],
-                    ['used_count' => 0, 'usage_count' => 0]
+                    [
+                        'site_id' => $siteId,
+                        'owner_admin_id' => $ownerAdminId,
+                        'used_count' => 0,
+                        'usage_count' => 0,
+                    ]
                 );
             }
             $keywordLibrary->update(['keyword_count' => Keyword::query()->where('library_id', (int) $keywordLibrary->id)->count()]);
 
             $titleLibrary = TitleLibrary::query()->create([
+                'site_id' => $siteId,
+                'owner_admin_id' => $ownerAdminId,
                 'name' => $baseName.' 标题库',
                 'description' => 'URL智能采集自动生成',
                 'title_count' => 0,
@@ -257,6 +276,8 @@ final class UrlImportProcessingService
                 Title::query()->firstOrCreate(
                     ['library_id' => (int) $titleLibrary->id, 'title' => $title],
                     [
+                        'site_id' => $siteId,
+                        'owner_admin_id' => $ownerAdminId,
                         'keyword' => $keywords[$index % max(1, count($keywords))] ?? '',
                         'is_ai_generated' => true,
                         'used_count' => 0,
@@ -421,7 +442,10 @@ final class UrlImportProcessingService
         $libraryName = $this->safeName($title !== '' ? $title : (string) $job->source_domain);
         $pageJson = $this->buildPageJson($parsed, $job);
 
-        $models = $this->assertAnalysisModelsReady();
+        $models = $this->assertAnalysisModelsReady(
+            (int) ($job->site_id ?? 0) ?: null,
+            $this->aiConfigOwnerIdForAdminId((int) ($job->owner_admin_id ?? 0))
+        );
         $errors = [];
 
         foreach ($models as $model) {
@@ -539,9 +563,23 @@ final class UrlImportProcessingService
     /**
      * @return Collection<int, AiModel>
      */
-    private function resolveAnalysisModels(): Collection
+    private function resolveAnalysisModels(?int $siteId = null, ?int $ownerAdminId = null): Collection
     {
-        return AiModel::query()
+        $siteId ??= app(CurrentSite::class)->id();
+
+        $query = $this->aiConfigurationScope->applyOwnerIdScope(
+            AiModel::query()->withoutGlobalScope('current_site'),
+            $ownerAdminId,
+            'ai_models.owner_admin_id'
+        );
+
+        return $query
+            ->when($siteId !== null && $siteId > 0, function ($query) use ($siteId): void {
+                $query->where(function ($siteQuery) use ($siteId): void {
+                    $siteQuery->where('site_id', $siteId)
+                        ->orWhereNull('site_id');
+                });
+            })
             ->where('status', 'active')
             ->where(function ($query): void {
                 $query->whereNull('model_type')
@@ -553,9 +591,23 @@ final class UrlImportProcessingService
                     ->orWhere('daily_limit', 0)
                     ->orWhereColumn('used_today', '<', 'daily_limit');
             })
+            ->when($siteId !== null && $siteId > 0, function ($query) use ($siteId): void {
+                $query->orderByRaw('CASE WHEN site_id = ? THEN 0 WHEN site_id IS NULL THEN 1 ELSE 2 END', [$siteId]);
+            })
             ->orderBy('failover_priority')
             ->orderBy('id')
             ->get();
+    }
+
+    private function aiConfigOwnerIdForAdminId(int $adminId): ?int
+    {
+        if ($adminId <= 0) {
+            return null;
+        }
+
+        $admin = \App\Models\Admin::query()->whereKey($adminId)->first(['id', 'role', 'created_by']);
+
+        return $admin instanceof \App\Models\Admin ? $this->aiConfigurationScope->ownerAdminIdForConsumer($admin) : null;
     }
 
     /**
@@ -625,7 +677,7 @@ final class UrlImportProcessingService
 
         /** @var AiModel $model */
         $model = $runtime['model'];
-        AiModel::query()->whereKey((int) $model->id)->update([
+        AiModel::query()->withoutGlobalScope('current_site')->whereKey((int) $model->id)->update([
             'used_today' => DB::raw('COALESCE(used_today,0)+1'),
             'total_used' => DB::raw('COALESCE(total_used,0)+1'),
             'updated_at' => now(),
@@ -875,7 +927,10 @@ PROMPT;
 
     private function latestPromptContent(string $type): string
     {
-        return (string) (Prompt::query()
+        return (string) ($this->aiConfigurationScope->applyCurrentConsumerScope(
+            Prompt::query()->withoutGlobalScope('current_site'),
+            'prompts.owner_admin_id'
+        )
             ->where('type', $type)
             ->orderByDesc('updated_at')
             ->orderByDesc('id')
@@ -1258,6 +1313,8 @@ PROMPT;
     {
         UrlImportJobLog::query()->create([
             'job_id' => (int) $job->id,
+            'site_id' => (int) ($job->site_id ?? 0) ?: null,
+            'owner_admin_id' => (int) ($job->owner_admin_id ?? 0) ?: null,
             'step' => $step ?: (string) ($job->current_step ?: 'queued'),
             'level' => $level,
             'message' => $message,

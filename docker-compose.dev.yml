@@ -1,0 +1,208 @@
+name: geoflow-laravel-dev
+
+x-app-dns: &app-dns
+  - ${DOCKER_DNS_1:-223.5.5.5}
+  - ${DOCKER_DNS_2:-119.29.29.29}
+
+x-app-build: &app-build
+  context: .
+  dockerfile: docker/Dockerfile
+  args:
+    PHP_CLI_IMAGE: ${PHP_CLI_IMAGE:-php:8.4-cli-bookworm}
+    COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}
+
+x-app-environment: &app-environment
+  APP_ENV: local
+  APP_DEBUG: "true"
+  AUTO_INIT_ONCE: "false"
+  AUTO_MIGRATE: "false"
+  AUTO_SEED: "false"
+  AUTO_OPTIMIZE: "false"
+
+x-app-volumes: &app-volumes
+  - ./:/var/www/html
+  - geoflow-dev-vendor:/var/www/html/vendor
+  - geoflow-dev-composer-cache:/tmp/composer
+
+x-app-common: &app-common
+  image: geoflow-app-dev:latest
+  working_dir: /var/www/html
+  env_file:
+    - ./.env
+  dns: *app-dns
+  volumes: *app-volumes
+  extra_hosts:
+    - host.docker.internal:host-gateway
+
+services:
+  redis:
+    image: ${REDIS_IMAGE:-redis:7-alpine}
+    container_name: geoflow-dev-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:${REDIS_EXPOSE_PORT:-16379}:6379"
+    volumes:
+      - geoflow-dev-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  init:
+    <<: *app-common
+    build: *app-build
+    container_name: geoflow-dev-init
+    command: ["php", "artisan", "optimize:clear"]
+    environment:
+      <<: *app-environment
+      AUTO_GENERATE_APP_KEY: "true"
+      COMPOSER_ON_START: "true"
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: "no"
+
+  app:
+    <<: *app-common
+    container_name: geoflow-dev-app
+    command: ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8080"]
+    environment:
+      <<: *app-environment
+      COMPOSER_ON_START: "false"
+    ports:
+      - "${APP_PORT:-18080}:8080"
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "http://127.0.0.1:8080/up"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+  queue:
+    <<: *app-common
+    container_name: geoflow-dev-queue
+    command:
+      - php
+      - artisan
+      - queue:work
+      - redis
+      - --queue=geoflow,distribution,default
+      - --sleep=1
+      - --tries=3
+      - --timeout=${QUEUE_WORKER_TIMEOUT:-1200}
+    environment:
+      <<: *app-environment
+      COMPOSER_ON_START: "false"
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  scheduler:
+    <<: *app-common
+    container_name: geoflow-dev-scheduler
+    command: ["php", "artisan", "schedule:work"]
+    environment:
+      <<: *app-environment
+      COMPOSER_ON_START: "false"
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  reverb:
+    <<: *app-common
+    container_name: geoflow-dev-reverb
+    command: ["php", "artisan", "reverb:start", "--host=0.0.0.0", "--port=8080"]
+    environment:
+      <<: *app-environment
+      COMPOSER_ON_START: "false"
+    ports:
+      - "${REVERB_EXPOSE_PORT:-18081}:8080"
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  vite:
+    image: ${NODE_IMAGE:-node:22-alpine}
+    container_name: geoflow-dev-vite
+    working_dir: /var/www/html
+    env_file:
+      - ./.env
+    environment:
+      NODE_ENV: development
+      CHOKIDAR_USEPOLLING: "true"
+      VITE_REVERB_APP_KEY: ${REVERB_APP_KEY:-geoflow-reverb-key}
+      VITE_REVERB_HOST: ${VITE_REVERB_HOST:-localhost}
+      VITE_REVERB_PORT: ${REVERB_EXPOSE_PORT:-18081}
+      VITE_REVERB_SCHEME: ${VITE_REVERB_SCHEME:-http}
+    command:
+      - sh
+      - -lc
+      - npm ci --no-audit --no-fund && exec npm run dev -- --host=0.0.0.0 --port=5173
+    ports:
+      - "${VITE_PORT:-5173}:5173"
+    volumes:
+      - ./:/var/www/html
+      - geoflow-dev-node-modules:/var/www/html/node_modules
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:5173/@vite/client"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+
+  mcp:
+    image: ${NODE_IMAGE:-node:22-alpine}
+    container_name: geoflow-dev-mcp
+    working_dir: /app
+    environment:
+      NODE_ENV: development
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 3000
+      MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-localhost,127.0.0.1}
+      MCP_HEALTHCHECK_HOST: ${MCP_HEALTHCHECK_HOST:-localhost}
+      MCP_API_TIMEOUT_MS: ${MCP_API_TIMEOUT_MS:-30000}
+      GEOFLOW_API_BASE_URL: http://app:8080/api/v1/
+    command:
+      - sh
+      - -lc
+      - npm ci --no-audit --no-fund && exec npm run dev
+    ports:
+      - "${MCP_EXPOSE_PORT:-18082}:3000"
+    volumes:
+      - ./mcp-server:/app
+      - geoflow-dev-mcp-node-modules:/app/node_modules
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --spider --header=\"Host: $${MCP_HEALTHCHECK_HOST}\" http://127.0.0.1:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  geoflow-dev-composer-cache:
+  geoflow-dev-mcp-node-modules:
+  geoflow-dev-node-modules:
+  geoflow-dev-redis-data:
+  geoflow-dev-vendor:

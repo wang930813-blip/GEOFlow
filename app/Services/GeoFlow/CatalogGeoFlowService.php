@@ -10,15 +10,21 @@ use App\Models\KeywordLibrary;
 use App\Models\KnowledgeBase;
 use App\Models\Prompt;
 use App\Models\TitleLibrary;
+use App\Support\AiConfigurationScope;
 
 class CatalogGeoFlowService
 {
+    public function __construct(private readonly AiConfigurationScope $aiConfigurationScope) {}
+
     /**
      * @return array<string, mixed>
      */
     public function getCatalog(): array
     {
-        $models = AiModel::query()
+        $models = $this->aiConfigurationScope->applyCurrentConsumerScope(
+            AiModel::query()->withoutGlobalScope('current_site'),
+            'ai_models.owner_admin_id'
+        )
             ->where('status', 'active')
             ->where(function ($q) {
                 $q->whereNull('model_type')
@@ -36,8 +42,12 @@ class CatalogGeoFlowService
             ])
             ->all();
 
-        $prompts = Prompt::query()
+        $prompts = $this->aiConfigurationScope->applyCurrentConsumerScope(
+            Prompt::query()->withoutGlobalScope('current_site'),
+            'prompts.owner_admin_id'
+        )
             ->where('type', 'content')
+            ->whereNull('site_id')
             ->orderBy('name')
             ->get(['id', 'name', 'type'])
             ->map(fn (Prompt $p) => $p->getAttributes())

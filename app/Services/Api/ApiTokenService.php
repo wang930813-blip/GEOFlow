@@ -1,34 +1,58 @@
 <?php
 
+/**
+ * Created by Codex.
+ *
+ * @Date: 2026-07-18
+ *
+ * @Time: 18:15
+ *
+ * @Author: cdkay
+ *
+ * @Email: network@iyuanma.net
+ *
+ * @File： ApiTokenService.php
+ *
+ * @Description: 管理机器 API Token 的签发、解析、状态校验、权限范围和使用时间。
+ */
+
 namespace App\Services\Api;
 
 use App\Exceptions\ApiException;
 use App\Models\Admin;
+use App\Models\Site;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Laravel\Sanctum\PersonalAccessToken;
 
 class ApiTokenService
 {
+    public const MCP_CONNECT_SCOPE = 'mcp:connect';
+
     /**
      * 拉取 Token 列表（按创建时间倒序）。
      *
      * @return list<array<string,mixed>>
      */
-    public function listTokens(): array
+    public function listTokens(?int $siteId = null): array
     {
         /** @var Collection<int, PersonalAccessToken> $rows */
         $rows = PersonalAccessToken::query()
             ->where('tokenable_type', Admin::class)
+            ->when($siteId !== null, fn ($query) => $query->where('site_id', $siteId))
             ->with('tokenable:id,username')
             ->orderByDesc('created_at')
             ->orderByDesc('id')
             ->get();
+        $siteNames = Site::query()
+            ->whereIn('id', $rows->pluck('site_id')->filter()->unique()->values())
+            ->pluck('name', 'id');
 
         return $rows
-            ->map(function (PersonalAccessToken $row): array {
+            ->map(function (PersonalAccessToken $row) use ($siteNames): array {
                 $data = $this->hydrate($row);
                 $data['created_by_username'] = (string) ($row->tokenable?->username ?? '');
+                $data['site_name'] = $row->site_id !== null ? (string) ($siteNames[(int) $row->site_id] ?? '') : '';
 
                 return $data;
             })
@@ -38,10 +62,11 @@ class ApiTokenService
     /**
      * 撤销指定 Token（Sanctum 语义为物理删除）。
      */
-    public function revokeToken(int $tokenId): void
+    public function revokeToken(int $tokenId, ?int $siteId = null): void
     {
         $affected = PersonalAccessToken::query()
             ->where('tokenable_type', Admin::class)
+            ->when($siteId !== null, fn ($query) => $query->where('site_id', $siteId))
             ->whereKey($tokenId)
             ->delete();
 
@@ -124,10 +149,17 @@ class ApiTokenService
 
     /**
      * @param  list<string>  $scopes
+     * @param  bool  $neverExpires  是否明确创建永不过期 Token
      * @return array{token: string, record: array<string, mixed>}
      */
-    public function createToken(string $name, array $scopes, ?int $adminId, ?string $expiresAt = null): array
-    {
+    public function createToken(
+        string $name,
+        array $scopes,
+        ?int $adminId,
+        ?string $expiresAt = null,
+        ?int $siteId = null,
+        bool $neverExpires = false,
+    ): array {
         $name = trim($name);
         if ($name === '') {
             throw new ApiException('validation_failed', 'Token 名称不能为空', 422, [
@@ -142,7 +174,8 @@ class ApiTokenService
             ]);
         }
 
-        $expires = $this->normalizeExpiresAt($expiresAt);
+        $expires = $neverExpires ? null : $this->normalizeExpiresAt($expiresAt);
+        $siteId = $this->normalizeSiteId($siteId);
         $creatorId = $this->normalizeCreatorAdminId($adminId) ?? $this->resolveAuditAdminId($adminId);
         $admin = Admin::query()->whereKey($creatorId)->first();
         if (! $admin) {
@@ -152,11 +185,15 @@ class ApiTokenService
         $tokenResult = $admin->createToken(
             $name,
             array_values($scopes),
-            Carbon::parse($expires)
+            $expires !== null ? Carbon::parse($expires) : null
         );
         $model = $tokenResult->accessToken->fresh();
         if (! $model instanceof PersonalAccessToken) {
             throw new ApiException('token_create_failed', 'Token 创建失败', 500);
+        }
+        if ($siteId !== null) {
+            $model->forceFill(['site_id' => $siteId])->save();
+            $model->refresh();
         }
 
         $record = $this->hydrate($model);
@@ -180,8 +217,16 @@ class ApiTokenService
             'articles:read',
             'articles:write',
             'articles:publish',
+            'articles:site-publish',
+            'media:read',
+            'media:submit',
+            'media:sync',
             'materials:read',
             'materials:write',
+            'videos:read',
+            'videos:write',
+            'brand-diagnoses:read',
+            'brand-diagnoses:write',
         ];
     }
 
@@ -201,6 +246,7 @@ class ApiTokenService
             'token_hash' => '',
             'scopes' => $scopes,
             'status' => 'active',
+            'site_id' => $row->site_id !== null ? (int) $row->site_id : null,
             'created_by_admin_id' => $row->tokenable_id !== null ? (int) $row->tokenable_id : null,
             'last_used_at' => $row->last_used_at?->format('Y-m-d H:i:s'),
             'expires_at' => $row->expires_at?->format('Y-m-d H:i:s'),
@@ -214,7 +260,7 @@ class ApiTokenService
      */
     private function normalizeScopes(array $scopes): array
     {
-        $allowed = $this->getAvailableScopes();
+        $allowed = [...$this->getAvailableScopes(), self::MCP_CONNECT_SCOPE];
         $normalized = [];
         foreach ($scopes as $scope) {
             $scope = trim((string) $scope);
@@ -250,5 +296,21 @@ class ApiTokenService
         }
 
         return Admin::query()->whereKey($adminId)->exists() ? $adminId : null;
+    }
+
+    private function normalizeSiteId(?int $siteId): ?int
+    {
+        if ($siteId === null || $siteId <= 0) {
+            return null;
+        }
+
+        $exists = Site::query()->whereKey($siteId)->where('status', 'active')->exists();
+        if (! $exists) {
+            throw new ApiException('validation_failed', '绑定站点不存在或已停用', 422, [
+                'field_errors' => ['site_id' => '绑定站点不存在或已停用'],
+            ]);
+        }
+
+        return $siteId;
     }
 }

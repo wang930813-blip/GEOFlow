@@ -129,12 +129,19 @@
     </div>
 
     @if($stickyAd)
-        <div id="stickyAd" class="fixed bottom-4 right-4 z-50 max-w-xs rounded-2xl border border-gray-200 bg-white p-4 shadow-xl">
+        <div id="stickyAd" class="fixed bottom-4 right-4 z-50 max-w-xs rounded-2xl border border-gray-200 bg-white p-4 shadow-xl" data-ad-id="{{ $stickyAd['id'] }}">
             <button type="button" class="absolute right-2 top-2 text-gray-400 hover:text-gray-700" onclick="document.getElementById('stickyAd')?.remove()" aria-label="Close">×</button>
-            @if($stickyAd->title)
-                <div class="mb-2 pr-5 text-sm font-bold text-gray-900">{{ $stickyAd->title }}</div>
+            @if($stickyAd['badge'] !== '')
+                <div class="mb-2 inline-flex items-center rounded-full bg-orange-50 px-2.5 py-0.5 text-xs font-semibold text-orange-700">{{ $stickyAd['badge'] }}</div>
             @endif
-            {!! $stickyAd->content_html !!}
+            @if($stickyAd['title'] !== '')
+                <div class="mb-2 pr-5 text-sm font-bold text-gray-900">{{ $stickyAd['title'] }}</div>
+            @endif
+            <p class="mb-3 text-xs leading-6 text-gray-600">{{ $stickyAd['copy'] }}</p>
+            <a href="{{ $stickyAd['button_url'] }}" class="inline-flex items-center rounded-full bg-orange-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-orange-600">
+                {{ $stickyAd['button_text'] }}
+                <i data-lucide="arrow-up-right" class="ml-1 h-3 w-3"></i>
+            </a>
         </div>
     @endif
 @endsection

@@ -3,10 +3,17 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\PlatformPlan;
+use App\Models\Site;
 use App\Models\SiteSetting;
 use App\Support\AdminBasePathManager;
+use App\Support\AdminDisplaySettings;
+use App\Support\AdminRegistrationSettings;
 use App\Support\AdminWeb;
+use App\Support\CurrentSite;
 use App\Support\Site\SiteSettingsBag;
+use App\Support\Site\SiteThemeCatalog;
+use App\Support\SiteDomain;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -22,22 +29,43 @@ use Illuminate\View\View;
  */
 class SiteSettingsController extends Controller
 {
+    public function __construct(
+        private readonly SiteThemeCatalog $siteThemeCatalog,
+        private readonly AdminRegistrationSettings $adminRegistrationSettings
+    ) {}
+
     /**
      * 网站设置页面。
      */
     public function index(): View
     {
         $settings = $this->loadSettings();
+        $currentSite = app(CurrentSite::class)->get();
+        $canEditAdminDisplaySettings = auth('admin')->user()?->isSuperAdmin() === true;
 
         return view('admin.site-settings.index', [
             'pageTitle' => __('admin.site_settings.page_title'),
             'activeMenu' => 'site_settings',
             'adminSiteName' => AdminWeb::siteName(),
             'settings' => $settings,
+            'publicDomain' => (string) ($currentSite?->domain ?? ''),
             'canEditAnalytics' => auth('admin')->user()?->isSuperAdmin() === true,
-            'availableThemes' => $this->discoverThemes(),
+            'canEditAdminDisplaySettings' => $canEditAdminDisplaySettings,
+            'adminDisplaySettings' => AdminDisplaySettings::all(),
+            'registrationSettings' => $this->adminRegistrationSettings->all(),
+            'registrationPlans' => $canEditAdminDisplaySettings
+                ? PlatformPlan::query()
+                    ->where('status', 'active')
+                    ->whereIn('audience', ['direct', 'both'])
+                    ->orderBy('sort_order')
+                    ->orderByDesc('id')
+                    ->get(['id', 'name', 'code', 'duration_days', 'audience'])
+                : collect(),
+            'canEditDomainSettings' => $this->canEditDomainSettings(),
+            'availableThemes' => $this->siteThemeCatalog->all(),
             'homeCarouselSlides' => $this->parseHomeCarouselSlides((string) ($settings['home_carousel_slides'] ?? '[]')),
             'articleDetailAds' => $this->parseArticleDetailAds((string) ($settings['article_detail_ads'] ?? '[]')),
+            'contactPayments' => $this->parseContactPayments((string) ($settings['contact_payments'] ?? '[]')),
         ]);
     }
 
@@ -46,7 +74,9 @@ class SiteSettingsController extends Controller
      */
     public function update(Request $request): RedirectResponse
     {
-        $payload = $request->validate([
+        $currentAdminBasePath = AdminWeb::basePath();
+        $canEditDomainSettings = $this->canEditDomainSettings();
+        $rules = [
             'site_name' => ['required', 'string', 'max:120'],
             'site_subtitle' => ['nullable', 'string', 'max:255'],
             'site_description' => ['nullable', 'string'],
@@ -54,6 +84,7 @@ class SiteSettingsController extends Controller
             'copyright_info' => ['nullable', 'string', 'max:500'],
             'site_logo' => ['nullable', 'url', 'max:500'],
             'site_favicon' => ['nullable', 'url', 'max:500'],
+            'public_domain' => ['nullable', 'string', 'max:255'],
             'analytics_code' => ['nullable', 'string'],
             'seo_title_template' => ['nullable', 'string', 'max:255'],
             'seo_description_template' => ['nullable', 'string', 'max:255'],
@@ -64,15 +95,27 @@ class SiteSettingsController extends Controller
             'home_carousel_slides.*.title' => ['nullable', 'string', 'max:120'],
             'home_carousel_slides.*.link_url' => ['nullable', 'string', 'max:500'],
             'home_carousel_slides.*.enabled' => ['nullable'],
+            'contact_info' => ['nullable', 'string', 'max:1000'],
+            'company_address' => ['nullable', 'string', 'max:500'],
+            'site_remark' => ['nullable', 'string', 'max:2000'],
+            'contact_payments' => ['nullable', 'array', 'max:10'],
+            'contact_payments.*.type' => ['nullable', 'string', 'max:32'],
+            'contact_payments.*.name' => ['nullable', 'string', 'max:120'],
+            'contact_payments.*.qr_url' => ['nullable', 'string', 'max:500'],
+            'contact_payments.*.account' => ['nullable', 'string', 'max:200'],
+            'contact_payments.*.enabled' => ['nullable'],
             'admin_base_path' => [
-                'required',
+                Rule::requiredIf($canEditDomainSettings),
+                'nullable',
                 'string',
                 'min:3',
                 'max:48',
                 'regex:/^[a-z0-9][a-z0-9_-]*[a-z0-9]$/',
                 Rule::notIn(AdminBasePathManager::reservedSegments()),
             ],
-        ], [
+        ];
+
+        $payload = $request->validate($rules, [
             'site_name.required' => __('admin.site_settings.error.site_name_required'),
             'admin_base_path.required' => __('admin.site_settings.error.admin_base_path_required'),
             'admin_base_path.min' => __('admin.site_settings.error.admin_base_path_invalid'),
@@ -82,14 +125,33 @@ class SiteSettingsController extends Controller
         ]);
 
         try {
-            $newAdminBasePath = AdminBasePathManager::normalize((string) $payload['admin_base_path']);
+            $newAdminBasePath = $canEditDomainSettings
+                ? AdminBasePathManager::normalize((string) $payload['admin_base_path'])
+                : $currentAdminBasePath;
         } catch (\Throwable) {
             return back()->withErrors(['admin_base_path' => __('admin.site_settings.error.admin_base_path_invalid')])->withInput();
         }
 
-        $currentAdminBasePath = AdminWeb::basePath();
         $currentSettings = $this->loadSettings();
         $canEditAnalytics = auth('admin')->user()?->isSuperAdmin() === true;
+        $currentSite = app(CurrentSite::class)->get();
+        $publicDomain = $canEditDomainSettings
+            ? SiteDomain::normalize((string) ($payload['public_domain'] ?? ''))
+            : (string) ($currentSite?->domain ?? '');
+
+        if ($canEditDomainSettings && $publicDomain === '' && trim((string) ($payload['public_domain'] ?? '')) !== '') {
+            return back()->withErrors(['public_domain' => __('admin.site_settings.error.public_domain_invalid')])->withInput();
+        }
+
+        if ($canEditDomainSettings && $currentSite instanceof Site && $publicDomain !== '') {
+            $domainExists = Site::query()
+                ->where('domain', $publicDomain)
+                ->whereKeyNot($currentSite->id)
+                ->exists();
+            if ($domainExists) {
+                return back()->withErrors(['public_domain' => __('admin.site_settings.error.public_domain_taken')])->withInput();
+            }
+        }
 
         $settings = [
             'site_name' => trim((string) $payload['site_name']),
@@ -108,7 +170,11 @@ class SiteSettingsController extends Controller
             'featured_limit' => (string) ((int) ($payload['featured_limit'] ?? 6)),
             'per_page' => (string) ((int) ($payload['per_page'] ?? 12)),
             'home_carousel_slides' => (string) json_encode($this->normalizeHomeCarouselSlides($payload['home_carousel_slides'] ?? []), JSON_UNESCAPED_UNICODE),
-            'admin_base_path' => $newAdminBasePath,
+            'contact_info' => trim((string) ($payload['contact_info'] ?? '')),
+            'company_address' => trim((string) ($payload['company_address'] ?? '')),
+            'site_remark' => trim((string) ($payload['site_remark'] ?? '')),
+            'contact_payments' => (string) json_encode($this->normalizeContactPayments($payload['contact_payments'] ?? []), JSON_UNESCAPED_UNICODE),
+            'admin_base_path' => $canEditDomainSettings ? $newAdminBasePath : $currentAdminBasePath,
         ];
 
         foreach ($settings as $settingKey => $settingValue) {
@@ -118,9 +184,14 @@ class SiteSettingsController extends Controller
             );
         }
 
+        if ($canEditDomainSettings && $currentSite instanceof Site) {
+            Site::query()->whereKey($currentSite->id)->update(['domain' => $publicDomain]);
+            $currentSite->forceFill(['domain' => $publicDomain]);
+        }
+
         SiteSettingsBag::forget();
 
-        if ($newAdminBasePath !== $currentAdminBasePath) {
+        if ($canEditDomainSettings && $newAdminBasePath !== $currentAdminBasePath) {
             try {
                 AdminBasePathManager::persist($newAdminBasePath);
             } catch (\Throwable $e) {
@@ -140,12 +211,55 @@ class SiteSettingsController extends Controller
     /**
      * 保存模板设置。
      */
+    public function updateAdminDisplay(Request $request): RedirectResponse
+    {
+        abort_unless(auth('admin')->user()?->isSuperAdmin() === true, 403);
+
+        $payload = $request->validate([
+            'admin_quick_start_eyebrow' => ['nullable', 'string', 'max:120'],
+            'admin_quick_start_title' => ['nullable', 'string', 'max:200'],
+            'admin_quick_start_subtitle' => ['nullable', 'string', 'max:500'],
+            'admin_footer_brand' => ['nullable', 'string', 'max:120'],
+            'admin_footer_version' => ['nullable', 'string', 'max:60'],
+            'media_platform_1_label' => ['nullable', 'string', 'max:120'],
+            'media_platform_2_label' => ['nullable', 'string', 'max:120'],
+        ]);
+
+        AdminDisplaySettings::update($payload);
+
+        return redirect()->route('admin.site-settings.index')->with('message', __('admin.site_settings.message.saved'));
+    }
+
+    public function updateRegistration(Request $request): RedirectResponse
+    {
+        abort_unless(auth('admin')->user()?->isSuperAdmin() === true, 403);
+
+        $payload = $request->validate([
+            'admin_registration_enabled' => ['nullable'],
+            'admin_registration_experience_plan_id' => [
+                Rule::requiredIf($request->boolean('admin_registration_enabled')),
+                'nullable',
+                'integer',
+                Rule::exists('platform_plans', 'id')->where(function ($query): void {
+                    $query->where('status', 'active')->whereIn('audience', ['direct', 'both']);
+                }),
+            ],
+        ]);
+
+        $this->adminRegistrationSettings->update([
+            'enabled' => $request->boolean('admin_registration_enabled'),
+            'experience_plan_id' => (int) ($payload['admin_registration_experience_plan_id'] ?? 0),
+        ]);
+
+        return redirect()->route('admin.site-settings.index')->with('message', __('admin.site_settings.message.saved'));
+    }
+
     public function updateTheme(Request $request): RedirectResponse
     {
         $selectedTheme = trim((string) $request->input('active_theme', ''));
         $availableThemeIds = array_map(
             static fn (array $theme): string => (string) $theme['id'],
-            $this->discoverThemes()
+            $this->siteThemeCatalog->all()
         );
 
         if ($selectedTheme !== '' && ! in_array($selectedTheme, $availableThemeIds, true)) {
@@ -238,17 +352,21 @@ class SiteSettingsController extends Controller
      *   admin_base_path:string,
      *   active_theme:string,
      *   home_carousel_slides:string,
-     *   article_detail_ads:string
+     *   article_detail_ads:string,
+     *   contact_info:string,
+     *   company_address:string,
+     *   site_remark:string,
+     *   contact_payments:string
      * }
      */
     private function loadSettings(): array
     {
         $defaults = [
-            'site_name' => 'GEOFlow',
+            'site_name' => '策影GEO',
             'site_subtitle' => '',
             'site_description' => '基于AI的智能内容生成与发布平台',
             'site_keywords' => 'AI内容生成,GEO优化,智能发布,内容管理',
-            'copyright_info' => '© 2026 GEOFlow. All rights reserved.',
+            'copyright_info' => '© 2026 策影GEO. All rights reserved.',
             'site_logo' => '',
             'site_favicon' => '',
             'analytics_code' => '',
@@ -260,6 +378,10 @@ class SiteSettingsController extends Controller
             'active_theme' => (string) config('geoflow.default_theme', ''),
             'home_carousel_slides' => '[]',
             'article_detail_ads' => '[]',
+            'contact_info' => '',
+            'company_address' => '',
+            'site_remark' => '',
+            'contact_payments' => '[]',
         ];
 
         $stored = SiteSetting::query()
@@ -292,74 +414,18 @@ class SiteSettingsController extends Controller
             'active_theme' => (string) ($stored['active_theme'] !== '' ? $stored['active_theme'] : config('geoflow.default_theme', '')),
             'home_carousel_slides' => (string) $stored['home_carousel_slides'],
             'article_detail_ads' => (string) $stored['article_detail_ads'],
+            'contact_info' => (string) $stored['contact_info'],
+            'company_address' => (string) $stored['company_address'],
+            'site_remark' => (string) $stored['site_remark'],
+            'contact_payments' => (string) $stored['contact_payments'],
         ];
     }
 
-    /**
-     * @return array<int, array{id:string,name:string,version:string,description:string}>
-     */
-    private function discoverThemes(): array
+    private function canEditDomainSettings(): bool
     {
-        $themesRoot = resource_path('views/theme');
-        if (! is_dir($themesRoot)) {
-            return [];
-        }
+        $admin = auth('admin')->user();
 
-        $themes = [];
-        $entries = scandir($themesRoot);
-        if (! is_array($entries)) {
-            return [];
-        }
-
-        foreach ($entries as $entry) {
-            if ($entry === '.' || $entry === '..') {
-                continue;
-            }
-
-            if (! preg_match('/^[a-zA-Z0-9_-]+$/', $entry)) {
-                continue;
-            }
-
-            $themeDir = $themesRoot.DIRECTORY_SEPARATOR.$entry;
-            if (! is_dir($themeDir)) {
-                continue;
-            }
-
-            $manifestPath = $themeDir.DIRECTORY_SEPARATOR.'manifest.json';
-            if (is_file($manifestPath)) {
-                $manifestRaw = file_get_contents($manifestPath);
-                if (! is_string($manifestRaw) || $manifestRaw === '') {
-                    continue;
-                }
-
-                $manifest = json_decode($manifestRaw, true);
-                if (! is_array($manifest)) {
-                    continue;
-                }
-
-                $themes[] = [
-                    'id' => (string) $entry,
-                    'name' => (string) ($manifest['name'] ?? $entry),
-                    'version' => (string) ($manifest['version'] ?? ''),
-                    'description' => (string) ($manifest['description'] ?? ''),
-                ];
-
-                continue;
-            }
-
-            if (! is_file($themeDir.DIRECTORY_SEPARATOR.'home.blade.php')) {
-                continue;
-            }
-
-            $themes[] = [
-                'id' => (string) $entry,
-                'name' => ucfirst(str_replace(['-', '_'], ' ', $entry)),
-                'version' => '',
-                'description' => '',
-            ];
-        }
-
-        return $themes;
+        return ! ($admin?->isDirectAdmin() === true || $admin?->isSiteUser() === true);
     }
 
     /**
@@ -516,5 +582,74 @@ class SiteSettingsController extends Controller
         }
 
         return '/'.ltrim($normalized, '/');
+    }
+
+    /**
+     * @return array<int, array{type:string,name:string,qr_url:string,account:string,enabled:bool}>
+     */
+    private function parseContactPayments(string $raw): array
+    {
+        $decoded = json_decode($raw, true);
+        if (! is_array($decoded)) {
+            return [];
+        }
+
+        $items = [];
+        foreach ($decoded as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+
+            $items[] = [
+                'type' => trim((string) ($item['type'] ?? '')),
+                'name' => trim((string) ($item['name'] ?? '')),
+                'qr_url' => trim((string) ($item['qr_url'] ?? '')),
+                'account' => trim((string) ($item['account'] ?? '')),
+                'enabled' => ! empty($item['enabled']),
+            ];
+        }
+
+        return $items;
+    }
+
+    /**
+     * @return array<int, array{type:string,name:string,qr_url:string,account:string,enabled:bool}>
+     */
+    private function normalizeContactPayments(mixed $posted): array
+    {
+        if (! is_array($posted)) {
+            return [];
+        }
+
+        $items = [];
+        foreach ($posted as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $type = trim((string) ($row['type'] ?? ''));
+            $name = trim((string) ($row['name'] ?? ''));
+            $qrUrl = $this->normalizePublicImageUrl((string) ($row['qr_url'] ?? ''));
+            $account = trim((string) ($row['account'] ?? ''));
+            $enabled = ! empty($row['enabled']);
+
+            if ($type === '' && $name === '' && $qrUrl === '' && $account === '') {
+                continue;
+            }
+
+            $items[] = [
+                'type' => $type,
+                'name' => $name,
+                'qr_url' => $qrUrl,
+                'account' => $account,
+                'enabled' => $enabled,
+            ];
+
+            if (count($items) >= 10) {
+                break;
+            }
+        }
+
+        return $items;
     }
 }

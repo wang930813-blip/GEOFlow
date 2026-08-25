@@ -1,0 +1,414 @@
+@extends('admin.layouts.app')
+
+@section('content')
+    @php
+        $apiColumns = [
+            ['PC权重', ['pc_weigh', 'pc_weight']],
+            ['出稿率', 'publish_rate'],
+            ['移动权重', ['wap_weigh', 'wap_weight']],
+            ['接口状态', 'status_label'],
+        ];
+    @endphp
+    <div class="space-y-6">
+        <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-900">分发媒体</h1>
+                <p class="mt-1 text-sm text-gray-600">同步网站媒体和第三方自媒体资源，按销售价给站点投稿消耗积分。</p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+                <a href="{{ route('admin.media-distribution.submissions.index') }}" class="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                    <i data-lucide="send" class="h-4 w-4"></i>
+                    投稿订单
+                </a>
+                <a href="{{ route('admin.media-distribution.credits.index') }}" class="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                    <i data-lucide="coins" class="h-4 w-4"></i>
+                    积分
+                </a>
+                @if ($isSuperAdmin)
+                    <a href="{{ route('admin.media-distribution.settings.index') }}" class="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                        <i data-lucide="settings" class="h-4 w-4"></i>
+                        接口配置
+                    </a>
+                    @foreach ($platforms as $syncPlatformId => $syncPlatformLabel)
+                        <form method="POST" action="{{ route('admin.media-distribution.resources.sync') }}">
+                            @csrf
+                            <input type="hidden" name="platform_id" value="{{ $syncPlatformId }}">
+                            <button type="submit" class="inline-flex h-10 items-center gap-2 rounded-md {{ (int) $syncPlatformId === 1 ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-slate-900 hover:bg-slate-700' }} px-4 text-sm font-medium text-white">
+                                <i data-lucide="refresh-cw" class="h-4 w-4"></i>
+                                同步{{ $syncPlatformLabel }}
+                            </button>
+                        </form>
+                    @endforeach
+                @endif
+            </div>
+        </div>
+
+        @if ($isSuperAdmin)
+            <form method="POST" action="{{ route('admin.media-distribution.resources.price-multiplier') }}" class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                @csrf
+                <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                    <div>
+                        <label class="mb-1 block text-sm font-medium text-gray-700">积分价设置倍率</label>
+                        <p class="text-xs text-gray-500">统一按接口成本价乘以倍率生成积分价，例如 1.5 表示成本价的 1.5 倍。</p>
+                    </div>
+                    <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+                        <select name="platform_id" class="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:w-40">
+                            @foreach ($platforms as $itemPlatformId => $itemPlatformLabel)
+                                <option value="{{ $itemPlatformId }}" @selected((int) ($platformId ?: 1) === (int) $itemPlatformId)>{{ $itemPlatformLabel }}</option>
+                            @endforeach
+                        </select>
+                        <input name="price_multiplier" required type="number" step="0.01" min="0" value="{{ old('price_multiplier', $priceMultiplier) }}" class="h-10 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:w-36">
+                        <button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 text-sm font-medium text-white hover:bg-indigo-700">
+                            <i data-lucide="calculator" class="h-4 w-4"></i>
+                            应用到该平台
+                        </button>
+                    </div>
+                </div>
+            </form>
+
+            @if ($latestSyncRuns->isNotEmpty())
+                <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                    @foreach ($platforms as $runPlatformId => $runPlatformLabel)
+                        @php
+                            $latestSyncRun = $latestSyncRuns->get($runPlatformId);
+                        @endphp
+                        @if ($latestSyncRun)
+                            <div class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                    <div>
+                                        <div class="text-sm font-semibold text-gray-900">{{ $runPlatformLabel }}资源同步状态</div>
+                                        <div class="mt-1 text-xs text-gray-500">
+                                            状态：{{ $latestSyncRun->status }}
+                                            @if($latestSyncRun->current_source_type !== '')
+                                                / {{ $latestSyncRun->current_source_type }} 第 {{ $latestSyncRun->current_page }} 页
+                                            @endif
+                                            / 已同步 {{ $latestSyncRun->total_synced }} 条
+                                        </div>
+                                        @if($latestSyncRun->displayLastErrorMessage() !== '')
+                                            <div class="mt-2 inline-flex max-w-full items-center gap-1 rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700">
+                                                <i data-lucide="circle-alert" class="h-3.5 w-3.5 shrink-0"></i>
+                                                <span class="truncate">{{ $latestSyncRun->displayLastErrorMessage() }}</span>
+                                            </div>
+                                        @endif
+                                    </div>
+                                    <div class="text-xs text-gray-500">
+                                        网站媒体 {{ $latestSyncRun->website_synced }} 条 / 自媒体 {{ $latestSyncRun->zi_media_synced }} 条
+                                    </div>
+                                </div>
+                            </div>
+                        @endif
+                    @endforeach
+                </div>
+            @endif
+        @endif
+
+        @if (! empty($packageCards))
+            <div class="space-y-3">
+                @foreach ($packageCards as $packageCard)
+                    @php
+                        /** @var \App\Models\MediaResource $packageResource */
+                        $packageResource = $packageCard['resource'];
+                        $packageModalId = 'media-package-list-modal-'.$packageCard['key'];
+                    @endphp
+                    <section class="rounded-lg border border-orange-200 bg-orange-50/70 p-5 shadow-sm">
+                        <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                            <div class="min-w-0">
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <h2 class="text-base font-semibold text-slate-950">{{ $packageCard['heading'] }}</h2>
+                                    <span class="inline-flex rounded-full bg-white px-2.5 py-1 text-xs font-medium text-orange-700 ring-1 ring-orange-200">
+                                        {{ $packageResource->platformLabel() }}
+                                    </span>
+                                    <span class="inline-flex rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200">
+                                        {{ $packageCard['size'] }}家媒体
+                                    </span>
+                                </div>
+                                <div class="mt-2 text-sm font-medium text-slate-900">{{ $packageResource->title }}</div>
+                                <p class="mt-1 max-w-3xl text-sm text-slate-600">
+                                    套餐媒体按普通媒体投稿流程提交，发布成功后的媒体发布链接为{{ $packageCard['published_url_type'] }}。
+                                    @if($packageResource->remarks)
+                                        {{ $packageResource->remarks }}
+                                    @endif
+                                </p>
+                                @if (! empty($packageCard['media_entries']))
+                                    <button type="button" class="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-orange-700 hover:text-orange-800" data-open-media-package-modal="{{ $packageModalId }}">
+                                        <i data-lucide="list-checks" class="h-4 w-4"></i>
+                                        查看媒体名单
+                                    </button>
+                                @endif
+                            </div>
+                            <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+                                <a href="{{ route('admin.media-distribution.submissions.index', ['media_resource_id' => (int) $packageResource->id]) }}" class="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-orange-600 px-4 text-sm font-medium text-white hover:bg-orange-700">
+                                    <i data-lucide="send" class="h-4 w-4"></i>
+                                    套餐投稿
+                                </a>
+                            </div>
+                        </div>
+                    </section>
+                    @if (! empty($packageCard['media_entries']))
+                        <div id="{{ $packageModalId }}" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 px-4 py-6" data-media-package-modal>
+                            <div class="flex max-h-[85vh] w-full max-w-5xl flex-col overflow-hidden rounded-lg bg-white text-left shadow-xl">
+                                <div class="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
+                                    <div>
+                                        <h2 class="text-lg font-semibold text-gray-900">{{ $packageResource->title }}媒体名单</h2>
+                                        <p class="mt-1 text-sm text-gray-500">以下媒体排名不分先后，发布成功后的媒体发布链接为{{ $packageCard['published_url_type'] }}。</p>
+                                    </div>
+                                    <button type="button" class="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600" data-close-media-package-modal>
+                                        <i data-lucide="x" class="h-5 w-5"></i>
+                                    </button>
+                                </div>
+                                <div class="overflow-y-auto px-6 py-5">
+                                    <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                                        @foreach ($packageCard['media_entries'] as $mediaEntry)
+                                            <div class="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                                                <div class="truncate font-medium text-slate-800" title="{{ $mediaEntry['name'] }}">{{ $mediaEntry['name'] }}</div>
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    @endif
+                @endforeach
+            </div>
+        @endif
+
+        <form method="GET" action="{{ route('admin.media-distribution.resources.index') }}" class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <div class="grid grid-cols-1 gap-4 md:grid-cols-7">
+                <div>
+                    <label class="mb-1 block text-sm font-medium text-gray-700">媒体平台</label>
+                    <select name="platform_id" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
+                        <option value="">全部</option>
+                        @foreach ($platforms as $itemPlatformId => $itemPlatformLabel)
+                            <option value="{{ $itemPlatformId }}" @selected((int) $platformId === (int) $itemPlatformId)>{{ $itemPlatformLabel }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="mb-1 block text-sm font-medium text-gray-700">媒体类型</label>
+                    <select name="source_type" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
+                        <option value="">全部</option>
+                        <option value="website_media" @selected($sourceType === 'website_media')>网站媒体</option>
+                        <option value="zi_media" @selected($sourceType === 'zi_media')>第三方自媒体</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="mb-1 block text-sm font-medium text-gray-700">分类</label>
+                    <select name="category" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
+                        <option value="">全部</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="mb-1 block text-sm font-medium text-gray-700">状态</label>
+                    <select name="status" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
+                        <option value="all" @selected($status === '')>全部</option>
+                        <option value="active" @selected($status === 'active')>可投稿</option>
+                        <option value="inactive" @selected($status === 'inactive')>不可用</option>
+                    </select>
+                </div>
+                <div class="md:col-span-2">
+                    <label class="mb-1 block text-sm font-medium text-gray-700">搜索媒体</label>
+                    <input name="search" value="{{ $search }}" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" placeholder="输入媒体名称">
+                </div>
+                <div>
+                    <label class="mb-1 block text-sm font-medium text-gray-700">积分价</label>
+                    <div class="grid grid-cols-2 gap-2">
+                        <input name="min_price" value="{{ $minPrice }}" class="h-10 rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" placeholder="最低">
+                        <input name="max_price" value="{{ $maxPrice }}" class="h-10 rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" placeholder="最高">
+                    </div>
+                </div>
+                <div class="flex items-end">
+                    <button type="submit" class="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                        <i data-lucide="search" class="h-4 w-4"></i>
+                        筛选
+                    </button>
+                </div>
+            </div>
+        </form>
+
+        <div class="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+            <div class="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <h2 class="text-sm font-semibold text-gray-900">批量投稿</h2>
+                    <p class="text-xs text-gray-500">勾选多个媒体后进入下一页，可选择多篇文章一起投稿。</p>
+                </div>
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <div class="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 text-sm text-slate-600">
+                        <span>媒体总数</span>
+                        <span class="font-semibold text-slate-900">{{ $resources->total() }} 条</span>
+                    </div>
+                    <form id="bulk-media-submit-form" method="GET" action="{{ route('admin.media-distribution.submissions.index') }}"></form>
+                    <button form="bulk-media-submit-form" type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 text-sm font-medium text-white hover:bg-indigo-700">
+                        <i data-lucide="send" class="h-4 w-4"></i>
+                        批量投稿
+                    </button>
+                </div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-max divide-y divide-slate-200">
+                    <thead class="bg-slate-50">
+                        <tr>
+                            <th class="w-12 whitespace-nowrap px-5 py-3 text-left">
+                                <span class="sr-only">选择</span>
+                            </th>
+                            <th class="min-w-44 whitespace-nowrap px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">媒体</th>
+                            <th class="min-w-24 whitespace-nowrap px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">平台</th>
+                            <th class="w-56 max-w-56 whitespace-nowrap px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">备注</th>
+                            @foreach ($apiColumns as [$label])
+                                <th class="min-w-24 whitespace-nowrap px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">{{ $label }}</th>
+                            @endforeach
+                            @if ($isSuperAdmin)
+                                <th class="min-w-24 whitespace-nowrap px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">成本价</th>
+                            @endif
+                            <th class="min-w-24 whitespace-nowrap px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">积分价</th>
+                            <th class="min-w-24 whitespace-nowrap px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">状态</th>
+                            <th class="min-w-28 whitespace-nowrap px-5 py-3 text-right text-xs font-medium uppercase tracking-wider text-slate-500">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200 bg-white">
+                        @forelse ($resources as $resource)
+                            <tr>
+                                <td class="whitespace-nowrap px-5 py-4 align-top">
+                                    <input form="bulk-media-submit-form" type="checkbox" name="media_resource_ids[]" value="{{ (int) $resource->id }}" class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                                </td>
+                                <td class="whitespace-nowrap px-5 py-4 align-top">
+                                    <div class="font-medium text-gray-900">{{ $resource->title }}</div>
+                                    <div class="mt-1 text-xs text-gray-500">{{ $resource->sourceLabel() }} · {{ $resource->external_resource_id }}</div>
+                                    @if($resource->case_link !== '')
+                                        <a href="{{ $resource->case_link }}" target="_blank" rel="noopener noreferrer" class="mt-1 inline-flex text-xs text-indigo-600 hover:text-indigo-800">案例链接</a>
+                                    @endif
+                                </td>
+                                <td class="whitespace-nowrap px-5 py-4 align-top text-sm text-gray-700">{{ $resource->platformLabel() }}</td>
+                                <td class="w-56 max-w-56 px-5 py-4 align-top text-sm text-gray-600">
+                                    <div class="truncate" title="{{ $resource->remarks }}">{{ $resource->remarks }}</div>
+                                </td>
+                                @foreach ($apiColumns as [$label, $key])
+                                    @php
+                                        $value = $key === 'status_label' ? $resource->apiStatusLabel() : $resource->apiField($key);
+                                    @endphp
+                                    <td class="whitespace-nowrap px-5 py-4 align-top text-sm text-gray-700">{{ $value }}</td>
+                                @endforeach
+                                @if ($isSuperAdmin)
+                                    <td class="whitespace-nowrap px-5 py-4 align-top text-sm text-gray-700">{{ $resource->cost_price }}</td>
+                                @endif
+                                <td class="whitespace-nowrap px-5 py-4 align-top text-sm font-medium text-gray-900">
+                                    {{ $resource->sale_price }}
+                                </td>
+                                <td class="whitespace-nowrap px-5 py-4 align-top">
+                                    <span class="inline-flex whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium {{ $resource->status === 'active' ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-600' }}">
+                                        {{ $resource->status === 'active' ? '可投稿' : '不可用' }}
+                                    </span>
+                                </td>
+                                <td class="whitespace-nowrap px-5 py-4 align-top text-right">
+                                    <div class="flex flex-col items-end gap-2">
+                                        @if ($isSuperAdmin)
+                                            <button type="button" class="whitespace-nowrap text-sm font-medium text-slate-600 hover:text-slate-900" data-open-price-modal="media-price-modal-{{ $resource->id }}">专属价设置</button>
+                                        @endif
+                                        <a href="{{ route('admin.media-distribution.submissions.index', ['media_resource_id' => $resource->id]) }}" class="whitespace-nowrap text-sm font-medium text-indigo-600 hover:text-indigo-800">去投稿</a>
+                                    </div>
+                                    @if ($isSuperAdmin)
+                                        <div id="media-price-modal-{{ $resource->id }}" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 px-4 py-6" data-price-modal>
+                                            <div class="w-full max-w-lg rounded-lg bg-white p-6 text-left shadow-xl">
+                                                <div class="flex items-start justify-between gap-4">
+                                                    <div>
+                                                        <h2 class="text-lg font-semibold text-gray-900">专属价设置</h2>
+                                                        <p class="mt-1 text-sm text-gray-500">{{ $resource->title }}</p>
+                                                    </div>
+                                                    <button type="button" class="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600" data-close-price-modal>
+                                                        <i data-lucide="x" class="h-5 w-5"></i>
+                                                    </button>
+                                                </div>
+                                                <div class="mt-5 grid grid-cols-2 gap-3 text-sm">
+                                                    <div class="rounded-md bg-slate-50 px-3 py-2">
+                                                        <div class="text-xs text-slate-500">接口成本价</div>
+                                                        <div class="mt-1 font-medium text-slate-900">{{ $resource->cost_price }}</div>
+                                                    </div>
+                                                    <div class="rounded-md bg-slate-50 px-3 py-2">
+                                                        <div class="text-xs text-slate-500">当前积分价</div>
+                                                        <div class="mt-1 font-medium text-slate-900">{{ $resource->sale_price }}</div>
+                                                    </div>
+                                                </div>
+                                                <form method="POST" action="{{ route('admin.media-distribution.resources.site-price', ['resource' => $resource->id]) }}" class="mt-5 space-y-4">
+                                                    @csrf
+                                                    <div>
+                                                        <label class="mb-1 block text-sm font-medium text-gray-700">站点</label>
+                                                        <select name="site_id" required class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
+                                                            <option value="">选择站点</option>
+                                                            @foreach ($sites as $site)
+                                                                <option value="{{ $site->id }}">{{ $site->name }}</option>
+                                                            @endforeach
+                                                        </select>
+                                                    </div>
+                                                    <div>
+                                                        <label class="mb-1 block text-sm font-medium text-gray-700">站点专属积分价</label>
+                                                        <input name="sale_price" required type="number" step="0.01" min="0" class="block h-10 w-full rounded-md border border-slate-200 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" placeholder="输入专属价">
+                                                    </div>
+                                                    <div class="flex justify-end gap-2">
+                                                        <button type="button" class="inline-flex h-10 items-center rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50" data-close-price-modal>取消</button>
+                                                        <button type="submit" class="inline-flex h-10 items-center rounded-md bg-slate-900 px-4 text-sm font-medium text-white hover:bg-slate-700">保存</button>
+                                                    </div>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    @endif
+                                </td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="{{ $isSuperAdmin ? 12 : 11 }}" class="px-5 py-10 text-center text-sm text-gray-500">暂无媒体资源，请先同步。</td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+            <div class="border-t border-slate-200 px-5 py-4">
+                {{ $resources->links() }}
+            </div>
+        </div>
+    </div>
+@endsection
+
+@push('scripts')
+    <script>
+        document.addEventListener('click', function (event) {
+            const openButton = event.target.closest('[data-open-price-modal]');
+            if (openButton) {
+                const modal = document.getElementById(openButton.getAttribute('data-open-price-modal'));
+                modal?.classList.remove('hidden');
+                modal?.classList.add('flex');
+                return;
+            }
+
+            const openPackageButton = event.target.closest('[data-open-media-package-modal]');
+            if (openPackageButton) {
+                const modal = document.getElementById(openPackageButton.getAttribute('data-open-media-package-modal'));
+                modal?.classList.remove('hidden');
+                modal?.classList.add('flex');
+                return;
+            }
+
+            const closeButton = event.target.closest('[data-close-price-modal]');
+            const closePackageButton = event.target.closest('[data-close-media-package-modal]');
+            const clickedBackdrop = event.target.matches('[data-price-modal]');
+            const clickedPackageBackdrop = event.target.matches('[data-media-package-modal]');
+            if (closeButton || closePackageButton || clickedBackdrop || clickedPackageBackdrop) {
+                const modal = event.target.closest('[data-price-modal], [data-media-package-modal]') || event.target;
+                modal?.classList.add('hidden');
+                modal?.classList.remove('flex');
+            }
+        });
+
+        document.addEventListener('keydown', function (event) {
+            if (event.key !== 'Escape') {
+                return;
+            }
+            document.querySelectorAll('[data-price-modal]').forEach(function (modal) {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            });
+            document.querySelectorAll('[data-media-package-modal]').forEach(function (modal) {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            });
+        });
+    </script>
+@endpush

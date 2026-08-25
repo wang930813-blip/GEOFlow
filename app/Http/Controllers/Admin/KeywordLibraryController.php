@@ -3,17 +3,30 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\ProcessGeoInclusionCheckJob;
+use App\Models\Admin;
 use App\Models\Article;
+use App\Models\GeoInclusionCheckResult;
+use App\Models\GeoInclusionCheckRun;
 use App\Models\Keyword;
 use App\Models\KeywordLibrary;
+use App\Models\KeywordQuestionVariant;
+use App\Models\PlatformPlan;
+use App\Services\Billing\AdminResourceQuotaService;
+use App\Services\GeoFlow\GeoKeywordSuggestionService;
+use App\Services\GeoFlow\GeoQuestionVariantService;
 use App\Support\AdminWeb;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
+use Throwable;
 
 /**
  * 关键词库管理控制器。
@@ -21,6 +34,12 @@ use Illuminate\View\View;
 class KeywordLibraryController extends Controller
 {
     private const DETAIL_PER_PAGE = 50;
+
+    public function __construct(
+        private readonly GeoKeywordSuggestionService $keywordSuggestionService,
+        private readonly GeoQuestionVariantService $questionVariantService,
+        private readonly AdminResourceQuotaService $quotaService,
+    ) {}
 
     /**
      * 列表页。
@@ -55,6 +74,87 @@ class KeywordLibraryController extends Controller
             'search' => $search,
             'keywords' => $keywords,
             'usageTotal' => $usageTotal,
+            'inclusionRuns' => $this->loadInclusionRuns($libraryId),
+            'inclusionResults' => $this->loadLatestInclusionResults($libraryId),
+            'inclusionDailyReports' => $this->loadDailyInclusionReports($libraryId),
+            'inclusionRealtime' => $this->inclusionRealtimeConfig($libraryId),
+        ]);
+    }
+
+    public function exportInclusionResults(int $libraryId): StreamedResponse
+    {
+        $library = KeywordLibrary::query()->whereKey($libraryId)->firstOrFail();
+        $filename = sprintf(
+            'geo-inclusion-%d-%s.csv',
+            (int) $library->id,
+            now()->format('YmdHis')
+        );
+
+        return response()->streamDownload(function () use ($libraryId): void {
+            echo "\xEF\xBB\xBF";
+
+            $handle = fopen('php://output', 'w');
+            if ($handle === false) {
+                return;
+            }
+
+            fputcsv($handle, [
+                '日期',
+                '检测时间',
+                '平台',
+                '关键词',
+                '问题',
+                '关键词命中',
+                '品牌命中',
+                '状态',
+                '回答摘要',
+                '错误信息',
+            ]);
+
+            $this->inclusionResultsQuery($libraryId)
+                ->chunk(500, function (Collection $results) use ($handle): void {
+                    foreach ($results as $result) {
+                        $checkedAt = $result->checked_at ?? $result->created_at;
+
+                        fputcsv($handle, [
+                            optional($checkedAt)->format('Y-m-d') ?? '',
+                            optional($checkedAt)->format('Y-m-d H:i:s') ?? '',
+                            $this->platformLabel((string) $result->platform),
+                            (string) ($result->keyword?->keyword ?? ''),
+                            (string) $result->question,
+                            $result->keyword_hit ? '是' : '否',
+                            $result->brand_hit ? '是' : '否',
+                            (string) $result->status,
+                            Str::limit((string) ($result->answer ?? ''), 200, '...'),
+                            (string) ($result->error_message ?? ''),
+                        ]);
+                    }
+                });
+
+            fclose($handle);
+        }, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    public function inclusionSnapshot(int $libraryId): JsonResponse
+    {
+        $library = KeywordLibrary::query()->whereKey($libraryId)->firstOrFail();
+        $inclusionRuns = $this->loadInclusionRuns($libraryId);
+        $inclusionDailyReports = $this->loadDailyInclusionReports($libraryId);
+        $hasRunning = $this->hasRunningInclusionRun($inclusionRuns);
+
+        return response()->json([
+            'success' => true,
+            'has_running' => $hasRunning,
+            'latest_run_id' => (int) optional($inclusionRuns->first())->id,
+            'runs_html' => view('admin.keyword-libraries.partials.inclusion-runs', [
+                'inclusionRuns' => $inclusionRuns,
+            ])->render(),
+            'daily_reports_html' => view('admin.keyword-libraries.partials.inclusion-daily-reports', [
+                'library' => $library,
+                'inclusionDailyReports' => $inclusionDailyReports,
+            ])->render(),
         ]);
     }
 
@@ -85,6 +185,8 @@ class KeywordLibraryController extends Controller
         }
 
         Keyword::query()->create([
+            'site_id' => (int) ($library->site_id ?? 0) ?: null,
+            'owner_admin_id' => $this->ownerAdminIdForLibrary($library, auth('admin')->user()),
             'library_id' => $libraryId,
             'keyword' => $keyword,
             'used_count' => 0,
@@ -93,6 +195,359 @@ class KeywordLibraryController extends Controller
         $this->refreshKeywordLibraryCount($libraryId);
 
         return redirect()->route('admin.keyword-libraries.detail', ['libraryId' => $libraryId])->with('message', __('admin.keyword_detail.message.add_success'));
+    }
+
+    public function bulkStoreKeywords(Request $request, int $libraryId): RedirectResponse
+    {
+        $library = KeywordLibrary::query()->whereKey($libraryId)->firstOrFail();
+
+        $payload = $request->validate([
+            'keywords' => ['required', 'array', 'min:1'],
+            'keywords.*' => ['nullable', 'string', 'max:200'],
+        ]);
+
+        $keywords = collect((array) $payload['keywords'])
+            ->map(static fn (mixed $keyword): string => trim((string) $keyword))
+            ->filter(static fn (string $keyword): bool => $keyword !== '')
+            ->unique()
+            ->values();
+
+        if ($keywords->isEmpty()) {
+            return back()->withErrors(__('admin.keyword_libraries.error.keywords_required'));
+        }
+
+        $insertedCount = 0;
+        $duplicateCount = 0;
+
+        DB::transaction(function () use ($keywords, $library, $libraryId, &$insertedCount, &$duplicateCount): void {
+            foreach ($keywords as $keyword) {
+                $exists = Keyword::query()
+                    ->where('library_id', $libraryId)
+                    ->where('keyword', $keyword)
+                    ->exists();
+
+                if ($exists) {
+                    $duplicateCount++;
+
+                    continue;
+                }
+
+                Keyword::query()->create([
+                    'site_id' => (int) ($library->site_id ?? 0) ?: null,
+                    'owner_admin_id' => $this->ownerAdminIdForLibrary($library, auth('admin')->user()),
+                    'library_id' => $libraryId,
+                    'keyword' => $keyword,
+                    'used_count' => 0,
+                    'usage_count' => 0,
+                ]);
+                $insertedCount++;
+            }
+
+            $this->refreshKeywordLibraryCount($libraryId);
+        });
+
+        $message = '已加入 '.$insertedCount.' 个关键词';
+        if ($duplicateCount > 0) {
+            $message .= '，跳过 '.$duplicateCount.' 个重复关键词';
+        }
+
+        return redirect()
+            ->route('admin.keyword-libraries.detail', ['libraryId' => $libraryId])
+            ->with('message', $message);
+    }
+
+    public function updateKeyword(Request $request, int $libraryId, int $keywordId): RedirectResponse
+    {
+        $keywordModel = $this->findKeywordInLibrary($libraryId, $keywordId);
+
+        $payload = $request->validate([
+            'keyword' => ['required', 'string', 'max:200'],
+        ], [
+            'keyword.required' => __('admin.keyword_detail.error.keyword_required'),
+        ]);
+
+        $keyword = trim((string) $payload['keyword']);
+        if ($keyword === '') {
+            return back()->withErrors(__('admin.keyword_detail.error.keyword_required'));
+        }
+
+        $exists = Keyword::query()
+            ->where('library_id', $libraryId)
+            ->where('keyword', $keyword)
+            ->whereKeyNot((int) $keywordModel->id)
+            ->exists();
+        if ($exists) {
+            return back()->withErrors(__('admin.keyword_detail.error.keyword_exists'));
+        }
+
+        $keywordModel->update(['keyword' => $keyword]);
+
+        return redirect()
+            ->route('admin.keyword-libraries.detail', ['libraryId' => $libraryId])
+            ->with('message', '关键词已更新');
+    }
+
+    public function suggestKeywords(Request $request, int $libraryId): JsonResponse
+    {
+        KeywordLibrary::query()->whereKey($libraryId)->firstOrFail();
+
+        $payload = $request->validate([
+            'seed_keyword' => ['required', 'string', 'max:200'],
+            'count' => ['nullable', 'integer', 'min:1', 'max:100'],
+        ]);
+
+        try {
+            $suggestions = $this->keywordSuggestionService->suggest(
+                (string) $payload['seed_keyword'],
+                (int) ($payload['count'] ?? 20)
+            );
+
+            return response()->json([
+                'success' => true,
+                'suggestions' => $suggestions,
+            ]);
+        } catch (Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    public function storeQuestion(Request $request, int $libraryId, int $keywordId): RedirectResponse
+    {
+        $keyword = $this->findKeywordInLibrary($libraryId, $keywordId);
+
+        $payload = $request->validate([
+            'question' => ['required', 'string', 'max:500'],
+        ]);
+
+        $question = $this->normalizeQuestion((string) $payload['question']);
+        if ($question === '') {
+            return back()->withErrors('请输入有效的问题变体');
+        }
+
+        KeywordQuestionVariant::query()->firstOrCreate([
+            'keyword_id' => (int) $keyword->id,
+            'question' => $question,
+        ], [
+            'site_id' => (int) ($keyword->site_id ?? 0) ?: null,
+            'owner_admin_id' => (int) ($keyword->owner_admin_id ?? 0) ?: $this->ownerAdminIdForLibrary($keyword->library, auth('admin')->user()),
+        ]);
+
+        return redirect()
+            ->route('admin.keyword-libraries.detail', ['libraryId' => $libraryId])
+            ->with('message', '问题变体已保存');
+    }
+
+    public function updateQuestion(Request $request, int $libraryId, int $keywordId, int $questionId): RedirectResponse
+    {
+        $keyword = $this->findKeywordInLibrary($libraryId, $keywordId);
+        $variant = KeywordQuestionVariant::query()
+            ->where('keyword_id', (int) $keyword->id)
+            ->whereKey($questionId)
+            ->firstOrFail();
+
+        $payload = $request->validate([
+            'question' => ['required', 'string', 'max:500'],
+        ]);
+
+        $question = $this->normalizeQuestion((string) $payload['question']);
+        if ($question === '') {
+            return back()->withErrors('请输入有效的问题变体');
+        }
+
+        $exists = KeywordQuestionVariant::query()
+            ->where('keyword_id', (int) $keyword->id)
+            ->where('question', $question)
+            ->whereKeyNot((int) $variant->id)
+            ->exists();
+        if ($exists) {
+            return back()->withErrors('这个问题变体已经存在');
+        }
+
+        $variant->update(['question' => $question]);
+
+        return redirect()
+            ->route('admin.keyword-libraries.detail', ['libraryId' => $libraryId])
+            ->with('message', '问题变体已更新');
+    }
+
+    public function destroyQuestion(int $libraryId, int $keywordId, int $questionId): RedirectResponse
+    {
+        $keyword = $this->findKeywordInLibrary($libraryId, $keywordId);
+
+        $variant = KeywordQuestionVariant::query()
+            ->where('keyword_id', (int) $keyword->id)
+            ->whereKey($questionId)
+            ->firstOrFail();
+
+        $variant->delete();
+
+        return redirect()
+            ->route('admin.keyword-libraries.detail', ['libraryId' => $libraryId])
+            ->with('message', '问题变体已删除');
+    }
+
+    public function generateQuestions(Request $request, int $libraryId, int $keywordId): JsonResponse
+    {
+        $library = KeywordLibrary::query()->whereKey($libraryId)->firstOrFail();
+        $keyword = $this->findKeywordInLibrary($libraryId, $keywordId);
+
+        $payload = $request->validate([
+            'count' => ['nullable', 'integer', 'min:1', 'max:20'],
+        ]);
+
+        try {
+            $this->assertQuotaForLibrary($library, PlatformPlan::RESOURCE_KEYWORD_QUESTION_GENERATIONS, 1);
+            $questions = $this->questionVariantService->generate($keyword, $library, (int) ($payload['count'] ?? 5));
+            $createdQuestions = [];
+            foreach ($questions as $question) {
+                $variant = KeywordQuestionVariant::query()->firstOrCreate([
+                    'keyword_id' => (int) $keyword->id,
+                    'question' => $question,
+                ], [
+                    'site_id' => (int) ($keyword->site_id ?? $library->site_id ?? 0) ?: null,
+                    'owner_admin_id' => (int) ($keyword->owner_admin_id ?? $library->owner_admin_id ?? 0) ?: $this->currentAdminId(auth('admin')->user()),
+                ]);
+                if ($variant->wasRecentlyCreated) {
+                    $createdQuestions[] = $question;
+                }
+            }
+            $this->consumeQuotaForLibrary($library, PlatformPlan::RESOURCE_KEYWORD_QUESTION_GENERATIONS, 1, '关键词问题生成消耗', Keyword::class, (int) $keyword->id);
+
+            return response()->json([
+                'success' => true,
+                'questions' => $createdQuestions,
+            ]);
+        } catch (Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    public function storeInclusionCheck(Request $request, int $libraryId): RedirectResponse
+    {
+        $library = KeywordLibrary::query()->whereKey($libraryId)->firstOrFail();
+        $payload = $request->validate([
+            'platforms' => ['nullable', 'array'],
+            'platforms.*' => ['string'],
+        ]);
+
+        $platforms = $this->normalizePlatforms((array) ($payload['platforms'] ?? []));
+        $questions = KeywordQuestionVariant::query()
+            ->whereIn('keyword_id', Keyword::query()->select('id')->where('library_id', (int) $library->id))
+            ->with('keyword')
+            ->orderBy('id')
+            ->get();
+
+        if ($questions->isEmpty()) {
+            return back()->withErrors('请先为关键词添加问题变体，再发起收录检测');
+        }
+
+        $totalChecks = $questions->count() * count($platforms);
+        try {
+            $this->assertQuotaForLibrary($library, PlatformPlan::RESOURCE_INCLUSION_CHECKS, 1);
+        } catch (Throwable $exception) {
+            return back()->withErrors($exception->getMessage());
+        }
+        $run = GeoInclusionCheckRun::query()->create([
+            'site_id' => (int) ($library->site_id ?? 0) ?: null,
+            'owner_admin_id' => (int) ($library->owner_admin_id ?? 0) ?: $this->currentAdminId(auth('admin')->user()),
+            'keyword_library_id' => (int) $library->id,
+            'platforms' => $platforms,
+            'status' => 'pending',
+            'total_checks' => $totalChecks,
+            'completed_checks' => 0,
+            'failed_checks' => 0,
+        ]);
+        $this->consumeQuotaForLibrary($library, PlatformPlan::RESOURCE_INCLUSION_CHECKS, 1, 'GEO 收录/引用检测消耗', GeoInclusionCheckRun::class, (int) $run->id);
+
+        foreach ($questions as $question) {
+            foreach ($platforms as $platform) {
+                ProcessGeoInclusionCheckJob::dispatch(
+                    runId: (int) $run->id,
+                    keywordId: (int) $question->keyword_id,
+                    questionVariantId: (int) $question->id,
+                    platform: $platform
+                )->onQueue('geoflow');
+            }
+        }
+
+        return redirect()
+            ->route('admin.keyword-libraries.detail', ['libraryId' => $libraryId])
+            ->with('message', '收录检测任务已创建，共 '.$totalChecks.' 个检测项');
+    }
+
+    private function assertQuotaForLibrary(KeywordLibrary $library, string $resourceKey, int $amount): void
+    {
+        $admin = auth('admin')->user();
+        if ($admin instanceof Admin && $admin->isSuperAdmin()) {
+            return;
+        }
+
+        $siteId = (int) ($library->site_id ?? 0);
+        if ($siteId > 0) {
+            $this->quotaService->assertCanUse($this->currentAdminId($admin), $siteId, $resourceKey, $amount, $admin instanceof Admin ? $admin : null);
+        }
+    }
+
+    private function consumeQuotaForLibrary(KeywordLibrary $library, string $resourceKey, int $amount, string $remark, string $subjectType, int $subjectId): void
+    {
+        $admin = auth('admin')->user();
+        if ($admin instanceof Admin && $admin->isSuperAdmin()) {
+            return;
+        }
+
+        $siteId = (int) ($library->site_id ?? 0);
+        if ($siteId <= 0) {
+            return;
+        }
+
+        $this->quotaService->consume($this->currentAdminId($admin), $siteId, $resourceKey, $amount, [
+            'actor_admin_id' => $admin instanceof Admin ? (int) $admin->id : null,
+            'subject_type' => $subjectType,
+            'subject_id' => $subjectId,
+            'idempotency_key' => $resourceKey.':'.$subjectType.':'.$subjectId,
+            'remark' => $remark,
+        ]);
+    }
+
+    public function pauseInclusionRun(int $libraryId, int $run): RedirectResponse
+    {
+        $library = KeywordLibrary::query()->whereKey($libraryId)->firstOrFail();
+        $checkRun = GeoInclusionCheckRun::query()
+            ->where('keyword_library_id', (int) $library->id)
+            ->whereKey($run)
+            ->firstOrFail();
+
+        if (in_array((string) $checkRun->status, ['pending', 'running'], true)) {
+            $checkRun->update([
+                'status' => 'paused',
+                'completed_at' => null,
+            ]);
+        }
+
+        return redirect()
+            ->route('admin.keyword-libraries.detail', ['libraryId' => $libraryId])
+            ->with('message', '检测任务已暂停');
+    }
+
+    public function destroyInclusionRun(int $libraryId, int $run): RedirectResponse
+    {
+        $library = KeywordLibrary::query()->whereKey($libraryId)->firstOrFail();
+        $checkRun = GeoInclusionCheckRun::query()
+            ->where('keyword_library_id', (int) $library->id)
+            ->whereKey($run)
+            ->firstOrFail();
+
+        $checkRun->delete();
+
+        return redirect()
+            ->route('admin.keyword-libraries.detail', ['libraryId' => $libraryId])
+            ->with('message', '检测任务已删除');
     }
 
     /**
@@ -135,14 +590,16 @@ class KeywordLibraryController extends Controller
         $payload = $request->validate([
             'name' => ['required', 'string', 'max:100'],
             'description' => ['nullable', 'string'],
+            'company_name' => ['nullable', 'string', 'max:200'],
+            'domain_keyword' => ['nullable', 'string', 'max:200'],
+            'industry' => ['nullable', 'string', 'max:100'],
+            'brand_description' => ['nullable', 'string'],
+            'status' => ['nullable', 'string', 'max:20'],
         ], [
             'name.required' => __('admin.keyword_detail.error.library_name_required'),
         ]);
 
-        $library->update([
-            'name' => trim((string) $payload['name']),
-            'description' => trim((string) ($payload['description'] ?? '')),
-        ]);
+        $library->update($this->normalizeProjectPayload($payload, (string) ($library->status ?? 'active')));
 
         return redirect()->route('admin.keyword-libraries.detail', ['libraryId' => $libraryId])->with('message', __('admin.keyword_detail.message.update_success'));
     }
@@ -168,7 +625,7 @@ class KeywordLibraryController extends Controller
         $importedCount = 0;
         $duplicateCount = 0;
 
-        DB::transaction(function () use ($keywords, $libraryId, &$importedCount, &$duplicateCount): void {
+        DB::transaction(function () use ($keywords, $library, $libraryId, &$importedCount, &$duplicateCount): void {
             foreach ($keywords as $keyword) {
                 $exists = Keyword::query()
                     ->where('library_id', $libraryId)
@@ -181,6 +638,8 @@ class KeywordLibraryController extends Controller
                 }
 
                 Keyword::query()->create([
+                    'site_id' => (int) ($library->site_id ?? 0) ?: null,
+                    'owner_admin_id' => $this->ownerAdminIdForLibrary($library, auth('admin')->user()),
                     'library_id' => $libraryId,
                     'keyword' => $keyword,
                     'used_count' => 0,
@@ -223,13 +682,16 @@ class KeywordLibraryController extends Controller
         $payload = $request->validate([
             'name' => ['required', 'string', 'max:100'],
             'description' => ['nullable', 'string'],
+            'company_name' => ['nullable', 'string', 'max:200'],
+            'domain_keyword' => ['nullable', 'string', 'max:200'],
+            'industry' => ['nullable', 'string', 'max:100'],
+            'brand_description' => ['nullable', 'string'],
+            'status' => ['nullable', 'string', 'max:20'],
         ], [
             'name.required' => __('admin.keyword_libraries.error.name_required'),
         ]);
 
-        KeywordLibrary::query()->create([
-            'name' => trim((string) $payload['name']),
-            'description' => trim((string) ($payload['description'] ?? '')),
+        KeywordLibrary::query()->create($this->normalizeProjectPayload($payload, 'active') + [
             'keyword_count' => 0,
         ]);
 
@@ -252,6 +714,11 @@ class KeywordLibraryController extends Controller
             'libraryForm' => [
                 'name' => (string) $library->name,
                 'description' => (string) ($library->description ?? ''),
+                'company_name' => (string) ($library->company_name ?? ''),
+                'domain_keyword' => (string) ($library->domain_keyword ?? ''),
+                'industry' => (string) ($library->industry ?? ''),
+                'brand_description' => (string) ($library->brand_description ?? ''),
+                'status' => (string) ($library->status ?? 'active'),
             ],
         ]);
     }
@@ -266,14 +733,16 @@ class KeywordLibraryController extends Controller
         $payload = $request->validate([
             'name' => ['required', 'string', 'max:100'],
             'description' => ['nullable', 'string'],
+            'company_name' => ['nullable', 'string', 'max:200'],
+            'domain_keyword' => ['nullable', 'string', 'max:200'],
+            'industry' => ['nullable', 'string', 'max:100'],
+            'brand_description' => ['nullable', 'string'],
+            'status' => ['nullable', 'string', 'max:20'],
         ], [
             'name.required' => __('admin.keyword_libraries.error.name_required'),
         ]);
 
-        $library->update([
-            'name' => trim((string) $payload['name']),
-            'description' => trim((string) ($payload['description'] ?? '')),
-        ]);
+        $library->update($this->normalizeProjectPayload($payload, (string) ($library->status ?? 'active')));
 
         return redirect()->route('admin.keyword-libraries.index')->with('message', __('admin.keyword_libraries.message.update_success'));
     }
@@ -336,6 +805,11 @@ class KeywordLibraryController extends Controller
         return [
             'name' => '',
             'description' => '',
+            'company_name' => '',
+            'domain_keyword' => '',
+            'industry' => '',
+            'brand_description' => '',
+            'status' => 'active',
         ];
     }
 
@@ -346,6 +820,8 @@ class KeywordLibraryController extends Controller
     {
         $query = Keyword::query()
             ->where('library_id', $libraryId)
+            ->with(['questionVariants' => fn ($query) => $query->orderByDesc('created_at')])
+            ->withCount('questionVariants')
             ->orderByDesc('created_at');
         if ($search !== '') {
             $query->where('keyword', 'like', '%'.$search.'%');
@@ -381,6 +857,42 @@ class KeywordLibraryController extends Controller
     }
 
     /**
+     * @param  array<string, mixed>  $payload
+     * @return array{name:string,description:string,company_name:string,domain_keyword:string,industry:string,brand_description:string,status:string}
+     */
+    private function normalizeProjectPayload(array $payload, string $defaultStatus): array
+    {
+        $status = trim((string) ($payload['status'] ?? $defaultStatus));
+
+        return [
+            'name' => trim((string) $payload['name']),
+            'description' => trim((string) ($payload['description'] ?? '')),
+            'company_name' => trim((string) ($payload['company_name'] ?? '')),
+            'domain_keyword' => trim((string) ($payload['domain_keyword'] ?? '')),
+            'industry' => trim((string) ($payload['industry'] ?? '')),
+            'brand_description' => trim((string) ($payload['brand_description'] ?? '')),
+            'status' => $status !== '' ? $status : 'active',
+        ];
+    }
+
+    private function findKeywordInLibrary(int $libraryId, int $keywordId): Keyword
+    {
+        KeywordLibrary::query()->whereKey($libraryId)->firstOrFail();
+
+        return Keyword::query()
+            ->where('library_id', $libraryId)
+            ->whereKey($keywordId)
+            ->firstOrFail();
+    }
+
+    private function normalizeQuestion(string $question): string
+    {
+        $question = preg_replace('/\s+/u', ' ', trim($question)) ?? trim($question);
+
+        return mb_strlen($question, 'UTF-8') <= 500 ? $question : '';
+    }
+
+    /**
      * 按 legacy 页面口径统计关键词总使用次数。
      *
      * 统计规则与 bak/admin/keyword-library-detail.php 一致：
@@ -399,5 +911,187 @@ class KeywordLibraryController extends Controller
                     ->where('library_id', $libraryId);
             })
             ->count();
+    }
+
+    private function normalizePlatforms(array $platforms): array
+    {
+        $allowed = ['doubao', 'qianwen', 'deepseek'];
+        $normalized = collect($platforms)
+            ->map(static fn (mixed $platform): string => strtolower(trim((string) $platform)))
+            ->filter(static fn (string $platform): bool => in_array($platform, $allowed, true))
+            ->unique()
+            ->values()
+            ->all();
+
+        return $normalized !== [] ? $normalized : $allowed;
+    }
+
+    private function loadInclusionRuns(int $libraryId): Collection
+    {
+        return GeoInclusionCheckRun::query()
+            ->where('keyword_library_id', $libraryId)
+            ->orderByDesc('created_at')
+            ->limit(5)
+            ->get();
+    }
+
+    private function hasRunningInclusionRun(Collection $inclusionRuns): bool
+    {
+        return $inclusionRuns->contains(
+            static fn ($run): bool => in_array((string) $run->status, ['pending', 'running'], true)
+        );
+    }
+
+    private function loadLatestInclusionResults(int $libraryId): Collection
+    {
+        return $this->inclusionResultsQuery($libraryId)
+            ->limit(10)
+            ->get();
+    }
+
+    private function loadDailyInclusionReports(int $libraryId): Collection
+    {
+        return $this->inclusionResultsQuery($libraryId)
+            ->limit(200)
+            ->get()
+            ->groupBy(function (GeoInclusionCheckResult $result): string {
+                $checkedAt = $result->checked_at ?? $result->created_at;
+
+                return optional($checkedAt)->format('Y-m-d') ?? '未记录日期';
+            })
+            ->map(function (Collection $results, string $date): array {
+                $runReports = $results
+                    ->groupBy('run_id')
+                    ->map(fn (Collection $runResults): array => $this->buildInclusionRunReport($runResults))
+                    ->sortByDesc(static fn (array $runReport): int => (int) ($runReport['run_id'] ?? 0))
+                    ->values();
+
+                return [
+                    'date' => $date,
+                    'total' => $results->count(),
+                    'keyword_hits' => $results->where('keyword_hit', true)->count(),
+                    'brand_hits' => $results->where('brand_hit', true)->count(),
+                    'matched_keywords' => $this->matchedKeywords($results),
+                    'missed_keywords' => $this->missedKeywords($results),
+                    'platforms' => $this->platformBreakdown($results),
+                    'runs' => $runReports,
+                ];
+            })
+            ->values();
+    }
+
+    private function buildInclusionRunReport(Collection $results): array
+    {
+        /** @var GeoInclusionCheckResult|null $firstResult */
+        $firstResult = $results->first();
+        $run = $firstResult?->run;
+
+        return [
+            'run_id' => (int) ($firstResult?->run_id ?? 0),
+            'status' => (string) ($run?->status ?? $firstResult?->status ?? ''),
+            'created_at' => $run?->created_at,
+            'completed_at' => $run?->completed_at,
+            'total' => $results->count(),
+            'total_checks' => (int) ($run?->total_checks ?? $results->count()),
+            'completed_checks' => (int) ($run?->completed_checks ?? $results->count()),
+            'failed_checks' => (int) ($run?->failed_checks ?? $results->where('status', 'failed')->count()),
+            'keyword_hits' => $results->where('keyword_hit', true)->count(),
+            'brand_hits' => $results->where('brand_hit', true)->count(),
+            'matched_keywords' => $this->matchedKeywords($results),
+            'missed_keywords' => $this->missedKeywords($results),
+            'platforms' => $this->platformBreakdown($results),
+            'results' => $results->values(),
+        ];
+    }
+
+    private function matchedKeywords(Collection $results): Collection
+    {
+        return $results
+            ->filter(static fn (GeoInclusionCheckResult $result): bool => (bool) $result->keyword_hit)
+            ->map(static fn (GeoInclusionCheckResult $result): ?string => $result->keyword?->keyword)
+            ->filter()
+            ->unique()
+            ->values();
+    }
+
+    private function missedKeywords(Collection $results): Collection
+    {
+        return $results
+            ->reject(static fn (GeoInclusionCheckResult $result): bool => (bool) $result->keyword_hit)
+            ->map(static fn (GeoInclusionCheckResult $result): ?string => $result->keyword?->keyword)
+            ->filter()
+            ->unique()
+            ->values();
+    }
+
+    private function platformBreakdown(Collection $results): Collection
+    {
+        return $results
+            ->groupBy('platform')
+            ->map(fn (Collection $items, string $platform): array => [
+                'label' => $this->platformLabel($platform),
+                'total' => $items->count(),
+                'keyword_hits' => $items->where('keyword_hit', true)->count(),
+                'brand_hits' => $items->where('brand_hit', true)->count(),
+            ])
+            ->values();
+    }
+
+    private function inclusionResultsQuery(int $libraryId)
+    {
+        return GeoInclusionCheckResult::query()
+            ->where('keyword_library_id', $libraryId)
+            ->with(['keyword:id,keyword', 'run:id,status,total_checks,completed_checks,failed_checks,created_at,completed_at'])
+            ->orderByDesc('checked_at')
+            ->orderByDesc('id');
+    }
+
+    private function platformLabel(string $platform): string
+    {
+        return match (strtolower($platform)) {
+            'doubao' => '豆包',
+            'qianwen' => '千问',
+            'deepseek' => 'DeepSeek',
+            default => strtoupper($platform),
+        };
+    }
+
+    /**
+     * @return array{enabled:bool,key:string,host:string,port:int,scheme:string,channel:string,snapshot_url:string}
+     */
+    private function inclusionRealtimeConfig(int $libraryId): array
+    {
+        $reverbApp = config('reverb.apps.apps.0', []);
+        $host = (string) (config('reverb.servers.reverb.hostname') ?: config('app.url'));
+        $parsedHost = parse_url($host, PHP_URL_HOST);
+
+        return [
+            'enabled' => (string) config('broadcasting.default') === 'reverb',
+            'key' => (string) ($reverbApp['key'] ?? ''),
+            'host' => $parsedHost ? (string) $parsedHost : (string) $host,
+            'port' => (int) (config('reverb.apps.apps.0.options.port') ?: 443),
+            'scheme' => (string) (config('reverb.apps.apps.0.options.scheme') ?: 'https'),
+            'channel' => 'admin.keyword-libraries.'.$libraryId,
+            'snapshot_url' => route('admin.keyword-libraries.inclusion-snapshot', ['libraryId' => $libraryId]),
+        ];
+    }
+
+    private function currentAdminId(mixed $admin): int
+    {
+        if (! $admin instanceof Admin || (int) $admin->id <= 0) {
+            abort(403);
+        }
+
+        return (int) $admin->id;
+    }
+
+    private function ownerAdminIdForLibrary(KeywordLibrary $library, mixed $fallbackAdmin): ?int
+    {
+        $ownerAdminId = (int) ($library->owner_admin_id ?? 0);
+        if ($ownerAdminId > 0) {
+            return $ownerAdminId;
+        }
+
+        return $fallbackAdmin instanceof Admin && (int) $fallbackAdmin->id > 0 ? (int) $fallbackAdmin->id : null;
     }
 }

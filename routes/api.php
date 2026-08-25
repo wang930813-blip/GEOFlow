@@ -11,9 +11,16 @@
 
 use App\Http\Controllers\Api\V1\ArticleController;
 use App\Http\Controllers\Api\V1\AuthController;
+use App\Http\Controllers\Api\V1\BrandDiagnosisController;
 use App\Http\Controllers\Api\V1\CatalogController;
+use App\Http\Controllers\Api\V1\CrebeeAgentController;
 use App\Http\Controllers\Api\V1\JobController;
 use App\Http\Controllers\Api\V1\MaterialController;
+use App\Http\Controllers\Api\V1\McpArticlePublicationController;
+use App\Http\Controllers\Api\V1\McpBrandDiagnosisController;
+use App\Http\Controllers\Api\V1\McpVideoGenerationController;
+use App\Http\Controllers\Api\V1\MediaResourceController;
+use App\Http\Controllers\Api\V1\MediaSubmissionController;
 use App\Http\Controllers\Api\V1\TaskController;
 use Illuminate\Support\Facades\Route;
 
@@ -24,8 +31,44 @@ Route::prefix('v1')
         // 公开：管理员登录，返回 API Token（无需 Bearer）
         Route::post('auth/login', [AuthController::class, 'login']);
 
+        Route::middleware(['throttle:machine-api', 'brand-diagnosis.api-key'])->group(function (): void {
+            Route::post('brand-diagnoses', [BrandDiagnosisController::class, 'store']);
+            Route::get('brand-diagnoses/{taskKey}', [BrandDiagnosisController::class, 'show']);
+        });
+
         // 需有效 Token + 对应 scope
-        Route::middleware(['api.auth'])->group(function (): void {
+        Route::middleware(['throttle:machine-api', 'api.auth', 'throttle:api-token'])->group(function (): void {
+            // 机器凭证自检：独立 GEO MCP 服务使用，不要求额外业务 scope
+            Route::get('auth/me', [AuthController::class, 'me'])->middleware('api.scope:mcp:connect');
+
+            // MCP 品牌诊断：必须同时具备专用连接权限，并按读写 scope 动态开放工具
+            Route::prefix('mcp/brand-diagnoses')->middleware('api.scope:mcp:connect')->group(function (): void {
+                Route::get('/', [McpBrandDiagnosisController::class, 'index'])
+                    ->middleware('api.scope:brand-diagnoses:read');
+                Route::post('/', [McpBrandDiagnosisController::class, 'store'])
+                    ->middleware('api.scope:brand-diagnoses:write');
+                Route::get('{run}', [McpBrandDiagnosisController::class, 'show'])
+                    ->whereNumber('run')
+                    ->middleware('api.scope:brand-diagnoses:read');
+                Route::post('{run}/confirm', [McpBrandDiagnosisController::class, 'confirm'])
+                    ->whereNumber('run')
+                    ->middleware('api.scope:brand-diagnoses:write');
+            });
+
+            // MCP 专用业务接口：必须具备专用连接权限，并按独立 scope 动态开放工具
+            Route::prefix('mcp')->middleware('api.scope:mcp:connect')->group(function (): void {
+                Route::post('articles/{article}/publish', [McpArticlePublicationController::class, 'publish'])
+                    ->whereNumber('article')
+                    ->middleware('api.scope:articles:site-publish');
+                Route::get('videos', [McpVideoGenerationController::class, 'index'])
+                    ->middleware('api.scope:videos:read');
+                Route::post('videos', [McpVideoGenerationController::class, 'store'])
+                    ->middleware(['api.scope:videos:write', 'throttle:mcp-paid-write']);
+                Route::get('videos/{video}', [McpVideoGenerationController::class, 'show'])
+                    ->whereNumber('video')
+                    ->middleware('api.scope:videos:read');
+            });
+
             // catalog:read — 下拉元数据（模型、提示词、库、作者、分类等）
             Route::get('catalog', [CatalogController::class, 'show'])->middleware('api.scope:catalog:read');
 
@@ -100,5 +143,41 @@ Route::prefix('v1')
             Route::post('articles/{article}/trash', [ArticleController::class, 'trash'])
                 ->whereNumber('article')
                 ->middleware('api.scope:articles:write');
+
+            Route::get('media/resources', [MediaResourceController::class, 'index'])->middleware('api.scope:media:read');
+            Route::get('media/resources/{resource}', [MediaResourceController::class, 'show'])
+                ->whereNumber('resource')
+                ->middleware('api.scope:media:read');
+            Route::get('media/submissions', [MediaSubmissionController::class, 'index'])->middleware('api.scope:media:read');
+            Route::post('media/submissions', [MediaSubmissionController::class, 'store'])
+                ->middleware(['api.scope:media:submit', 'throttle:mcp-paid-write']);
+            Route::get('media/submissions/{submission}', [MediaSubmissionController::class, 'show'])
+                ->whereNumber('submission')
+                ->middleware('api.scope:media:read');
+            Route::post('media/submissions/{submission}/sync', [MediaSubmissionController::class, 'sync'])
+                ->whereNumber('submission')
+                ->middleware('api.scope:media:sync');
+            Route::post('media/submissions/{submission}/cancel', [MediaSubmissionController::class, 'cancel'])
+                ->whereNumber('submission')
+                ->middleware('api.scope:media:sync');
+            Route::post('media/submissions/{submission}/appeal', [MediaSubmissionController::class, 'appeal'])
+                ->whereNumber('submission')
+                ->middleware('api.scope:media:sync');
         });
+
+        Route::prefix('crebee-agent')
+            ->middleware(['crebee.agent'])
+            ->group(function (): void {
+                Route::post('heartbeat', [CrebeeAgentController::class, 'heartbeat']);
+                Route::post('accounts/sync', [CrebeeAgentController::class, 'syncAccounts']);
+                Route::get('jobs/next', [CrebeeAgentController::class, 'nextJob']);
+                Route::post('jobs/{job}/accepted', [CrebeeAgentController::class, 'accepted'])
+                    ->whereNumber('job');
+                Route::post('jobs/{job}/events', [CrebeeAgentController::class, 'events'])
+                    ->whereNumber('job');
+                Route::post('jobs/{job}/finished', [CrebeeAgentController::class, 'finished'])
+                    ->whereNumber('job');
+                Route::post('jobs/{job}/failed', [CrebeeAgentController::class, 'failed'])
+                    ->whereNumber('job');
+            });
     });

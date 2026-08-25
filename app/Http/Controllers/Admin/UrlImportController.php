@@ -3,21 +3,32 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\ProcessUrlImportJob;
+use App\Models\Admin;
 use App\Models\KeywordLibrary;
 use App\Models\KnowledgeBase;
+use App\Models\PlatformPlan;
 use App\Models\TitleLibrary;
 use App\Models\UrlImportJob;
 use App\Models\UrlImportJobLog;
+use App\Services\Billing\AdminResourceQuotaService;
 use App\Services\GeoFlow\UrlImportProcessingService;
+use App\Support\AiConfigurationScope;
+use App\Support\CurrentSite;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 class UrlImportController extends Controller
 {
-    public function __construct(private readonly UrlImportProcessingService $urlImportProcessingService) {}
+    public function __construct(
+        private readonly UrlImportProcessingService $urlImportProcessingService,
+        private readonly AdminResourceQuotaService $quotaService,
+        private readonly AiConfigurationScope $aiConfigurationScope,
+    ) {}
 
     public function index(): View
     {
@@ -27,6 +38,7 @@ class UrlImportController extends Controller
             'stats' => $this->loadStats(),
             'aiModelReady' => $this->urlImportProcessingService->hasReadyAnalysisModel(),
             'aiModelConfigUrl' => route('admin.ai-models.index'),
+            'canManageAiConfig' => $this->canManageAiConfig(),
         ]);
     }
 
@@ -51,13 +63,27 @@ class UrlImportController extends Controller
         try {
             $this->urlImportProcessingService->assertAnalysisModelReady();
         } catch (\Throwable $exception) {
-            return redirect()
-                ->route('admin.ai-models.index')
+            $redirect = $this->canManageAiConfig()
+                ? redirect()->route('admin.ai-models.index')
+                : back();
+
+            return $redirect
                 ->withInput()
-                ->withErrors(['ai_model' => $exception->getMessage()]);
+                ->withErrors(['ai_model' => $this->aiModelMissingMessage($exception)]);
+        }
+        $siteId = (int) (app(CurrentSite::class)->id() ?? 0);
+        $admin = Auth::guard('admin')->user();
+        if ($siteId > 0 && ! ($admin instanceof Admin && $admin->isSuperAdmin())) {
+            try {
+                $this->quotaService->assertCanUse($this->currentAdminId($admin), $siteId, PlatformPlan::RESOURCE_URL_IMPORTS, 1, $admin instanceof Admin ? $admin : null);
+            } catch (\Throwable $exception) {
+                return back()->withInput()->withErrors(['url' => $exception->getMessage()]);
+            }
         }
 
         $job = UrlImportJob::query()->create([
+            'site_id' => $siteId > 0 ? $siteId : null,
+            'owner_admin_id' => $admin instanceof Admin ? (int) $admin->id : null,
             'url' => $validated['url'],
             'normalized_url' => $normalized['url'],
             'source_domain' => $normalized['host'],
@@ -76,9 +102,20 @@ class UrlImportController extends Controller
             'error_message' => '',
             'created_by' => Auth::guard('admin')->user()?->username ?? '',
         ]);
+        if ($siteId > 0 && ! ($admin instanceof Admin && $admin->isSuperAdmin())) {
+            $this->quotaService->consume($this->currentAdminId($admin), $siteId, PlatformPlan::RESOURCE_URL_IMPORTS, 1, [
+                'actor_admin_id' => $admin instanceof Admin ? (int) $admin->id : null,
+                'subject_type' => UrlImportJob::class,
+                'subject_id' => (int) $job->id,
+                'idempotency_key' => 'url-import:'.(int) $job->id,
+                'remark' => 'URL 采集任务消耗',
+            ]);
+        }
 
         UrlImportJobLog::query()->create([
             'job_id' => $job->id,
+            'site_id' => $siteId > 0 ? $siteId : null,
+            'owner_admin_id' => $admin instanceof Admin ? (int) $admin->id : null,
             'step' => 'queued',
             'level' => 'info',
             'message' => __('admin.url_import.section.new_job_desc'),
@@ -112,7 +149,7 @@ class UrlImportController extends Controller
                 return response()->json($this->statusPayload($job->refresh()), 422);
             }
 
-            if (app()->runningUnitTests()) {
+            if ((string) config('queue.default') === 'sync') {
                 $job = $this->urlImportProcessingService->process($job);
             } else {
                 $job->update([
@@ -123,9 +160,7 @@ class UrlImportController extends Controller
                     'started_at' => $job->started_at ?: now(),
                 ]);
 
-                if (! $this->spawnUrlImportWorker((int) $job->id)) {
-                    $job = $this->urlImportProcessingService->process($job->refresh());
-                }
+                ProcessUrlImportJob::dispatch((int) $job->id)->onQueue('geoflow');
             }
         }
 
@@ -170,6 +205,7 @@ class UrlImportController extends Controller
             'job' => $job,
             'result' => $this->decodeJson((string) $job->result_json),
             'logs' => $job->logs,
+            'canManageAiConfig' => $this->canManageAiConfig(),
         ]);
     }
 
@@ -188,6 +224,52 @@ class UrlImportController extends Controller
         ]);
     }
 
+    public function bulkDelete(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'job_ids' => ['required', 'array', 'min:1'],
+            'job_ids.*' => ['integer', 'min:1'],
+        ]);
+
+        $jobIds = collect($validated['job_ids'] ?? [])
+            ->map(fn ($id): int => (int) $id)
+            ->filter(fn (int $id): bool => $id > 0)
+            ->unique()
+            ->values();
+
+        if ($jobIds->isEmpty()) {
+            return redirect()
+                ->route('admin.url-import.history')
+                ->withErrors(__('admin.url_import_history.bulk_delete.none_selected'));
+        }
+
+        $deletableIds = UrlImportJob::query()
+            ->whereIn('id', $jobIds->all())
+            ->pluck('id')
+            ->map(fn ($id): int => (int) $id)
+            ->all();
+
+        if ($deletableIds === []) {
+            return redirect()
+                ->route('admin.url-import.history')
+                ->withErrors(__('admin.url_import_history.bulk_delete.none_selected'));
+        }
+
+        DB::transaction(function () use ($deletableIds): void {
+            UrlImportJobLog::query()
+                ->whereIn('job_id', $deletableIds)
+                ->delete();
+
+            UrlImportJob::query()
+                ->whereIn('id', $deletableIds)
+                ->delete();
+        });
+
+        return redirect()
+            ->route('admin.url-import.history')
+            ->with('message', __('admin.url_import_history.bulk_delete.success', ['count' => count($deletableIds)]));
+    }
+
     private function loadStats(): array
     {
         return [
@@ -195,6 +277,31 @@ class UrlImportController extends Controller
             'keyword_libraries' => KeywordLibrary::query()->count(),
             'title_libraries' => TitleLibrary::query()->count(),
         ];
+    }
+
+    private function currentAdminId(mixed $admin): int
+    {
+        if (! $admin instanceof Admin || (int) $admin->id <= 0) {
+            abort(403);
+        }
+
+        return (int) $admin->id;
+    }
+
+    private function canManageAiConfig(): bool
+    {
+        $admin = Auth::guard('admin')->user();
+
+        return $admin instanceof Admin && $this->aiConfigurationScope->canManage($admin);
+    }
+
+    private function aiModelMissingMessage(\Throwable $exception): string
+    {
+        if ($this->canManageAiConfig()) {
+            return $exception->getMessage();
+        }
+
+        return __('admin.url_import.error.ai_config_contact_admin');
     }
 
     /**
@@ -209,32 +316,6 @@ class UrlImportController extends Controller
         $decoded = json_decode($value, true);
 
         return is_array($decoded) ? $decoded : [];
-    }
-
-    private function spawnUrlImportWorker(int $jobId): bool
-    {
-        if (! function_exists('exec')) {
-            return false;
-        }
-
-        $phpBinary = PHP_BINARY ?: 'php';
-        if (str_contains(basename($phpBinary), 'php-fpm')) {
-            $phpBinary = 'php';
-        }
-
-        $command = sprintf(
-            '%s %s geoflow:process-url-import %d > %s 2>&1 & echo $!',
-            escapeshellarg($phpBinary),
-            escapeshellarg(base_path('artisan')),
-            $jobId,
-            escapeshellarg(storage_path('logs/url-import-worker-'.$jobId.'.log'))
-        );
-
-        $output = [];
-        $exitCode = 0;
-        exec($command, $output, $exitCode);
-
-        return $exitCode === 0;
     }
 
     /**
@@ -256,7 +337,7 @@ class UrlImportController extends Controller
         return [
             'id' => (int) $job->id,
             'status' => (string) $job->status,
-            'status_label' => __('admin.url_import_history.status.' . $job->status),
+            'status_label' => __('admin.url_import_history.status.'.$job->status),
             'current_step' => $currentStep,
             'stored_step' => $storedStep,
             'progress_percent' => (int) $job->progress_percent,

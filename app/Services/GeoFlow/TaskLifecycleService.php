@@ -13,8 +13,11 @@ use App\Models\Prompt;
 use App\Models\Task;
 use App\Models\TaskRun;
 use App\Models\TaskSchedule;
+use App\Models\Title;
 use App\Models\TitleLibrary;
+use App\Support\AiConfigurationScope;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Throwable;
@@ -40,7 +43,8 @@ class TaskLifecycleService
     public function __construct(
         private JobQueueService $queueService,
         private TaskMonitoringQueryService $taskMonitoringQueryService,
-        private TaskRealtimeBroadcastService $taskRealtimeBroadcastService
+        private TaskRealtimeBroadcastService $taskRealtimeBroadcastService,
+        private AiConfigurationScope $aiConfigurationScope
     ) {}
 
     /**
@@ -80,8 +84,11 @@ class TaskLifecycleService
             $task = Task::query()->create([
                 'name' => $normalized['name'],
                 'title_library_id' => $normalized['title_library_id'],
+                'fixed_title_id' => $normalized['fixed_title_id'],
                 'image_library_id' => $normalized['image_library_id'],
+                'image_mode' => $normalized['image_mode'],
                 'image_count' => $normalized['image_count'],
+                'ai_image_model_id' => $normalized['ai_image_model_id'],
                 'prompt_id' => $normalized['prompt_id'],
                 'ai_model_id' => $normalized['ai_model_id'],
                 'need_review' => $normalized['need_review'],
@@ -94,6 +101,8 @@ class TaskLifecycleService
                 'is_loop' => $normalized['is_loop'],
                 'model_selection_mode' => $normalized['model_selection_mode'],
                 'status' => $normalized['status'],
+                'publish_scope' => $normalized['publish_scope'],
+                'next_publish_at' => $normalized['next_publish_at'],
                 'knowledge_base_id' => $normalized['knowledge_base_id'],
                 'category_mode' => $normalized['category_mode'],
                 'fixed_category_id' => $normalized['fixed_category_id'],
@@ -104,6 +113,8 @@ class TaskLifecycleService
 
             if ($normalized['status'] === 'active') {
                 TaskSchedule::query()->create([
+                    'site_id' => (int) ($task->site_id ?? 0) > 0 ? (int) $task->site_id : null,
+                    'owner_admin_id' => (int) ($task->owner_admin_id ?? 0) > 0 ? (int) $task->owner_admin_id : null,
                     'task_id' => $taskId,
                     'next_run_time' => now()->addMinute(),
                 ]);
@@ -244,7 +255,14 @@ class TaskLifecycleService
      */
     public function startTask(int $taskId, bool $enqueueNow = false): array
     {
-        $this->ensureTaskExists($taskId);
+        $task = Task::query()->whereKey($taskId)->first(['id', 'status']);
+        if (! $task) {
+            throw new ApiException('task_not_found', '任务不存在', 404);
+        }
+        if ((string) ($task->status ?? '') === 'completed') {
+            throw new ApiException('task_completed', '任务已完成，不能再次启动', 409);
+        }
+
         DB::beginTransaction();
         try {
             // 手动“立即执行”场景下，不把 next_run_at 强行置为 now，
@@ -440,6 +458,7 @@ class TaskLifecycleService
 
         $referenceMap = [
             'title_library_id' => ['model' => TitleLibrary::class, 'message' => '选择的标题库不存在', 'required' => ! $isUpdate],
+            'fixed_title_id' => ['model' => Title::class, 'message' => '选择的标题不存在', 'required' => false],
             'image_library_id' => ['model' => ImageLibrary::class, 'message' => '选择的图片库不存在', 'required' => false],
             'prompt_id' => ['model' => Prompt::class, 'message' => '选择的内容提示词不存在', 'required' => ! $isUpdate, 'prompt_content' => true],
             'ai_model_id' => ['model' => AiModel::class, 'message' => '选择的AI模型不存在或未激活', 'required' => ! $isUpdate, 'ai_active_chat' => true],
@@ -474,10 +493,15 @@ class TaskLifecycleService
             $exists = false;
             // prompt 与 ai_model 的校验规则与普通外键不同，这里单独处理业务约束。
             if (! empty($config['prompt_content'])) {
-                $exists = Prompt::query()->whereKey($id)->where('type', 'content')->exists();
+                $exists = $this->aiConfigurationScope->applyCurrentConsumerScope(
+                    Prompt::query()->withoutGlobalScope('current_site'),
+                    'prompts.owner_admin_id'
+                )->whereKey($id)->where('type', 'content')->whereNull('site_id')->exists();
             } elseif (! empty($config['ai_active_chat'])) {
-                $exists = AiModel::query()
-                    ->whereKey($id)
+                $exists = $this->aiConfigurationScope->applyCurrentConsumerScope(
+                    AiModel::query()->withoutGlobalScope('current_site'),
+                    'ai_models.owner_admin_id'
+                )->whereKey($id)
                     ->where('status', 'active')
                     ->where(function ($q) {
                         $q->whereNull('model_type')
@@ -496,6 +520,16 @@ class TaskLifecycleService
             }
         }
 
+        if (($output['fixed_title_id'] ?? null) !== null && ($output['title_library_id'] ?? null) !== null) {
+            $fixedTitleBelongsToLibrary = Title::query()
+                ->whereKey((int) $output['fixed_title_id'])
+                ->where('library_id', (int) $output['title_library_id'])
+                ->exists();
+            if (! $fixedTitleBelongsToLibrary) {
+                $fieldErrors['fixed_title_id'] = '选择的标题不属于当前标题库';
+            }
+        }
+
         $flagFields = ['need_review', 'auto_keywords', 'auto_description', 'is_loop'];
         foreach ($flagFields as $field) {
             if (array_key_exists($field, $data)) {
@@ -506,15 +540,80 @@ class TaskLifecycleService
         }
 
         if (array_key_exists('image_count', $data)) {
-            $output['image_count'] = max(0, (int) $data['image_count']);
+            $output['image_count'] = min(5, max(0, (int) $data['image_count']));
         } elseif (! $isUpdate) {
             $output['image_count'] = 0;
+        }
+
+        if (array_key_exists('image_mode', $data)) {
+            $imageMode = trim((string) $data['image_mode']);
+            if (! in_array($imageMode, ['none', 'library', 'ai'], true)) {
+                $fieldErrors['image_mode'] = '图片模式无效';
+            } else {
+                $output['image_mode'] = $imageMode;
+            }
+        } elseif (! $isUpdate) {
+            $output['image_mode'] = 'library';
+        }
+
+        if (array_key_exists('ai_image_model_id', $data)) {
+            $imageModelId = (int) $data['ai_image_model_id'];
+            if ($imageModelId > 0) {
+                $imageModelExists = $this->aiConfigurationScope->applyCurrentConsumerScope(
+                    AiModel::query()->withoutGlobalScope('current_site'),
+                    'ai_models.owner_admin_id'
+                )->whereKey($imageModelId)
+                    ->where('status', 'active')
+                    ->where('model_type', 'image')
+                    ->exists();
+                if ($imageModelExists) {
+                    $output['ai_image_model_id'] = $imageModelId;
+                } else {
+                    $fieldErrors['ai_image_model_id'] = '选择的AI图片模型不存在或未激活';
+                }
+            } else {
+                $output['ai_image_model_id'] = null;
+            }
+        } elseif (! $isUpdate) {
+            $output['ai_image_model_id'] = null;
+        }
+
+        $effectiveImageMode = (string) ($output['image_mode'] ?? ($data['image_mode'] ?? 'library'));
+        if ($effectiveImageMode === 'none') {
+            $output['image_count'] = 0;
+            $output['image_library_id'] = null;
+            $output['ai_image_model_id'] = null;
+        } elseif ($effectiveImageMode === 'library') {
+            $output['ai_image_model_id'] = null;
+        } elseif ($effectiveImageMode === 'ai') {
+            $output['image_library_id'] = null;
+            if ((int) ($output['image_count'] ?? 0) <= 0) {
+                $fieldErrors['image_count'] = 'AI配图模式下至少生成1张图片';
+            }
+            if (($output['ai_image_model_id'] ?? null) === null) {
+                $fieldErrors['ai_image_model_id'] = 'AI配图模式下必须选择图片模型';
+            }
         }
 
         if (array_key_exists('publish_interval', $data)) {
             $output['publish_interval'] = max(60, (int) $data['publish_interval']);
         } elseif (! $isUpdate) {
             $output['publish_interval'] = 3600;
+        }
+
+        if (array_key_exists('next_publish_at', $data)) {
+            $nextPublishAt = $data['next_publish_at'];
+            if ($nextPublishAt === null || trim((string) $nextPublishAt) === '') {
+                $output['next_publish_at'] = null;
+            } else {
+                try {
+                    $output['next_publish_at'] = Carbon::parse((string) $nextPublishAt)->toDateTimeString();
+                } catch (Throwable) {
+                    $fieldErrors['next_publish_at'] = '首次发布时间无效';
+                }
+            }
+        } elseif (! $isUpdate) {
+            $output['next_publish_at'] = null;
         }
 
         if (array_key_exists('draft_limit', $data)) {
@@ -564,6 +663,17 @@ class TaskLifecycleService
             }
         } elseif (! $isUpdate) {
             $output['status'] = 'active';
+        }
+
+        if (array_key_exists('publish_scope', $data)) {
+            $publishScope = trim((string) $data['publish_scope']);
+            if (! in_array($publishScope, ['local_and_distribution', 'distribution_only', 'local_only'], true)) {
+                $fieldErrors['publish_scope'] = '发布范围无效';
+            } else {
+                $output['publish_scope'] = $publishScope;
+            }
+        } elseif (! $isUpdate) {
+            $output['publish_scope'] = 'local_and_distribution';
         }
 
         $effectiveCategoryMode = $output['category_mode'] ?? (($data['category_mode'] ?? 'smart') ?: 'smart');

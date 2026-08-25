@@ -3,6 +3,7 @@
 namespace App\Support\Site;
 
 use App\Models\SiteSetting;
+use App\Support\CurrentSite;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
 
@@ -24,7 +25,9 @@ final class SiteSettingsBag
             return [];
         }
 
-        return Cache::remember(self::CACHE_KEY, self::CACHE_TTL_SECONDS, static function (): array {
+        $cacheKey = self::cacheKey();
+
+        return Cache::remember($cacheKey, self::CACHE_TTL_SECONDS, static function (): array {
             /** @var array<string, string> $map */
             $map = SiteSetting::query()
                 ->pluck('setting_value', 'setting_key')
@@ -47,5 +50,15 @@ final class SiteSettingsBag
     public static function forget(): void
     {
         Cache::forget(self::CACHE_KEY);
+        Cache::forget(self::cacheKey());
+    }
+
+    private static function cacheKey(): string
+    {
+        $siteId = app(CurrentSite::class)->id();
+
+        return $siteId !== null && $siteId > 0
+            ? self::CACHE_KEY.':site:'.$siteId
+            : self::CACHE_KEY;
     }
 }

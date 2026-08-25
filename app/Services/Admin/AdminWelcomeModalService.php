@@ -22,7 +22,6 @@ class AdminWelcomeModalService
     {
         $welcomeState = $this->resolveWelcomeState();
         $shouldAutoOpen = $this->prepareAutoOpen($admin, $welcomeState);
-        $admin->refresh();
 
         $copy = ($welcomeState['mode'] ?? 'intro') === 'update'
             ? $this->buildUpdateCopy($welcomeState)
@@ -60,7 +59,7 @@ class AdminWelcomeModalService
      */
     private function resolveWelcomeState(): array
     {
-        $introVersion = (string) config('geoflow.welcome_intro_version', '1.2.0');
+        $introVersion = (string) config('geoflow.welcome_intro_version', '2.0');
         $updateState = $this->updateMetadataService->fetchState($introVersion);
 
         if (! empty($updateState['is_update_available']) && empty($updateState['is_ignored'])) {
@@ -83,7 +82,7 @@ class AdminWelcomeModalService
      */
     private function welcomeVersionKey(array $welcomeState): string
     {
-        return (string) ($welcomeState['version'] ?? ('intro:'.config('geoflow.welcome_intro_version', '1.2.0')));
+        return (string) ($welcomeState['version'] ?? ('intro:'.config('geoflow.welcome_intro_version', '2.0')));
     }
 
     /**
@@ -93,6 +92,10 @@ class AdminWelcomeModalService
      */
     private function prepareAutoOpen(Admin $admin, array $welcomeState): bool
     {
+        if (($welcomeState['mode'] ?? 'intro') === 'intro') {
+            return false;
+        }
+
         $versionKey = $this->welcomeVersionKey($welcomeState);
         $seen = (string) ($admin->welcome_seen_version ?? '');
         $shouldAutoOpen = $seen !== $versionKey;

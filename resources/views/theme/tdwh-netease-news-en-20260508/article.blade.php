@@ -90,11 +90,15 @@
                 @endif
 
                 @if($stickyAd)
-                    <section class="ne-ad-slot">
-                        @if($stickyAd->title)
-                            <h2>{{ $stickyAd->title }}</h2>
+                    <section class="ne-ad-slot" data-ad-id="{{ $stickyAd['id'] }}">
+                        @if($stickyAd['badge'] !== '')
+                            <div class="ne-ad-slot__badge">{{ $stickyAd['badge'] }}</div>
                         @endif
-                        {!! $stickyAd->content_html !!}
+                        @if($stickyAd['title'] !== '')
+                            <h2>{{ $stickyAd['title'] }}</h2>
+                        @endif
+                        <p>{{ $stickyAd['copy'] }}</p>
+                        <a href="{{ $stickyAd['button_url'] }}" class="ne-ad-slot__cta">{{ $stickyAd['button_text'] }}</a>
                     </section>
                 @endif
             </article>

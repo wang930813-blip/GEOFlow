@@ -1,0 +1,359 @@
+/* Shared responsive configuration for both static report pages. */
+:root {
+  --report-shell-pad: clamp(8px, 1.6vw, 18px);
+  --report-section-gap: clamp(10px, 1.6vw, 18px);
+  --report-card-pad: clamp(12px, 2vw, 24px);
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  overflow-x: hidden;
+}
+
+.report-header,
+.company-box,
+.brand-strip,
+.main_inner,
+.page,
+.panel,
+.data_analysis,
+.analysis_chart {
+  max-width: 100%;
+}
+
+.table-wrap,
+.data_analysis,
+.competitor_area {
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 1440px) {
+  .page {
+    padding-left: var(--report-shell-pad);
+    padding-right: var(--report-shell-pad);
+  }
+
+  .competitiveness_analysis_report_web main {
+    padding-left: var(--report-shell-pad);
+    padding-right: var(--report-shell-pad);
+  }
+}
+
+@media (max-width: 1180px) {
+  .report-header {
+    grid-template-columns: 1fr !important;
+    justify-items: center;
+    gap: 10px;
+    height: auto !important;
+    min-height: 0 !important;
+    padding: 12px var(--report-shell-pad) !important;
+  }
+
+  .report-header .brand-strip,
+  .report-header .report-title,
+  .report-header .company-box,
+  .brand-strip,
+  .report-title,
+  .company-box {
+    position: static !important;
+    transform: none !important;
+  }
+
+  .report-title {
+    width: auto !important;
+    max-width: 100%;
+    text-align: center;
+    font-size: clamp(24px, 5.2vw, 38px) !important;
+    line-height: 1.15 !important;
+    white-space: normal;
+  }
+
+  .company-box {
+    width: min(100%, 760px) !important;
+    height: auto !important;
+    flex-wrap: wrap;
+    justify-content: center !important;
+  }
+
+  .dashboard-grid,
+  .overview_content,
+  .chart_grid,
+  .sentiment_grid,
+  .aisearch_row > .arco-row {
+    grid-template-columns: 1fr !important;
+  }
+
+  .brand_intro2 {
+    min-height: 0 !important;
+  }
+}
+
+@media (max-width: 860px) {
+  body {
+    min-width: 0 !important;
+  }
+
+  .page {
+    padding: 10px var(--report-shell-pad) 28px !important;
+  }
+
+  .competitiveness_analysis_report_web {
+    min-width: 0 !important;
+    overflow-x: hidden !important;
+  }
+
+  .competitiveness_analysis_report_web main {
+    margin: 0 !important;
+    padding: 0 var(--report-shell-pad) 28px !important;
+  }
+
+  .main_inner {
+    padding: clamp(10px, 2.6vw, 16px) !important;
+  }
+
+  .main_inner > section,
+  .panel {
+    margin-bottom: var(--report-section-gap) !important;
+    padding: clamp(36px, 7vw, 48px) clamp(10px, 2.8vw, 16px) clamp(12px, 3vw, 18px) !important;
+  }
+
+  .section-title,
+  .competitiveness_analysis_com_title {
+    max-width: calc(100vw - 32px);
+    font-size: clamp(16px, 5.2vw, 22px) !important;
+  }
+
+  .report-header .brand-logo,
+  .brand-logo {
+    width: min(260px, 70vw) !important;
+    height: auto !important;
+    max-height: 48px;
+  }
+
+  .company-meta {
+    width: 100% !important;
+    min-width: 0 !important;
+    flex: 1 1 100% !important;
+    white-space: normal !important;
+    text-align: center !important;
+    font-size: clamp(12px, 3.4vw, 14px) !important;
+  }
+
+  .report-menu,
+  .report-menu summary,
+  .report-menu-list {
+    width: 100% !important;
+    min-width: 0 !important;
+    flex-basis: auto !important;
+  }
+
+  .report-menu-list {
+    left: 0 !important;
+    right: 0 !important;
+  }
+
+  .metric-grid,
+  .platform-filter,
+  .report-summary-row,
+  .arco-row {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+
+  .arco-col {
+    width: 100% !important;
+    max-width: 100% !important;
+    flex: none !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
+  .competitiveness_analysis_report_summary_card,
+  .summary_card,
+  .metric-card {
+    width: 100% !important;
+    min-width: 0 !important;
+    height: auto !important;
+  }
+
+  .brand_intro2 {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    height: auto !important;
+    padding: clamp(14px, 4vw, 20px) !important;
+  }
+
+  .brand_intro2 .left {
+    position: static !important;
+  }
+
+  .brand_intro2 .photo {
+    width: 100% !important;
+    height: auto !important;
+    max-height: 220px;
+    aspect-ratio: 16 / 7;
+  }
+
+  .brand_intro2 .right {
+    width: 100% !important;
+    max-width: none !important;
+    margin-top: 12px !important;
+    padding-top: 0 !important;
+  }
+
+  .aisearch_left,
+  .aisearch_right,
+  .sentiment-overview-card,
+  .sentiment_grid .chart2 {
+    height: auto !important;
+    min-height: 0 !important;
+  }
+
+  .aisearch_left_inner {
+    width: 100% !important;
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    justify-items: center !important;
+  }
+
+  .right_card,
+  .right_card .card {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .aisearch_right {
+    padding: 18px 48px 18px 52px !important;
+  }
+
+  .chart_grid {
+    gap: 12px !important;
+  }
+
+  .chart,
+  .chart2,
+  .score_chart {
+    width: 100% !important;
+  }
+
+  .platform_table,
+  .competitor_table,
+  table {
+    min-width: 760px !important;
+  }
+
+  .table-wrap,
+  .data_analysis:has(.platform_table),
+  .data_analysis.competitor_area {
+    overflow-x: auto !important;
+  }
+}
+
+@media (max-width: 600px) {
+  :root {
+    --report-shell-pad: 8px;
+  }
+
+  .report-title {
+    font-size: clamp(22px, 7vw, 30px) !important;
+  }
+
+  .desc {
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+    font-size: 12px !important;
+    line-height: 1.5 !important;
+  }
+
+  .platform_table,
+  .competitor_table,
+  table {
+    min-width: 680px !important;
+  }
+
+  .keyword-cloud,
+  .metric-cards,
+  .trend-panel,
+  .report-section {
+    padding: 12px !important;
+  }
+
+  .cloud-stage {
+    height: clamp(220px, 62vw, 300px) !important;
+  }
+
+  .cloud-word {
+    max-width: 86vw;
+    white-space: normal;
+  }
+
+  .collection-row {
+    grid-template-columns: 1fr !important;
+  }
+
+  .search-filter,
+  .company-box,
+  .trend-head,
+  .collection-head {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+
+  .date-range {
+    grid-template-columns: 1fr !important;
+  }
+
+  .sentiment-overview-card .sentiment-donut {
+    width: min(260px, 78vw) !important;
+    flex-basis: auto !important;
+  }
+
+  .sentiment-overview-card .chart-legend {
+    flex-wrap: wrap;
+    gap: 12px !important;
+    font-size: clamp(14px, 4.6vw, 18px) !important;
+  }
+
+  .sentiment_grid .chart2 .title2 {
+    padding-left: 18px !important;
+    font-size: clamp(18px, 5vw, 22px) !important;
+  }
+
+  .sentiment_grid .public-opinion-share-chart {
+    padding: 8px 22px 20px 18px !important;
+  }
+
+  .public-opinion-share-item .left,
+  .public-opinion-share-item .right {
+    font-size: clamp(13px, 4vw, 16px) !important;
+  }
+}
+
+@media (max-width: 390px) {
+  .report-header {
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+  }
+
+  .main_inner > section,
+  .panel {
+    border-radius: 6px !important;
+  }
+
+  .competitiveness_analysis_com_title {
+    width: min(260px, calc(100vw - 26px)) !important;
+  }
+
+  .platform_table,
+  .competitor_table,
+  table {
+    min-width: 620px !important;
+  }
+}

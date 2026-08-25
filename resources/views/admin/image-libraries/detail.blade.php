@@ -19,10 +19,31 @@
     if ($urlLabel === 'admin.image_detail.url_label') {
         $urlLabel = 'URL';
     }
+    $copyUrlLabel = __('admin.image_detail.copy_url');
+    if ($copyUrlLabel === 'admin.image_detail.copy_url') {
+        $copyUrlLabel = '复制 URL';
+    }
+    $copiedLabel = __('admin.message.copied');
+    if ($copiedLabel === 'admin.message.copied') {
+        $copiedLabel = '已复制';
+    }
+    $copyFailedLabel = __('admin.message.copy_failed');
+    if ($copyFailedLabel === 'admin.message.copy_failed') {
+        $copyFailedLabel = '复制失败，请手动复制 URL';
+    }
 @endphp
 
 @section('content')
     <div class="px-4 sm:px-0">
+        <div
+            class="fixed right-4 top-4 z-[70] hidden max-w-sm rounded-md border px-4 py-3 text-sm font-medium shadow-lg"
+            data-image-copy-toast
+            data-copy-success-message="{{ $copiedLabel }}"
+            data-copy-failed-message="{{ $copyFailedLabel }}"
+            role="status"
+            aria-live="polite"
+        ></div>
+
         <div class="mb-8">
             <div class="flex items-center justify-between">
                 <div class="flex items-center space-x-4">
@@ -47,7 +68,7 @@
             </div>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <div id="image-stats" class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
             <div class="bg-white overflow-hidden shadow rounded-lg">
                 <div class="p-5">
                     <div class="flex items-center">
@@ -138,7 +159,7 @@
             </div>
         </div>
 
-        <div class="bg-white shadow rounded-lg">
+        <div id="image-list-card" class="bg-white shadow rounded-lg">
             <div class="px-6 py-4 border-b border-gray-200">
                 <div class="flex items-center justify-between">
                     <h3 class="text-lg font-medium text-gray-900">
@@ -191,16 +212,22 @@
                                     class="w-full aspect-square object-cover"
                                     onclick="showImageModal(@js($imageUrl), @js((string) ($image->original_name ?? '')), '{{ (int) ($image->width ?? 0) }}x{{ (int) ($image->height ?? 0) }}', @js($formatSize((int) ($image->file_size ?? 0))), @js($imageUrl))"
                                 >
-                                <div class="image-overlay absolute inset-0 bg-black/70 text-white flex flex-col justify-center items-center opacity-0 transition-opacity">
+                                <div class="image-overlay pointer-events-none absolute inset-0 bg-black/70 text-white flex flex-col justify-center items-center opacity-0 transition-opacity">
                                     <p class="text-xs text-center mb-2 px-2 break-all">{{ (string) ($image->original_name ?? '') }}</p>
                                     <p class="text-xs text-gray-300">{{ (int) ($image->width ?? 0) }}x{{ (int) ($image->height ?? 0) }}</p>
                                     <p class="text-xs text-gray-300">{{ $formatSize((int) ($image->file_size ?? 0)) }}</p>
                                 </div>
-                                <div class="border-t border-gray-100 bg-white p-2">
+                                <div class="relative z-10 border-t border-gray-100 bg-white p-2">
                                     <div class="text-[11px] font-medium text-gray-500">{{ $urlLabel }}</div>
-                                    <a href="{{ $imageUrl }}" target="_blank" rel="noopener noreferrer" class="mt-1 block truncate text-xs text-blue-600 hover:text-blue-800" title="{{ $imageUrl }}">
-                                        {{ $imageUrl }}
-                                    </a>
+                                    <div class="mt-1 flex items-center gap-2">
+                                        <a href="{{ $imageUrl }}" target="_blank" rel="noopener noreferrer" class="min-w-0 flex-1 truncate text-xs text-blue-600 hover:text-blue-800" title="{{ $imageUrl }}">
+                                            {{ $imageUrl }}
+                                        </a>
+                                        <button type="button" data-copy-image-url="{{ $imageUrl }}" class="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-gray-200 bg-white px-2 text-[11px] font-medium text-gray-600 hover:border-purple-200 hover:bg-purple-50 hover:text-purple-700" title="{{ $copyUrlLabel }}">
+                                            <i data-lucide="copy" class="h-3.5 w-3.5"></i>
+                                            <span data-copy-label>{{ $copyUrlLabel }}</span>
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         @endforeach
@@ -307,7 +334,13 @@
                     <div id="image-info" class="mt-4 text-sm text-gray-600"></div>
                     <div class="mt-3 rounded-md bg-gray-50 px-3 py-2 text-left">
                         <div class="text-xs font-medium text-gray-500">{{ $urlLabel }}</div>
-                        <a id="image-url" href="#" target="_blank" rel="noopener noreferrer" class="mt-1 block break-all text-sm text-blue-600 hover:text-blue-800"></a>
+                        <div class="mt-1 flex items-start gap-2">
+                            <a id="image-url" href="#" target="_blank" rel="noopener noreferrer" class="min-w-0 flex-1 break-all text-sm text-blue-600 hover:text-blue-800"></a>
+                            <button type="button" id="image-modal-copy-url" data-copy-image-url="" class="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border border-gray-200 bg-white px-2 text-xs font-medium text-gray-600 hover:border-purple-200 hover:bg-purple-50 hover:text-purple-700" title="{{ $copyUrlLabel }}">
+                                <i data-lucide="copy" class="h-4 w-4"></i>
+                                <span data-copy-label>{{ $copyUrlLabel }}</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -347,12 +380,125 @@
                 imageUrl.href = url;
                 imageUrl.textContent = url;
             }
+            const copyButton = document.getElementById('image-modal-copy-url');
+            if (copyButton) {
+                copyButton.dataset.copyImageUrl = url;
+            }
             document.getElementById('image-modal').classList.remove('hidden');
         }
 
         function hideImageModal() {
             document.getElementById('image-modal').classList.add('hidden');
         }
+
+        async function copyTextToClipboard(value) {
+            if (navigator.clipboard && window.isSecureContext) {
+                try {
+                    await navigator.clipboard.writeText(value);
+                    return true;
+                } catch (error) {
+                    // Fall back below for browsers that expose the API but deny permission.
+                }
+            }
+
+            const textarea = document.createElement('textarea');
+            textarea.value = value;
+            textarea.setAttribute('readonly', 'readonly');
+            textarea.style.position = 'fixed';
+            textarea.style.top = '0';
+            textarea.style.left = '-9999px';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.focus();
+            textarea.select();
+            textarea.setSelectionRange(0, textarea.value.length);
+
+            let copied = false;
+            try {
+                copied = document.execCommand('copy');
+            } catch (error) {
+                copied = false;
+            } finally {
+                textarea.remove();
+            }
+
+            return copied;
+        }
+
+        let imageCopyToastTimer = null;
+
+        function imageCopyMessage(type) {
+            const toast = document.querySelector('[data-image-copy-toast]');
+            if (type === 'success') {
+                return toast?.dataset.copySuccessMessage || @json($copiedLabel);
+            }
+
+            return toast?.dataset.copyFailedMessage || @json($copyFailedLabel);
+        }
+
+        function showImageCopyToast(message, type) {
+            const toast = document.querySelector('[data-image-copy-toast]');
+            if (!toast) {
+                alert(message);
+                return;
+            }
+
+            if (imageCopyToastTimer) {
+                window.clearTimeout(imageCopyToastTimer);
+            }
+
+            toast.textContent = message;
+            toast.className = [
+                'fixed right-4 top-4 z-[70] max-w-sm rounded-md border px-4 py-3 text-sm font-medium shadow-lg',
+                type === 'success'
+                    ? 'border-green-200 bg-green-50 text-green-700'
+                    : 'border-red-200 bg-red-50 text-red-700',
+            ].join(' ');
+
+            imageCopyToastTimer = window.setTimeout(() => {
+                toast.classList.add('hidden');
+            }, 2400);
+        }
+
+        async function copyImageUrl(trigger, url) {
+            const value = String(url || '').trim();
+            if (value === '') {
+                showImageCopyToast(imageCopyMessage('error'), 'error');
+                return;
+            }
+
+            const copied = await copyTextToClipboard(value);
+            if (!copied) {
+                showImageCopyToast(imageCopyMessage('error'), 'error');
+                window.prompt(imageCopyMessage('error'), value);
+                return;
+            }
+
+            showImageCopyToast(imageCopyMessage('success'), 'success');
+
+            const label = trigger?.querySelector('[data-copy-label]');
+            if (!label) {
+                return;
+            }
+
+            const previousText = label.textContent;
+            label.textContent = @json($copiedLabel);
+            trigger.disabled = true;
+            window.setTimeout(() => {
+                label.textContent = previousText;
+                trigger.disabled = false;
+            }, 1200);
+        }
+
+        document.addEventListener('click', function (event) {
+            const trigger = event.target.closest('[data-copy-image-url]');
+            if (!trigger) {
+                return;
+            }
+
+            event.preventDefault();
+            copyImageUrl(trigger, trigger.dataset.copyImageUrl || '');
+        });
 
         function toggleBatchActions() {
             const batchActions = document.getElementById('batch-actions');
@@ -384,20 +530,32 @@
             }
         }
 
-        document.querySelectorAll('.image-checkbox').forEach((checkbox) => {
-            checkbox.addEventListener('change', function () {
-                const imageItem = this.closest('.image-item');
-                if (this.checked) {
-                    imageItem?.classList.add('selected');
-                } else {
-                    imageItem?.classList.remove('selected');
+        function bindImageCheckboxes() {
+            document.querySelectorAll('.image-checkbox').forEach((checkbox) => {
+                if (checkbox.dataset.bound === '1') {
+                    return;
                 }
-                updateSelectedCount();
+                checkbox.dataset.bound = '1';
+                checkbox.addEventListener('change', function () {
+                    const imageItem = this.closest('.image-item');
+                    if (this.checked) {
+                        imageItem?.classList.add('selected');
+                    } else {
+                        imageItem?.classList.remove('selected');
+                    }
+                    updateSelectedCount();
+                });
             });
-        });
+        }
 
-        const batchForm = document.getElementById('batch-form');
-        if (batchForm) {
+        bindImageCheckboxes();
+
+        function bindBatchForm() {
+            const batchForm = document.getElementById('batch-form');
+            if (!batchForm || batchForm.dataset.bound === '1') {
+                return;
+            }
+            batchForm.dataset.bound = '1';
             batchForm.addEventListener('submit', function (event) {
                 const selected = document.querySelectorAll('.image-checkbox:checked').length;
                 if (selected === 0) {
@@ -411,6 +569,8 @@
                 }
             });
         }
+
+        bindBatchForm();
 
         const uploadArea = document.getElementById('upload-area');
         const fileInput = document.getElementById('images');
@@ -506,20 +666,77 @@
             setSelectedFiles(this.files);
         });
 
-        uploadForm?.addEventListener('submit', function (event) {
+        function setUploadButtonLoading(isLoading) {
+            if (!uploadBtn) {
+                return;
+            }
+
+            uploadBtn.disabled = isLoading;
+            uploadBtn.innerHTML = isLoading
+                ? '<i data-lucide="loader-2" class="w-4 h-4 mr-2 inline animate-spin"></i>' + @json(__('admin.image_detail.uploading'))
+                : '<i data-lucide="upload" class="w-4 h-4 mr-2 inline"></i>' + @json(__('admin.button.upload'));
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+        }
+
+        async function refreshImageSections() {
+            const response = await fetch(window.location.href, {
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'text/html',
+                },
+                credentials: 'same-origin',
+            });
+            if (!response.ok) {
+                throw new Error('图片列表刷新失败');
+            }
+
+            const html = await response.text();
+            const documentFragment = new DOMParser().parseFromString(html, 'text/html');
+            ['image-stats', 'image-list-card'].forEach((id) => {
+                const fresh = documentFragment.getElementById(id);
+                const current = document.getElementById(id);
+                if (fresh && current) {
+                    current.replaceWith(fresh);
+                }
+            });
+            bindImageCheckboxes();
+            bindBatchForm();
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+        }
+
+        uploadForm?.addEventListener('submit', async function (event) {
+            event.preventDefault();
             const selectedFiles = fileInput?.files ? fileInput.files.length : 0;
             if (selectedFiles === 0) {
-                event.preventDefault();
                 alert(@json(__('admin.image_detail.error.select_images')));
                 return;
             }
 
-            if (uploadBtn) {
-                uploadBtn.disabled = true;
-                uploadBtn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 mr-2 inline animate-spin"></i>' + @json(__('admin.image_detail.uploading'));
-                if (typeof lucide !== 'undefined') {
-                    lucide.createIcons();
+            setUploadButtonLoading(true);
+            try {
+                const response = await fetch(uploadForm.action, {
+                    method: 'POST',
+                    body: new FormData(uploadForm),
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json',
+                    },
+                    credentials: 'same-origin',
+                });
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok || payload.success !== true) {
+                    throw new Error(payload.message || '图片上传失败');
                 }
+
+                hideUploadModal();
+                await refreshImageSections();
+            } catch (error) {
+                alert(error instanceof Error ? error.message : '图片上传失败');
+                setUploadButtonLoading(false);
             }
         });
 

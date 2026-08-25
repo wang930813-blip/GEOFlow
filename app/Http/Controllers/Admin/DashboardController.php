@@ -19,7 +19,9 @@ use App\Models\TaskRun;
 use App\Models\Title;
 use App\Models\TitleLibrary;
 use App\Models\UrlImportJob;
+use App\Support\AdminDisplaySettings;
 use App\Support\AdminWeb;
+use App\Support\CurrentSite;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -32,44 +34,11 @@ class DashboardController extends Controller
 {
     public function index(): View
     {
-        $stats = $this->buildStats();
-        $todayStats = $this->buildTodayStats();
-        $weekStats = $this->buildWeekStats();
-        $categoryDistribution = $this->buildCategoryDistribution();
-        $latestArticles = $this->buildLatestArticles();
-        $articleTrend = $this->buildArticleTrendSeries();
-        $trendChart = $this->buildArticleTrendChartPaths($articleTrend);
-        $performanceStats = $this->buildPerformanceStats(
-            (int) ($stats['completed_tasks'] ?? 0),
-            (int) ($stats['failed_jobs'] ?? 0)
-        );
-        $contentFunnel = $this->buildContentFunnel($stats);
-        $taskHealth = $this->buildTaskHealth();
-        $materialHealth = $this->buildMaterialHealth();
-        $aiHealth = $this->buildAiHealth();
-        $urlImportHealth = $this->buildUrlImportHealth();
-        $popularArticles = $this->buildPopularArticles();
-        $todoItems = $this->buildTodoItems($stats, $materialHealth, $aiHealth, $urlImportHealth);
-
         return view('admin.dashboard', [
             'pageTitle' => __('admin.dashboard.page_title'),
             'activeMenu' => 'dashboard',
             'adminSiteName' => AdminWeb::siteName(),
-            'stats' => $stats,
-            'today_stats' => $todayStats,
-            'week_stats' => $weekStats,
-            'category_distribution' => $categoryDistribution,
-            'latest_articles' => $latestArticles,
-            'article_trend' => $articleTrend,
-            'trend_chart' => $trendChart,
-            'performance_stats' => $performanceStats,
-            'content_funnel' => $contentFunnel,
-            'task_health' => $taskHealth,
-            'material_health' => $materialHealth,
-            'ai_health' => $aiHealth,
-            'url_import_health' => $urlImportHealth,
-            'popular_articles' => $popularArticles,
-            'todo_items' => $todoItems,
+            'adminDisplaySettings' => AdminDisplaySettings::all(),
         ]);
     }
 
@@ -153,9 +122,12 @@ class DashboardController extends Controller
             $out['today_tasks'] = (int) Task::query()
                 ->whereDate('created_at', $today)
                 ->count();
-            $out['today_views'] = (int) DB::table('view_logs')
-                ->whereDate('created_at', $today)
-                ->count();
+            $todayViewsQuery = DB::table('view_logs')->whereDate('created_at', $today);
+            $siteId = app(CurrentSite::class)->id();
+            if ($siteId !== null && Schema::hasColumn('view_logs', 'site_id')) {
+                $todayViewsQuery->where('site_id', $siteId);
+            }
+            $out['today_views'] = (int) $todayViewsQuery->count();
         } catch (\Throwable) {
             // ignore
         }
@@ -479,77 +451,6 @@ class DashboardController extends Controller
         } catch (\Throwable) {
             return [];
         }
-    }
-
-    /**
-     * @param  array<string, int|float>  $stats
-     * @param  array<string, int>  $materialHealth
-     * @param  array{chat_models: int, embedding_models: int, used_today: int, total_used: int, active_models: list<object>}  $aiHealth
-     * @param  array{total: int, running: int, completed: int, failed: int, waiting_import: int, recent_jobs: list<object>}  $urlImportHealth
-     * @return list<array{label: string, value: int, href: string, tone: string}>
-     */
-    private function buildTodoItems(array $stats, array $materialHealth, array $aiHealth, array $urlImportHealth): array
-    {
-        $items = [];
-
-        if ((int) ($stats['failed_jobs'] ?? 0) > 0) {
-            $items[] = [
-                'label' => __('admin.dashboard.todo_failed_jobs'),
-                'value' => (int) ($stats['failed_jobs'] ?? 0),
-                'href' => route('admin.tasks.index'),
-                'tone' => 'red',
-            ];
-        }
-        if ((int) ($stats['pending_review'] ?? 0) > 0) {
-            $items[] = [
-                'label' => __('admin.dashboard.todo_pending_review'),
-                'value' => (int) ($stats['pending_review'] ?? 0),
-                'href' => route('admin.articles.index', ['review_status' => 'pending']),
-                'tone' => 'amber',
-            ];
-        }
-        if ((int) ($aiHealth['chat_models'] ?? 0) === 0) {
-            $items[] = [
-                'label' => __('admin.dashboard.todo_no_chat_model'),
-                'value' => 0,
-                'href' => route('admin.ai-models.index'),
-                'tone' => 'red',
-            ];
-        }
-        if ((int) ($aiHealth['embedding_models'] ?? 0) === 0 && (int) ($materialHealth['knowledge_bases'] ?? 0) > 0) {
-            $items[] = [
-                'label' => __('admin.dashboard.todo_no_embedding_model'),
-                'value' => 0,
-                'href' => route('admin.ai-models.index'),
-                'tone' => 'amber',
-            ];
-        }
-        if ((int) ($materialHealth['unvectorized_chunks'] ?? 0) > 0) {
-            $items[] = [
-                'label' => __('admin.dashboard.todo_unvectorized_chunks'),
-                'value' => (int) ($materialHealth['unvectorized_chunks'] ?? 0),
-                'href' => route('admin.knowledge-bases.index'),
-                'tone' => 'blue',
-            ];
-        }
-        if ((int) ($stats['total_titles'] ?? 0) < 20) {
-            $items[] = [
-                'label' => __('admin.dashboard.todo_low_titles'),
-                'value' => (int) ($stats['total_titles'] ?? 0),
-                'href' => route('admin.title-libraries.index'),
-                'tone' => 'slate',
-            ];
-        }
-        if ((int) ($urlImportHealth['failed'] ?? 0) > 0) {
-            $items[] = [
-                'label' => __('admin.dashboard.todo_url_import_failed'),
-                'value' => (int) ($urlImportHealth['failed'] ?? 0),
-                'href' => route('admin.url-import.history'),
-                'tone' => 'red',
-            ];
-        }
-
-        return array_slice($items, 0, 6);
     }
 
     /**

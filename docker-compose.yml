@@ -1,8 +1,12 @@
 name: geoflow-laravel
 
+x-app-dns: &app-dns
+  - ${DOCKER_DNS_1:-223.5.5.5}
+  - ${DOCKER_DNS_2:-119.29.29.29}
+
 services:
   postgres:
-    image: pgvector/pgvector:pg16
+    image: ${PGVECTOR_IMAGE:-pgvector/pgvector:pg16}
     container_name: geoflow-postgres
     environment:
       POSTGRES_DB: ${DB_DATABASE:-geo_flow}
@@ -20,7 +24,7 @@ services:
     restart: unless-stopped
 
   redis:
-    image: redis:7-alpine
+    image: ${REDIS_IMAGE:-redis:7-alpine}
     container_name: geoflow-redis
     ports:
       - "127.0.0.1:${REDIS_EXPOSE_PORT:-16379}:6379"
@@ -31,10 +35,14 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
+      args:
+        PHP_CLI_IMAGE: ${PHP_CLI_IMAGE:-php:8.4-cli-bookworm}
+        COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}
     container_name: geoflow-init
     working_dir: /var/www/html
     env_file:
       - ./.env
+    dns: *app-dns
     # 交给 entrypoint 执行自动初始化（生成 APP_KEY / migrate / seed）
     command: ["php", "artisan", "about"]
     environment:
@@ -54,10 +62,14 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
+      args:
+        PHP_CLI_IMAGE: ${PHP_CLI_IMAGE:-php:8.4-cli-bookworm}
+        COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}
     container_name: geoflow-app
     working_dir: /var/www/html
     env_file:
       - ./.env
+    dns: *app-dns
     command: ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8080"]
     ports:
       - "${APP_PORT:-18080}:8080"
@@ -73,11 +85,15 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
+      args:
+        PHP_CLI_IMAGE: ${PHP_CLI_IMAGE:-php:8.4-cli-bookworm}
+        COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}
     container_name: geoflow-queue
     working_dir: /var/www/html
     env_file:
       - ./.env
-    command: ["php", "artisan", "queue:work", "redis", "--queue=geoflow,default", "--sleep=1", "--tries=1", "--timeout=300"]
+    dns: *app-dns
+    command: ["php", "artisan", "queue:work", "redis", "--queue=geoflow,distribution,default", "--sleep=1", "--tries=3", "--timeout=${QUEUE_WORKER_TIMEOUT:-1200}"]
     volumes:
       - ./:/var/www/html
     depends_on:
@@ -90,10 +106,14 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
+      args:
+        PHP_CLI_IMAGE: ${PHP_CLI_IMAGE:-php:8.4-cli-bookworm}
+        COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}
     container_name: geoflow-scheduler
     working_dir: /var/www/html
     env_file:
       - ./.env
+    dns: *app-dns
     command: ["php", "artisan", "schedule:work"]
     volumes:
       - ./:/var/www/html
@@ -107,10 +127,14 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
+      args:
+        PHP_CLI_IMAGE: ${PHP_CLI_IMAGE:-php:8.4-cli-bookworm}
+        COMPOSER_PACKAGIST_MIRROR: ${COMPOSER_PACKAGIST_MIRROR:-https://mirrors.aliyun.com/composer/}
     container_name: geoflow-reverb
     working_dir: /var/www/html
     env_file:
       - ./.env
+    dns: *app-dns
     command: ["php", "artisan", "reverb:start", "--host=0.0.0.0", "--port=8080"]
     ports:
       - "${REVERB_EXPOSE_PORT:-18081}:8080"
@@ -120,4 +144,3 @@ services:
       init:
         condition: service_completed_successfully
     restart: unless-stopped
-

@@ -28,7 +28,7 @@ class AdminHeaderNotificationTest extends TestCase
         Cache::flush();
 
         config([
-            'geoflow.app_version' => '1.2.0',
+            'geoflow.app_version' => '2.0',
             'geoflow.update_check_enabled' => true,
             'geoflow.update_metadata_url' => 'https://example.test/version.json',
             'geoflow.update_metadata_cache_ttl_seconds' => 86400,
@@ -36,7 +36,7 @@ class AdminHeaderNotificationTest extends TestCase
 
         Http::fake([
             'https://example.test/version.json' => Http::response([
-                'version' => '1.3.0',
+                'version' => '2.1',
                 'payload' => [
                     'summary_zh' => '测试更新摘要',
                     'changelog_url_zh' => 'https://example.test/changelog',
@@ -50,8 +50,27 @@ class AdminHeaderNotificationTest extends TestCase
             ->get(route('admin.dashboard'))
             ->assertOk()
             ->assertSee('data-update-indicator', false)
-            ->assertSee(__('admin.header.notifications.update_available', ['version' => '1.3.0']))
+            ->assertSee(__('admin.header.notifications.update_available', ['version' => '2.1']))
             ->assertSee('测试更新摘要');
+    }
+
+    public function test_admin_header_hides_update_notification_when_update_check_is_disabled(): void
+    {
+        Cache::flush();
+
+        config([
+            'geoflow.update_check_enabled' => false,
+        ]);
+
+        $admin = $this->createAdmin('disabled_update_admin');
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.dashboard'))
+            ->assertOk()
+            ->assertDontSee('admin-notification-menu', false)
+            ->assertDontSee(__('admin.header.notifications.label'))
+            ->assertDontSee(__('admin.header.notifications.disabled'))
+            ->assertDontSee(__('admin.header.notifications.disabled_desc'));
     }
 
     private function createAdmin(string $username = 'header_admin'): Admin

@@ -27,14 +27,24 @@
             @endforeach
         </div>
 
-        <div class="bg-white shadow rounded-lg overflow-hidden">
-            <div class="px-6 py-4 border-b border-gray-200">
+        <form method="POST" action="{{ route('admin.url-import.bulk-delete') }}" class="bg-white shadow rounded-lg overflow-hidden" onsubmit="return confirm(@js(__('admin.url_import_history.bulk_delete.confirm')));">
+            @csrf
+            <div class="flex flex-col gap-3 px-6 py-4 border-b border-gray-200 sm:flex-row sm:items-center sm:justify-between">
                 <h2 class="text-lg font-medium text-gray-900">{{ __('admin.url_import_history.section.records') }}</h2>
+                @if ($jobs->count() > 0)
+                    <button type="submit" class="inline-flex items-center justify-center rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100">
+                        <i data-lucide="trash-2" class="w-4 h-4 mr-2"></i>
+                        {{ __('admin.url_import_history.bulk_delete.button') }}
+                    </button>
+                @endif
             </div>
             <div class="overflow-x-auto">
                 <table class="min-w-full divide-y divide-gray-200">
                     <thead class="bg-gray-50">
                         <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                <input type="checkbox" class="rounded border-gray-300 text-orange-600 focus:ring-orange-500" data-url-import-select-all>
+                            </th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">URL</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.status.label') }}</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ __('admin.url_import.section.progress') }}</th>
@@ -44,6 +54,9 @@
                     <tbody class="bg-white divide-y divide-gray-200">
                         @forelse ($jobs as $job)
                             <tr>
+                                <td class="px-6 py-4 text-sm text-gray-900">
+                                    <input type="checkbox" name="job_ids[]" value="{{ (int) $job->id }}" class="rounded border-gray-300 text-orange-600 focus:ring-orange-500" data-url-import-row-checkbox>
+                                </td>
                                 <td class="px-6 py-4 text-sm text-gray-900">
                                     <a href="{{ route('admin.url-import.show', ['jobId' => $job->id]) }}" class="font-medium text-blue-600 hover:text-blue-800 break-all">{{ $job->url }}</a>
                                     @if ($job->source_domain)
@@ -56,7 +69,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="4" class="px-6 py-10 text-center text-sm text-gray-500">{{ __('admin.url_import.progress.waiting') }}</td>
+                                <td colspan="5" class="px-6 py-10 text-center text-sm text-gray-500">{{ __('admin.url_import.progress.waiting') }}</td>
                             </tr>
                         @endforelse
                     </tbody>
@@ -65,6 +78,24 @@
             <div class="px-6 py-4 border-t border-gray-200">
                 {{ $jobs->links() }}
             </div>
-        </div>
+        </form>
     </div>
 @endsection
+
+@push('scripts')
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const selectAll = document.querySelector('[data-url-import-select-all]');
+            const checkboxes = Array.from(document.querySelectorAll('[data-url-import-row-checkbox]'));
+            if (!selectAll || checkboxes.length === 0) {
+                return;
+            }
+
+            selectAll.addEventListener('change', function () {
+                checkboxes.forEach(function (checkbox) {
+                    checkbox.checked = selectAll.checked;
+                });
+            });
+        });
+    </script>
+@endpush

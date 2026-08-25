@@ -3,8 +3,10 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Admin;
 use App\Models\Prompt;
 use App\Support\AdminWeb;
+use App\Support\AiConfigurationScope;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -19,6 +21,8 @@ use Illuminate\View\View;
  */
 class AiSpecialPromptController extends Controller
 {
+    public function __construct(private readonly AiConfigurationScope $aiConfigurationScope) {}
+
     /**
      * 特殊提示词配置页。
      */
@@ -78,7 +82,7 @@ class AiSpecialPromptController extends Controller
      */
     private function loadLatestPromptContent(string $type): string
     {
-        $prompt = Prompt::query()
+        $prompt = $this->managerPromptsQuery()
             ->select(['id', 'content'])
             ->where('type', $type)
             ->orderByDesc('updated_at')
@@ -95,13 +99,13 @@ class AiSpecialPromptController extends Controller
     {
         $content = trim($content);
 
-        $exists = Prompt::query()
+        $exists = $this->managerPromptsQuery()
             ->where('type', $type)
             ->exists();
 
         if ($exists) {
             // 关键逻辑：与 bak 一致，更新同类型所有提示词，避免历史重复数据出现分叉内容。
-            Prompt::query()
+            $this->managerPromptsQuery()
                 ->where('type', $type)
                 ->update([
                     'content' => $content,
@@ -111,11 +115,30 @@ class AiSpecialPromptController extends Controller
             return;
         }
 
-        Prompt::query()->create([
+        Prompt::withoutEvents(fn (): Prompt => Prompt::query()->withoutGlobalScope('current_site')->create([
+            'site_id' => null,
+            'owner_admin_id' => $this->managerOwnerAdminId(),
             'name' => $fallbackName,
             'type' => $type,
             'content' => $content,
             'variables' => '',
-        ]);
+        ]));
+    }
+
+    private function managerPromptsQuery(): \Illuminate\Database\Eloquent\Builder
+    {
+        $query = Prompt::query()->withoutGlobalScope('current_site');
+        $admin = request()->user('admin');
+        abort_unless($admin instanceof Admin, 403);
+
+        return $this->aiConfigurationScope->applyManagerScope($query, $admin, 'prompts.owner_admin_id');
+    }
+
+    private function managerOwnerAdminId(): ?int
+    {
+        $admin = request()->user('admin');
+        abort_unless($admin instanceof Admin, 403);
+
+        return $this->aiConfigurationScope->ownerAdminIdForManager($admin);
     }
 }

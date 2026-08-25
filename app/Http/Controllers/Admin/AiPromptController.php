@@ -3,9 +3,11 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Admin;
 use App\Models\Prompt;
 use App\Models\Task;
 use App\Support\AdminWeb;
+use App\Support\AiConfigurationScope;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -20,6 +22,8 @@ use Illuminate\View\View;
  */
 class AiPromptController extends Controller
 {
+    public function __construct(private readonly AiConfigurationScope $aiConfigurationScope) {}
+
     /**
      * 正文提示词列表页。
      */
@@ -46,12 +50,14 @@ class AiPromptController extends Controller
             'content.required' => __('admin.ai_prompts.error.required'),
         ]);
 
-        Prompt::query()->create([
+        Prompt::withoutEvents(fn (): Prompt => Prompt::query()->withoutGlobalScope('current_site')->create([
+            'site_id' => null,
+            'owner_admin_id' => $this->managerOwnerAdminId(),
             'name' => trim((string) $payload['name']),
             'type' => 'content',
             'content' => trim((string) $payload['content']),
             'variables' => '',
-        ]);
+        ]));
 
         return redirect()->route('admin.ai-prompts')->with('message', __('admin.ai_prompts.message.create_success'));
     }
@@ -61,7 +67,7 @@ class AiPromptController extends Controller
      */
     public function update(Request $request, int $promptId): RedirectResponse
     {
-        $prompt = Prompt::query()
+        $prompt = $this->managerPromptsQuery()
             ->whereKey($promptId)
             ->where('type', 'content')
             ->firstOrFail();
@@ -87,12 +93,12 @@ class AiPromptController extends Controller
      */
     public function destroy(int $promptId): RedirectResponse
     {
-        $prompt = Prompt::query()
+        $prompt = $this->managerPromptsQuery()
             ->whereKey($promptId)
             ->where('type', 'content')
             ->firstOrFail();
 
-        $usageCount = Task::query()->where('prompt_id', $promptId)->count();
+        $usageCount = Task::query()->withoutGlobalScope('current_site')->where('prompt_id', $promptId)->count();
         if ($usageCount > 0) {
             return back()->withErrors(__('admin.ai_prompts.error.in_use', ['count' => $usageCount]));
         }
@@ -113,9 +119,10 @@ class AiPromptController extends Controller
      */
     private function loadPrompts(): array
     {
-        return Prompt::query()
+        return $this->managerPromptsQuery()
             ->select(['id', 'name', 'type', 'content', 'created_at'])
             ->where('type', 'content')
+            ->whereNull('site_id')
             ->withCount('tasks')
             ->orderByDesc('created_at')
             ->get()
@@ -129,5 +136,22 @@ class AiPromptController extends Controller
                 ];
             })
             ->all();
+    }
+
+    private function managerPromptsQuery(): \Illuminate\Database\Eloquent\Builder
+    {
+        $query = Prompt::query()->withoutGlobalScope('current_site')->whereNull('site_id');
+        $admin = request()->user('admin');
+        abort_unless($admin instanceof Admin, 403);
+
+        return $this->aiConfigurationScope->applyManagerScope($query, $admin, 'prompts.owner_admin_id');
+    }
+
+    private function managerOwnerAdminId(): ?int
+    {
+        $admin = request()->user('admin');
+        abort_unless($admin instanceof Admin, 403);
+
+        return $this->aiConfigurationScope->ownerAdminIdForManager($admin);
     }
 }

@@ -49,10 +49,16 @@
                         </div>
                         <p class="mt-2 text-sm leading-6 text-amber-800">{{ __('admin.url_import.ai_required.desc') }}</p>
                     </div>
-                    <a href="{{ $aiModelConfigUrl }}" class="inline-flex items-center justify-center rounded-xl bg-amber-600 px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-amber-700">
-                        <i data-lucide="settings" class="mr-2 h-4 w-4"></i>
-                        {{ __('admin.url_import.ai_required.button') }}
-                    </a>
+                    @if ($canManageAiConfig ?? false)
+                        <a href="{{ $aiModelConfigUrl }}" class="inline-flex items-center justify-center rounded-xl bg-amber-600 px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-amber-700">
+                            <i data-lucide="settings" class="mr-2 h-4 w-4"></i>
+                            {{ __('admin.url_import.ai_required.button') }}
+                        </a>
+                    @else
+                        <span class="inline-flex items-center justify-center rounded-xl bg-white px-5 py-3 text-sm font-semibold text-amber-800 ring-1 ring-amber-200">
+                            {{ __('admin.url_import.ai_required.contact_admin') }}
+                        </span>
+                    @endif
                 </div>
             </div>
         @endif

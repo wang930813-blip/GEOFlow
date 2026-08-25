@@ -4,18 +4,26 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\AiModel;
+use App\Models\Admin;
 use App\Models\Author;
 use App\Models\Category;
+use App\Models\DistributionChannel;
 use App\Models\ImageLibrary;
 use App\Models\KnowledgeBase;
 use App\Models\Prompt;
+use App\Models\Task;
+use App\Models\Title;
 use App\Models\TitleLibrary;
+use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Services\GeoFlow\TaskLifecycleService;
 use App\Services\GeoFlow\TaskMonitoringQueryService;
 use App\Support\AdminWeb;
+use App\Support\AiConfigurationScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use Throwable;
 
@@ -33,15 +41,20 @@ class TaskController extends Controller
     public function __construct(
         private readonly TaskLifecycleService $taskLifecycleService,
         private readonly TaskMonitoringQueryService $taskMonitoringQueryService,
+        private readonly DistributionOrchestrator $distributionOrchestrator,
+        private readonly AiConfigurationScope $aiConfigurationScope,
     ) {}
 
     /**
      * 任务管理首页：渲染列表与运行面板。
      */
-    public function index(): View
+    public function index(Request $request): View
     {
+        $admin = $request->user('admin');
+        abort_unless($admin instanceof Admin, 403);
+
         try {
-            $overview = $this->taskMonitoringQueryService->buildAdminOverview();
+            $overview = $this->taskMonitoringQueryService->buildAdminOverview($admin);
             $tasks = $overview['tasks'];
             $workers = $overview['worker_overview'];
             $queueStats = $overview['queue_overview'];
@@ -74,6 +87,8 @@ class TaskController extends Controller
      */
     public function toggleStatus(Request $request, int $taskId): RedirectResponse
     {
+        $this->abortIfAgentAdmin($request);
+
         if ($taskId <= 0) {
             return back()->withErrors(__('admin.tasks.message.status_update_failed'));
         }
@@ -97,8 +112,10 @@ class TaskController extends Controller
     /**
      * 删除单个任务（含关联数据级联清理）。
      */
-    public function destroyTask(int $taskId): RedirectResponse
+    public function destroyTask(Request $request, int $taskId): RedirectResponse
     {
+        $this->abortIfAgentAdmin($request);
+
         if ($taskId <= 0) {
             return back()->withErrors(__('admin.tasks.message.status_update_failed'));
         }
@@ -115,9 +132,13 @@ class TaskController extends Controller
     /**
      * 任务创建页（先接入可用创建链路，后续继续做 1:1 细节对齐）。
      */
-    public function create(): View
+    public function create(Request $request): View
     {
+        $this->abortIfAgentAdmin($request);
+
         $formOptions = $this->loadTaskFormOptions();
+        $prefilledTitleLibraryId = $this->resolvePrefilledTitleLibraryId($request, $formOptions['titleLibraries']);
+        $prefilledFixedTitleId = $this->resolvePrefilledFixedTitleId($request, $prefilledTitleLibraryId, $formOptions['titles']);
 
         // 创建页选项与 tasks.php 数据口径一致（库/模型/作者/分类）。
         return view('admin.tasks.form', [
@@ -128,7 +149,10 @@ class TaskController extends Controller
             'hasCategories' => ! empty($formOptions['categories']),
             'categoryCreateUrl' => route('admin.categories.create'),
             'isEdit' => false,
-            'taskForm' => null,
+            'taskForm' => $prefilledTitleLibraryId > 0 ? array_filter([
+                'title_library_id' => (string) $prefilledTitleLibraryId,
+                'fixed_title_id' => $prefilledFixedTitleId > 0 ? (string) $prefilledFixedTitleId : null,
+            ], static fn ($value): bool => $value !== null) : null,
             'taskId' => null,
         ]);
     }
@@ -138,6 +162,8 @@ class TaskController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
+        $this->abortIfAgentAdmin($request);
+
         if (! Category::query()->exists()) {
             return redirect()
                 ->route('admin.categories.create')
@@ -148,7 +174,14 @@ class TaskController extends Controller
         $taskData = $this->buildTaskPayload($request, $payload);
 
         try {
-            $this->taskLifecycleService->createTask($taskData);
+            $createdTask = $this->taskLifecycleService->createTask($taskData);
+            $createdTaskId = (int) ($createdTask['id'] ?? 0);
+            if ($createdTaskId) {
+                $this->distributionOrchestrator->syncTaskChannels(
+                    Task::query()->whereKey((int) $createdTaskId)->firstOrFail(),
+                    $this->selectedDistributionChannelIds($request)
+                );
+            }
         } catch (Throwable $e) {
             // 保留输入并回显服务层错误，便于在页面直接修正。
             return back()->withInput()->withErrors($e->getMessage());
@@ -162,8 +195,10 @@ class TaskController extends Controller
     /**
      * 任务编辑页：与创建页共用同一 Blade 模板。
      */
-    public function edit(int $taskId): View|RedirectResponse
+    public function edit(Request $request, int $taskId): View|RedirectResponse
     {
+        $this->abortIfAgentAdmin($request);
+
         try {
             $task = $this->taskLifecycleService->getTask($taskId);
         } catch (Throwable $e) {
@@ -184,11 +219,14 @@ class TaskController extends Controller
             'taskForm' => [
                 'task_name' => (string) ($task['name'] ?? ''),
                 'title_library_id' => (string) ($task['title_library_id'] ?? ''),
+                'fixed_title_id' => (string) (($task['fixed_title_id'] ?? '') ?: ''),
                 'prompt_id' => (string) ($task['prompt_id'] ?? ''),
                 'ai_model_id' => (string) ($task['ai_model_id'] ?? ''),
                 'author_id' => (string) (($task['author_id'] ?? 0) ?: 0),
                 'image_library_id' => (string) (($task['image_library_id'] ?? '') ?: ''),
+                'image_mode' => (string) ($task['image_mode'] ?? 'library'),
                 'image_count' => (string) ($task['image_count'] ?? 0),
+                'ai_image_model_id' => (string) (($task['ai_image_model_id'] ?? '') ?: ''),
                 'knowledge_base_id' => (string) (($task['knowledge_base_id'] ?? '') ?: ''),
                 'fixed_category_id' => (string) (($task['fixed_category_id'] ?? '') ?: ''),
                 'status' => (string) ($task['status'] ?? 'active'),
@@ -201,6 +239,11 @@ class TaskController extends Controller
                 'is_loop' => (int) ($task['is_loop'] ?? 1),
                 'auto_keywords' => (int) ($task['auto_keywords'] ?? 1),
                 'auto_description' => (int) ($task['auto_description'] ?? 1),
+                'publish_scope' => (string) ($task['publish_scope'] ?? 'local_and_distribution'),
+                'next_publish_at' => (string) ($task['next_publish_at'] ?? ''),
+                'scheduled_publish_enabled' => (string) ($task['publish_scope'] ?? 'local_and_distribution') === 'local_only' && ! empty($task['next_publish_at']) ? 1 : 0,
+                'scheduled_publish_at' => $this->formatDateTimeLocal((string) ($task['next_publish_at'] ?? '')),
+                'distribution_channel_ids' => $this->taskDistributionChannelIds($taskId),
             ],
         ]);
     }
@@ -210,6 +253,8 @@ class TaskController extends Controller
      */
     public function update(Request $request, int $taskId): RedirectResponse
     {
+        $this->abortIfAgentAdmin($request);
+
         if (! Category::query()->exists()) {
             return redirect()
                 ->route('admin.categories.create')
@@ -221,6 +266,8 @@ class TaskController extends Controller
 
         try {
             $this->taskLifecycleService->updateTask($taskId, $taskData);
+            $task = Task::query()->whereKey($taskId)->firstOrFail();
+            $this->distributionOrchestrator->syncTaskChannels($task, $this->selectedDistributionChannelIds($request));
         } catch (Throwable $e) {
             return back()->withInput()->withErrors($e->getMessage());
         }
@@ -235,8 +282,11 @@ class TaskController extends Controller
      */
     public function healthCheck(Request $request): JsonResponse
     {
+        $admin = $request->user('admin');
+        abort_unless($admin instanceof Admin, 403);
+
         try {
-            $overview = $this->taskMonitoringQueryService->buildAdminOverview();
+            $overview = $this->taskMonitoringQueryService->buildAdminOverview($admin);
 
             return response()->json([
                 'success' => true,
@@ -258,6 +308,8 @@ class TaskController extends Controller
      */
     public function batchAction(Request $request): JsonResponse
     {
+        $this->abortIfAgentAdmin($request);
+
         // 批量接口仅允许 start/stop 两个动作，避免无效写入。
         $payload = $request->validate([
             'task_id' => ['required', 'integer', 'min:1'],
@@ -288,7 +340,9 @@ class TaskController extends Controller
      */
     private function loadTasks(): array
     {
-        return $this->taskMonitoringQueryService->buildTaskSnapshot();
+        $admin = request()->user('admin');
+
+        return $this->taskMonitoringQueryService->buildTaskSnapshot($admin instanceof Admin ? $admin : null);
     }
 
     /**
@@ -296,7 +350,8 @@ class TaskController extends Controller
      */
     private function loadRuntimePanels(): array
     {
-        $overview = $this->taskMonitoringQueryService->buildAdminOverview();
+        $admin = request()->user('admin');
+        $overview = $this->taskMonitoringQueryService->buildAdminOverview($admin instanceof Admin ? $admin : null);
 
         return [
             $overview['worker_overview'],
@@ -326,6 +381,7 @@ class TaskController extends Controller
             'completed' => __('admin.tasks.status.completed'),
             'waiting' => __('admin.tasks.status.waiting'),
             'waitingPublish' => __('admin.tasks.status.waiting_publish'),
+            'waitingReview' => __('admin.tasks.status.waiting_review'),
             'draftPoolFull' => __('admin.tasks.status.draft_pool_full'),
             'limitReached' => __('admin.tasks.status.limit_reached'),
             'queued' => __('admin.tasks.status.pending'),
@@ -391,12 +447,14 @@ class TaskController extends Controller
     /**
      * @return array{
      *     titleLibraries: list<array{id:int,name:string}>,
+     *     titles: list<array{id:int,library_id:int,title:string,keyword:string}>,
      *     prompts: list<array{id:int,name:string}>,
      *     aiModels: list<array{id:int,name:string}>,
      *     imageLibraries: list<array{id:int,name:string,count:int}>,
      *     knowledgeBases: list<array{id:int,name:string}>,
      *     authors: list<array{id:int,name:string}>,
-     *     categories: list<array{id:int,name:string}>
+     *     categories: list<array{id:int,name:string}>,
+     *     distributionChannels: list<array{id:int,name:string,domain:string}>
      * }
      */
     private function loadTaskFormOptions(): array
@@ -404,6 +462,7 @@ class TaskController extends Controller
         // 直接附带标题数，避免 Blade 层再次查询。
         $titleLibraries = TitleLibrary::query()
             ->select(['id', 'name'])
+            ->with(['keywordLibrary:id,name,company_name'])
             ->selectRaw('(SELECT COUNT(*) FROM titles WHERE titles.library_id = title_libraries.id) AS title_count')
             ->orderByDesc('id')
             ->get()
@@ -412,19 +471,46 @@ class TaskController extends Controller
                     'id' => (int) $row->id,
                     'name' => (string) $row->name,
                     'count' => (int) ($row->title_count ?? 0),
+                    'keyword_library_name' => (string) ($row->keywordLibrary?->name ?? ''),
+                    'company_name' => (string) ($row->keywordLibrary?->company_name ?? ''),
                 ];
             })
             ->all();
 
-        $prompts = Prompt::query()
+        $titles = Title::query()
+            ->select(['id', 'library_id', 'title', 'keyword'])
+            ->orderBy('library_id')
+            ->orderBy('id')
+            ->get()
+            ->map(static fn (Title $row): array => [
+                'id' => (int) $row->id,
+                'library_id' => (int) $row->library_id,
+                'title' => (string) $row->title,
+                'keyword' => (string) ($row->keyword ?? ''),
+            ])
+            ->all();
+
+        $admin = request()->user('admin');
+        abort_unless($admin instanceof Admin, 403);
+
+        $prompts = $this->aiConfigurationScope->applyConsumerScope(
+            Prompt::query()->withoutGlobalScope('current_site'),
+            $admin,
+            'prompts.owner_admin_id'
+        )
             ->select(['id', 'name'])
             ->where('type', 'content')
+            ->whereNull('site_id')
             ->orderByDesc('id')
             ->get()
             ->map(static fn (Prompt $row): array => ['id' => (int) $row->id, 'name' => (string) $row->name])
             ->all();
 
-        $aiModels = AiModel::query()
+        $aiModels = $this->aiConfigurationScope->applyConsumerScope(
+            AiModel::query()->withoutGlobalScope('current_site'),
+            $admin,
+            'ai_models.owner_admin_id'
+        )
             ->select(['id', 'name'])
             ->where('status', 'active')
             ->where(function ($query): void {
@@ -432,6 +518,20 @@ class TaskController extends Controller
                     ->orWhere('model_type', '')
                     ->orWhere('model_type', 'chat');
             })
+            ->orderBy('failover_priority')
+            ->orderByDesc('id')
+            ->get()
+            ->map(static fn (AiModel $row): array => ['id' => (int) $row->id, 'name' => (string) $row->name])
+            ->all();
+
+        $aiImageModels = $this->aiConfigurationScope->applyConsumerScope(
+            AiModel::query()->withoutGlobalScope('current_site'),
+            $admin,
+            'ai_models.owner_admin_id'
+        )
+            ->select(['id', 'name'])
+            ->where('status', 'active')
+            ->where('model_type', 'image')
             ->orderBy('failover_priority')
             ->orderByDesc('id')
             ->get()
@@ -475,21 +575,75 @@ class TaskController extends Controller
             ->map(static fn (Category $row): array => ['id' => (int) $row->id, 'name' => (string) $row->name])
             ->all();
 
+        $distributionChannels = DistributionChannel::query()
+            ->select(['id', 'name', 'domain'])
+            ->where('status', 'active')
+            ->orderBy('name')
+            ->get()
+            ->map(static fn (DistributionChannel $row): array => [
+                'id' => (int) $row->id,
+                'name' => (string) $row->name,
+                'domain' => (string) $row->domain,
+            ])
+            ->all();
+
         return [
             'titleLibraries' => $titleLibraries,
+            'titles' => $titles,
             'prompts' => $prompts,
             'aiModels' => $aiModels,
+            'aiImageModels' => $aiImageModels,
             'imageLibraries' => $imageLibraries,
             'knowledgeBases' => $knowledgeBases,
             'authors' => $authors,
             'categories' => $categories,
+            'distributionChannels' => $distributionChannels,
         ];
+    }
+
+    /**
+     * @param  list<array{id:int,name:string}>  $titleLibraries
+     */
+    private function resolvePrefilledTitleLibraryId(Request $request, array $titleLibraries): int
+    {
+        $titleLibraryId = (int) $request->query('title_library_id', 0);
+        if ($titleLibraryId <= 0) {
+            return 0;
+        }
+
+        foreach ($titleLibraries as $library) {
+            if ((int) ($library['id'] ?? 0) === $titleLibraryId) {
+                return $titleLibraryId;
+            }
+        }
+
+        return 0;
+    }
+
+    /**
+     * @param  list<array{id:int,library_id:int,title:string,keyword:string}>  $titles
+     */
+    private function resolvePrefilledFixedTitleId(Request $request, int $titleLibraryId, array $titles): int
+    {
+        $fixedTitleId = (int) $request->query('fixed_title_id', $request->query('title_id', 0));
+        if ($fixedTitleId <= 0 || $titleLibraryId <= 0) {
+            return 0;
+        }
+
+        foreach ($titles as $title) {
+            if ((int) ($title['id'] ?? 0) === $fixedTitleId && (int) ($title['library_id'] ?? 0) === $titleLibraryId) {
+                return $fixedTitleId;
+            }
+        }
+
+        return 0;
     }
 
     /**
      * @return array{
      *     task_name: string,
      *     title_library_id: int,
+     *     fixed_title_id: int|null,
      *     prompt_id: int,
      *     ai_model_id: int,
      *     author_id: int|null,
@@ -502,7 +656,9 @@ class TaskController extends Controller
      *     draft_limit: int|null,
      *     publish_interval: int|null,
      *     category_mode: string|null,
-     *     model_selection_mode: string|null
+     *     model_selection_mode: string|null,
+     *     scheduled_publish_enabled: bool|null,
+     *     scheduled_publish_at: string|null
      * }
      */
     private function validateTaskForm(Request $request): array
@@ -510,11 +666,14 @@ class TaskController extends Controller
         return $request->validate([
             'task_name' => ['required', 'string', 'max:200'],
             'title_library_id' => ['required', 'integer', 'min:1'],
+            'fixed_title_id' => ['nullable', 'integer', 'min:1'],
             'prompt_id' => ['required', 'integer', 'min:1'],
             'ai_model_id' => ['required', 'integer', 'min:1'],
             'author_id' => ['nullable', 'integer', 'min:0'],
+            'image_mode' => ['nullable', 'string', 'in:none,library,ai'],
             'image_library_id' => ['nullable', 'integer', 'min:1'],
             'image_count' => ['nullable', 'integer', 'min:0', 'max:5'],
+            'ai_image_model_id' => ['nullable', 'integer', 'min:1'],
             'knowledge_base_id' => ['nullable', 'integer', 'min:1'],
             'fixed_category_id' => ['nullable', 'integer', 'min:1'],
             'status' => ['required', 'string', 'in:active,paused'],
@@ -523,6 +682,15 @@ class TaskController extends Controller
             'publish_interval' => ['nullable', 'integer', 'min:1'],
             'category_mode' => ['nullable', 'string', 'in:smart,fixed,random'],
             'model_selection_mode' => ['nullable', 'string', 'in:fixed,smart_failover'],
+            'publish_scope' => ['nullable', 'string', 'in:local_and_distribution,distribution_only,local_only'],
+            'scheduled_publish_enabled' => ['nullable', 'boolean'],
+            'scheduled_publish_at' => [
+                'nullable',
+                Rule::requiredIf(fn (): bool => $request->boolean('scheduled_publish_enabled') && (string) $request->input('publish_scope') === 'local_only'),
+                'date',
+            ],
+            'distribution_channel_ids' => ['nullable', 'array'],
+            'distribution_channel_ids.*' => ['integer', 'min:1'],
         ]);
     }
 
@@ -536,27 +704,89 @@ class TaskController extends Controller
         if ($categoryMode === 'random') {
             $categoryMode = 'smart';
         }
+        $publishScope = (string) ($payload['publish_scope'] ?? 'local_and_distribution');
+        $scheduledPublishEnabled = $publishScope === 'local_only'
+            && $request->boolean('scheduled_publish_enabled')
+            && trim((string) ($payload['scheduled_publish_at'] ?? '')) !== '';
+        $nextPublishAt = null;
+        if ($scheduledPublishEnabled) {
+            $nextPublishAt = Carbon::parse((string) $payload['scheduled_publish_at'])->toDateTimeString();
+        }
+        $needReview = $scheduledPublishEnabled ? 0 : ($request->boolean('need_review') ? 1 : 0);
 
         return [
             'name' => (string) $payload['task_name'],
             'title_library_id' => (int) $payload['title_library_id'],
+            'fixed_title_id' => isset($payload['fixed_title_id']) ? (int) $payload['fixed_title_id'] : null,
+            'image_mode' => (string) ($payload['image_mode'] ?? 'library'),
             'image_library_id' => isset($payload['image_library_id']) ? (int) $payload['image_library_id'] : null,
             'image_count' => (int) ($payload['image_count'] ?? 0),
+            'ai_image_model_id' => isset($payload['ai_image_model_id']) ? (int) $payload['ai_image_model_id'] : null,
             'prompt_id' => (int) $payload['prompt_id'],
             'ai_model_id' => (int) $payload['ai_model_id'],
             'author_id' => isset($payload['author_id']) && (int) $payload['author_id'] > 0 ? (int) $payload['author_id'] : null,
             'knowledge_base_id' => isset($payload['knowledge_base_id']) ? (int) $payload['knowledge_base_id'] : null,
             'fixed_category_id' => isset($payload['fixed_category_id']) ? (int) $payload['fixed_category_id'] : null,
             'status' => (string) $payload['status'],
+            'publish_scope' => $publishScope,
+            'next_publish_at' => $nextPublishAt,
             'article_limit' => (int) ($payload['article_limit'] ?? 10),
             'draft_limit' => (int) ($payload['draft_limit'] ?? 10),
             'publish_interval' => max(1, (int) ($payload['publish_interval'] ?? 60)) * 60,
-            'need_review' => $request->boolean('need_review') ? 1 : 0,
+            'need_review' => $needReview,
             'is_loop' => $request->boolean('is_loop') ? 1 : 0,
             'category_mode' => $categoryMode,
             'model_selection_mode' => (string) ($payload['model_selection_mode'] ?? 'fixed'),
             'auto_keywords' => $request->boolean('auto_keywords') ? 1 : 0,
             'auto_description' => $request->boolean('auto_description') ? 1 : 0,
         ];
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function selectedDistributionChannelIds(Request $request): array
+    {
+        return collect($request->input('distribution_channel_ids', []))
+            ->map(static fn ($id): int => (int) $id)
+            ->filter(static fn (int $id): bool => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function taskDistributionChannelIds(int $taskId): array
+    {
+        $task = Task::query()->whereKey($taskId)->first();
+        if (! $task) {
+            return [];
+        }
+
+        return $task->distributionChannels()
+            ->pluck('distribution_channels.id')
+            ->map(static fn ($id): int => (int) $id)
+            ->all();
+    }
+
+    private function formatDateTimeLocal(string $value): string
+    {
+        if (trim($value) === '') {
+            return '';
+        }
+
+        try {
+            return Carbon::parse($value)->format('Y-m-d\TH:i');
+        } catch (Throwable) {
+            return '';
+        }
+    }
+
+    private function abortIfAgentAdmin(Request $request): void
+    {
+        $admin = $request->user('admin');
+        abort_if($admin instanceof Admin && $admin->isAgentAdmin(), 403);
     }
 }

@@ -94,7 +94,7 @@ class JobQueueService
             $taskRow = Task::query()
                 ->whereKey($taskId)
                 ->lockForUpdate()
-                ->first(['id', 'max_retry_count']);
+                ->first(['id', 'site_id', 'owner_admin_id', 'max_retry_count']);
             if (! $taskRow) {
                 return null;
             }
@@ -114,6 +114,8 @@ class JobQueueService
 
             // 建立“待执行记录”，作为后续状态流转的唯一主记录。
             return TaskRun::query()->create([
+                'site_id' => (int) ($taskRow->site_id ?? 0) > 0 ? (int) $taskRow->site_id : null,
+                'owner_admin_id' => (int) ($taskRow->owner_admin_id ?? 0) > 0 ? (int) $taskRow->owner_admin_id : null,
                 'task_id' => $taskId,
                 'status' => 'pending',
                 'meta' => [
@@ -268,12 +270,14 @@ class JobQueueService
         $runMeta = $this->normalizeMeta($run->meta);
         $attemptCount = (int) ($runMeta['attempt_count'] ?? 0) + 1;
         $maxAttempts = max(1, (int) ($runMeta['max_attempts'] ?? 3));
-        $shouldRetry = $attemptCount < $maxAttempts;
+        $nonRetryable = $this->isNonRetryableFailure($errorMessage);
+        $shouldRetry = ! $nonRetryable && $attemptCount < $maxAttempts;
         $nextAvailableAt = now()->addSeconds(max(1, $retryDelaySeconds));
 
         $newMeta = array_merge($runMeta, [
             'attempt_count' => $attemptCount,
             'max_attempts' => $maxAttempts,
+            'non_retryable' => $nonRetryable,
             'last_error' => $errorMessage,
             'available_at' => $shouldRetry ? $nextAvailableAt->toDateTimeString() : ($runMeta['available_at'] ?? ''),
         ]);
@@ -298,6 +302,25 @@ class JobQueueService
         }
 
         $this->broadcastOverviewUpdate();
+    }
+
+    private function isNonRetryableFailure(string $errorMessage): bool
+    {
+        $message = trim($errorMessage);
+        if ($message === '') {
+            return false;
+        }
+
+        foreach ([
+            'Task AI model is not configured',
+            'Task AI model is unavailable',
+        ] as $reason) {
+            if (str_contains($message, $reason)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

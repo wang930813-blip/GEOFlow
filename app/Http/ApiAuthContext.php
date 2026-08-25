@@ -9,6 +9,7 @@ final class ApiAuthContext
      */
     public function __construct(
         public array $token,
-        public int $auditAdminId
+        public int $auditAdminId,
+        public ?int $siteId = null
     ) {}
 }

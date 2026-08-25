@@ -21,6 +21,36 @@
             </a>
         </div>
 
+        @if ($canEditAdminDisplaySettings ?? false)
+            <div class="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+                <button type="button" data-open-admin-display-settings class="group flex items-start justify-between gap-4 rounded-lg border border-blue-100 bg-white p-5 text-left shadow-sm transition hover:border-blue-200 hover:bg-blue-50/50">
+                    <span class="flex min-w-0 items-start gap-3">
+                        <span class="inline-flex rounded-lg bg-blue-50 p-2 text-blue-600 group-hover:bg-blue-100">
+                            <i data-lucide="panel-top" class="h-5 w-5"></i>
+                        </span>
+                        <span>
+                            <span class="block text-base font-semibold text-gray-900">后台展示文案</span>
+                            <span class="mt-1 block text-sm leading-6 text-gray-600">配置后台首页、页脚和媒体平台展示名称。</span>
+                        </span>
+                    </span>
+                    <i data-lucide="settings" class="mt-1 h-5 w-5 shrink-0 text-gray-400 group-hover:text-blue-600"></i>
+                </button>
+
+                <button type="button" data-open-admin-registration-settings class="group flex items-start justify-between gap-4 rounded-lg border border-emerald-100 bg-white p-5 text-left shadow-sm transition hover:border-emerald-200 hover:bg-emerald-50/50">
+                    <span class="flex min-w-0 items-start gap-3">
+                        <span class="inline-flex rounded-lg bg-emerald-50 p-2 text-emerald-600 group-hover:bg-emerald-100">
+                            <i data-lucide="user-plus" class="h-5 w-5"></i>
+                        </span>
+                        <span>
+                            <span class="block text-base font-semibold text-gray-900">注册设置</span>
+                            <span class="mt-1 block text-sm leading-6 text-gray-600">控制注册入口和默认注册体验规格。</span>
+                        </span>
+                    </span>
+                    <i data-lucide="settings" class="mt-1 h-5 w-5 shrink-0 text-gray-400 group-hover:text-emerald-600"></i>
+                </button>
+            </div>
+        @endif
+
         <details class="mb-6 bg-white shadow rounded-lg overflow-hidden group">
             <summary class="px-6 py-4 border-b border-gray-200 flex items-center justify-between gap-3 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
                 <div>
@@ -52,15 +82,43 @@
                     </div>
 
                     <div class="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                        <label class="block text-sm font-medium text-gray-900 mb-2">前台访问域名</label>
+                        @if ($canEditDomainSettings ?? false)
+                            <input type="text" name="public_domain"
+                                   value="{{ old('public_domain', $publicDomain ?? '') }}"
+                                   class="mb-3 w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                   placeholder="client.example.com">
+                        @else
+                            <div class="mb-3 flex flex-col gap-2 sm:flex-row">
+                                <input type="text" name="public_domain"
+                                       value="{{ $publicDomain ?? '' }}"
+                                       readonly disabled
+                                       data-public-domain-value
+                                       class="h-10 min-w-0 flex-1 rounded-md border border-gray-300 bg-gray-100 px-3 text-sm text-gray-700 shadow-sm disabled:cursor-not-allowed">
+                                <button type="button"
+                                        data-copy-public-domain="{{ $publicDomain ?? '' }}"
+                                        class="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700">
+                                    <i data-lucide="copy" class="h-4 w-4"></i>
+                                    <span data-copy-public-domain-label>复制</span>
+                                </button>
+                            </div>
+                        @endif
+                        <p class="mb-4 text-xs leading-5 text-amber-800">
+                            {{ ($canEditDomainSettings ?? false) ? '用于二级域名前台访问，只填写域名即可，例如 client.example.com。' : '域名由平台管理员配置，当前账号不可修改。' }}
+                        </p>
+
                         <label class="block text-sm font-medium text-gray-900 mb-2">{{ __('admin.site_settings.field_admin_base_path') }}</label>
                         <div class="flex rounded-md shadow-sm">
                             <span class="inline-flex items-center rounded-l-md border border-r-0 border-gray-300 bg-white px-3 text-sm text-gray-500">{{ rtrim(url('/'), '/') }}/</span>
                             <input type="text" name="admin_base_path" required
                                    value="{{ $settings['admin_base_path'] }}"
-                                   class="w-full min-w-0 flex-1 rounded-none rounded-r-md border border-gray-300 px-3 py-2 focus:ring-blue-500 focus:border-blue-500"
+                                   class="w-full min-w-0 flex-1 rounded-none rounded-r-md border border-gray-300 px-3 py-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
+                                   @disabled(!($canEditDomainSettings ?? false))
                                    placeholder="{{ __('admin.site_settings.placeholder_admin_base_path') }}">
                         </div>
-                        <p class="mt-2 text-xs leading-5 text-amber-800">{{ __('admin.site_settings.admin_base_path_help') }}</p>
+                        <p class="mt-2 text-xs leading-5 text-amber-800">
+                            {{ ($canEditDomainSettings ?? false) ? __('admin.site_settings.admin_base_path_help') : '后台入口路径由平台管理员配置，当前账号不可修改。' }}
+                        </p>
                     </div>
 
                     <div>
@@ -164,6 +222,104 @@
                                     </div>
                                 </div>
                             @endforeach
+                        </div>
+                    </div>
+
+                    <div class="border-t border-gray-200 pt-6">
+                        <div class="mb-4">
+                            <h4 class="text-lg font-medium text-gray-900">{{ __('admin.site_settings.section_contact') }}</h4>
+                            <p class="mt-1 text-sm text-gray-600">{{ __('admin.site_settings.contact_desc') }}</p>
+                        </div>
+
+                        <div class="space-y-5">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">{{ __('admin.site_settings.field_contact_info') }}</label>
+                                <textarea name="contact_info" rows="3"
+                                          class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                                          placeholder="{{ __('admin.site_settings.placeholder_contact_info') }}">{{ $settings['contact_info'] }}</textarea>
+                                <p class="mt-1 text-xs text-gray-500">{{ __('admin.site_settings.contact_info_help') }}</p>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">{{ __('admin.site_settings.field_company_address') }}</label>
+                                <input type="text" name="company_address"
+                                       value="{{ $settings['company_address'] }}"
+                                       class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                                       placeholder="{{ __('admin.site_settings.placeholder_company_address') }}">
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">{{ __('admin.site_settings.field_site_remark') }}</label>
+                                <textarea name="site_remark" rows="3"
+                                          class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                                          placeholder="{{ __('admin.site_settings.placeholder_site_remark') }}">{{ $settings['site_remark'] }}</textarea>
+                                <p class="mt-1 text-xs text-gray-500">{{ __('admin.site_settings.site_remark_help') }}</p>
+                            </div>
+
+                            <div>
+                                <div class="mb-3 flex items-center justify-between">
+                                    <div>
+                                        <div class="text-sm font-medium text-gray-700">{{ __('admin.site_settings.field_contact_payments') }}</div>
+                                        <p class="mt-1 text-xs text-gray-500">{{ __('admin.site_settings.contact_payments_help') }}</p>
+                                    </div>
+                                </div>
+                                @php
+                                    $paymentRows = $contactPayments ?? [];
+                                    if (empty($paymentRows)) {
+                                        $paymentRows = [
+                                            ['type' => 'wechat', 'name' => '', 'qr_url' => '', 'account' => '', 'enabled' => false],
+                                            ['type' => 'alipay', 'name' => '', 'qr_url' => '', 'account' => '', 'enabled' => false],
+                                        ];
+                                    }
+                                @endphp
+                                <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                                    @foreach ($paymentRows as $payIndex => $payment)
+                                        <div class="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                                            <div class="mb-3 flex items-center justify-between gap-3">
+                                                <div class="text-sm font-semibold text-gray-900">{{ __('admin.site_settings.contact_payment_item', ['index' => $payIndex + 1]) }}</div>
+                                                <label class="inline-flex items-center gap-2 text-sm text-gray-600">
+                                                    <input type="checkbox" name="contact_payments[{{ $payIndex }}][enabled]" value="1" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500" @checked(!empty($payment['enabled']))>
+                                                    {{ __('admin.site_settings.field_home_carousel_enabled') }}
+                                                </label>
+                                            </div>
+                                            <div class="space-y-3">
+                                                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                    <div>
+                                                        <label class="block text-xs font-medium text-gray-600 mb-1">{{ __('admin.site_settings.field_contact_payment_type') }}</label>
+                                                        <select name="contact_payments[{{ $payIndex }}][type]" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                                            <option value="wechat" @selected(($payment['type'] ?? '') === 'wechat')>{{ __('admin.site_settings.payment_type_wechat') }}</option>
+                                                            <option value="alipay" @selected(($payment['type'] ?? '') === 'alipay')>{{ __('admin.site_settings.payment_type_alipay') }}</option>
+                                                            <option value="bank" @selected(($payment['type'] ?? '') === 'bank')>{{ __('admin.site_settings.payment_type_bank') }}</option>
+                                                            <option value="other" @selected(! in_array(($payment['type'] ?? ''), ['wechat', 'alipay', 'bank'], true))>{{ __('admin.site_settings.payment_type_other') }}</option>
+                                                        </select>
+                                                    </div>
+                                                    <div>
+                                                        <label class="block text-xs font-medium text-gray-600 mb-1">{{ __('admin.site_settings.field_contact_payment_name') }}</label>
+                                                        <input type="text" name="contact_payments[{{ $payIndex }}][name]"
+                                                               value="{{ $payment['name'] ?? '' }}"
+                                                               class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                                               placeholder="{{ __('admin.site_settings.placeholder_contact_payment_name') }}">
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <label class="block text-xs font-medium text-gray-600 mb-1">{{ __('admin.site_settings.field_contact_payment_qr') }}</label>
+                                                    <input type="text" name="contact_payments[{{ $payIndex }}][qr_url]"
+                                                           value="{{ $payment['qr_url'] ?? '' }}"
+                                                           class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                                           placeholder="{{ __('admin.site_settings.placeholder_contact_payment_qr') }}">
+                                                </div>
+                                                <div>
+                                                    <label class="block text-xs font-medium text-gray-600 mb-1">{{ __('admin.site_settings.field_contact_payment_account') }}</label>
+                                                    <input type="text" name="contact_payments[{{ $payIndex }}][account]"
+                                                           value="{{ $payment['account'] ?? '' }}"
+                                                           class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                                           placeholder="{{ __('admin.site_settings.placeholder_contact_payment_account') }}">
+                                                </div>
+                                            </div>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -403,6 +559,137 @@
                 </form>
             </div>
         </details>
+
+        @if ($canEditAdminDisplaySettings ?? false)
+            @php
+                $selectedRegistrationPlanId = (int) old('admin_registration_experience_plan_id', $registrationSettings['experience_plan_id'] ?? 0);
+                $registrationEnabled = (bool) old('admin_registration_enabled', ($registrationSettings['enabled'] ?? false) ? '1' : '');
+                $adminDisplaySettingsModalHasErrors = $errors->has('admin_quick_start_eyebrow')
+                    || $errors->has('admin_quick_start_title')
+                    || $errors->has('admin_quick_start_subtitle')
+                    || $errors->has('admin_footer_brand')
+                    || $errors->has('admin_footer_version')
+                    || $errors->has('media_platform_1_label')
+                    || $errors->has('media_platform_2_label');
+                $adminRegistrationSettingsModalHasErrors = $errors->has('admin_registration_enabled')
+                    || $errors->has('admin_registration_experience_plan_id');
+            @endphp
+
+            <div id="admin-display-settings-modal" class="fixed inset-0 z-50 hidden overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="admin-display-settings-title">
+                <div class="flex min-h-full items-center justify-center px-4 py-6">
+                    <div class="fixed inset-0 bg-gray-900/50" data-close-admin-settings-modal></div>
+                    <form method="POST" action="{{ route('admin.site-settings.admin-display') }}" class="relative w-full max-w-3xl overflow-hidden rounded-lg bg-white shadow-xl">
+                        @csrf
+                        <div class="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+                            <div>
+                                <h2 id="admin-display-settings-title" class="text-lg font-semibold text-gray-900">后台展示文案</h2>
+                                <p class="mt-1 text-sm text-gray-500">配置后台首页、页脚和媒体平台展示名称。</p>
+                            </div>
+                            <button type="button" data-close-admin-settings-modal class="rounded-md p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+                                <i data-lucide="x" class="h-5 w-5"></i>
+                            </button>
+                        </div>
+
+                        <div class="max-h-[70vh] overflow-y-auto px-6 py-5">
+                            <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
+                                <div>
+                                    <label class="mb-2 block text-sm font-medium text-gray-700">快速开始角标</label>
+                                    <input type="text" name="admin_quick_start_eyebrow" value="{{ old('admin_quick_start_eyebrow', $adminDisplaySettings['admin_quick_start_eyebrow'] ?? '') }}" class="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                </div>
+                                <div>
+                                    <label class="mb-2 block text-sm font-medium text-gray-700">快速开始标题</label>
+                                    <input type="text" name="admin_quick_start_title" value="{{ old('admin_quick_start_title', $adminDisplaySettings['admin_quick_start_title'] ?? '') }}" class="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                </div>
+                                <div class="md:col-span-2">
+                                    <label class="mb-2 block text-sm font-medium text-gray-700">快速开始说明</label>
+                                    <textarea name="admin_quick_start_subtitle" rows="3" class="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500">{{ old('admin_quick_start_subtitle', $adminDisplaySettings['admin_quick_start_subtitle'] ?? '') }}</textarea>
+                                </div>
+                                <div>
+                                    <label class="mb-2 block text-sm font-medium text-gray-700">后台页脚品牌</label>
+                                    <input type="text" name="admin_footer_brand" value="{{ old('admin_footer_brand', $adminDisplaySettings['admin_footer_brand'] ?? '') }}" class="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                </div>
+                                <div>
+                                    <label class="mb-2 block text-sm font-medium text-gray-700">后台版本号</label>
+                                    <input type="text" name="admin_footer_version" value="{{ old('admin_footer_version', $adminDisplaySettings['admin_footer_version'] ?? '') }}" class="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                </div>
+                            </div>
+
+                            <div class="mt-6 border-t border-gray-200 pt-5">
+                                <div class="mb-4">
+                                    <h3 class="text-sm font-semibold text-gray-900">分发媒体平台名称</h3>
+                                    <p class="mt-1 text-xs text-gray-500">只修改后台页面展示名称，不改变平台编号、接口配置和历史订单数据。</p>
+                                </div>
+                                <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
+                                    <div>
+                                        <label class="mb-2 block text-sm font-medium text-gray-700">平台 1 名称</label>
+                                        <input type="text" name="media_platform_1_label" value="{{ old('media_platform_1_label', $adminDisplaySettings['media_platform_1_label'] ?? '') }}" class="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                    </div>
+                                    <div>
+                                        <label class="mb-2 block text-sm font-medium text-gray-700">平台 2 名称</label>
+                                        <input type="text" name="media_platform_2_label" value="{{ old('media_platform_2_label', $adminDisplaySettings['media_platform_2_label'] ?? '') }}" class="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex justify-end gap-3 border-t border-gray-200 bg-gray-50 px-6 py-4">
+                            <button type="button" data-close-admin-settings-modal class="inline-flex h-10 items-center rounded-md border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700 hover:bg-gray-100">取消</button>
+                            <button type="submit" class="inline-flex h-10 items-center rounded-md bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-blue-700">保存</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <div id="admin-registration-settings-modal" class="fixed inset-0 z-50 hidden overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="admin-registration-settings-title">
+                <div class="flex min-h-full items-center justify-center px-4 py-6">
+                    <div class="fixed inset-0 bg-gray-900/50" data-close-admin-settings-modal></div>
+                    <form method="POST" action="{{ route('admin.site-settings.registration') }}" class="relative w-full max-w-xl overflow-hidden rounded-lg bg-white shadow-xl">
+                        @csrf
+                        <div class="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+                            <div>
+                                <h2 id="admin-registration-settings-title" class="text-lg font-semibold text-gray-900">注册设置</h2>
+                                <p class="mt-1 text-sm text-gray-500">控制登录页注册入口和注册后的默认体验规格。</p>
+                            </div>
+                            <button type="button" data-close-admin-settings-modal class="rounded-md p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+                                <i data-lucide="x" class="h-5 w-5"></i>
+                            </button>
+                        </div>
+
+                        <div class="space-y-5 px-6 py-5">
+                            <label class="flex min-h-12 items-center gap-3 rounded-lg border border-emerald-100 bg-emerald-50/60 px-4 py-3">
+                                <input type="checkbox" name="admin_registration_enabled" value="1" class="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" @checked($registrationEnabled)>
+                                <span>
+                                    <span class="block text-sm font-medium text-gray-900">开放用户注册</span>
+                                    <span class="mt-0.5 block text-xs text-gray-500">关闭后登录页不显示注册入口，注册地址也不能提交。</span>
+                                </span>
+                            </label>
+
+                            <div>
+                                <label class="mb-2 block text-sm font-medium text-gray-700">注册体验规格</label>
+                                <select name="admin_registration_experience_plan_id" class="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-emerald-500 focus:ring-emerald-500">
+                                    <option value="">请选择体验规格</option>
+                                    @foreach ($registrationPlans as $plan)
+                                        <option value="{{ $plan->id }}" @selected($selectedRegistrationPlanId === (int) $plan->id)>
+                                            {{ $plan->name }} / {{ $plan->duration_days }} 天
+                                        </option>
+                                    @endforeach
+                                </select>
+                                @error('admin_registration_experience_plan_id')
+                                    <p class="mt-1 text-xs text-red-600">{{ $message }}</p>
+                                @else
+                                    <p class="mt-1 text-xs text-gray-500">只展示启用状态且适用于直客的规格。</p>
+                                @enderror
+                            </div>
+                        </div>
+
+                        <div class="flex justify-end gap-3 border-t border-gray-200 bg-gray-50 px-6 py-4">
+                            <button type="button" data-close-admin-settings-modal class="inline-flex h-10 items-center rounded-md border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700 hover:bg-gray-100">取消</button>
+                            <button type="submit" class="inline-flex h-10 items-center rounded-md bg-emerald-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700">保存</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        @endif
     </div>
 @endsection
 
@@ -470,6 +757,90 @@
         document.addEventListener('DOMContentLoaded', function () {
             if (typeof lucide !== 'undefined') {
                 lucide.createIcons();
+            }
+
+            document.querySelectorAll('[data-copy-public-domain]').forEach((button) => {
+                button.addEventListener('click', async () => {
+                    const value = button.dataset.copyPublicDomain || '';
+                    if (value === '') {
+                        return;
+                    }
+
+                    try {
+                        if (navigator.clipboard && window.isSecureContext) {
+                            await navigator.clipboard.writeText(value);
+                        } else {
+                            const textarea = document.createElement('textarea');
+                            textarea.value = value;
+                            textarea.setAttribute('readonly', 'readonly');
+                            textarea.style.position = 'fixed';
+                            textarea.style.left = '-9999px';
+                            document.body.appendChild(textarea);
+                            textarea.select();
+                            document.execCommand('copy');
+                            textarea.remove();
+                        }
+
+                        const label = button.querySelector('[data-copy-public-domain-label]');
+                        if (label) {
+                            const previous = label.textContent;
+                            label.textContent = '已复制';
+                            window.setTimeout(() => {
+                                label.textContent = previous || '复制';
+                            }, 1400);
+                        }
+                    } catch (error) {
+                        const label = button.querySelector('[data-copy-public-domain-label]');
+                        if (label) {
+                            label.textContent = '复制失败';
+                        }
+                    }
+                });
+            });
+
+            const adminDisplayModal = document.getElementById('admin-display-settings-modal');
+            const adminRegistrationModal = document.getElementById('admin-registration-settings-modal');
+            const shouldOpenAdminDisplayModal = @json($adminDisplaySettingsModalHasErrors ?? false);
+            const shouldOpenAdminRegistrationModal = @json($adminRegistrationSettingsModalHasErrors ?? false);
+
+            function openAdminSettingsModal(modal) {
+                if (!modal) {
+                    return;
+                }
+
+                modal.classList.remove('hidden');
+                document.body.classList.add('overflow-hidden');
+            }
+
+            function closeAdminSettingsModals() {
+                [adminDisplayModal, adminRegistrationModal].forEach((modal) => {
+                    modal?.classList.add('hidden');
+                });
+                document.body.classList.remove('overflow-hidden');
+            }
+
+            document.querySelector('[data-open-admin-display-settings]')?.addEventListener('click', () => {
+                openAdminSettingsModal(adminDisplayModal);
+            });
+
+            document.querySelector('[data-open-admin-registration-settings]')?.addEventListener('click', () => {
+                openAdminSettingsModal(adminRegistrationModal);
+            });
+
+            document.querySelectorAll('[data-close-admin-settings-modal]').forEach((button) => {
+                button.addEventListener('click', closeAdminSettingsModals);
+            });
+
+            document.addEventListener('keydown', (event) => {
+                if (event.key === 'Escape') {
+                    closeAdminSettingsModals();
+                }
+            });
+
+            if (shouldOpenAdminDisplayModal) {
+                openAdminSettingsModal(adminDisplayModal);
+            } else if (shouldOpenAdminRegistrationModal) {
+                openAdminSettingsModal(adminRegistrationModal);
             }
 
             const adList = document.getElementById('article-ad-list');

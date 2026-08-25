@@ -3,12 +3,17 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\Article;
 use App\Models\SiteSetting;
+use App\Models\Task;
+use App\Models\TitleLibrary;
 use App\Support\AdminWeb;
+use App\Support\AiConfigurationScope;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -31,7 +36,10 @@ class AiModelController extends Controller
     /**
      * 注入统一 API Key 加解密工具，避免控制器内重复维护密钥兼容逻辑。
      */
-    public function __construct(private readonly ApiKeyCrypto $apiKeyCrypto) {}
+    public function __construct(
+        private readonly ApiKeyCrypto $apiKeyCrypto,
+        private readonly AiConfigurationScope $aiConfigurationScope
+    ) {}
 
     /**
      * AI 模型列表页。
@@ -41,6 +49,8 @@ class AiModelController extends Controller
      */
     public function index(): View
     {
+        $admin = $this->currentAdmin();
+
         return view('admin.ai-models.index', [
             'pageTitle' => __('admin.ai_models.page_title'),
             'activeMenu' => 'ai_config',
@@ -49,6 +59,7 @@ class AiModelController extends Controller
             'embeddingModels' => $this->loadActiveEmbeddingModels(),
             'defaultEmbeddingModelId' => $this->getDefaultEmbeddingModelId(),
             'pgvectorEnabled' => $this->isPgvectorEnabled(),
+            'showOwnerIdentity' => $admin->isSuperAdmin(),
         ]);
     }
 
@@ -69,7 +80,9 @@ class AiModelController extends Controller
         }
 
         try {
-            $createdModel = AiModel::query()->create([
+            $createdModel = AiModel::withoutEvents(fn (): AiModel => AiModel::query()->withoutGlobalScope('current_site')->create([
+                'site_id' => null,
+                'owner_admin_id' => $this->managerOwnerAdminId(),
                 'name' => trim((string) $payload['name']),
                 'version' => trim((string) ($payload['version'] ?? '')),
                 'api_key' => $this->encryptApiKey($apiKey),
@@ -79,7 +92,7 @@ class AiModelController extends Controller
                 'failover_priority' => max(1, (int) ($payload['failover_priority'] ?? 100)),
                 'daily_limit' => max(0, (int) ($payload['daily_limit'] ?? 0)),
                 'status' => 'active',
-            ]);
+            ]));
         } catch (\RuntimeException) {
             return back()->withInput()->withErrors(__('admin.ai_models.error.crypto_key_missing'));
         }
@@ -102,7 +115,7 @@ class AiModelController extends Controller
      */
     public function update(Request $request, int $modelId): RedirectResponse
     {
-        $model = AiModel::query()->whereKey($modelId)->firstOrFail();
+        $model = $this->managerModelsQuery()->whereKey($modelId)->firstOrFail();
         $payload = $this->validateModelPayload($request, true);
 
         $modelType = $this->normalizeModelType((string) ($payload['model_type'] ?? 'chat'));
@@ -150,16 +163,32 @@ class AiModelController extends Controller
      */
     public function destroy(int $modelId): RedirectResponse
     {
-        $model = AiModel::query()->whereKey($modelId)->firstOrFail();
-        $taskCount = $model->tasks()->count();
-        if ($taskCount > 0) {
-            return back()->withErrors(__('admin.ai_models.error.in_use', ['count' => $taskCount]));
-        }
+        $model = $this->managerModelsQuery()->whereKey($modelId)->firstOrFail();
 
-        $model->delete();
-        if ($this->getDefaultEmbeddingModelId() === (int) $model->id) {
-            $this->setDefaultEmbeddingModelId(0);
-        }
+        DB::transaction(function () use ($model): void {
+            $modelId = (int) $model->id;
+
+            Task::query()
+                ->withoutGlobalScope('current_site')
+                ->where('ai_model_id', $modelId)
+                ->update(['ai_model_id' => null]);
+
+            Task::query()
+                ->withoutGlobalScope('current_site')
+                ->where('ai_image_model_id', $modelId)
+                ->update(['ai_image_model_id' => null]);
+
+            TitleLibrary::query()
+                ->withoutGlobalScope('current_site')
+                ->where('ai_model_id', $modelId)
+                ->update(['ai_model_id' => null]);
+
+            $model->delete();
+
+            if ($this->getDefaultEmbeddingModelId() === $modelId) {
+                $this->setDefaultEmbeddingModelId(0);
+            }
+        });
 
         return redirect()->route('admin.ai-models.index')->with('message', __('admin.ai_models.message.delete_success'));
     }
@@ -171,7 +200,7 @@ class AiModelController extends Controller
      */
     public function testConnection(int $modelId): JsonResponse
     {
-        $model = AiModel::query()->whereKey($modelId)->firstOrFail();
+        $model = $this->managerModelsQuery()->whereKey($modelId)->firstOrFail();
         $startedAt = microtime(true);
 
         try {
@@ -226,7 +255,7 @@ class AiModelController extends Controller
 
             return $this->modelTestResponse(
                 true,
-                __('admin.ai_models.test_success', ['type' => $modelType === 'embedding' ? 'Embedding' : 'Chat']),
+                __('admin.ai_models.test_success', ['type' => $modelType === 'embedding' ? 'Embedding' : ($modelType === 'image' ? 'Image' : 'Chat')]),
                 $startedAt,
                 $modelType,
                 $endpoint,
@@ -254,10 +283,10 @@ class AiModelController extends Controller
         $modelId = max(0, (int) $request->input('default_embedding_model_id', 0));
 
         if ($modelId > 0) {
-            $available = AiModel::query()
+            $available = $this->managerModelsQuery()
                 ->whereKey($modelId)
-                ->where('status', 'active')
-                ->whereRaw("COALESCE(NULLIF(model_type, ''), 'chat') = 'embedding'")
+                ->activeStatus()
+                ->embeddingType()
                 ->exists();
 
             if (! $available) {
@@ -275,9 +304,10 @@ class AiModelController extends Controller
      */
     private function loadModels(): array
     {
-        $models = AiModel::query()
+        $models = $this->managerModelsQuery()
             ->select([
                 'id',
+                'owner_admin_id',
                 'name',
                 'version',
                 'api_key',
@@ -292,6 +322,7 @@ class AiModelController extends Controller
                 'created_at',
                 'updated_at',
             ])
+            ->with('ownerAdmin:id,username,display_name,role')
             ->withCount('tasks as task_count')
             ->addSelect([
                 'article_count' => Article::query()
@@ -306,6 +337,10 @@ class AiModelController extends Controller
 
         return $models->map(function (AiModel $model) use ($defaultEmbeddingModelId): array {
             $modelType = $this->normalizeModelType((string) ($model->model_type ?? 'chat'));
+            $imageTaskCount = (int) Task::query()
+                ->withoutGlobalScope('current_site')
+                ->where('ai_image_model_id', (int) $model->id)
+                ->count();
 
             return [
                 'id' => (int) $model->id,
@@ -319,10 +354,13 @@ class AiModelController extends Controller
                 'used_today' => (int) ($model->used_today ?? 0),
                 'total_used' => (int) ($model->total_used ?? 0),
                 'status' => (string) ($model->status ?? 'active'),
-                'task_count' => (int) ($model->task_count ?? 0),
+                'task_count' => (int) ($model->task_count ?? 0) + $imageTaskCount,
                 'article_count' => (int) ($model->article_count ?? 0),
                 'masked_api_key' => $this->maskApiKey((string) ($model->getRawOriginal('api_key') ?? '')),
                 'is_default_embedding' => $modelType === 'embedding' && $defaultEmbeddingModelId === (int) $model->id,
+                'owner_admin_id' => (int) ($model->owner_admin_id ?? 0) ?: null,
+                'owner_identity_type' => empty($model->owner_admin_id) ? 'platform' : 'agent',
+                'owner_identity_label' => $this->aiModelOwnerLabel($model),
             ];
         })->all();
     }
@@ -334,10 +372,10 @@ class AiModelController extends Controller
      */
     private function loadActiveEmbeddingModels(): array
     {
-        return AiModel::query()
+        return $this->managerModelsQuery()
             ->select(['id', 'name', 'model_id'])
-            ->where('status', 'active')
-            ->whereRaw("COALESCE(NULLIF(model_type, ''), 'chat') = 'embedding'")
+            ->activeStatus()
+            ->embeddingType()
             ->orderBy('name')
             ->orderByDesc('id')
             ->get()
@@ -362,7 +400,7 @@ class AiModelController extends Controller
             'version' => ['nullable', 'string', 'max:50'],
             'api_key' => [$isUpdate ? 'nullable' : 'required', 'string', 'max:500'],
             'model_id' => ['required', 'string', 'max:100'],
-            'model_type' => ['required', 'in:chat,embedding'],
+            'model_type' => ['required', 'in:chat,embedding,image'],
             'api_url' => ['nullable', 'string', 'max:500'],
             'failover_priority' => ['nullable', 'integer', 'min:1'],
             'daily_limit' => ['nullable', 'integer', 'min:0'],
@@ -381,7 +419,7 @@ class AiModelController extends Controller
     {
         $normalized = trim(strtolower($modelType));
 
-        return in_array($normalized, ['chat', 'embedding'], true) ? $normalized : 'chat';
+        return in_array($normalized, ['chat', 'embedding', 'image'], true) ? $normalized : 'chat';
     }
 
     /**
@@ -389,7 +427,7 @@ class AiModelController extends Controller
      */
     private function getDefaultEmbeddingModelId(): int
     {
-        return (int) (SiteSetting::query()
+        return (int) ($this->managerSiteSettingsQuery()
             ->where('setting_key', 'default_embedding_model_id')
             ->value('setting_value') ?? 0);
     }
@@ -399,10 +437,71 @@ class AiModelController extends Controller
      */
     private function setDefaultEmbeddingModelId(int $modelId): void
     {
-        SiteSetting::query()->updateOrCreate(
-            ['setting_key' => 'default_embedding_model_id'],
+        SiteSetting::withoutEvents(fn (): SiteSetting => SiteSetting::query()->withoutGlobalScope('current_site')->updateOrCreate(
+            [
+                'site_id' => null,
+                'owner_admin_id' => $this->managerOwnerAdminId(),
+                'setting_key' => 'default_embedding_model_id',
+            ],
             ['setting_value' => (string) max(0, $modelId)]
-        );
+        ));
+    }
+
+    private function managerModelsQuery(): Builder
+    {
+        $query = AiModel::query()->withoutGlobalScope('current_site');
+        $admin = $this->currentAdmin();
+
+        if ($admin->isSuperAdmin()) {
+            return $query;
+        }
+
+        return $this->aiConfigurationScope->applyManagerScope($query, $admin, 'ai_models.owner_admin_id');
+    }
+
+    private function managerSiteSettingsQuery(): Builder
+    {
+        $query = SiteSetting::query()->withoutGlobalScope('current_site');
+        $admin = request()->user('admin');
+        abort_unless($admin instanceof Admin, 403);
+
+        return $this->aiConfigurationScope->applyManagerScope($query, $admin, 'site_settings.owner_admin_id');
+    }
+
+    private function managerOwnerAdminId(): ?int
+    {
+        $admin = $this->currentAdmin();
+
+        return $this->aiConfigurationScope->ownerAdminIdForManager($admin);
+    }
+
+    private function currentAdmin(): Admin
+    {
+        $admin = request()->user('admin');
+        abort_unless($admin instanceof Admin, 403);
+
+        return $admin;
+    }
+
+    private function aiModelOwnerLabel(AiModel $model): string
+    {
+        if (empty($model->owner_admin_id)) {
+            return '平台模型';
+        }
+
+        $owner = $model->getRelationValue('ownerAdmin');
+        if (! $owner instanceof Admin) {
+            return '代理 #'.(int) $model->owner_admin_id;
+        }
+
+        $name = trim((string) $owner->name);
+        $username = trim((string) $owner->username);
+
+        if ($name !== '' && $username !== '' && $name !== $username) {
+            return $name.'（'.$username.'）';
+        }
+
+        return $name !== '' ? $name : ($username !== '' ? $username : '代理 #'.(int) $model->owner_admin_id);
     }
 
     /**
@@ -422,7 +521,7 @@ class AiModelController extends Controller
             $row = DB::selectOne("SELECT extname FROM pg_extension WHERE extname = 'vector' LIMIT 1");
 
             return $row !== null;
-        } catch (\Throwable) {
+        } catch (Throwable) {
             return false;
         }
     }
@@ -456,13 +555,19 @@ class AiModelController extends Controller
         $apiUrl = (string) ($model->api_url ?? '');
         $providerBaseUrl = $modelType === 'embedding'
             ? OpenAiRuntimeProvider::resolveEmbeddingBaseUrl($apiUrl)
-            : OpenAiRuntimeProvider::resolveChatBaseUrl($apiUrl);
+            : ($modelType === 'image'
+                ? OpenAiRuntimeProvider::resolveImageBaseUrl($apiUrl)
+                : OpenAiRuntimeProvider::resolveChatBaseUrl($apiUrl));
 
         if ($providerBaseUrl === '') {
             return '';
         }
 
-        return rtrim($providerBaseUrl, '/').($modelType === 'embedding' ? '/embeddings' : '/chat/completions');
+        return rtrim($providerBaseUrl, '/').match ($modelType) {
+            'embedding' => '/embeddings',
+            'image' => '/images/generations',
+            default => '/chat/completions',
+        };
     }
 
     /**
@@ -474,6 +579,15 @@ class AiModelController extends Controller
             return [
                 'model' => $modelName,
                 'input' => 'GEOFlow embedding connection test',
+            ];
+        }
+
+        if ($modelType === 'image') {
+            return [
+                'model' => $modelName,
+                'prompt' => 'A simple clean icon for GEOFlow connection test',
+                'n' => 1,
+                'size' => '1024x1024',
             ];
         }
 
@@ -495,6 +609,12 @@ class AiModelController extends Controller
 
         if ($modelType === 'embedding') {
             return isset($json['data'][0]['embedding']) && is_array($json['data'][0]['embedding']);
+        }
+
+        if ($modelType === 'image') {
+            return isset($json['data'][0]['b64_json'])
+                || isset($json['data'][0]['url'])
+                || isset($json['data'][0]['image']);
         }
 
         return isset($json['choices'][0]['message']['content'])
