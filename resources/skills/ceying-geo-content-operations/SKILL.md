@@ -110,7 +110,7 @@ description: 策影GEO品牌增长智能体，用于帮助企业围绕品牌增�
 | 生成视频和查询生成结果 | [references/video-generation-and-publishing.md](references/video-generation-and-publishing.md) |
 | 查询或执行 ceying-geo 已有任务 | [references/task-execution.md](references/task-execution.md) |
 | 查询、创建、更新或删除素材 | [references/material-management.md](references/material-management.md) |
-| 增加曝光、咨询转化或行业推广 | [references/customer-acquisition-growth.md](references/customer-acquisition-growth.md) |
+| 增加曝光、咨询转化或行业推广 | [references/promotion-exposure-growth.md](references/promotion-exposure-growth.md) |
 | 安装 MCP Server、获取或配置 MCP Key、补充权限 | [references/mcp-server-setup.md](references/mcp-server-setup.md) |
 | 处理超时、限流、权限、幂等或部分失败 | [references/error-recovery.md](references/error-recovery.md) |
 
