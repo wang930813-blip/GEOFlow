@@ -15,6 +15,7 @@ use App\Support\AdminWeb;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
@@ -50,11 +51,7 @@ class AdminUserController extends Controller
             'activeMenu' => 'admin_users',
             'adminSiteName' => AdminWeb::siteName(),
             'admins' => $admins,
-            'stats' => [
-                'total_admins' => count($admins),
-                'active_admins' => count(array_filter($admins, static fn (array $admin): bool => $admin['status'] === 'active')),
-                'super_admins' => count(array_filter($admins, static fn (array $admin): bool => $admin['is_super_admin'])),
-            ],
+            'stats' => $this->loadAdminStats(),
             'currentAdminId' => (int) (auth('admin')->id() ?? 0),
             'plans' => PlatformPlan::query()
                 ->where('status', 'active')
@@ -380,7 +377,7 @@ class AdminUserController extends Controller
     }
 
     /**
-     * @return array<int, array{
+     * @return LengthAwarePaginator<int, array{
      *   id:int,
      *   username:string,
      *   email:string,
@@ -394,8 +391,9 @@ class AdminUserController extends Controller
      *   activity_count:int
      * }>
      */
-    private function loadAdmins(): array
+    private function loadAdmins(): LengthAwarePaginator
     {
+        $perPage = max(1, min(100, (int) config('geoflow.admin_items_per_page', 20)));
         $query = Admin::query()
             ->select([
                 'id',
@@ -409,18 +407,15 @@ class AdminUserController extends Controller
                 'created_by',
             ])
             ->with(['creator:id,username,display_name,role'])
-            // 与 bak 一致：超级管理员置顶，其余按创建时间和 ID 升序。
-            ->orderByRaw("CASE WHEN LOWER(COALESCE(role, '')) IN ('super_admin', 'superadmin') THEN 0 ELSE 1 END")
-            ->orderBy('created_at')
-            ->orderBy('id');
+            // 列表按创建时间倒序展示，最新账号在前。
+            ->orderByDesc('created_at')
+            ->orderByDesc('id');
 
         if (Schema::hasTable('admin_activity_logs')) {
             $query->withCount('activityLogs as activity_count');
         }
 
-        $admins = $query->get();
-
-        return $admins->map(function (Admin $admin): array {
+        return $query->paginate($perPage)->withQueryString()->through(function (Admin $admin): array {
             return [
                 'id' => (int) $admin->id,
                 'username' => (string) ($admin->username ?? ''),
@@ -436,7 +431,21 @@ class AdminUserController extends Controller
                 'owner_label' => $this->ownerLabel($admin),
                 'activity_count' => (int) ($admin->activity_count ?? 0),
             ];
-        })->all();
+        });
+    }
+
+    /**
+     * @return array{total_admins:int,active_admins:int,super_admins:int}
+     */
+    private function loadAdminStats(): array
+    {
+        return [
+            'total_admins' => Admin::query()->count(),
+            'active_admins' => Admin::query()->where('status', 'active')->count(),
+            'super_admins' => Admin::query()
+                ->whereRaw("LOWER(COALESCE(role, '')) IN ('super_admin', 'superadmin')")
+                ->count(),
+        ];
     }
 
     private function roleLabel(string $role): string

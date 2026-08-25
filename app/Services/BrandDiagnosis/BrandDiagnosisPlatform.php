@@ -116,7 +116,7 @@ final class BrandDiagnosisPlatform
         return match (self::normalize($platform)) {
             self::DOUBAO => ['doubao.com'],
             self::DEEPSEEK => ['deepseek.com'],
-            self::QIANWEN => ['tongyi.com', 'qianwen.com', 'aliyun.com', 'qwen.ai'],
+            self::QIANWEN => ['tongyi.com', 'qianwen.com', 'aliyun.com', 'qwen.ai', 'qianwen.my.cn'],
             self::WENXIN => ['baidu.com'],
         };
     }

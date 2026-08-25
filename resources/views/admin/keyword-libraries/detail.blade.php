@@ -156,11 +156,11 @@
                 <div class="flex items-center justify-between gap-4">
                     <div>
                         <h3 class="text-lg font-medium text-gray-900">AI 搜索收录检测</h3>
-                        <p class="mt-1 text-sm text-gray-500">基于关键词的问题变体，检测豆包、千问、DeepSeek 是否命中关键词和品牌。</p>
+                        <p class="mt-1 text-sm text-gray-500">基于关键词的问题变体，检测豆包、千问、DeepSeek、腾讯元宝、文心一言是否命中关键词和品牌。</p>
                     </div>
                     <form method="POST" action="{{ route('admin.keyword-libraries.inclusion-checks.store', ['libraryId' => (int) $library->id]) }}" class="flex flex-wrap items-center gap-3">
                         @csrf
-                        @foreach (['doubao' => '豆包', 'qianwen' => '千问', 'deepseek' => 'DeepSeek'] as $platformValue => $platformLabel)
+                        @foreach (($inclusionPlatforms ?? ['doubao' => '豆包', 'qianwen' => '千问', 'deepseek' => 'DeepSeek', 'yuanbao' => '腾讯元宝', 'wenxin' => '文心一言']) as $platformValue => $platformLabel)
                             <label class="inline-flex items-center text-sm text-gray-700">
                                 <input type="checkbox" name="platforms[]" value="{{ $platformValue }}" checked class="rounded border-gray-300 text-blue-600 shadow-sm focus:ring-blue-500">
                                 <span class="ml-1">{{ $platformLabel }}</span>

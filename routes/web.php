@@ -59,6 +59,7 @@ use App\Http\Controllers\Site\ArchiveController;
 use App\Http\Controllers\Site\ArticleController as SiteArticleController;
 use App\Http\Controllers\Site\CategoryController as SiteCategoryController;
 use App\Http\Controllers\Site\HomeController;
+use App\Http\Controllers\Site\PageController;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
@@ -76,6 +77,9 @@ Route::get('/monitoring-report/share/{token}', [MonitoringReportShareController:
 
 Route::middleware(['site.domain', 'site.locale', 'site.view_log'])->group(function (): void {
     Route::get('/', [HomeController::class, 'index'])->name('site.home');
+    Route::get('/news', [PageController::class, 'news'])->name('site.news');
+    Route::get('/about', [PageController::class, 'about'])->name('site.about');
+    Route::get('/contact', [PageController::class, 'contact'])->name('site.contact');
     Route::get('/archive', [ArchiveController::class, 'index'])->name('site.archive');
     Route::get('/archive/{year}/{month}', [ArchiveController::class, 'month'])
         ->name('site.archive.month')
@@ -238,6 +242,7 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::get('{videoGeneration}', [VideoGenerationController::class, 'show'])->name('show')->whereNumber('videoGeneration');
             Route::get('{videoGeneration}/download', [VideoGenerationController::class, 'download'])->name('download')->whereNumber('videoGeneration');
             Route::post('{videoGeneration}/cover', [VideoGenerationController::class, 'updateCover'])->name('cover.update')->whereNumber('videoGeneration');
+            Route::delete('{videoGeneration}', [VideoGenerationController::class, 'destroy'])->name('destroy')->whereNumber('videoGeneration');
             Route::post('{videoGeneration}/self-media/publish', [VideoSelfMediaPublishController::class, 'store'])
                 ->name('self-media.publish')
                 ->whereNumber('videoGeneration');

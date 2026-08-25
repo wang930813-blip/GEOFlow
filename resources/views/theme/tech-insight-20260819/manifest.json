@@ -1,0 +1,26 @@
+{
+  "id": "tech-insight-20260819",
+  "name": "Tech Insight Website",
+  "version": "1.0.0",
+  "description": "A light technology-style GEOFlow frontend theme for corporate knowledge sites, preserving article, category, SEO, markdown, and route data contracts.",
+  "templates": [
+    "layout",
+    "home",
+    "category",
+    "article"
+  ],
+  "notes": [
+    "Only replaces the frontend presentation layer. It keeps GEOFlow routes, Blade variables, SEO metadata, JSON-LD schema, markdown HTML, category navigation, article cards, and optional article ad data intact.",
+    "Designed as a content-first technology website: lead article, category navigation, latest insights, side panels, and readable article detail pages."
+  ],
+  "base_theme_id": "netease-news-20260507",
+  "target_theme_id": "tech-insight-20260819",
+  "mode": "theme",
+  "created_at": "2026-08-19T00:00:00+08:00",
+  "preview_routes": [
+    "/",
+    "/category/{slug}",
+    "/article/{slug}",
+    "/archive"
+  ]
+}

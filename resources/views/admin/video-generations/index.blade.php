@@ -84,6 +84,16 @@
                                                 预览
                                             </a>
                                         @endif
+                                        @if($canOperateVideos)
+                                            <form method="POST" action="{{ route('admin.video-generations.destroy', $video) }}" onsubmit="return confirm('确认删除这个视频生成任务吗？');">
+                                                @csrf
+                                                @method('DELETE')
+                                                <button type="submit" class="inline-flex h-9 items-center justify-center gap-1 rounded-md border border-red-100 bg-red-50 px-3 text-sm font-medium text-red-700 hover:bg-red-100">
+                                                    <i data-lucide="trash-2" class="h-4 w-4"></i>
+                                                    删除
+                                                </button>
+                                            </form>
+                                        @endif
                                         <a href="{{ route('admin.video-generations.show', $video) }}" class="inline-flex h-9 items-center justify-center gap-1 rounded-md border border-indigo-100 bg-indigo-50 px-3 text-sm font-medium text-indigo-700 hover:bg-indigo-100">
                                             <i data-lucide="eye" class="h-4 w-4"></i>
                                             查看

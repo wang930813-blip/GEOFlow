@@ -151,6 +151,20 @@ class VideoGenerationController extends Controller
         return back()->with('message', '封面图已更新');
     }
 
+    public function destroy(Request $request, VideoGenerationJob $videoGeneration): RedirectResponse
+    {
+        $admin = $this->admin($request);
+        abort_if($admin->isAgentAdmin(), 403);
+        $site = $this->nullableSite();
+        $this->authorizeVideo($videoGeneration, $admin, $site);
+
+        $videoGeneration->delete();
+
+        return redirect()
+            ->route('admin.video-generations.index')
+            ->with('message', '视频生成任务已删除');
+    }
+
     public function download(Request $request, VideoGenerationJob $videoGeneration): StreamedResponse
     {
         $admin = $this->admin($request);

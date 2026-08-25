@@ -12,6 +12,7 @@ use App\Models\KnowledgeBase;
 use App\Models\KeywordLibrary;
 use App\Models\MonitoringReportShare;
 use App\Models\Site;
+use App\Models\SiteSetting;
 use App\Services\MonitoringCenter\MonitoringReportRenderer;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -44,6 +45,25 @@ class AdminMonitoringCenterPageTest extends TestCase
             '/assets/monitoring-center/ceying-ai-logo1.png?v='.$version,
             $html
         );
+    }
+
+    public function test_monitoring_center_uses_current_site_report_logo_when_configured(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('monitoring_custom_logo_admin');
+
+        SiteSetting::withoutGlobalScope('current_site')->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'setting_key' => 'monitoring_report_logo',
+            'setting_value' => 'https://cdn.example.com/client-report-logo.png',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.monitoring-center.index'))
+            ->assertOk()
+            ->assertSee('src="https://cdn.example.com/client-report-logo.png"', false)
+            ->assertDontSee('/assets/monitoring-center/ceying-ai-logo1.png', false);
     }
 
     public function test_industry_report_header_keeps_space_between_title_and_company_meta(): void
@@ -275,6 +295,79 @@ class AdminMonitoringCenterPageTest extends TestCase
         $this->assertStringNotContainsString('/brand-diagnosis/snapshot/'.$matchedResult->snapshot_token, $html);
     }
 
+    public function test_enterprise_search_report_includes_all_rows_and_mirrors_pc_rows_to_mobile(): void
+    {
+        config(['geoflow.monitoring_search_report_virtual_data_enabled' => false]);
+
+        [$admin, $site] = $this->createAdminWithSite('monitoring_search_report_full_rows_admin');
+
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => 'Full Rows Brand',
+            'platforms' => ['doubao'],
+            'status' => 'completed',
+            'total_questions' => 81,
+            'completed_questions' => 81,
+            'failed_questions' => 0,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+            'completed_at' => now(),
+        ]);
+
+        for ($index = 1; $index <= 81; $index++) {
+            $question = BrandDiagnosisQuestion::query()->create([
+                'site_id' => (int) $site->id,
+                'owner_admin_id' => (int) $admin->id,
+                'run_id' => (int) $run->id,
+                'question' => 'Full rows question '.$index,
+                'question_type' => 'brand',
+                'sort_order' => $index,
+                'status' => 'completed',
+            ]);
+
+            BrandDiagnosisResult::query()->create([
+                'site_id' => (int) $site->id,
+                'owner_admin_id' => (int) $admin->id,
+                'run_id' => (int) $run->id,
+                'question_id' => (int) $question->id,
+                'platform' => 'doubao',
+                'answer' => 'Full Rows Brand answer '.$index,
+                'brand_mentioned' => true,
+                'mention_count' => 1,
+                'mention_rank' => 1,
+                'sentiment' => 'positive',
+                'status' => 'success',
+                'checked_at' => now()->subSeconds($index),
+            ]);
+        }
+
+        $html = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.monitoring-center.index'))
+            ->assertOk()
+            ->getContent();
+
+        $payload = $this->monitoringReportPayload($html);
+        $rows = collect(data_get($payload, 'search_rows', []));
+
+        $this->assertCount(162, $rows);
+        $this->assertSame(81, $rows->where('terminal', 'PC')->count());
+        $this->assertSame(81, $rows->reject(fn (array $row): bool => (string) $row['terminal'] === 'PC')->count());
+        $this->assertSame(
+            $rows->where('terminal', 'PC')->pluck('id')->sort()->values()->all(),
+            $rows->reject(fn (array $row): bool => (string) $row['terminal'] === 'PC')->pluck('id')->sort()->values()->all()
+        );
+
+        $filters = collect(data_get($payload, 'platform_filters', []));
+        $this->assertSame(162, (int) data_get($filters->first(), 'total'));
+        $doubaoFilters = $filters->where('platform_key', 'doubao')->where('total', 81)->values();
+        $this->assertCount(2, $doubaoFilters);
+        $this->assertSame(1, $doubaoFilters->where('terminal', 'PC')->count());
+        $this->assertSame(1, $doubaoFilters->reject(fn (array $row): bool => (string) $row['terminal'] === 'PC')->count());
+    }
+
     public function test_monitoring_center_virtual_switch_only_keeps_search_report_static(): void
     {
         config(['geoflow.monitoring_search_report_virtual_data_enabled' => true]);
@@ -447,6 +540,44 @@ class AdminMonitoringCenterPageTest extends TestCase
         }
     }
 
+    public function test_enterprise_article_trend_uses_display_override_for_registered_target_mobile(): void
+    {
+        $this->travelTo(Carbon::parse('2026-08-15 12:00:00'));
+
+        [$admin, $site] = $this->createAdminWithSite('monitoring_registered_target_admin');
+        $admin->forceFill([
+            'mobile' => '17780529472',
+            'display_name' => 'monitoring registered target',
+        ])->save();
+
+        $html = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.monitoring-center.index'))
+            ->assertOk()
+            ->getContent();
+
+        $payload = $this->monitoringReportPayload($html);
+        $last30 = collect(data_get($payload, 'trend.last_30', []));
+
+        $this->assertSame('2026-07-17', (string) data_get($last30->first(), 'date'));
+        $this->assertSame('2026-08-15', (string) data_get($last30->last(), 'date'));
+
+        foreach ($last30 as $row) {
+            $this->assertGreaterThanOrEqual(50, (int) $row['created']);
+            $this->assertLessThanOrEqual(80, (int) $row['created']);
+            $this->assertGreaterThanOrEqual(50, (int) $row['published']);
+            $this->assertLessThanOrEqual(80, (int) $row['published']);
+        }
+
+        $last7 = collect(data_get($payload, 'trend.last_7', []));
+        foreach ($last7 as $row) {
+            $this->assertGreaterThanOrEqual(50, (int) $row['created']);
+            $this->assertLessThanOrEqual(80, (int) $row['created']);
+            $this->assertGreaterThanOrEqual(50, (int) $row['published']);
+            $this->assertLessThanOrEqual(80, (int) $row['published']);
+        }
+    }
+
     public function test_enterprise_article_trend_does_not_override_other_accounts(): void
     {
         $this->travelTo(Carbon::parse('2026-08-06 12:00:00'));
@@ -527,6 +658,26 @@ class AdminMonitoringCenterPageTest extends TestCase
             ->assertSee('href="https://chat.deepseek.com/"', false)
             ->assertSee('<table', false)
             ->assertDontSee('收录词不存在');
+    }
+
+    public function test_snapshot_voucher_renders_result_by_id_for_other_direct_admin(): void
+    {
+        [$owner, $site] = $this->createAdminWithSite('snapshot_direct_owner_admin');
+        $viewer = $this->createAdmin('snapshot_other_direct_admin');
+        $viewer->forceFill(['role' => 'direct_admin'])->save();
+        $result = $this->createBrandDiagnosisSnapshot($owner, $site);
+
+        $response = $this->actingAs($viewer, 'admin')
+            ->get(route('admin.snapshot-voucher.show', ['id' => (int) $result->id]));
+
+        $response
+            ->assertOk()
+            ->assertSee('class="brand"', false)
+            ->assertSee('DeepSeek', false)
+            ->assertSee('class="question-bubble"', false)
+            ->assertSee('<article class="answer">', false)
+            ->assertSee('href="https://chat.deepseek.com/"', false)
+            ->assertDontSee('class="empty-card"', false);
     }
 
     public function test_snapshot_voucher_can_be_viewed_without_admin_login(): void
@@ -644,8 +795,9 @@ class AdminMonitoringCenterPageTest extends TestCase
         }
     }
 
-    public function test_monitoring_center_share_endpoint_creates_snapshot_link_for_current_site(): void
+    public function test_monitoring_center_share_endpoint_creates_expiring_link_for_current_site(): void
     {
+        $this->travelTo(Carbon::parse('2026-08-19 10:00:00'));
         $this->withoutMiddleware(ValidateCsrfToken::class);
 
         [$admin, $site] = $this->createAdminWithSite('monitoring_share_creator');
@@ -665,14 +817,33 @@ class AdminMonitoringCenterPageTest extends TestCase
         $this->assertSame('industry', (string) $share->report_type);
         $this->assertSame((int) $site->id, (int) $share->site_id);
         $this->assertSame((int) $admin->id, (int) $share->created_by_admin_id);
-        $this->assertSame('monitoring_share_creator', (string) data_get($share->payload, 'context.company_name'));
+        $this->assertSame('2026-08-26 10:00:00', $share->expires_at?->format('Y-m-d H:i:s'));
         $this->assertStringContainsString('/monitoring-report/share/', (string) $response->json('url'));
     }
 
-    public function test_monitoring_report_share_link_is_public_and_renders_snapshot_payload(): void
+    public function test_monitoring_report_share_link_is_public_and_renders_realtime_report_data(): void
     {
         [$admin, $site] = $this->createAdminWithSite('monitoring_public_share');
         $token = 'publicsharetoken123';
+
+        SiteSetting::withoutGlobalScope('current_site')->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'setting_key' => 'monitoring_report_logo',
+            'setting_value' => 'https://cdn.example.com/share-report-logo.png',
+        ]);
+
+        KeywordLibrary::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'Realtime share keyword library',
+            'company_name' => 'Realtime Share Brand',
+            'domain_keyword' => 'realtime monitoring',
+            'status' => 'active',
+            'keyword_count' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
 
         MonitoringReportShare::query()->create([
             'token_hash' => hash('sha256', $token),
@@ -683,7 +854,7 @@ class AdminMonitoringCenterPageTest extends TestCase
             'title' => 'Enterprise report snapshot',
             'payload' => [
                 'context' => [
-                    'company_name' => '公开分享快照公司',
+                    'company_name' => 'Stale Snapshot Brand',
                     'site_name' => (string) $site->name,
                     'date' => '2026-07-13',
                     'updated_at' => '2026-07-13 10:00',
@@ -701,9 +872,33 @@ class AdminMonitoringCenterPageTest extends TestCase
 
         $this->get(route('monitoring-report-share.show', ['token' => $token]))
             ->assertOk()
-            ->assertSee('公开分享快照公司')
+            ->assertSee('src="https://cdn.example.com/share-report-logo.png"', false)
+            ->assertSee('Realtime Share Brand')
+            ->assertDontSee('Stale Snapshot Brand')
             ->assertSee('window.__MONITORING_REPORT__', false)
             ->assertDontSee(route('admin.login'), false);
+    }
+
+    public function test_monitoring_report_share_link_with_legacy_null_expiry_expires_after_seven_days(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('monitoring_legacy_expired_share');
+        $token = 'legacyexpiredsharetoken123';
+
+        $share = MonitoringReportShare::query()->create([
+            'token_hash' => hash('sha256', $token),
+            'report_type' => 'enterprise',
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'created_by_admin_id' => (int) $admin->id,
+            'title' => 'Legacy report share',
+            'payload' => [],
+            'use_virtual_search_report_data' => false,
+            'expires_at' => null,
+        ]);
+        $share->forceFill(['created_at' => now()->subDays(8)])->save();
+
+        $this->get(route('monitoring-report-share.show', ['token' => $token]))
+            ->assertNotFound();
     }
 
     private function createAdmin(string $username = 'monitoring_center_admin'): Admin
