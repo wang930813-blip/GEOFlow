@@ -88,7 +88,7 @@
                                         <tbody class="divide-y divide-gray-100 bg-white text-gray-700">
                                             @foreach ($runReport['results'] as $result)
                                                 <tr>
-                                                    <td class="whitespace-nowrap px-3 py-2 font-medium text-gray-900">{{ match (strtolower((string) $result->platform)) { 'doubao' => '豆包', 'qianwen' => '千问', 'deepseek' => 'DeepSeek', default => strtoupper((string) $result->platform) } }}</td>
+                                                    <td class="whitespace-nowrap px-3 py-2 font-medium text-gray-900">{{ match (strtolower((string) $result->platform)) { 'doubao' => '豆包', 'qianwen' => '千问', 'deepseek' => 'DeepSeek', 'yuanbao' => '腾讯元宝', 'wenxin' => '文心一言', default => strtoupper((string) $result->platform) } }}</td>
                                                     <td class="whitespace-nowrap px-3 py-2">{{ $result->keyword?->keyword }}</td>
                                                     <td class="min-w-[12rem] px-3 py-2">{{ $result->question }}</td>
                                                     <td class="whitespace-nowrap px-3 py-2">

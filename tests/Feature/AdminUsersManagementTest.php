@@ -210,6 +210,31 @@ class AdminUsersManagementTest extends TestCase
         );
     }
 
+    public function test_admin_user_list_is_paginated_and_newest_first(): void
+    {
+        config(['geoflow.admin_items_per_page' => 2]);
+
+        $superAdmin = $this->createAdmin('oldest_user_page_root', 'super_admin');
+        $this->setAdminCreatedAt($superAdmin, now()->subDays(3));
+        $middleAdmin = $this->createAdmin('middle_user_page_account', 'direct_admin', $superAdmin);
+        $this->setAdminCreatedAt($middleAdmin, now()->subDays(2));
+        $newAdmin = $this->createAdmin('newest_user_page_account', 'agent_admin', $superAdmin);
+        $this->setAdminCreatedAt($newAdmin, now()->subDay());
+
+        $response = $this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.admin-users.index'));
+
+        $admins = $response->viewData('admins');
+
+        $response->assertOk();
+        $this->assertInstanceOf(\Illuminate\Pagination\LengthAwarePaginator::class, $admins);
+        $this->assertSame(
+            [(int) $newAdmin->id, (int) $middleAdmin->id],
+            collect($admins->items())->pluck('id')->map(fn ($id): int => (int) $id)->all()
+        );
+        $this->assertSame(3, $admins->total());
+    }
+
     private function createAdmin(string $username, string $role, ?Admin $creator = null): Admin
     {
         return Admin::query()->create([
@@ -221,6 +246,14 @@ class AdminUsersManagementTest extends TestCase
             'status' => 'active',
             'created_by' => $creator?->id,
         ]);
+    }
+
+    private function setAdminCreatedAt(Admin $admin, \Carbon\CarbonInterface $createdAt): void
+    {
+        $admin->forceFill([
+            'created_at' => $createdAt,
+            'updated_at' => $createdAt,
+        ])->save();
     }
 
     /**

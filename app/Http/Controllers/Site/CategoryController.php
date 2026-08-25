@@ -65,7 +65,7 @@ class CategoryController extends Controller
             : $category->name.' - '.$siteDescription;
 
         return SiteThemeViewResolver::first('category', [
-            'activeNav' => 'category',
+            'activeNav' => 'news',
             'category' => $category,
             'articles' => $articles,
             'hotArticles' => $hotArticles,

@@ -47,7 +47,7 @@ class AdminGeoInclusionCheckPhaseTwoTest extends TestCase
         $response = $this->actingAs($admin, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
             ->post(route('admin.keyword-libraries.inclusion-checks.store', ['libraryId' => (int) $library->id]), [
-                'platforms' => ['doubao', 'qianwen', 'deepseek'],
+                'platforms' => ['doubao', 'qianwen', 'deepseek', 'yuanbao', 'wenxin'],
             ]);
 
         $response->assertRedirect(route('admin.keyword-libraries.detail', ['libraryId' => (int) $library->id]));
@@ -56,10 +56,26 @@ class AdminGeoInclusionCheckPhaseTwoTest extends TestCase
         $this->assertNotNull($run);
         $this->assertSame((int) $library->id, (int) $run->keyword_library_id);
         $this->assertSame('pending', $run->status);
-        $this->assertSame(['doubao', 'qianwen', 'deepseek'], $run->platforms);
-        $this->assertSame(3, (int) $run->total_checks);
+        $this->assertSame(['doubao', 'qianwen', 'deepseek', 'yuanbao', 'wenxin'], $run->platforms);
+        $this->assertSame(5, (int) $run->total_checks);
 
-        Queue::assertPushed(ProcessGeoInclusionCheckJob::class, 3);
+        Queue::assertPushed(ProcessGeoInclusionCheckJob::class, 5);
+    }
+
+    public function test_keyword_library_detail_shows_five_inclusion_check_platforms(): void
+    {
+        $admin = $this->createAdmin('inclusion_platform_options_admin');
+        $site = $this->createSiteForAdmin($admin);
+        $library = $this->createLibraryWithQuestion((int) $site->id);
+
+        $response = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.keyword-libraries.detail', ['libraryId' => (int) $library->id]));
+
+        $response->assertOk();
+        foreach (['doubao', 'qianwen', 'deepseek', 'yuanbao', 'wenxin'] as $platform) {
+            $response->assertSee('name="platforms[]" value="'.$platform.'"', false);
+        }
     }
 
     public function test_inclusion_check_consumes_account_quota_and_sets_owner(): void
@@ -426,6 +442,34 @@ class AdminGeoInclusionCheckPhaseTwoTest extends TestCase
             'status' => 'success',
             'checked_at' => CarbonImmutable::parse('2026-05-22 18:15:00'),
         ]);
+        GeoInclusionCheckResult::query()->create([
+            'site_id' => (int) $site->id,
+            'run_id' => (int) $run->id,
+            'keyword_library_id' => (int) $library->id,
+            'keyword_id' => (int) $keyword->id,
+            'question_variant_id' => (int) $question->id,
+            'platform' => 'yuanbao',
+            'question' => 'Which AI search platform tools are useful?',
+            'answer' => 'Acme is discussed on Tencent Yuanbao.',
+            'keyword_hit' => true,
+            'brand_hit' => true,
+            'status' => 'success',
+            'checked_at' => CarbonImmutable::parse('2026-05-23 10:20:00'),
+        ]);
+        GeoInclusionCheckResult::query()->create([
+            'site_id' => (int) $site->id,
+            'run_id' => (int) $run->id,
+            'keyword_library_id' => (int) $library->id,
+            'keyword_id' => (int) $keyword->id,
+            'question_variant_id' => (int) $question->id,
+            'platform' => 'wenxin',
+            'question' => 'Which AI search monitoring method works?',
+            'answer' => 'Wenxin answer discusses monitoring.',
+            'keyword_hit' => false,
+            'brand_hit' => false,
+            'status' => 'success',
+            'checked_at' => CarbonImmutable::parse('2026-05-23 10:25:00'),
+        ]);
 
         $response = $this->actingAs($admin, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
@@ -436,6 +480,8 @@ class AdminGeoInclusionCheckPhaseTwoTest extends TestCase
         $response->assertSee('2026-05-22');
         $response->assertSee('AI search visibility');
         $response->assertSee('DeepSeek');
+        $response->assertSee('腾讯元宝');
+        $response->assertSee('文心一言');
         $response->assertSee('关键词命中');
         $response->assertSee('品牌命中');
         $response->assertSee('<details class="group">', false);
@@ -508,7 +554,7 @@ class AdminGeoInclusionCheckPhaseTwoTest extends TestCase
             'keyword_library_id' => (int) $library->id,
             'keyword_id' => (int) $keyword->id,
             'question_variant_id' => (int) $question->id,
-            'platform' => 'deepseek',
+            'platform' => 'wenxin',
             'question' => 'Which tools improve AI search visibility?',
             'answer' => 'Acme is cited.',
             'keyword_hit' => true,
@@ -527,6 +573,7 @@ class AdminGeoInclusionCheckPhaseTwoTest extends TestCase
         $content = $response->streamedContent();
         $this->assertStringContainsString('日期,检测时间,平台,关键词,问题,关键词命中,品牌命中,状态,回答摘要,错误信息', $content);
         $this->assertStringContainsString('2026-05-23', $content);
+        $this->assertStringContainsString('文心一言', $content);
         $this->assertStringContainsString('AI search visibility', $content);
         $this->assertStringContainsString('是', $content);
     }

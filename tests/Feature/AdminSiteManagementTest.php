@@ -6,6 +6,7 @@ use App\Models\Admin;
 use App\Models\PlatformPlan;
 use App\Models\Prompt;
 use App\Models\Site;
+use App\Models\SiteSetting;
 use App\Services\Billing\AdminPlanSubscriptionService;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -317,7 +318,7 @@ class AdminSiteManagementTest extends TestCase
         $site->refresh();
 
         $this->assertSame('New Site', $site->name);
-        $this->assertSame('new.geo.xinzhidi.cn', $site->domain);
+        $this->assertSame('old.geo.xinzhidi.cn', $site->domain);
         $this->assertSame('inactive', $site->status);
         $this->assertDatabaseMissing('site_members', [
             'site_id' => $site->id,
@@ -334,6 +335,182 @@ class AdminSiteManagementTest extends TestCase
             ->assertRedirect(route('admin.sites.manage.index'));
 
         $this->assertSame('active', $site->fresh()->status);
+    }
+
+    public function test_site_domain_is_read_only_after_creation(): void
+    {
+        $superAdmin = $this->createAdmin('platform_domain_lock_viewer', 'super_admin');
+        $owner = $this->createAdmin('domain_lock_owner', 'direct_admin');
+
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $owner->id,
+            'name' => 'Domain Lock Site',
+            'domain' => 'locked-domain.geo.xinzhidi.cn',
+            'status' => 'active',
+            'customer_mode' => 'direct',
+        ]);
+        $site->members()->attach((int) $owner->id, ['role' => 'owner']);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.sites.manage.index'))
+            ->assertOk()
+            ->assertSee('id="site-domain-'.$site->id.'"', false)
+            ->assertSee('readonly', false)
+            ->assertDontSee('name="domain" value="locked-domain.geo.xinzhidi.cn"', false);
+    }
+
+    public function test_site_edit_form_is_rendered_in_modal_instead_of_inline_table_row(): void
+    {
+        $superAdmin = $this->createAdmin('platform_modal_editor', 'super_admin');
+        $owner = $this->createAdmin('modal_site_owner', 'direct_admin');
+
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $owner->id,
+            'name' => 'Modal Edit Site',
+            'domain' => 'modal-edit.geo.xinzhidi.cn',
+            'status' => 'active',
+            'customer_mode' => 'direct',
+        ]);
+        $site->members()->attach((int) $owner->id, ['role' => 'owner']);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.sites.manage.index'))
+            ->assertOk()
+            ->assertSee('data-open-site-edit-modal="'.$site->id.'"', false)
+            ->assertSee('id="site-edit-modal-'.$site->id.'"', false)
+            ->assertDontSee('id="site-edit-'.$site->id.'"', false);
+    }
+
+    public function test_agent_admin_cannot_configure_monitoring_report_logo_for_child_site(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+
+        $agent = $this->createAdmin('agent_report_logo_owner', 'agent_admin');
+        $member = $this->createAdmin('agent_report_logo_member', 'site_user', $agent);
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $member->id,
+            'name' => 'Agent Report Logo Site',
+            'domain' => 'agent-report-logo.geo.xinzhidi.cn',
+            'status' => 'active',
+            'customer_mode' => 'agent',
+            'agent_admin_id' => (int) $agent->id,
+        ]);
+        $site->members()->attach((int) $member->id, ['role' => 'owner']);
+
+        $this->actingAs($agent, 'admin')
+            ->get(route('admin.sites.manage.index'))
+            ->assertOk()
+            ->assertDontSee('name="monitoring_report_logo"', false);
+
+        $this->actingAs($agent, 'admin')
+            ->post(route('admin.sites.manage.update', ['site' => $site->id]), [
+                'name' => 'Agent Report Logo Site',
+                'domain' => 'changed-agent-report-logo.geo.xinzhidi.cn',
+                'status' => 'active',
+                'owner_admin_id' => $member->id,
+                'member_ids' => [$member->id],
+                'monitoring_report_logo' => 'https://cdn.example.com/agent-should-not-save.png',
+            ])
+            ->assertRedirect(route('admin.sites.manage.index'));
+
+        $this->assertSame('agent-report-logo.geo.xinzhidi.cn', (string) $site->fresh()->domain);
+        $this->assertDatabaseMissing('site_settings', [
+            'site_id' => (int) $site->id,
+            'setting_key' => 'monitoring_report_logo',
+        ]);
+    }
+
+    public function test_super_admin_can_configure_monitoring_report_logo_for_site(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+
+        $superAdmin = $this->createAdmin('platform_report_logo_editor', 'super_admin');
+        $owner = $this->createAdmin('report_logo_owner', 'direct_admin');
+
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $owner->id,
+            'name' => 'Report Logo Site',
+            'domain' => 'report-logo.geo.xinzhidi.cn',
+            'status' => 'active',
+            'customer_mode' => 'direct',
+        ]);
+        $site->members()->attach((int) $owner->id, ['role' => 'owner']);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.sites.manage.index'))
+            ->assertOk()
+            ->assertSee('name="monitoring_report_logo"', false);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.sites.manage.update', ['site' => $site->id]), [
+                'name' => 'Report Logo Site',
+                'domain' => 'report-logo.geo.xinzhidi.cn',
+                'status' => 'active',
+                'customer_mode' => 'direct',
+                'owner_admin_id' => $owner->id,
+                'member_ids' => [$owner->id],
+                'monitoring_report_logo' => 'https://cdn.example.com/report-logo.png',
+            ])
+            ->assertRedirect(route('admin.sites.manage.index'));
+
+        $this->assertDatabaseHas('site_settings', [
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $owner->id,
+            'setting_key' => 'monitoring_report_logo',
+            'setting_value' => 'https://cdn.example.com/report-logo.png',
+        ]);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.sites.manage.index'))
+            ->assertOk()
+            ->assertSee('value="https://cdn.example.com/report-logo.png"', false);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.sites.manage.update', ['site' => $site->id]), [
+                'name' => 'Report Logo Site',
+                'domain' => 'report-logo.geo.xinzhidi.cn',
+                'status' => 'active',
+                'customer_mode' => 'direct',
+                'owner_admin_id' => $owner->id,
+                'member_ids' => [$owner->id],
+                'monitoring_report_logo' => '',
+            ])
+            ->assertRedirect(route('admin.sites.manage.index'));
+
+        $this->assertDatabaseMissing('site_settings', [
+            'site_id' => (int) $site->id,
+            'setting_key' => 'monitoring_report_logo',
+        ]);
+    }
+
+    public function test_site_management_list_is_paginated_newest_first_and_table_layout_is_constrained(): void
+    {
+        config(['geoflow.admin_items_per_page' => 2]);
+
+        $superAdmin = $this->createAdmin('platform_site_pagination_root', 'super_admin');
+        $owner = $this->createAdmin('site_pagination_owner', 'direct_admin');
+
+        $oldSite = $this->createSiteWithCreatedAt('Paginated Old Site', $owner, now()->subDays(3));
+        $middleSite = $this->createSiteWithCreatedAt('Paginated Middle Site', $owner, now()->subDays(2));
+        $newSite = $this->createSiteWithCreatedAt('Paginated New Site', $owner, now()->subDay());
+
+        $response = $this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.sites.manage.index'));
+
+        $sites = $response->viewData('sites');
+
+        $response
+            ->assertOk()
+            ->assertSee('min-w-[1120px] table-fixed', false)
+            ->assertSee('<col class="w-36">', false);
+
+        $this->assertInstanceOf(\Illuminate\Pagination\LengthAwarePaginator::class, $sites);
+        $this->assertSame(
+            [(int) $newSite->id, (int) $middleSite->id],
+            $sites->getCollection()->pluck('id')->map(fn ($id): int => (int) $id)->all()
+        );
+        $this->assertSame(3, $sites->total());
+        $this->assertFalse($sites->getCollection()->contains('id', (int) $oldSite->id));
     }
 
     public function test_super_admin_can_soft_delete_site_from_management_page(): void
@@ -387,5 +564,23 @@ class AdminSiteManagementTest extends TestCase
             'status' => 'active',
             'created_by' => $creator?->id,
         ]);
+    }
+
+    private function createSiteWithCreatedAt(string $name, Admin $owner, \Carbon\CarbonInterface $createdAt): Site
+    {
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $owner->id,
+            'name' => $name,
+            'domain' => str($name)->slug().'.geo.xinzhidi.cn',
+            'status' => 'active',
+            'customer_mode' => 'direct',
+        ]);
+        $site->members()->attach((int) $owner->id, ['role' => 'owner']);
+        $site->forceFill([
+            'created_at' => $createdAt,
+            'updated_at' => $createdAt,
+        ])->save();
+
+        return $site;
     }
 }

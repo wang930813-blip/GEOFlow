@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\BrandDiagnosisBrandMention;
+use App\Models\BrandDiagnosisQuestion;
 use App\Models\BrandDiagnosisResult;
 use App\Models\BrandDiagnosisSource;
 use App\Services\BrandDiagnosis\BrandDiagnosisPlatform;
@@ -20,13 +21,8 @@ class SnapshotVoucherController extends Controller
         $id = $request->integer('id');
         $result = $id > 0
             ? BrandDiagnosisResult::query()
-                ->withoutGlobalScope('current_site')
+                ->withoutGlobalScopes(['current_site', 'admin_owner'])
                 ->whereHas('run', fn ($query) => $query->withoutGlobalScopes(['current_site', 'admin_owner']))
-                ->with([
-                    'question:id,question',
-                    'sources:id,result_id,title,url,domain',
-                    'brandMentions' => fn ($query) => $query->where('is_target_brand', true)->orderBy('mention_rank'),
-                ])
                 ->whereKey($id)
                 ->first()
             : null;
@@ -42,11 +38,25 @@ class SnapshotVoucherController extends Controller
      */
     private function voucher(BrandDiagnosisResult $result, BrandDiagnosisSnapshotPayload $snapshots): array
     {
+        $questionModel = BrandDiagnosisQuestion::query()
+            ->withoutGlobalScopes(['current_site', 'admin_owner'])
+            ->whereKey((int) $result->question_id)
+            ->first(['id', 'question']);
+        $sources = BrandDiagnosisSource::query()
+            ->withoutGlobalScopes(['current_site', 'admin_owner'])
+            ->where('result_id', (int) $result->id)
+            ->get(['id', 'result_id', 'title', 'url', 'domain']);
+        $targetMention = BrandDiagnosisBrandMention::query()
+            ->withoutGlobalScopes(['current_site', 'admin_owner'])
+            ->where('result_id', (int) $result->id)
+            ->where('is_target_brand', true)
+            ->orderBy('mention_rank')
+            ->first(['id', 'brand_name']);
         $platformKey = $this->normalizePlatformKey((string) $result->platform);
         $platformName = $this->platformLabel($platformKey);
-        $question = trim((string) ($result->question?->question ?? ''));
+        $question = trim((string) ($questionModel?->question ?? ''));
         $checkedAt = $result->checked_at ?? $result->created_at;
-        $target = $this->targetBrandName($result);
+        $target = $this->targetBrandName($targetMention);
         $answer = $snapshots->displayAnswer((string) $result->answer);
 
         return [
@@ -61,7 +71,7 @@ class SnapshotVoucherController extends Controller
             'answer_html' => $answer !== ''
                 ? ArticleHtmlPresenter::markdownToHtml($answer)
                 : '<p>暂无 AI 对话详情</p>',
-            'sources' => $result->sources
+            'sources' => $sources
                 ->map(fn (BrandDiagnosisSource $source): array => [
                     'title' => (string) $source->title,
                     'url' => (string) $source->url,
@@ -108,10 +118,8 @@ class SnapshotVoucherController extends Controller
         ];
     }
 
-    private function targetBrandName(BrandDiagnosisResult $result): string
+    private function targetBrandName(?BrandDiagnosisBrandMention $mention): string
     {
-        $mention = $result->brandMentions->first();
-
         if ($mention instanceof BrandDiagnosisBrandMention && trim((string) $mention->brand_name) !== '') {
             return (string) $mention->brand_name;
         }

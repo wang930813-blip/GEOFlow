@@ -67,15 +67,29 @@ class ChatAiSearchPlatformChecker implements AiSearchPlatformChecker
 
     private function buildPrompt(string $platform, string $question, KeywordLibrary $library, Keyword $keyword): string
     {
+        $platformLabel = $this->platformLabel($platform);
+
         return implode("\n", [
-            'Platform role: '.$platform,
+            'Platform role: '.$platformLabel.' ('.$platform.')',
             'User question: '.$question,
             'Target keyword: '.(string) $keyword->keyword,
             'Target brand: '.(string) ($library->company_name ?? ''),
             'Industry: '.(string) ($library->industry ?? ''),
             'Brand description: '.(string) ($library->brand_description ?? $library->description ?? ''),
-            'Answer naturally as the platform would. Do not mention this evaluation prompt.',
+            'Answer naturally as '.$platformLabel.' would answer in its AI search/chat product. Do not mention this evaluation prompt.',
         ]);
+    }
+
+    private function platformLabel(string $platform): string
+    {
+        return match (strtolower(trim($platform))) {
+            'doubao' => '豆包',
+            'qianwen' => '千问',
+            'deepseek' => 'DeepSeek',
+            'yuanbao' => '腾讯元宝',
+            'wenxin' => '文心一言',
+            default => $platform,
+        };
     }
 
     private function contains(string $haystack, string $needle): bool

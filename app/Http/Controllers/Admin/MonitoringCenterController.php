@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Admin;
 use App\Models\MonitoringReportShare;
 use App\Services\MonitoringCenter\MonitoringReportDataService;
+use App\Services\MonitoringCenter\MonitoringReportLogoResolver;
 use App\Services\MonitoringCenter\MonitoringReportRenderer;
 use App\Support\CurrentSite;
 use Illuminate\Http\JsonResponse;
@@ -19,6 +20,7 @@ class MonitoringCenterController extends Controller
         Request $request,
         MonitoringReportDataService $reports,
         CurrentSite $currentSite,
+        MonitoringReportLogoResolver $logoResolver,
         MonitoringReportRenderer $renderer
     ): Response {
         $report = $request->query('report') === 'industry' ? 'industry' : 'enterprise';
@@ -34,6 +36,7 @@ class MonitoringCenterController extends Controller
         return response($renderer->render($report, $reportData, $useVirtualSearchReportData, [
             'share_create_url' => route('admin.monitoring-center.share'),
             'share_csrf_token' => csrf_token(),
+            'report_logo_url' => $logoResolver->logoUrlForSite($currentSite->get()),
         ]), 200, [
             'Content-Type' => 'text/html; charset=UTF-8',
         ]);
@@ -68,6 +71,7 @@ class MonitoringCenterController extends Controller
             'title' => trim($reportLabel.($companyName !== '' ? ' - '.$companyName : '')),
             'payload' => $reportData,
             'use_virtual_search_report_data' => $useVirtualSearchReportData,
+            'expires_at' => now()->addDays(7),
         ]);
 
         return response()->json([

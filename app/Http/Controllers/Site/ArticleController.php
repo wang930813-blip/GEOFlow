@@ -60,7 +60,7 @@ class ArticleController extends Controller
         $stickyAd = ArticleStickyAdPicker::firstEnabled();
 
         return SiteThemeViewResolver::first('article', [
-            'activeNav' => 'article',
+            'activeNav' => 'news',
             'article' => $article,
             'contentHtml' => $contentHtml,
             'excerptPlain' => $excerpt,
