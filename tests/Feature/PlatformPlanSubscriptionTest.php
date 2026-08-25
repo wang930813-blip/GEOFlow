@@ -368,6 +368,152 @@ class PlatformPlanSubscriptionTest extends TestCase
         ]);
     }
 
+    public function test_agent_renewal_refreshes_existing_agent_user_subscriptions(): void
+    {
+        $superAdmin = $this->createAdmin('agent_renew_root_admin', 'super_admin');
+        $agent = $this->createAdmin('agent_renew_agent_admin', 'agent_admin');
+        $member = $this->createAdmin('agent_renew_member', 'site_user');
+        $member->forceFill(['created_by' => (int) $agent->id])->save();
+
+        $agentSite = $this->createSite('代理续费站点', $agent);
+        $memberSite = $this->createSite('代理续费子用户站点', $member);
+        $memberSite->forceFill([
+            'customer_mode' => 'agent',
+            'agent_admin_id' => (int) $agent->id,
+        ])->save();
+
+        $oldPlan = $this->createPlan('旧代理规格', [
+            'brand_diagnoses' => ['quota_value' => 1, 'quota_period' => 'cycle', 'unit' => 'times'],
+        ]);
+        $newPlan = $this->createPlan('新代理规格', [
+            'brand_diagnoses' => ['quota_value' => 9, 'quota_period' => 'cycle', 'unit' => 'times'],
+        ]);
+
+        $oldSubscription = \App\Models\AdminPlanSubscription::query()->create([
+            'admin_id' => (int) $member->id,
+            'site_id' => (int) $memberSite->id,
+            'plan_id' => (int) $oldPlan->id,
+            'source_subscription_id' => null,
+            'inherited_from_admin_id' => (int) $agent->id,
+            'mode' => 'agent_user',
+            'status' => 'active',
+            'starts_at' => now()->subDays(40),
+            'ends_at' => now()->subDays(10),
+            'entitlements_snapshot' => app(PlanSubscriptionService::class)->entitlementSnapshot($oldPlan, 'agent'),
+            'remark' => '旧继承规格',
+        ]);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.plan-subscriptions.store'), [
+                'site_id' => (int) $agentSite->id,
+                'plan_id' => (int) $newPlan->id,
+                'mode' => 'agent',
+                'owner_admin_id' => (int) $agent->id,
+                'starts_at' => now()->format('Y-m-d\TH:i'),
+                'ends_at' => now()->addDays(60)->format('Y-m-d\TH:i'),
+                'remark' => '代理续费',
+            ])
+            ->assertRedirect(route('admin.plan-subscriptions.index'));
+
+        $this->assertSame('cancelled', (string) $oldSubscription->refresh()->status);
+        $this->assertDatabaseHas('admin_plan_subscriptions', [
+            'admin_id' => (int) $member->id,
+            'site_id' => (int) $memberSite->id,
+            'plan_id' => (int) $newPlan->id,
+            'inherited_from_admin_id' => (int) $agent->id,
+            'mode' => 'agent_user',
+            'status' => 'active',
+        ]);
+
+        $activeMemberSubscription = \App\Models\AdminPlanSubscription::query()
+            ->where('admin_id', (int) $member->id)
+            ->where('site_id', (int) $memberSite->id)
+            ->activeNow()
+            ->firstOrFail();
+
+        $this->assertSame((int) $newPlan->id, (int) $activeMemberSubscription->plan_id);
+        $this->assertSame(9, (int) data_get((array) $activeMemberSubscription->entitlements_snapshot, 'brand_diagnoses.quota_value'));
+
+        $response = $this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.plan-usages.index', ['admin_id' => (int) $member->id]));
+        $html = $response->getContent();
+        $usageRowsHtml = substr($html, strpos($html, 'data-plan-usage-row') ?: 0);
+
+        $response->assertOk();
+        $this->assertStringContainsString('agent_renew_member', $usageRowsHtml);
+        $this->assertStringContainsString('新代理规格', $usageRowsHtml);
+        $this->assertStringContainsString('有效', $usageRowsHtml);
+        $this->assertStringNotContainsString('旧代理规格', $usageRowsHtml);
+        $this->assertStringNotContainsString('已到期', $usageRowsHtml);
+    }
+
+    public function test_sync_agent_user_subscriptions_command_repairs_existing_expired_agent_users(): void
+    {
+        $superAdmin = $this->createAdmin('agent_sync_root_admin', 'super_admin');
+        $agent = $this->createAdmin('agent_sync_agent_admin', 'agent_admin');
+        $member = $this->createAdmin('agent_sync_member', 'site_user');
+        $member->forceFill(['created_by' => (int) $agent->id])->save();
+
+        $memberSite = $this->createSite('代理同步子用户站点', $member);
+        $memberSite->forceFill([
+            'customer_mode' => 'agent',
+            'agent_admin_id' => (int) $agent->id,
+        ])->save();
+
+        $oldPlan = $this->createPlan('同步旧规格', [
+            'brand_diagnoses' => ['quota_value' => 1, 'quota_period' => 'cycle', 'unit' => 'times'],
+        ]);
+        $newPlan = $this->createPlan('同步新规格', [
+            'brand_diagnoses' => ['quota_value' => 7, 'quota_period' => 'cycle', 'unit' => 'times'],
+        ]);
+
+        $oldSubscription = \App\Models\AdminPlanSubscription::query()->create([
+            'admin_id' => (int) $member->id,
+            'site_id' => (int) $memberSite->id,
+            'plan_id' => (int) $oldPlan->id,
+            'source_subscription_id' => null,
+            'inherited_from_admin_id' => (int) $agent->id,
+            'mode' => 'agent_user',
+            'status' => 'active',
+            'starts_at' => now()->subDays(40),
+            'ends_at' => now()->subDays(10),
+            'entitlements_snapshot' => app(PlanSubscriptionService::class)->entitlementSnapshot($oldPlan, 'agent'),
+            'remark' => '存量旧继承规格',
+        ]);
+
+        \App\Models\AdminPlanSubscription::query()->create([
+            'admin_id' => (int) $agent->id,
+            'site_id' => null,
+            'plan_id' => (int) $newPlan->id,
+            'source_subscription_id' => null,
+            'inherited_from_admin_id' => null,
+            'mode' => 'agent_owner',
+            'status' => 'active',
+            'starts_at' => now()->subMinute(),
+            'ends_at' => now()->addDays(60),
+            'entitlements_snapshot' => app(PlanSubscriptionService::class)->entitlementSnapshot($newPlan, 'agent'),
+            'remark' => '存量代理有效规格',
+        ]);
+
+        $this->artisan('geoflow:sync-agent-user-subscriptions', [
+            '--agent-id' => (int) $agent->id,
+        ])->assertExitCode(0);
+
+        $this->assertSame('cancelled', (string) $oldSubscription->refresh()->status);
+        $this->assertDatabaseHas('admin_plan_subscriptions', [
+            'admin_id' => (int) $member->id,
+            'site_id' => (int) $memberSite->id,
+            'plan_id' => (int) $newPlan->id,
+            'inherited_from_admin_id' => (int) $agent->id,
+            'mode' => 'agent_user',
+            'status' => 'active',
+        ]);
+        $this->assertDatabaseMissing('admin_credit_accounts', [
+            'admin_id' => (int) $member->id,
+            'site_id' => (int) $memberSite->id,
+        ]);
+    }
+
     public function test_customer_opening_records_are_paginated_and_newest_first(): void
     {
         config(['geoflow.admin_items_per_page' => 2]);

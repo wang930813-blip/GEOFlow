@@ -50,6 +50,7 @@ class PlanUsageController extends Controller
     private function visibleSubscriptions(Admin $admin, Request $request): Builder
     {
         $query = AdminPlanSubscription::query()
+            ->where('status', 'active')
             ->whereHas('admin')
             ->where(function (Builder $query): void {
                 $query->whereNull('site_id')->orWhereHas('site');

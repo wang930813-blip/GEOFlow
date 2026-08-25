@@ -9,6 +9,7 @@ use App\Models\Site;
 use App\Models\SitePlanSubscription;
 use App\Services\MediaDistribution\AdminCreditService;
 use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -66,6 +67,10 @@ class AdminPlanSubscriptionService
                 $this->grantCreditsFromSnapshot($admin, $site, $snapshot, $operator, '规格开通赠送：'.$plan->name);
             }
 
+            if ($mode === 'agent_owner') {
+                $this->refreshInheritedAgentUserSubscriptions($admin, $subscription, $operator, $grantCredits);
+            }
+
             return $subscription;
         });
     }
@@ -76,7 +81,8 @@ class AdminPlanSubscriptionService
         ?Admin $operator,
         ?CarbonInterface $startsAt = null,
         ?CarbonInterface $endsAt = null,
-        string $remark = ''
+        string $remark = '',
+        bool $grantCredits = false
     ): AdminPlanSubscription {
         $startsAt ??= now();
         $endsAt ??= $startsAt->copy()->addDays(max(1, (int) $plan->duration_days));
@@ -84,14 +90,14 @@ class AdminPlanSubscriptionService
             throw new RuntimeException('到期时间必须晚于开始时间');
         }
 
-        return DB::transaction(function () use ($agent, $plan, $startsAt, $endsAt, $remark): AdminPlanSubscription {
+        return DB::transaction(function () use ($agent, $plan, $operator, $startsAt, $endsAt, $remark, $grantCredits): AdminPlanSubscription {
             AdminPlanSubscription::query()
                 ->where('admin_id', (int) $agent->id)
                 ->where('mode', 'agent_owner')
                 ->where('status', 'active')
                 ->update(['status' => 'cancelled']);
 
-            return AdminPlanSubscription::query()->create([
+            $subscription = AdminPlanSubscription::query()->create([
                 'admin_id' => (int) $agent->id,
                 'site_id' => null,
                 'plan_id' => (int) $plan->id,
@@ -104,6 +110,10 @@ class AdminPlanSubscriptionService
                 'entitlements_snapshot' => $this->siteSubscriptionService->entitlementSnapshot($plan, 'agent'),
                 'remark' => $remark,
             ]);
+
+            $this->refreshInheritedAgentUserSubscriptions($agent, $subscription, $operator, $grantCredits);
+
+            return $subscription;
         });
     }
 
@@ -154,9 +164,10 @@ class AdminPlanSubscriptionService
         Site $site,
         ?Admin $operator,
         string $remark,
-        AdminPlanSubscription $source
+        AdminPlanSubscription $source,
+        bool $grantCredits = true
     ): AdminPlanSubscription {
-        return DB::transaction(function () use ($agent, $user, $site, $operator, $remark, $source): AdminPlanSubscription {
+        return DB::transaction(function () use ($agent, $user, $site, $operator, $remark, $source, $grantCredits): AdminPlanSubscription {
             AdminPlanSubscription::query()
                 ->where('admin_id', (int) $user->id)
                 ->where('site_id', (int) $site->id)
@@ -178,10 +189,107 @@ class AdminPlanSubscriptionService
                 'remark' => $remark,
             ]);
 
-            $this->grantCreditsFromSnapshot($user, $site, $snapshot, $operator, '代理用户继承规格赠送');
+            if ($grantCredits) {
+                $this->grantCreditsFromSnapshot($user, $site, $snapshot, $operator, '代理用户继承规格赠送');
+            }
 
             return $subscription;
         });
+    }
+
+    private function refreshInheritedAgentUserSubscriptions(Admin $agent, AdminPlanSubscription $source, ?Admin $operator, bool $grantCredits): int
+    {
+        $targets = [];
+
+        AdminPlanSubscription::query()
+            ->with(['admin', 'site'])
+            ->where('inherited_from_admin_id', (int) $agent->id)
+            ->where('mode', 'agent_user')
+            ->whereHas('admin', fn (Builder $query) => $query->where('role', 'site_user'))
+            ->whereHas('site')
+            ->get()
+            ->each(function (AdminPlanSubscription $subscription) use (&$targets): void {
+                if (! $subscription->admin instanceof Admin || ! $subscription->site instanceof Site) {
+                    return;
+                }
+
+                $targets[(int) $subscription->admin_id.':'.(int) $subscription->site_id] = [
+                    'admin' => $subscription->admin,
+                    'site' => $subscription->site,
+                ];
+            });
+
+        Site::query()
+            ->with('owner')
+            ->where('customer_mode', 'agent')
+            ->where('agent_admin_id', (int) $agent->id)
+            ->whereHas('owner', fn (Builder $query) => $query
+                ->where('role', 'site_user')
+                ->where('created_by', (int) $agent->id))
+            ->get()
+            ->each(function (Site $site) use (&$targets): void {
+                if (! $site->owner instanceof Admin) {
+                    return;
+                }
+
+                $targets[(int) $site->owner_admin_id.':'.(int) $site->id] = [
+                    'admin' => $site->owner,
+                    'site' => $site,
+                ];
+            });
+
+        $refreshed = 0;
+
+        foreach ($targets as $target) {
+            if ($this->targetAlreadyUsesSource($target['admin'], $target['site'], $agent, $source)) {
+                continue;
+            }
+
+            $this->createInheritedSubscription(
+                agent: $agent,
+                user: $target['admin'],
+                site: $target['site'],
+                operator: $operator,
+                remark: '代理续费同步继承规格',
+                source: $source,
+                grantCredits: $grantCredits
+            );
+
+            $refreshed++;
+        }
+
+        return $refreshed;
+    }
+
+    private function targetAlreadyUsesSource(Admin $user, Site $site, Admin $agent, AdminPlanSubscription $source): bool
+    {
+        $subscription = AdminPlanSubscription::query()
+            ->where('admin_id', (int) $user->id)
+            ->where('site_id', (int) $site->id)
+            ->where('inherited_from_admin_id', (int) $agent->id)
+            ->where('mode', 'agent_user')
+            ->activeNow()
+            ->orderByDesc('ends_at')
+            ->orderByDesc('id')
+            ->first();
+
+        if (! $subscription instanceof AdminPlanSubscription) {
+            return false;
+        }
+
+        return (int) $subscription->plan_id === (int) $source->plan_id
+            && (int) ($subscription->source_subscription_id ?? 0) === (int) ($source->source_subscription_id ?? 0)
+            && $this->datesEqual($subscription->starts_at, $source->starts_at)
+            && $this->datesEqual($subscription->ends_at, $source->ends_at);
+    }
+
+    private function datesEqual(?CarbonInterface $first, ?CarbonInterface $second): bool
+    {
+        if ($first === null || $second === null) {
+            return $first === null && $second === null;
+        }
+
+        return $first->equalTo($second);
     }
 
     public function activeSubscriptionForAdmin(int $adminId, int $siteId): AdminPlanSubscription
@@ -220,6 +328,16 @@ class AdminPlanSubscriptionService
             ->orderByDesc('ends_at')
             ->orderByDesc('id')
             ->first();
+    }
+
+    public function refreshInheritedAgentUsersFromCurrentPlan(Admin $agent, ?Admin $operator = null, bool $grantCredits = false): int
+    {
+        $source = $this->activeAgentOwnerSubscription($agent);
+        if (! $source instanceof AdminPlanSubscription) {
+            return 0;
+        }
+
+        return $this->refreshInheritedAgentUserSubscriptions($agent, $source, $operator, $grantCredits);
     }
 
     public function activeOrBackfilledSubscriptionForAdmin(Admin $admin, Site $site): AdminPlanSubscription
