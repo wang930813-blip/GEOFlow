@@ -277,8 +277,8 @@ class AiToEarnSelfMediaPublishTest extends TestCase
             ->get(route('admin.crebee-accounts.index'))
             ->assertOk()
             ->assertSee('小红书')
-            ->assertSee('请先在第三方平台完成授权后点击同步账号')
-            ->assertSee('同步账号后使用')
+            ->assertSee('请联系管理员绑定账号')
+            ->assertSee('联系管理员绑定')
             ->assertSee('value="douyin"', false)
             ->assertDontSee('value="xhs"', false);
     }
@@ -487,6 +487,181 @@ class AiToEarnSelfMediaPublishTest extends TestCase
             'external_account_id' => 'account-bilibili-auth',
             'auth_status' => 'authorized',
         ]);
+    }
+
+    public function test_authorization_sync_binds_only_account_created_after_session_snapshot(): void
+    {
+        [$existingOwner, $existingSite] = $this->provisionSubscribedAdmin('aitoearn_existing_owner', 3);
+        [$admin, $site] = $this->provisionSubscribedAdmin('aitoearn_new_owner', 3);
+        $this->selfMediaAccount($existingSite, $existingOwner, 'douyin', 'account-douyin-existing', 'Existing Douyin');
+
+        $session = SelfMediaAuthSession::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'provider' => 'aitoearn',
+            'platform' => 'douyin',
+            'session_id' => 'session_douyin_new_owner',
+            'authorization_url' => 'https://aitoearn.test/auth/session_douyin_new_owner',
+            'status' => 'pending',
+            'raw_response' => [
+                'known_account_ids_before_authorization' => ['account-douyin-existing'],
+            ],
+        ]);
+
+        Http::fake([
+            'https://aitoearn.test/api/v2/channels/accounts/auth/douyin/status/session_douyin_new_owner' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    'status' => 'completed',
+                ],
+            ]),
+            'https://aitoearn.test/api/v2/channels/accounts*' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    'total' => 2,
+                    'accounts' => [
+                        [
+                            'id' => 'account-douyin-existing',
+                            'type' => 'douyin',
+                            'nickname' => 'Existing Douyin',
+                            'status' => 1,
+                        ],
+                        [
+                            'id' => 'account-douyin-new',
+                            'type' => 'douyin',
+                            'nickname' => 'New Owner Douyin',
+                            'status' => 1,
+                        ],
+                    ],
+                ],
+            ]),
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.crebee-accounts.aitoearn.auth-sessions.sync', $session))
+            ->assertRedirect(route('admin.crebee-accounts.index'));
+
+        $this->assertDatabaseHas('self_media_accounts', [
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'provider' => 'aitoearn',
+            'platform' => 'douyin',
+            'external_account_id' => 'account-douyin-new',
+            'auth_status' => 'authorized',
+        ]);
+        $this->assertDatabaseMissing('self_media_accounts', [
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'provider' => 'aitoearn',
+            'platform' => 'douyin',
+            'external_account_id' => 'account-douyin-existing',
+        ]);
+        $this->assertSame(1, SelfMediaAccount::query()
+            ->where('site_id', (int) $site->id)
+            ->where('owner_admin_id', (int) $admin->id)
+            ->where('provider', 'aitoearn')
+            ->count());
+        $this->assertSame('account-douyin-new', (string) $session->refresh()->confirmedAccount?->external_account_id);
+    }
+
+    public function test_authorization_does_not_bind_account_already_owned_by_another_user(): void
+    {
+        [$existingOwner, $existingSite] = $this->provisionSubscribedAdmin('aitoearn_shared_existing_owner', 3);
+        [$admin, $site] = $this->provisionSubscribedAdmin('aitoearn_shared_new_owner', 3);
+        $this->selfMediaAccount($existingSite, $existingOwner, 'douyin', 'account-douyin-shared', 'Shared Douyin');
+
+        $session = SelfMediaAuthSession::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'provider' => 'aitoearn',
+            'platform' => 'douyin',
+            'session_id' => 'session_douyin_shared',
+            'authorization_url' => 'https://aitoearn.test/auth/session_douyin_shared',
+            'status' => 'pending',
+            'raw_response' => [
+                'known_account_ids_before_authorization' => ['account-douyin-shared'],
+            ],
+        ]);
+
+        Http::fake([
+            'https://aitoearn.test/api/v2/channels/accounts/auth/douyin/status/session_douyin_shared' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    'status' => 'completed',
+                    'accountId' => 'account-douyin-shared',
+                ],
+            ]),
+            'https://aitoearn.test/api/v2/channels/accounts*' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    'total' => 1,
+                    'accounts' => [
+                        [
+                            'id' => 'account-douyin-shared',
+                            'type' => 'douyin',
+                            'nickname' => 'Shared Douyin',
+                            'status' => 1,
+                        ],
+                    ],
+                ],
+            ]),
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->from(route('admin.crebee-accounts.index'))
+            ->post(route('admin.crebee-accounts.aitoearn.auth-sessions.sync', $session))
+            ->assertRedirect(route('admin.crebee-accounts.index'));
+
+        $this->assertDatabaseMissing('self_media_accounts', [
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'provider' => 'aitoearn',
+            'platform' => 'douyin',
+            'external_account_id' => 'account-douyin-shared',
+        ]);
+        $this->assertSame('failed', (string) $session->refresh()->status);
+        $this->assertStringContainsString('已绑定到其他用户', (string) data_get($session->raw_response, 'failure_reason'));
+    }
+
+    public function test_user_account_sync_refreshes_bound_accounts_without_importing_global_pool(): void
+    {
+        [$existingOwner, $existingSite] = $this->provisionSubscribedAdmin('aitoearn_pool_existing_owner', 3);
+        [$admin, $site] = $this->provisionSubscribedAdmin('aitoearn_pool_new_owner', 3);
+        $this->selfMediaAccount($existingSite, $existingOwner, 'douyin', 'account-douyin-existing', 'Existing Douyin');
+        $this->selfMediaAccount($existingSite, $existingOwner, 'kuaishou', 'account-kuaishou-existing', 'Existing Kuaishou');
+        $this->selfMediaAccount($existingSite, $existingOwner, 'bilibili', 'account-bilibili-existing', 'Existing Bilibili');
+
+        Http::fake([
+            'https://aitoearn.test/api/v2/channels/accounts*' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    'total' => 3,
+                    'accounts' => [
+                        ['id' => 'account-douyin-existing', 'type' => 'douyin', 'nickname' => 'Existing Douyin', 'status' => 1],
+                        ['id' => 'account-kuaishou-existing', 'type' => 'kuaishou', 'nickname' => 'Existing Kuaishou', 'status' => 1],
+                        ['id' => 'account-bilibili-existing', 'type' => 'bilibili', 'nickname' => 'Existing Bilibili', 'status' => 1],
+                    ],
+                ],
+            ]),
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.crebee-accounts.aitoearn.accounts.sync'))
+            ->assertRedirect(route('admin.crebee-accounts.index'));
+
+        $this->assertSame(0, SelfMediaAccount::query()
+            ->where('site_id', (int) $site->id)
+            ->where('owner_admin_id', (int) $admin->id)
+            ->where('provider', 'aitoearn')
+            ->count());
     }
 
     public function test_article_list_uses_aitoearn_accounts_in_publish_modal_when_enabled(): void

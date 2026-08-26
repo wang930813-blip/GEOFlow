@@ -6,6 +6,7 @@ use App\Models\Admin;
 use App\Models\SelfMediaAuthSession;
 use App\Models\Site;
 use App\Services\AiToEarn\AiToEarnClient;
+use App\Services\AiToEarn\AiToEarnException;
 use Illuminate\Support\Carbon;
 use RuntimeException;
 
@@ -18,6 +19,14 @@ class SelfMediaAuthorizationService
 
     public function start(Admin $admin, Site $site, string $platform, string $redirectUri): SelfMediaAuthSession
     {
+        $knownAccountIds = [];
+        $knownAccountSnapshotError = '';
+        try {
+            $knownAccountIds = $this->accountService->remoteAccountIds($platform);
+        } catch (AiToEarnException $exception) {
+            $knownAccountSnapshotError = $exception->getMessage();
+        }
+
         $payload = $this->client->startAuthorization($platform, $redirectUri);
         $sessionId = trim((string) ($payload['sessionId'] ?? $payload['session_id'] ?? ''));
         $url = trim((string) ($payload['url'] ?? $payload['authorizationUrl'] ?? $payload['authorization_url'] ?? ''));
@@ -35,7 +44,10 @@ class SelfMediaAuthorizationService
             'authorization_url' => $url,
             'status' => 'pending',
             'expires_at' => $this->parseTime($payload['expiresAt'] ?? null),
-            'raw_response' => $payload,
+            'raw_response' => array_merge($payload, [
+                'known_account_ids_before_authorization' => $knownAccountIds,
+                'known_account_snapshot_error' => $knownAccountSnapshotError,
+            ]),
         ]);
     }
 
@@ -46,9 +58,27 @@ class SelfMediaAuthorizationService
         $syncedAccount = null;
 
         if ($status === 'authorized' && $session->owner instanceof Admin && $session->site instanceof Site) {
-            $syncedAccount = $this->accountService
-                ->syncOwnerAccounts($session->owner, $session->site, (string) $session->platform)
-                ->first();
+            try {
+                $syncedAccount = $this->accountService->syncAuthorizedOwnerAccount(
+                    $session->owner,
+                    $session->site,
+                    (string) $session->platform,
+                    $this->knownAccountIdsBeforeAuthorization($session),
+                    $payload,
+                );
+            } catch (AiToEarnException $exception) {
+                throw $exception;
+            } catch (RuntimeException $exception) {
+                $session->forceFill([
+                    'status' => 'failed',
+                    'raw_response' => array_merge((array) $session->raw_response, [
+                        'status_response' => $payload,
+                        'failure_reason' => $exception->getMessage(),
+                    ]),
+                ])->save();
+
+                throw $exception;
+            }
         }
 
         $session->forceFill([
@@ -73,6 +103,17 @@ class SelfMediaAuthorizationService
             'expired', 'timeout' => 'expired',
             default => 'pending',
         };
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function knownAccountIdsBeforeAuthorization(SelfMediaAuthSession $session): array
+    {
+        return array_values(array_unique(array_filter(array_map(
+            'strval',
+            (array) data_get((array) $session->raw_response, 'known_account_ids_before_authorization', []),
+        ))));
     }
 
     private function parseTime(mixed $value): ?Carbon
