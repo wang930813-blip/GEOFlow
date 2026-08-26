@@ -76,9 +76,80 @@ class AiToEarnClient
     /**
      * @return array<string,mixed>
      */
+    public function createUploadSign(string $filename, string $type = 'publishMedia', ?int $size = null): array
+    {
+        $payload = [
+            'filename' => $filename,
+            'type' => $type,
+        ];
+
+        if ($size !== null && $size > 0) {
+            $payload['size'] = $size;
+        }
+
+        return $this->post('/api/assets/uploadSign', $payload);
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    public function confirmUpload(string $assetId): array
+    {
+        return $this->post('/api/assets/'.rawurlencode($assetId).'/confirm', []);
+    }
+
+    /**
+     * @return array{url:string,mime_type:string,size:int}
+     */
+    public function importRemoteAsset(string $url, string $type = 'publishMedia'): array
+    {
+        $url = trim($url);
+        if ($url === '') {
+            throw new AiToEarnException('AiToEarn asset URL is empty');
+        }
+
+        $remote = $this->downloadRemoteAsset($url);
+        $sign = $this->createUploadSign(
+            $this->remoteAssetFilename($url, $remote['mime_type']),
+            $type,
+            $remote['size']
+        );
+
+        $assetId = trim((string) ($sign['id'] ?? ''));
+        $uploadUrl = trim((string) ($sign['uploadUrl'] ?? ''));
+        if ($assetId === '' || $uploadUrl === '') {
+            throw new AiToEarnException('AiToEarn upload sign response is missing id or uploadUrl');
+        }
+
+        $this->uploadSignedAsset($uploadUrl, $remote['body'], $remote['mime_type']);
+        $asset = $this->confirmUpload($assetId);
+
+        $assetUrl = trim((string) ($asset['url'] ?? $sign['url'] ?? ''));
+        if ($assetUrl === '') {
+            throw new AiToEarnException('AiToEarn confirm response is missing asset URL');
+        }
+
+        return [
+            'url' => $assetUrl,
+            'mime_type' => trim((string) ($asset['mimeType'] ?? $remote['mime_type'])) ?: $remote['mime_type'],
+            'size' => (int) ($asset['size'] ?? $remote['size']),
+        ];
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
     public function publishFlow(string $flowId): array
     {
         return $this->get('/api/v2/channels/publish/flows/'.rawurlencode($flowId));
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    public function publishRecordUserAction(string $recordId): array
+    {
+        return $this->get('/api/v2/channels/publish/records/'.rawurlencode($recordId).'/user-action');
     }
 
     /**
@@ -89,6 +160,14 @@ class AiToEarnClient
         $data = $this->get('/api/v2/channels/platforms/'.rawurlencode($platform).'/publish-options');
 
         return array_values(array_filter((array) $data, 'is_array'));
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    public function publishOptionValues(string $accountId, string $field): array
+    {
+        return $this->get('/api/v2/channels/accounts/'.rawurlencode($accountId).'/publish-options/'.rawurlencode($field).'/values');
     }
 
     /**
@@ -137,6 +216,81 @@ class AiToEarnClient
                 return $exception instanceof ConnectionException
                     || $exception instanceof RequestException;
             }, throw: false);
+    }
+
+    /**
+     * @return array{body:string,mime_type:string,size:int}
+     */
+    private function downloadRemoteAsset(string $url): array
+    {
+        try {
+            $response = Http::accept('*/*')
+                ->connectTimeout(max(1, (int) config('aitoearn.connect_timeout', 10)))
+                ->timeout(max(1, (int) config('aitoearn.timeout', 60)))
+                ->get($url);
+        } catch (Throwable $exception) {
+            throw new AiToEarnException('AiToEarn remote asset download failed: '.$exception->getMessage(), previous: $exception);
+        }
+
+        if ($response->failed()) {
+            throw new AiToEarnException('AiToEarn remote asset download failed: HTTP '.$response->status().' '.$this->responsePreview($response->body()));
+        }
+
+        $body = $response->body();
+        if ($body === '') {
+            throw new AiToEarnException('AiToEarn remote asset download returned an empty file');
+        }
+
+        return [
+            'body' => $body,
+            'mime_type' => trim((string) ($response->header('Content-Type') ?: 'application/octet-stream')),
+            'size' => strlen($body),
+        ];
+    }
+
+    private function uploadSignedAsset(string $uploadUrl, string $body, string $mimeType): void
+    {
+        try {
+            $response = Http::withHeaders(['Content-Type' => $mimeType])
+                ->withBody($body, $mimeType)
+                ->connectTimeout(max(1, (int) config('aitoearn.connect_timeout', 10)))
+                ->timeout(max(1, (int) config('aitoearn.timeout', 60)))
+                ->put($uploadUrl);
+        } catch (Throwable $exception) {
+            throw new AiToEarnException('AiToEarn signed asset upload failed: '.$exception->getMessage(), previous: $exception);
+        }
+
+        if ($response->failed()) {
+            throw new AiToEarnException('AiToEarn signed asset upload failed: HTTP '.$response->status().' '.$this->responsePreview($response->body()));
+        }
+    }
+
+    private function remoteAssetFilename(string $url, string $mimeType): string
+    {
+        $path = (string) parse_url($url, PHP_URL_PATH);
+        $filename = basename($path);
+        $filename = preg_replace('/[^A-Za-z0-9._-]+/', '-', $filename) ?: '';
+        $filename = trim($filename, '.-');
+
+        if ($filename === '' || ! str_contains($filename, '.')) {
+            $filename = 'geoflow-asset-'.Str::lower(Str::random(10)).'.'.$this->extensionForMimeType($mimeType);
+        }
+
+        return $filename;
+    }
+
+    private function extensionForMimeType(string $mimeType): string
+    {
+        $mimeType = Str::lower(trim(explode(';', $mimeType)[0] ?? $mimeType));
+
+        return match ($mimeType) {
+            'image/png' => 'png',
+            'image/webp' => 'webp',
+            'image/gif' => 'gif',
+            'video/mp4' => 'mp4',
+            'video/quicktime' => 'mov',
+            default => 'jpg',
+        };
     }
 
     private function url(string $path): string

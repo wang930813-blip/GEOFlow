@@ -14,7 +14,7 @@ class SelfMediaPlatformCatalog
             'xhs' => ['label' => '小红书', 'desc' => '笔记 / 图文', 'logo' => '02.png'],
             'KWAI' => ['label' => '快手', 'desc' => '短视频 / 图文', 'logo' => '03.png'],
             'wxSph' => ['label' => '视频号', 'desc' => '视频 / 图文', 'logo' => '04.png'],
-            'bilibili' => ['label' => 'B站', 'desc' => '视频 / 专栏', 'logo' => '05.png'],
+            'bilibili' => ['label' => 'B站', 'desc' => '视频', 'logo' => '05.png'],
             'wxGzh' => ['label' => '公众号', 'desc' => '账号数据 / 文章发布', 'logo' => '10.png'],
             'youtube' => ['label' => 'YouTube', 'desc' => '视频', 'logo' => 'youtube.png'],
             'twitter' => ['label' => 'X / Twitter', 'desc' => '图文 / 视频', 'logo' => 'twitter.png'],
@@ -64,7 +64,7 @@ class SelfMediaPlatformCatalog
      */
     public static function articlePlatforms(): array
     {
-        return ['douyin', 'bilibili', 'wxGzh'];
+        return ['douyin', 'wxGzh'];
     }
 
     /**

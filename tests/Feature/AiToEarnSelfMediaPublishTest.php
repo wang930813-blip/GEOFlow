@@ -78,6 +78,17 @@ class AiToEarnSelfMediaPublishTest extends TestCase
         );
 
         $this->assertSame(2, SelfMediaPublishJobItem::query()->count());
+        $douyinItem = SelfMediaPublishJobItem::query()
+            ->where('platform', 'douyin')
+            ->firstOrFail();
+        $this->assertSame('第一段'."\n\n".'第二段', (string) data_get($douyinItem->payload, 'overrides.body'));
+        $this->assertSame('AiToEarn 发布测试文章', (string) data_get($douyinItem->payload, 'overrides.title'));
+        $this->assertNull(data_get($douyinItem->payload, 'overrides.cover'));
+
+        $wxGzhItem = SelfMediaPublishJobItem::query()
+            ->where('platform', 'wxGzh')
+            ->firstOrFail();
+        $this->assertNull(data_get($wxGzhItem->payload, 'overrides.body'));
         $this->assertDatabaseHas('self_media_publish_job_items', [
             'job_id' => (int) $job->id,
             'self_media_account_id' => (int) $douyin->id,
@@ -102,6 +113,31 @@ class AiToEarnSelfMediaPublishTest extends TestCase
 
         Queue::assertPushed(SubmitAiToEarnPublishFlowJob::class);
         Carbon::setTestNow();
+    }
+
+    public function test_article_publish_uses_plain_text_shared_content_when_only_text_editor_platforms_are_selected(): void
+    {
+        Queue::fake();
+
+        [$admin, $site] = $this->provisionSubscribedAdmin('aitoearn_text_only_article_owner', 3);
+        $article = $this->article($site, $admin, '抖音纯文本发布测试文章', "## 第一节\n\n正文 **加粗** 内容");
+        $article->forceFill(['cover_image' => 'https://cdn.example.com/article-cover.jpg'])->save();
+        $douyin = $this->selfMediaAccount($site, $admin, 'douyin', 'account-douyin-text-only', '抖音号');
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->from(route('admin.articles.index'))
+            ->post(route('admin.articles.self-media.publish', ['articleId' => (int) $article->id]), [
+                'self_media_account_ids' => [
+                    (int) $douyin->id,
+                ],
+            ])
+            ->assertRedirect(route('admin.articles.index'));
+
+        $job = SelfMediaPublishJob::query()->firstOrFail();
+        $this->assertSame('第一节'."\n\n".'正文 加粗 内容', (string) data_get($job->payload, 'content.body'));
+        $this->assertStringNotContainsString('<', (string) data_get($job->payload, 'content.body'));
+        $this->assertStringNotContainsString('>', (string) data_get($job->payload, 'content.body'));
     }
 
     public function test_authorization_completed_status_syncs_account_and_marks_session_authorized(): void
@@ -258,8 +294,54 @@ class AiToEarnSelfMediaPublishTest extends TestCase
 
             return str_contains($request->url(), '/api/v2/channels/accounts/auth/douyin?')
                 && ($query['callbackUrl'] ?? '') === route('admin.crebee-accounts.aitoearn.authorizations.callback')
-                && ! array_key_exists('redirectUri', $query);
+            && ! array_key_exists('redirectUri', $query);
         });
+    }
+
+    public function test_starting_authorization_stores_long_qr_code_data_url(): void
+    {
+        [$admin, $site] = $this->provisionSubscribedAdmin('aitoearn_authorization_long_qr_owner', 3);
+        $qrCode = 'data:image/png;base64,'.str_repeat('A', 1600);
+
+        Http::fake([
+            'https://aitoearn.test/api/v2/channels/platforms' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    [
+                        'platform' => 'douyin',
+                        'displayName' => 'Douyin',
+                        'status' => 'available',
+                    ],
+                ],
+            ]),
+            'https://aitoearn.test/api/v2/channels/accounts/auth/douyin*' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    'url' => $qrCode,
+                    'sessionId' => 'session_douyin_long_qr_001',
+                    'expiresAt' => '2026-08-25T05:21:58.440Z',
+                ],
+            ]),
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.crebee-accounts.aitoearn.authorizations.start'), [
+                'platform' => 'douyin',
+            ])
+            ->assertRedirect(route('admin.crebee-accounts.index'));
+
+        $this->assertDatabaseHas('self_media_auth_sessions', [
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'provider' => 'aitoearn',
+            'platform' => 'douyin',
+            'session_id' => 'session_douyin_long_qr_001',
+            'authorization_url' => $qrCode,
+            'status' => 'pending',
+        ]);
     }
 
     public function test_authorization_callback_accepts_external_post_and_syncs_session(): void
@@ -328,14 +410,64 @@ class AiToEarnSelfMediaPublishTest extends TestCase
         [$admin, $site] = $this->provisionSubscribedAdmin('aitoearn_article_page_owner', 3);
         $this->article($site, $admin, 'AiToEarn 页面发布文章', '正文');
         $this->selfMediaAccount($site, $admin, 'douyin', 'account-douyin-page', '页面抖音号');
+        $this->selfMediaAccount($site, $admin, 'bilibili', 'account-bilibili-page', '页面B站号');
 
         $this->actingAs($admin, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
             ->get(route('admin.articles.index'))
             ->assertOk()
             ->assertSee('页面抖音号')
+            ->assertDontSee('页面B站号')
             ->assertSee('name="self_media_account_ids[]"', false)
             ->assertDontSee('name="crebee_account_ids[]"', false);
+    }
+
+    public function test_user_cannot_publish_aitoearn_article_to_bilibili_video_only_account(): void
+    {
+        Queue::fake();
+
+        [$admin, $site] = $this->provisionSubscribedAdmin('aitoearn_article_bilibili_block_owner', 3);
+        $article = $this->article($site, $admin, 'Bilibili should not receive article', '正文');
+        $article->forceFill(['cover_image' => 'https://cdn.example.com/article-cover.jpg'])->save();
+        $bilibili = $this->selfMediaAccount($site, $admin, 'bilibili', 'account-bilibili-blocked', 'Bilibili Account');
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->from(route('admin.articles.index'))
+            ->post(route('admin.articles.self-media.publish', ['articleId' => (int) $article->id]), [
+                'self_media_account_ids' => [(int) $bilibili->id],
+            ])
+            ->assertRedirect(route('admin.articles.index'))
+            ->assertSessionHasErrors('self_media_account_ids');
+
+        $this->assertSame(0, SelfMediaPublishJob::query()->count());
+        Queue::assertNothingPushed();
+    }
+
+    public function test_aitoearn_article_publish_platforms_exclude_xhs_without_required_work_link(): void
+    {
+        $this->assertSame(['douyin', 'wxGzh'], \App\Support\SelfMedia\SelfMediaPlatformCatalog::articlePlatforms());
+    }
+
+    public function test_user_cannot_publish_aitoearn_article_to_image_text_platform_without_image(): void
+    {
+        Queue::fake();
+
+        [$admin, $site] = $this->provisionSubscribedAdmin('aitoearn_article_no_image_owner', 3);
+        $article = $this->article($site, $admin, '没有配图的文章', '正文');
+        $douyin = $this->selfMediaAccount($site, $admin, 'douyin', 'account-douyin-no-image', '抖音号');
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->from(route('admin.articles.index'))
+            ->post(route('admin.articles.self-media.publish', ['articleId' => (int) $article->id]), [
+                'self_media_account_ids' => [(int) $douyin->id],
+            ])
+            ->assertRedirect(route('admin.articles.index'))
+            ->assertSessionHasErrors('self_media_account_ids');
+
+        $this->assertSame(0, SelfMediaPublishJob::query()->count());
+        Queue::assertNothingPushed();
     }
 
     public function test_video_publish_creates_aitoearn_job_with_existing_media_and_cover(): void
@@ -384,7 +516,7 @@ class AiToEarnSelfMediaPublishTest extends TestCase
         Queue::fake([SyncAiToEarnPublishStatusJob::class]);
 
         [$admin, $site] = $this->provisionSubscribedAdmin('aitoearn_submit_owner', 3);
-        $account = $this->selfMediaAccount($site, $admin, 'douyin', 'account-douyin-002', '抖音号');
+        $account = $this->selfMediaAccount($site, $admin, 'wxGzh', 'account-wxgzh-002', '公众号');
         $job = SelfMediaPublishJob::query()->create([
             'site_id' => (int) $site->id,
             'owner_admin_id' => (int) $admin->id,
@@ -400,18 +532,22 @@ class AiToEarnSelfMediaPublishTest extends TestCase
                     'body' => '<p>正文</p>',
                 ],
                 'publishAt' => '2026-08-25T12:00:00+08:00',
+                'context' => [
+                    'materialGroupId' => 'site:'.$site->id,
+                    'materialId' => 'article:local-test',
+                ],
             ],
         ]);
         SelfMediaPublishJobItem::query()->create([
             'job_id' => (int) $job->id,
             'self_media_account_id' => (int) $account->id,
             'provider' => 'aitoearn',
-            'platform' => 'douyin',
-            'external_account_id' => 'account-douyin-002',
+            'platform' => 'wxGzh',
+            'external_account_id' => 'account-wxgzh-002',
             'status' => 'queued',
             'payload' => [
-                'platform' => 'douyin',
-                'accountId' => 'account-douyin-002',
+                'platform' => 'wxGzh',
+                'accountId' => 'account-wxgzh-002',
             ],
         ]);
 
@@ -424,8 +560,8 @@ class AiToEarnSelfMediaPublishTest extends TestCase
                     'tasks' => [
                         [
                             'id' => 'task_remote_001',
-                            'accountId' => 'account-douyin-002',
-                            'platform' => 'douyin',
+                            'accountId' => 'account-wxgzh-002',
+                            'platform' => 'wxGzh',
                             'status' => 0,
                         ],
                     ],
@@ -446,8 +582,376 @@ class AiToEarnSelfMediaPublishTest extends TestCase
             'external_task_id' => 'task_remote_001',
         ]);
         Http::assertSent(fn ($request): bool => $request->url() === 'https://aitoearn.test/api/v2/channels/publish/flows'
-            && $request['items'][0]['platform'] === 'douyin'
-            && $request['items'][0]['accountId'] === 'account-douyin-002');
+            && $request['items'][0]['platform'] === 'wxGzh'
+            && $request['items'][0]['accountId'] === 'account-wxgzh-002'
+            && data_get($request->data(), 'context') === null);
+    }
+
+    public function test_submit_job_imports_douyin_article_cover_as_publish_media_before_creating_flow(): void
+    {
+        Queue::fake([SyncAiToEarnPublishStatusJob::class]);
+
+        [$admin, $site] = $this->provisionSubscribedAdmin('aitoearn_douyin_media_import_owner', 3);
+        $account = $this->selfMediaAccount($site, $admin, 'douyin', 'account-douyin-import', '抖音号');
+        $job = SelfMediaPublishJob::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'provider' => 'aitoearn',
+            'content_type' => 'article',
+            'title' => '抖音图文发布',
+            'content_source_type' => 'article',
+            'status' => 'queued',
+            'payload' => [
+                'flowId' => 'geoflow-douyin-import-1',
+                'content' => [
+                    'title' => '抖音图文发布',
+                    'body' => '正文',
+                    'cover' => [
+                        'url' => 'https://cdn.example.com/article-cover.jpg',
+                    ],
+                ],
+                'publishAt' => '2026-08-25T12:00:00+08:00',
+            ],
+        ]);
+        SelfMediaPublishJobItem::query()->create([
+            'job_id' => (int) $job->id,
+            'self_media_account_id' => (int) $account->id,
+            'provider' => 'aitoearn',
+            'platform' => 'douyin',
+            'external_account_id' => 'account-douyin-import',
+            'status' => 'queued',
+            'payload' => [
+                'platform' => 'douyin',
+                'accountId' => 'account-douyin-import',
+            ],
+        ]);
+
+        Http::fake([
+            'https://cdn.example.com/article-cover.jpg' => Http::response('image-bytes', 200, [
+                'Content-Type' => 'image/jpeg',
+            ]),
+            'https://aitoearn.test/api/assets/uploadSign' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    'id' => 'asset-image-001',
+                    'uploadUrl' => 'https://upload.aitoearn.test/asset-image-001',
+                    'url' => 'https://assets.aitoearn.cn/pending/article-cover.jpg',
+                ],
+            ]),
+            'https://upload.aitoearn.test/asset-image-001' => Http::response('', 200),
+            'https://aitoearn.test/api/assets/asset-image-001/confirm' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    'id' => 'asset-image-001',
+                    'url' => 'https://assets.aitoearn.cn/confirmed/article-cover.jpg',
+                    'type' => 'publishMedia',
+                    'mimeType' => 'image/jpeg',
+                ],
+            ]),
+            'https://aitoearn.test/api/v2/channels/publish/flows' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    'flowId' => 'flow_remote_import_001',
+                    'tasks' => [
+                        [
+                            'id' => 'task_remote_import_001',
+                            'accountId' => 'account-douyin-import',
+                            'platform' => 'douyin',
+                            'status' => 0,
+                        ],
+                    ],
+                ],
+            ]),
+        ]);
+
+        app()->call([app(SubmitAiToEarnPublishFlowJob::class, ['jobId' => (int) $job->id]), 'handle']);
+
+        Http::assertSent(fn ($request): bool => $request->method() === 'POST'
+            && $request->url() === 'https://aitoearn.test/api/assets/uploadSign'
+            && $request['type'] === 'publishMedia');
+        Http::assertSent(fn ($request): bool => $request->method() === 'PUT'
+            && $request->url() === 'https://upload.aitoearn.test/asset-image-001'
+            && $request->hasHeader('Content-Type', 'image/jpeg'));
+        Http::assertSent(fn ($request): bool => $request->method() === 'POST'
+            && $request->url() === 'https://aitoearn.test/api/assets/asset-image-001/confirm');
+        Http::assertSent(fn ($request): bool => $request->method() === 'POST'
+            && $request->url() === 'https://aitoearn.test/api/v2/channels/publish/flows'
+            && data_get($request->data(), 'content.media.0.url') === 'https://assets.aitoearn.cn/confirmed/article-cover.jpg'
+            && data_get($request->data(), 'content.cover.url') === 'https://assets.aitoearn.cn/confirmed/article-cover.jpg'
+            && data_get($request->data(), 'content.media.0.metadata') === null
+            && data_get($request->data(), 'content.cover.metadata') === null);
+        $this->assertDatabaseHas('self_media_publish_jobs', [
+            'id' => (int) $job->id,
+            'status' => 'submitted',
+            'external_flow_id' => 'flow_remote_import_001',
+        ]);
+    }
+
+    public function test_submit_job_sends_bilibili_video_public_urls_without_unsupported_media_options(): void
+    {
+        Queue::fake([SyncAiToEarnPublishStatusJob::class]);
+
+        [$admin, $site] = $this->provisionSubscribedAdmin('aitoearn_bilibili_video_sanitized_owner', 3);
+        $account = $this->selfMediaAccount($site, $admin, 'bilibili', 'account-bilibili-video-sanitized', 'Bilibili Account');
+        $job = SelfMediaPublishJob::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'provider' => 'aitoearn',
+            'content_type' => 'video',
+            'title' => 'Bilibili 视频发布',
+            'content_source_type' => 'video_generation',
+            'status' => 'queued',
+            'payload' => [
+                'flowId' => 'geoflow-bilibili-video-sanitized-1',
+                'content' => [
+                    'title' => 'Bilibili 视频发布',
+                    'body' => '正文',
+                    'media' => [
+                        [
+                            'url' => 'https://video.example.test/tasks/video-task/final-1.mp4',
+                            'options' => ['unused' => true],
+                        ],
+                    ],
+                    'cover' => [
+                        'url' => 'https://cdn.example.test/video-cover.jpg',
+                        'options' => [
+                            'adaptation' => ['imageFormat' => 'auto'],
+                        ],
+                    ],
+                ],
+                'publishAt' => '2026-08-25T12:00:00+08:00',
+            ],
+        ]);
+        SelfMediaPublishJobItem::query()->create([
+            'job_id' => (int) $job->id,
+            'self_media_account_id' => (int) $account->id,
+            'provider' => 'aitoearn',
+            'platform' => 'bilibili',
+            'external_account_id' => 'account-bilibili-video-sanitized',
+            'status' => 'queued',
+            'payload' => [
+                'platform' => 'bilibili',
+                'accountId' => 'account-bilibili-video-sanitized',
+                'option' => [
+                    'tid' => 21,
+                    'copyright' => 1,
+                ],
+            ],
+        ]);
+
+        Http::fake([
+            'https://aitoearn.test/api/v2/channels/accounts/account-bilibili-video-sanitized/publish-options/tid/values' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    'items' => [
+                        [
+                            'value' => '160',
+                            'label' => 'Life',
+                            'disabled' => true,
+                            'children' => [
+                                [
+                                    'value' => '21',
+                                    'label' => 'Daily',
+                                    'disabled' => false,
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ]),
+            'https://aitoearn.test/api/v2/channels/publish/flows' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    'flowId' => 'flow_remote_video_sanitized_001',
+                    'tasks' => [
+                        [
+                            'id' => 'task_remote_video_sanitized_001',
+                            'accountId' => 'account-bilibili-video-sanitized',
+                            'platform' => 'bilibili',
+                            'status' => 0,
+                        ],
+                    ],
+                ],
+            ]),
+        ]);
+
+        app()->call([app(SubmitAiToEarnPublishFlowJob::class, ['jobId' => (int) $job->id]), 'handle']);
+
+        Http::assertSent(fn ($request): bool => $request->method() === 'POST'
+            && $request->url() === 'https://aitoearn.test/api/v2/channels/publish/flows'
+            && data_get($request->data(), 'content.media.0.url') === 'https://video.example.test/tasks/video-task/final-1.mp4'
+            && data_get($request->data(), 'content.media.0.options') === null
+            && data_get($request->data(), 'content.cover.url') === 'https://cdn.example.test/video-cover.jpg'
+            && data_get($request->data(), 'content.cover.options.adaptation.imageFormat') === 'auto'
+            && data_get($request->data(), 'items.0.option.tid') === 21);
+        Http::assertNotSent(fn ($request): bool => str_contains($request->url(), '/api/assets/uploadSign'));
+        $this->assertDatabaseHas('self_media_publish_jobs', [
+            'id' => (int) $job->id,
+            'status' => 'submitted',
+            'external_flow_id' => 'flow_remote_video_sanitized_001',
+        ]);
+    }
+
+    public function test_submit_job_refreshes_stale_publish_at_before_creating_flow(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-08-25 12:00:00', 'Asia/Shanghai'));
+        Queue::fake([SyncAiToEarnPublishStatusJob::class]);
+
+        [$admin, $site] = $this->provisionSubscribedAdmin('aitoearn_stale_publish_at_owner', 3);
+        $account = $this->selfMediaAccount($site, $admin, 'wxGzh', 'account-wxgzh-stale-time', '公众号');
+        $job = SelfMediaPublishJob::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'provider' => 'aitoearn',
+            'content_type' => 'article',
+            'title' => '发布时间兜底',
+            'content_source_type' => 'article',
+            'status' => 'queued',
+            'payload' => [
+                'flowId' => 'geoflow-stale-time-1',
+                'content' => [
+                    'title' => '发布时间兜底',
+                    'body' => '<p>正文</p>',
+                ],
+                'publishAt' => '2026-08-25T11:59:59+08:00',
+            ],
+        ]);
+        SelfMediaPublishJobItem::query()->create([
+            'job_id' => (int) $job->id,
+            'self_media_account_id' => (int) $account->id,
+            'provider' => 'aitoearn',
+            'platform' => 'wxGzh',
+            'external_account_id' => 'account-wxgzh-stale-time',
+            'status' => 'queued',
+            'payload' => [
+                'platform' => 'wxGzh',
+                'accountId' => 'account-wxgzh-stale-time',
+            ],
+        ]);
+
+        Http::fake([
+            'https://aitoearn.test/api/v2/channels/publish/flows' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    'flowId' => 'flow_remote_stale_time_001',
+                    'tasks' => [
+                        [
+                            'id' => 'task_remote_stale_time_001',
+                            'accountId' => 'account-wxgzh-stale-time',
+                            'platform' => 'wxGzh',
+                            'status' => 0,
+                        ],
+                    ],
+                ],
+            ]),
+        ]);
+
+        app()->call([app(SubmitAiToEarnPublishFlowJob::class, ['jobId' => (int) $job->id]), 'handle']);
+
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://aitoearn.test/api/v2/channels/publish/flows'
+            && Carbon::parse((string) $request['publishAt'])->greaterThan(now()));
+
+        Carbon::setTestNow();
+    }
+
+    public function test_submit_job_replaces_disabled_bilibili_video_parent_tid_with_enabled_child_tid(): void
+    {
+        Queue::fake([SyncAiToEarnPublishStatusJob::class]);
+
+        [$admin, $site] = $this->provisionSubscribedAdmin('aitoearn_bilibili_submit_owner', 3);
+        $account = $this->selfMediaAccount($site, $admin, 'bilibili', 'account-bilibili-001', 'Bilibili Account');
+        $job = SelfMediaPublishJob::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'provider' => 'aitoearn',
+            'content_type' => 'video',
+            'title' => 'Bilibili video',
+            'content_source_type' => 'video_generation',
+            'status' => 'queued',
+            'payload' => [
+                'flowId' => 'geoflow-bilibili-video-1',
+                'content' => [
+                    'title' => 'Bilibili video',
+                    'body' => '<p>Body</p>',
+                    'cover' => ['url' => 'https://cdn.example.com/cover.jpg'],
+                    'media' => [
+                        ['url' => 'https://cdn.example.com/video.mp4'],
+                    ],
+                ],
+                'publishAt' => '2026-08-25T12:00:00+08:00',
+            ],
+        ]);
+        SelfMediaPublishJobItem::query()->create([
+            'job_id' => (int) $job->id,
+            'self_media_account_id' => (int) $account->id,
+            'provider' => 'aitoearn',
+            'platform' => 'bilibili',
+            'external_account_id' => 'account-bilibili-001',
+            'status' => 'queued',
+            'payload' => [
+                'platform' => 'bilibili',
+                'accountId' => 'account-bilibili-001',
+                'option' => [
+                    'tid' => 160,
+                    'copyright' => 1,
+                ],
+            ],
+        ]);
+
+        Http::fake([
+            'https://aitoearn.test/api/v2/channels/accounts/account-bilibili-001/publish-options/tid/values' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    'items' => [
+                        [
+                            'value' => '160',
+                            'label' => 'Life',
+                            'disabled' => true,
+                            'children' => [
+                                [
+                                    'value' => '21',
+                                    'label' => 'Daily',
+                                    'disabled' => false,
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ]),
+            'https://aitoearn.test/api/v2/channels/publish/flows' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    'flowId' => 'flow_remote_bilibili_001',
+                    'tasks' => [
+                        [
+                            'id' => 'task_remote_bilibili_001',
+                            'accountId' => 'account-bilibili-001',
+                            'platform' => 'bilibili',
+                            'status' => 0,
+                        ],
+                    ],
+                ],
+            ]),
+        ]);
+
+        app()->call([app(SubmitAiToEarnPublishFlowJob::class, ['jobId' => (int) $job->id]), 'handle']);
+
+        Http::assertSent(fn ($request): bool => $request->url() === 'https://aitoearn.test/api/v2/channels/publish/flows'
+            && $request['items'][0]['platform'] === 'bilibili'
+            && data_get($request->data(), 'items.0.option.tid') === 21);
+        $this->assertDatabaseHas('self_media_publish_jobs', [
+            'id' => (int) $job->id,
+            'status' => 'submitted',
+            'external_flow_id' => 'flow_remote_bilibili_001',
+        ]);
     }
 
     public function test_sync_job_marks_publish_item_success_when_work_link_is_ready(): void
@@ -508,6 +1012,132 @@ class AiToEarnSelfMediaPublishTest extends TestCase
             'status' => 'success',
             'published_url' => 'https://www.douyin.com/video/123',
         ]);
+    }
+
+    public function test_sync_job_marks_douyin_status_eight_as_awaiting_confirmation_and_stores_user_action(): void
+    {
+        Queue::fake([SyncAiToEarnPublishStatusJob::class]);
+
+        [$admin, $site] = $this->provisionSubscribedAdmin('aitoearn_douyin_confirm_owner', 3);
+        $account = $this->selfMediaAccount($site, $admin, 'douyin', 'account-douyin-confirm', '抖音号');
+        $job = SelfMediaPublishJob::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'provider' => 'aitoearn',
+            'content_type' => 'article',
+            'title' => '抖音待确认文章',
+            'content_source_type' => 'article',
+            'status' => 'submitted',
+            'external_flow_id' => 'flow_remote_confirm_001',
+            'sync_attempts' => 39,
+            'payload' => [],
+        ]);
+        $item = SelfMediaPublishJobItem::query()->create([
+            'job_id' => (int) $job->id,
+            'self_media_account_id' => (int) $account->id,
+            'provider' => 'aitoearn',
+            'platform' => 'douyin',
+            'external_account_id' => 'account-douyin-confirm',
+            'external_task_id' => 'record_douyin_confirm_001',
+            'status' => 'submitted',
+            'payload' => [],
+        ]);
+
+        Http::fake([
+            'https://aitoearn.test/api/v2/channels/publish/flows/flow_remote_confirm_001' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    'flowId' => 'flow_remote_confirm_001',
+                    'tasks' => [
+                        [
+                            'id' => 'record_douyin_confirm_001',
+                            'accountId' => 'account-douyin-confirm',
+                            'platform' => 'douyin',
+                            'status' => 8,
+                            'platformWorkId' => 'share_001',
+                        ],
+                    ],
+                ],
+            ]),
+            'https://aitoearn.test/api/v2/channels/publish/records/record_douyin_confirm_001/user-action' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    'recordId' => 'record_douyin_confirm_001',
+                    'platform' => 'douyin',
+                    'shareId' => 'share_001',
+                    'shortLink' => 'https://aitoearn.test/api/shortLink/confirm001',
+                    'schemeUrl' => 'snssdk1128://openplatform/share',
+                    'expiresAt' => '2026-08-26T02:09:41.217Z',
+                ],
+            ]),
+        ]);
+
+        app()->call([app(SyncAiToEarnPublishStatusJob::class, ['jobId' => (int) $job->id]), 'handle']);
+
+        $job->refresh();
+        $item->refresh();
+
+        $this->assertSame('publishing', (string) $job->status);
+        $this->assertSame(39, (int) $job->sync_attempts);
+        $this->assertSame('awaiting_confirmation', (string) $item->status);
+        $this->assertSame('待抖音确认', (string) $item->message);
+        $this->assertSame('https://aitoearn.test/api/shortLink/confirm001', (string) data_get($item->raw_response, 'user_action.shortLink'));
+
+        Http::assertSent(fn ($request): bool => $request->method() === 'GET'
+            && $request->url() === 'https://aitoearn.test/api/v2/channels/publish/records/record_douyin_confirm_001/user-action');
+        Queue::assertPushed(SyncAiToEarnPublishStatusJob::class);
+    }
+
+    public function test_publish_record_page_shows_douyin_confirmation_link_when_awaiting_confirmation(): void
+    {
+        [$admin, $site] = $this->provisionSubscribedAdmin('aitoearn_douyin_confirm_page_owner', 3);
+        $account = $this->selfMediaAccount($site, $admin, 'douyin', 'account-douyin-confirm-page', '抖音号');
+        $job = SelfMediaPublishJob::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'provider' => 'aitoearn',
+            'content_type' => 'article',
+            'title' => '抖音待确认文章',
+            'content_source_type' => 'article',
+            'status' => 'publishing',
+            'external_flow_id' => 'flow_remote_confirm_page_001',
+            'submitted_at' => now(),
+            'payload' => [],
+        ]);
+        SelfMediaPublishJobItem::query()->create([
+            'job_id' => (int) $job->id,
+            'self_media_account_id' => (int) $account->id,
+            'provider' => 'aitoearn',
+            'platform' => 'douyin',
+            'external_account_id' => 'account-douyin-confirm-page',
+            'external_task_id' => 'record_douyin_confirm_page_001',
+            'status' => 'awaiting_confirmation',
+            'message' => '待抖音确认',
+            'payload' => [],
+            'raw_response' => [
+                'id' => 'record_douyin_confirm_page_001',
+                'platform' => 'douyin',
+                'status' => 8,
+                'user_action' => [
+                    'shortLink' => 'https://aitoearn.test/api/shortLink/confirm001',
+                    'schemeUrl' => 'snssdk1128://openplatform/share',
+                    'expiresAt' => '2026-08-26T02:09:41.217Z',
+                ],
+            ],
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.crebee-publish-records.index'))
+            ->assertOk()
+            ->assertSee('抖音待确认文章')
+            ->assertSee('待抖音确认')
+            ->assertSee('打开确认链接')
+            ->assertSee('复制链接')
+            ->assertSee('https://aitoearn.test/api/shortLink/confirm001', false)
+            ->assertDontSee('暂无链接');
     }
 
     /**

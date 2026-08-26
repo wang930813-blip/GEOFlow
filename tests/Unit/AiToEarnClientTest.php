@@ -167,4 +167,62 @@ class AiToEarnClientTest extends TestCase
             && str_contains($request->url(), 'type=douyin')
             && ! str_contains($request->url(), 'types=douyin'));
     }
+
+    public function test_client_fetches_account_publish_option_values(): void
+    {
+        config([
+            'aitoearn.base_url' => 'https://aitoearn.test',
+            'aitoearn.api_key' => 'test-api-key',
+        ]);
+
+        Http::fake([
+            'https://aitoearn.test/api/v2/channels/accounts/account-bilibili-001/publish-options/tid/values' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    'items' => [
+                        [
+                            'value' => '160',
+                            'label' => 'Life',
+                            'disabled' => true,
+                        ],
+                    ],
+                ],
+            ]),
+        ]);
+
+        $values = app(AiToEarnClient::class)->publishOptionValues('account-bilibili-001', 'tid');
+
+        $this->assertSame('160', (string) data_get($values, 'items.0.value'));
+        Http::assertSent(fn ($request): bool => $request->method() === 'GET'
+            && $request->url() === 'https://aitoearn.test/api/v2/channels/accounts/account-bilibili-001/publish-options/tid/values');
+    }
+
+    public function test_client_fetches_douyin_publish_user_action(): void
+    {
+        config([
+            'aitoearn.base_url' => 'https://aitoearn.test',
+            'aitoearn.api_key' => 'test-api-key',
+        ]);
+
+        Http::fake([
+            'https://aitoearn.test/api/v2/channels/publish/records/record-douyin-001/user-action' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    'recordId' => 'record-douyin-001',
+                    'platform' => 'douyin',
+                    'shortLink' => 'https://aitoearn.test/api/shortLink/abc123',
+                    'schemeUrl' => 'snssdk1128://openplatform/share',
+                    'expiresAt' => '2026-08-26T02:09:41.217Z',
+                ],
+            ]),
+        ]);
+
+        $action = app(AiToEarnClient::class)->publishRecordUserAction('record-douyin-001');
+
+        $this->assertSame('https://aitoearn.test/api/shortLink/abc123', $action['shortLink']);
+        Http::assertSent(fn ($request): bool => $request->method() === 'GET'
+            && $request->url() === 'https://aitoearn.test/api/v2/channels/publish/records/record-douyin-001/user-action');
+    }
 }

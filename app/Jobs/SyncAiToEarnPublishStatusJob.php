@@ -37,7 +37,7 @@ class SyncAiToEarnPublishStatusJob implements ShouldQueue
 
         try {
             $response = $client->publishFlow((string) $job->external_flow_id);
-            $this->applyFlowStatus($job, $response);
+            $this->applyFlowStatus($job, $response, $client);
         } catch (Throwable $exception) {
             report($exception);
             $this->recordSyncFailure($job, $exception->getMessage());
@@ -55,10 +55,11 @@ class SyncAiToEarnPublishStatusJob implements ShouldQueue
     /**
      * @param  array<string,mixed>  $response
      */
-    private function applyFlowStatus(SelfMediaPublishJob $job, array $response): void
+    private function applyFlowStatus(SelfMediaPublishJob $job, array $response, AiToEarnClient $client): void
     {
         $tasks = collect((array) ($response['tasks'] ?? []));
         $job->load('items');
+        $hasAwaitingConfirmation = false;
 
         foreach ($job->items as $item) {
             $task = $tasks->first(function (mixed $task) use ($item): bool {
@@ -79,10 +80,12 @@ class SyncAiToEarnPublishStatusJob implements ShouldQueue
                 continue;
             }
 
+            $task = $this->withDouyinUserAction($task, $client);
             $status = $this->itemStatus($task);
             $message = $this->message($task);
             $publishedUrl = trim((string) ($task['workLink'] ?? ''));
             $publishedAt = $status === 'success' ? now() : $item->published_at;
+            $hasAwaitingConfirmation = $hasAwaitingConfirmation || $status === 'awaiting_confirmation';
 
             $item->forceFill([
                 'status' => $status,
@@ -108,7 +111,7 @@ class SyncAiToEarnPublishStatusJob implements ShouldQueue
         }
 
         $job->forceFill([
-            'sync_attempts' => (int) $job->sync_attempts + 1,
+            'sync_attempts' => $hasAwaitingConfirmation ? (int) $job->sync_attempts : (int) $job->sync_attempts + 1,
             'raw_response' => $response,
         ])->save();
 
@@ -161,6 +164,10 @@ class SyncAiToEarnPublishStatusJob implements ShouldQueue
             return 'failed';
         }
 
+        if ($this->isDouyinAwaitingConfirmation($task)) {
+            return 'awaiting_confirmation';
+        }
+
         return 'publishing';
     }
 
@@ -174,7 +181,52 @@ class SyncAiToEarnPublishStatusJob implements ShouldQueue
             return $message;
         }
 
-        return $this->itemStatus($task) === 'success' ? '发布成功' : '发布中';
+        return match ($this->itemStatus($task)) {
+            'success' => '发布成功',
+            'awaiting_confirmation' => '待抖音确认',
+            default => '发布中',
+        };
+    }
+
+    /**
+     * @param  array<string,mixed>  $task
+     * @return array<string,mixed>
+     */
+    private function withDouyinUserAction(array $task, AiToEarnClient $client): array
+    {
+        if (! $this->isDouyinAwaitingConfirmation($task)) {
+            return $task;
+        }
+
+        $recordId = trim((string) ($task['id'] ?? ''));
+        if ($recordId === '') {
+            return $task;
+        }
+
+        try {
+            $action = $client->publishRecordUserAction($recordId);
+        } catch (Throwable $exception) {
+            report($exception);
+            $task['user_action_error'] = $exception->getMessage();
+
+            return $task;
+        }
+
+        if (trim((string) ($action['shortLink'] ?? $action['schemeUrl'] ?? '')) !== '') {
+            $task['user_action'] = $action;
+        }
+
+        return $task;
+    }
+
+    /**
+     * @param  array<string,mixed>  $task
+     */
+    private function isDouyinAwaitingConfirmation(array $task): bool
+    {
+        return (string) ($task['platform'] ?? '') === 'douyin'
+            && is_numeric($task['status'] ?? null)
+            && (int) $task['status'] === 8;
     }
 
     private function refreshFinalJobStatus(SelfMediaPublishJob $job): void
@@ -183,6 +235,7 @@ class SyncAiToEarnPublishStatusJob implements ShouldQueue
         $statuses = $job->items->pluck('status')->map(fn ($status): string => (string) $status)->all();
         $successCount = count(array_filter($statuses, fn (string $status): bool => $status === 'success'));
         $failedCount = count(array_filter($statuses, fn (string $status): bool => $status === 'failed'));
+        $awaitingConfirmationCount = count(array_filter($statuses, fn (string $status): bool => $status === 'awaiting_confirmation'));
         $total = count($statuses);
 
         $status = match (true) {
@@ -197,7 +250,7 @@ class SyncAiToEarnPublishStatusJob implements ShouldQueue
             'finished_at' => in_array($status, ['success', 'failed', 'partial_success'], true) ? now() : null,
         ])->save();
 
-        if ($status === 'publishing' && (int) $job->sync_attempts < max(1, (int) config('aitoearn.status_max_attempts', 40))) {
+        if ($status === 'publishing' && ($awaitingConfirmationCount > 0 || (int) $job->sync_attempts < max(1, (int) config('aitoearn.status_max_attempts', 40)))) {
             self::dispatch((int) $job->id)
                 ->onQueue('self-media')
                 ->delay(now()->addSeconds(max(5, (int) config('aitoearn.status_poll_delay', 30))));

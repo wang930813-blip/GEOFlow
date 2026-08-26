@@ -72,10 +72,10 @@ class SelfMediaArticlePublishService
             throw new RuntimeException('请选择已授权且支持文章发布的自媒体平台');
         }
 
-        if ($accounts->contains(fn (SelfMediaAccount $account): bool => (string) $account->platform === 'bilibili')
+        if ($accounts->contains(fn (SelfMediaAccount $account): bool => $this->requiresImageMedia((string) $account->platform))
             && $this->articleCover($article) === ''
         ) {
-            throw new RuntimeException('B站文章发布需要封面图，请先给文章添加封面图后再发布');
+            throw new RuntimeException('抖音/小红书图文发布需要至少一张封面图或配图，请先给文章补充图片后再发布');
         }
 
         $amount = $accounts->count();
@@ -107,7 +107,7 @@ class SelfMediaArticlePublishService
                 );
             }
 
-            $payload = $this->publishPayload($article, $site);
+            $payload = $this->publishPayload($article, $site, $accounts);
             $job = SelfMediaPublishJob::query()->create([
                 'site_id' => (int) $site->id,
                 'owner_admin_id' => (int) $admin->id,
@@ -132,7 +132,7 @@ class SelfMediaArticlePublishService
                     'platform' => (string) $account->platform,
                     'external_account_id' => (string) $account->external_account_id,
                     'status' => 'queued',
-                    'payload' => $this->itemPayload($account),
+                    'payload' => $this->itemPayload($account, $article),
                 ]);
             }
 
@@ -165,13 +165,20 @@ class SelfMediaArticlePublishService
     }
 
     /**
+     * @param  Collection<int,SelfMediaAccount>  $accounts
      * @return array<string,mixed>
      */
-    private function publishPayload(Article $article, Site $site): array
+    private function publishPayload(Article $article, Site $site, Collection $accounts): array
     {
+        $platforms = $accounts
+            ->pluck('platform')
+            ->map(static fn ($platform): string => (string) $platform)
+            ->values()
+            ->all();
+
         $content = [
-            'title' => $this->normalizeTitle((string) $article->title, 80),
-            'body' => $this->contentAsHtml((string) $article->content),
+            'title' => $this->normalizeTitle((string) $article->title, $this->sharedTitleMaxLength($platforms)),
+            'body' => $this->sharedBody($article, $platforms),
         ];
 
         $cover = $this->articleCover($article);
@@ -198,12 +205,17 @@ class SelfMediaArticlePublishService
     /**
      * @return array<string,mixed>
      */
-    private function itemPayload(SelfMediaAccount $account): array
+    private function itemPayload(SelfMediaAccount $account, Article $article): array
     {
         $payload = [
             'platform' => (string) $account->platform,
             'accountId' => (string) $account->external_account_id,
         ];
+
+        $overrides = $this->platformOverrides((string) $account->platform, $article);
+        if ($overrides !== []) {
+            $payload['overrides'] = $overrides;
+        }
 
         $option = $this->platformOption((string) $account->platform);
         if ($option !== []) {
@@ -218,13 +230,93 @@ class SelfMediaArticlePublishService
      */
     private function platformOption(string $platform): array
     {
+        return [];
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function platformOverrides(string $platform, Article $article): array
+    {
         return match ($platform) {
-            'bilibili' => [
-                'tid' => max(1, (int) config('aitoearn.default_bilibili_tid', 160)),
-                'copyright' => 1,
+            'douyin' => [
+                'title' => $this->normalizeTitle((string) $article->title, 30),
+                'body' => $this->contentAsText((string) $article->content, 1000),
+            ],
+            'xhs' => [
+                'title' => $this->normalizeTitle((string) $article->title, 20),
+                'body' => $this->contentAsText((string) $article->content, 1000),
             ],
             default => [],
         };
+    }
+
+    /**
+     * @param  array<int,string>  $platforms
+     */
+    private function sharedTitleMaxLength(array $platforms): int
+    {
+        $limits = collect($platforms)
+            ->map(fn (string $platform): int => $this->platformTitleMaxLength($platform))
+            ->filter(static fn (int $limit): bool => $limit > 0)
+            ->values();
+
+        return $limits->isEmpty() ? 64 : (int) $limits->min();
+    }
+
+    private function platformTitleMaxLength(string $platform): int
+    {
+        return match ($platform) {
+            'douyin' => 30,
+            'xhs' => 20,
+            'wxGzh' => 64,
+            default => 64,
+        };
+    }
+
+    /**
+     * @param  array<int,string>  $platforms
+     */
+    private function sharedBody(Article $article, array $platforms): string
+    {
+        $hasHtmlEditorPlatform = collect($platforms)
+            ->contains(fn (string $platform): bool => $this->usesHtmlEditor($platform));
+
+        return $hasHtmlEditorPlatform
+            ? $this->contentAsHtml((string) $article->content)
+            : $this->contentAsText((string) $article->content, $this->sharedBodyMaxLength($platforms));
+    }
+
+    /**
+     * @param  array<int,string>  $platforms
+     */
+    private function sharedBodyMaxLength(array $platforms): int
+    {
+        $limits = collect($platforms)
+            ->map(fn (string $platform): int => $this->platformBodyMaxLength($platform))
+            ->filter(static fn (int $limit): bool => $limit > 0)
+            ->values();
+
+        return $limits->isEmpty() ? 20000 : (int) $limits->min();
+    }
+
+    private function platformBodyMaxLength(string $platform): int
+    {
+        return match ($platform) {
+            'douyin', 'xhs' => 1000,
+            'wxGzh' => 20000,
+            default => 20000,
+        };
+    }
+
+    private function usesHtmlEditor(string $platform): bool
+    {
+        return $platform === 'wxGzh';
+    }
+
+    private function requiresImageMedia(string $platform): bool
+    {
+        return in_array($platform, ['douyin', 'xhs'], true);
     }
 
     private function contentAsHtml(string $content): string
@@ -237,6 +329,30 @@ class SelfMediaArticlePublishService
         return preg_match('/<\/?(?:p|h[1-6]|ul|ol|li|blockquote|pre|table|div|section|article|img|figure|strong|em)\b/i', $content) === 1
             ? $content
             : ArticleHtmlPresenter::markdownToHtml($content);
+    }
+
+    private function contentAsText(string $content, int $maxLength): string
+    {
+        $content = trim($content);
+        if ($content === '') {
+            return '';
+        }
+
+        $html = preg_match('/<\/?[a-z][\s\S]*>/i', $content) === 1
+            ? $content
+            : ArticleHtmlPresenter::markdownToHtml($content);
+
+        $html = preg_replace('/<li\b[^>]*>/iu', "\n- ", $html) ?? $html;
+        $html = preg_replace('/<(?:br|\/(?:p|div|section|article|h[1-6]|li|ul|ol|blockquote|pre|tr|table))\b[^>]*>/iu', "\n", $html) ?? $html;
+
+        $text = html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $text = trim(preg_replace('/[ \t]+/u', ' ', $text) ?? $text);
+        $text = preg_replace('/[ \t]*\n[ \t]*/u', "\n", $text) ?? $text;
+        $text = preg_replace('/\n{3,}/u', "\n\n", $text) ?? $text;
+
+        return mb_strlen($text, 'UTF-8') > $maxLength
+            ? mb_substr($text, 0, $maxLength, 'UTF-8')
+            : $text;
     }
 
     private function articleCover(Article $article): string

@@ -8,6 +8,7 @@
             'success' => 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100',
             'partial_success' => 'bg-sky-50 text-sky-700 ring-1 ring-sky-100',
             'failed' => 'bg-red-50 text-red-700 ring-1 ring-red-100',
+            'awaiting_confirmation' => 'bg-orange-50 text-orange-700 ring-1 ring-orange-100',
             'publishing', 'submitted', 'dispatching', 'queued' => 'bg-amber-50 text-amber-700 ring-1 ring-amber-100',
             default => 'bg-slate-100 text-slate-600',
         };
@@ -15,6 +16,7 @@
             'success' => '发布成功',
             'partial_success' => '部分成功',
             'failed' => '发布失败',
+            'awaiting_confirmation' => '待抖音确认',
             'publishing' => '发布中',
             'submitted' => '待结果',
             'dispatching' => '提交中',
@@ -59,6 +61,22 @@
                                 $avatar = trim((string) ($account?->avatar ?? ''));
                                 $ownerName = $job?->owner?->display_name ?: $job?->owner?->username ?: '-';
                                 $title = (string) ($job?->title ?? '-');
+                                $confirmationLink = '';
+                                $confirmationExpiresAt = '';
+                                $confirmationExpiresLabel = '';
+                                if ($platform === 'douyin' && (string) $record->status === 'awaiting_confirmation') {
+                                    $confirmationLink = trim((string) data_get($record->raw_response, 'user_action.shortLink'));
+                                    $confirmationExpiresAt = trim((string) data_get($record->raw_response, 'user_action.expiresAt'));
+                                    if ($confirmationExpiresAt !== '') {
+                                        try {
+                                            $confirmationExpiresLabel = \Illuminate\Support\Carbon::parse($confirmationExpiresAt)
+                                                ->timezone(config('app.timezone'))
+                                                ->format('Y-m-d H:i');
+                                        } catch (\Throwable $exception) {
+                                            $confirmationExpiresLabel = $confirmationExpiresAt;
+                                        }
+                                    }
+                                }
                             @endphp
                             <tr>
                                 <td class="px-5 py-4 align-top">
@@ -106,6 +124,24 @@
                                             <i data-lucide="external-link" class="h-4 w-4"></i>
                                             查看链接
                                         </a>
+                                    @elseif($confirmationLink !== '')
+                                        <div class="flex flex-col items-end gap-2">
+                                            <div class="flex flex-wrap justify-end gap-2">
+                                                <a href="{{ $confirmationLink }}" target="_blank" rel="noopener noreferrer" class="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-orange-100 bg-orange-50 px-3 text-sm font-medium text-orange-700 hover:bg-orange-100">
+                                                    <i data-lucide="external-link" class="h-4 w-4"></i>
+                                                    打开确认链接
+                                                </a>
+                                                <button type="button" data-copy-aitoearn-confirmation-link="{{ $confirmationLink }}" class="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                                                    <i data-lucide="copy" class="h-4 w-4"></i>
+                                                    <span data-copy-label>复制链接</span>
+                                                </button>
+                                            </div>
+                                            @if($confirmationExpiresLabel !== '')
+                                                <div class="text-xs text-slate-400">确认链接有效期：{{ $confirmationExpiresLabel }}</div>
+                                            @endif
+                                        </div>
+                                    @elseif($platform === 'douyin' && (string) $record->status === 'awaiting_confirmation')
+                                        <span class="text-sm text-orange-500">确认链接同步中</span>
                                     @else
                                         <span class="text-sm text-slate-400">暂无链接</span>
                                     @endif
@@ -127,3 +163,48 @@
         </section>
     </div>
 @endsection
+
+@push('scripts')
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            document.querySelectorAll('[data-copy-aitoearn-confirmation-link]').forEach((button) => {
+                button.addEventListener('click', async () => {
+                    const value = button.getAttribute('data-copy-aitoearn-confirmation-link') || '';
+                    const label = button.querySelector('[data-copy-label]');
+                    const originalText = label ? label.textContent : '复制链接';
+
+                    const mark = (text) => {
+                        if (! label) {
+                            return;
+                        }
+
+                        label.textContent = text;
+                        window.setTimeout(() => {
+                            label.textContent = originalText;
+                        }, 1600);
+                    };
+
+                    try {
+                        if (navigator.clipboard && window.isSecureContext) {
+                            await navigator.clipboard.writeText(value);
+                        } else {
+                            const textarea = document.createElement('textarea');
+                            textarea.value = value;
+                            textarea.setAttribute('readonly', 'readonly');
+                            textarea.style.position = 'fixed';
+                            textarea.style.opacity = '0';
+                            document.body.appendChild(textarea);
+                            textarea.select();
+                            document.execCommand('copy');
+                            document.body.removeChild(textarea);
+                        }
+
+                        mark('已复制');
+                    } catch (error) {
+                        mark('复制失败');
+                    }
+                });
+            });
+        });
+    </script>
+@endpush
