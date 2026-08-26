@@ -5,12 +5,14 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Admin;
 use App\Models\CrebeeAccount;
+use App\Models\SelfMediaAccount;
 use App\Models\Site;
 use App\Models\VideoGenerationJob;
 use App\Services\VideoGeneration\VideoGenerationService;
 use App\Support\AdminDataScope;
 use App\Support\AdminWeb;
 use App\Support\Crebee\SelfMediaPlatformCatalog;
+use App\Support\SelfMedia\SelfMediaPlatformCatalog as AiToEarnPlatformCatalog;
 use App\Support\CurrentSite;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
@@ -123,10 +125,19 @@ class VideoGenerationController extends Controller
             'selfMediaVideoAccounts' => $site instanceof Site && ! $admin->isAgentAdmin()
                 ? $this->loadSelfMediaVideoAccounts($admin, $site)
                 : collect(),
-            'selfMediaPlatformLabels' => SelfMediaPlatformCatalog::videoPlatformLabels(),
-            'selfMediaPlatformLogos' => collect(SelfMediaPlatformCatalog::videoPlatforms())
-                ->mapWithKeys(fn (string $platform): array => [$platform => SelfMediaPlatformCatalog::logoPath($platform)])
+            'selfMediaPlatformLabels' => (bool) config('aitoearn.enabled', false)
+                ? collect(AiToEarnPlatformCatalog::videoPlatforms())
+                    ->mapWithKeys(fn (string $platform): array => [$platform => AiToEarnPlatformCatalog::label($platform)])
+                    ->all()
+                : SelfMediaPlatformCatalog::videoPlatformLabels(),
+            'selfMediaPlatformLogos' => collect((bool) config('aitoearn.enabled', false)
+                    ? AiToEarnPlatformCatalog::videoPlatforms()
+                    : SelfMediaPlatformCatalog::videoPlatforms())
+                ->mapWithKeys(fn (string $platform): array => [$platform => (bool) config('aitoearn.enabled', false)
+                    ? AiToEarnPlatformCatalog::logoPath($platform)
+                    : SelfMediaPlatformCatalog::logoPath($platform)])
                 ->all(),
+            'selfMediaAccountInputName' => (bool) config('aitoearn.enabled', false) ? 'self_media_account_ids' : 'crebee_account_ids',
             'canOperateVideos' => ! $admin->isAgentAdmin(),
         ]);
     }
@@ -270,6 +281,20 @@ class VideoGenerationController extends Controller
 
     private function loadSelfMediaVideoAccounts(Admin $admin, Site $site)
     {
+        if ((bool) config('aitoearn.enabled', false)) {
+            return SelfMediaAccount::query()
+                ->select(['id', 'site_id', 'owner_admin_id', 'provider', 'platform', 'external_account_id', 'account_name', 'avatar', 'status', 'auth_status'])
+                ->where('site_id', (int) $site->id)
+                ->where('owner_admin_id', (int) $admin->id)
+                ->where('provider', 'aitoearn')
+                ->where('status', 'bound')
+                ->where('auth_status', 'authorized')
+                ->whereIn('platform', AiToEarnPlatformCatalog::videoPlatforms())
+                ->orderBy('platform')
+                ->orderBy('id')
+                ->get();
+        }
+
         return CrebeeAccount::query()
             ->select(['id', 'agent_id', 'site_id', 'owner_admin_id', 'platform', 'crebee_account_id', 'account_name', 'avatar', 'status'])
             ->where('site_id', (int) $site->id)

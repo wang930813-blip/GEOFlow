@@ -6,7 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Admin;
 use App\Models\Article;
 use App\Models\Site;
-use App\Services\Crebee\SelfMediaArticlePublishService;
+use App\Services\Crebee\SelfMediaArticlePublishService as CrebeeArticlePublishService;
+use App\Services\SelfMedia\SelfMediaArticlePublishService as AiToEarnArticlePublishService;
 use App\Support\CurrentSite;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -16,7 +17,8 @@ use Throwable;
 class ArticleSelfMediaPublishController extends Controller
 {
     public function __construct(
-        private readonly SelfMediaArticlePublishService $publishService,
+        private readonly CrebeeArticlePublishService $crebeePublishService,
+        private readonly AiToEarnArticlePublishService $aiToEarnPublishService,
     ) {}
 
     public function store(Request $request, int $articleId): RedirectResponse
@@ -28,34 +30,39 @@ class ArticleSelfMediaPublishController extends Controller
         $site = app(CurrentSite::class)->get();
         abort_unless($site instanceof Site, 403);
 
+        $accountField = (bool) config('aitoearn.enabled', false) ? 'self_media_account_ids' : 'crebee_account_ids';
         $payload = $request->validate([
-            'crebee_account_ids' => ['required', 'array', 'min:1'],
-            'crebee_account_ids.*' => ['integer', 'min:1'],
+            $accountField => ['required', 'array', 'min:1'],
+            $accountField.'.*' => ['integer', 'min:1'],
         ], [
-            'crebee_account_ids.required' => '请选择要发布的自媒体平台',
-            'crebee_account_ids.array' => '请选择要发布的自媒体平台',
-            'crebee_account_ids.min' => '请选择要发布的自媒体平台',
+            $accountField.'.required' => '请选择要发布的自媒体平台',
+            $accountField.'.array' => '请选择要发布的自媒体平台',
+            $accountField.'.min' => '请选择要发布的自媒体平台',
         ]);
 
         $article = Article::query()->whereKey($articleId)->firstOrFail();
 
         try {
-            $jobs = $this->publishService->publish(
+            $service = (bool) config('aitoearn.enabled', false)
+                ? $this->aiToEarnPublishService
+                : $this->crebeePublishService;
+
+            $jobs = $service->publish(
                 article: $article,
                 admin: $admin,
                 site: $site,
-                accountIds: $payload['crebee_account_ids'] ?? []
+                accountIds: $payload[$accountField] ?? []
             );
         } catch (RuntimeException $exception) {
             return back()
                 ->withInput()
-                ->withErrors(['crebee_account_ids' => $exception->getMessage()]);
+                ->withErrors([$accountField => $exception->getMessage()]);
         } catch (Throwable $exception) {
             report($exception);
 
             return back()
                 ->withInput()
-                ->withErrors(['crebee_account_ids' => '自媒体发布任务创建失败，请稍后重试']);
+                ->withErrors([$accountField => '自媒体发布任务创建失败，请稍后重试']);
         }
 
         $itemCount = collect($jobs)->sum(fn ($job): int => (int) $job->items()->count());

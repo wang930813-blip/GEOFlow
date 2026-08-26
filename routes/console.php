@@ -26,3 +26,8 @@ Schedule::command('geoflow:schedule-tasks')->everyMinute();
  * 分发媒体订单同步：定时刷新第三方未完成订单状态。
  */
 Schedule::command('media-distribution:sync-submissions --limit=100')->everyThirtyMinutes()->withoutOverlapping();
+
+/**
+ * AiToEarn 自媒体发布状态兜底同步：补偿队列中断或单次轮询未完成的 flow。
+ */
+Schedule::command('self-media:sync-aitoearn-flows --limit=50')->everyMinute()->withoutOverlapping();

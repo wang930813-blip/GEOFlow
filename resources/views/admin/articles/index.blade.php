@@ -25,6 +25,7 @@
     $clearTaskFilterUrl = route('admin.articles.index', request()->except(['task_id', 'page']));
     $selfMediaArticleAccounts = collect($selfMediaArticleAccounts ?? []);
     $selfMediaPlatformLabels = (array) ($selfMediaPlatformLabels ?? []);
+    $selfMediaAccountInputName = (string) ($selfMediaAccountInputName ?? 'crebee_account_ids');
     $canOperateArticles = (bool) ($canOperateArticles ?? true);
 @endphp
 
@@ -608,11 +609,12 @@
                                                 $platform = (string) $account->platform;
                                                 $platformLabel = (string) ($selfMediaPlatformLabels[$platform] ?? $platform);
                                                 $platformLogo = (string) ($selfMediaPlatformLogos[$platform] ?? '');
-                                                $accountName = trim((string) ($account->account_name ?? '')) ?: (string) $account->crebee_account_id;
+                                                $externalAccountId = (string) ($account->crebee_account_id ?? $account->external_account_id ?? '');
+                                                $accountName = trim((string) ($account->account_name ?? '')) ?: $externalAccountId;
                                                 $avatar = trim((string) ($account->avatar ?? ''));
                                             @endphp
                                             <label class="flex cursor-pointer items-center gap-3 rounded-lg border border-gray-200 bg-white p-3 hover:border-indigo-300 hover:bg-indigo-50/40">
-                                                <input type="checkbox" name="crebee_account_ids[]" value="{{ (int) $account->id }}" class="rounded border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-500">
+                                                <input type="checkbox" name="{{ $selfMediaAccountInputName }}[]" value="{{ (int) $account->id }}" class="rounded border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-500">
                                                 <span class="relative flex h-12 w-12 shrink-0 items-center justify-center">
                                                     @if($avatar !== '')
                                                         <img src="{{ $avatar }}" alt="" class="h-11 w-11 rounded-full border border-gray-200 object-cover" referrerpolicy="no-referrer">
@@ -663,6 +665,7 @@
         const TRASH_I18N = @json($trashI18n);
         const IS_TRASH_VIEW = @json($isTrashView);
         const EMPTY_TRASH_URL = @json(route('admin.articles.trash.empty'));
+        const SELF_MEDIA_ACCOUNT_INPUT_NAME = @json($selfMediaAccountInputName);
 
         function openSelfMediaPublishModal(action, articleTitle) {
             const modal = document.getElementById('self-media-publish-modal');
@@ -672,7 +675,7 @@
             }
 
             form.action = action;
-            form.querySelectorAll('input[name="crebee_account_ids[]"]').forEach((node) => node.checked = false);
+            form.querySelectorAll(`input[name="${SELF_MEDIA_ACCOUNT_INPUT_NAME}[]"]`).forEach((node) => node.checked = false);
             const titleNode = document.getElementById('self-media-publish-article-title');
             if (titleNode) {
                 titleNode.textContent = articleTitle ? `文章：${articleTitle}` : '';
@@ -879,7 +882,7 @@
             const selfMediaForm = document.getElementById('self-media-publish-form');
             if (selfMediaForm) {
                 selfMediaForm.addEventListener('submit', function(event) {
-                    const selected = selfMediaForm.querySelectorAll('input[name="crebee_account_ids[]"]:checked');
+                    const selected = selfMediaForm.querySelectorAll(`input[name="${SELF_MEDIA_ACCOUNT_INPUT_NAME}[]"]:checked`);
                     if (selected.length === 0) {
                         event.preventDefault();
                         alert('请选择要发布的自媒体平台');

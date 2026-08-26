@@ -8,13 +8,16 @@ use App\Models\Article;
 use App\Models\Author;
 use App\Models\Category;
 use App\Models\CrebeeAccount;
+use App\Models\SelfMediaAccount;
 use App\Models\Site;
 use App\Models\Task;
 use App\Services\Crebee\SelfMediaArticlePublishService;
+use App\Services\SelfMedia\SelfMediaArticlePublishService as AiToEarnArticlePublishService;
 use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Support\AdminDataScope;
 use App\Support\AdminWeb;
 use App\Support\Crebee\SelfMediaPlatformCatalog;
+use App\Support\SelfMedia\SelfMediaPlatformCatalog as AiToEarnPlatformCatalog;
 use App\Support\CurrentSite;
 use App\Support\GeoFlow\ArticleWorkflow;
 use App\Support\Site\SiteSettingsBag;
@@ -70,10 +73,17 @@ class ArticleController extends Controller
             'trashI18n' => $this->trashI18n(),
             'articleBatchRoutes' => $this->articleBatchRoutes($isTrashView),
             'selfMediaArticleAccounts' => $isTrashView ? collect() : $this->loadSelfMediaArticleAccounts($request),
-            'selfMediaPlatformLabels' => SelfMediaArticlePublishService::articlePlatformLabels(),
-            'selfMediaPlatformLogos' => collect(SelfMediaArticlePublishService::articlePlatforms())
-                ->mapWithKeys(fn (string $platform): array => [$platform => SelfMediaPlatformCatalog::logoPath($platform)])
+            'selfMediaPlatformLabels' => (bool) config('aitoearn.enabled', false)
+                ? AiToEarnArticlePublishService::articlePlatformLabels()
+                : SelfMediaArticlePublishService::articlePlatformLabels(),
+            'selfMediaPlatformLogos' => collect((bool) config('aitoearn.enabled', false)
+                    ? AiToEarnArticlePublishService::articlePlatforms()
+                    : SelfMediaArticlePublishService::articlePlatforms())
+                ->mapWithKeys(fn (string $platform): array => [$platform => (bool) config('aitoearn.enabled', false)
+                    ? AiToEarnPlatformCatalog::logoPath($platform)
+                    : SelfMediaPlatformCatalog::logoPath($platform)])
                 ->all(),
+            'selfMediaAccountInputName' => (bool) config('aitoearn.enabled', false) ? 'self_media_account_ids' : 'crebee_account_ids',
             'canOperateArticles' => ! $admin->isAgentAdmin(),
         ]);
     }
@@ -960,6 +970,20 @@ HTML;
         $site = app(CurrentSite::class)->get();
         if (! $admin instanceof \App\Models\Admin || ! $site instanceof Site) {
             return collect();
+        }
+
+        if ((bool) config('aitoearn.enabled', false)) {
+            return SelfMediaAccount::query()
+                ->select(['id', 'site_id', 'owner_admin_id', 'provider', 'platform', 'external_account_id', 'account_name', 'avatar', 'status', 'auth_status'])
+                ->where('site_id', (int) $site->id)
+                ->where('owner_admin_id', (int) $admin->id)
+                ->where('provider', 'aitoearn')
+                ->where('status', 'bound')
+                ->where('auth_status', 'authorized')
+                ->whereIn('platform', AiToEarnArticlePublishService::articlePlatforms())
+                ->orderBy('platform')
+                ->orderBy('id')
+                ->get();
         }
 
         return CrebeeAccount::query()

@@ -93,7 +93,7 @@ services:
     env_file:
       - ./.env
     dns: *app-dns
-    command: ["php", "artisan", "queue:work", "redis", "--queue=geoflow,distribution,default", "--sleep=1", "--tries=3", "--timeout=${QUEUE_WORKER_TIMEOUT:-1200}"]
+    command: ["php", "artisan", "queue:work", "redis", "--queue=geoflow,distribution,self-media,default", "--sleep=1", "--tries=3", "--timeout=${QUEUE_WORKER_TIMEOUT:-1200}"]
     volumes:
       - ./:/var/www/html
     depends_on:
