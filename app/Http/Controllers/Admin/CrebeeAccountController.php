@@ -127,7 +127,7 @@ class CrebeeAccountController extends Controller
             $label = (string) ($platformCatalog[$platform]['label'] ?? $platform);
 
             return back()->withErrors([
-                'platform' => $label.'当前不支持在系统内直接发起授权，请先在第三方平台完成授权后点击同步账号。',
+                'platform' => $label.'当前不支持在系统内直接发起授权，请联系管理员绑定账号。',
             ]);
         }
 
@@ -227,16 +227,16 @@ class CrebeeAccountController extends Controller
         abort_unless($site instanceof Site && $this->adminBelongsToSite($admin, $site), 403);
 
         try {
-            $accounts = $this->selfMediaAccountService->syncOwnerAccounts($admin, $site);
+            $accounts = $this->selfMediaAccountService->refreshOwnerBoundAccounts($admin, $site);
         } catch (Throwable $exception) {
             report($exception);
 
-            return back()->withErrors(['platform' => '账号同步失败：'.$exception->getMessage()]);
+            return back()->withErrors(['platform' => '账号状态刷新失败：'.$exception->getMessage()]);
         }
 
         return redirect()
             ->route('admin.crebee-accounts.index')
-            ->with('message', '已同步 '.$accounts->count().' 个授权账号');
+            ->with('message', '已刷新 '.$accounts->count().' 个已绑定账号状态');
     }
 
     public function unbindAiToEarnAccount(SelfMediaAccount $account, Request $request): RedirectResponse

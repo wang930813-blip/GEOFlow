@@ -53,7 +53,7 @@
                         @csrf
                         <button type="submit" @disabled(! $apiConfigured) class="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400">
                             <i data-lucide="refresh-cw" class="h-4 w-4"></i>
-                            同步账号
+                            刷新授权状态
                         </button>
                     </form>
                 @endif
@@ -137,7 +137,7 @@
                                     @if($authSupported)
                                         <div class="rounded-md bg-slate-50 px-3 py-2 text-slate-600">可发起授权</div>
                                     @else
-                                        <div class="rounded-md bg-sky-50 px-3 py-2 text-sky-700">请先在第三方平台完成授权后点击同步账号</div>
+                                        <div class="rounded-md bg-sky-50 px-3 py-2 text-sky-700">请联系管理员绑定账号</div>
                                     @endif
                                 @endif
                             </div>
@@ -180,7 +180,7 @@
                                 @elseif($canAuthorize && ! $authSupported)
                                     <div class="inline-flex h-9 w-full items-center justify-center gap-2 rounded-md border border-sky-100 bg-sky-50 px-3 text-sm font-medium text-sky-700">
                                         <i data-lucide="refresh-cw" class="h-4 w-4"></i>
-                                        同步账号后使用
+                                        联系管理员绑定
                                     </div>
                                 @else
                                     <div class="inline-flex h-9 w-full items-center justify-center rounded-md bg-slate-100 px-3 text-sm font-medium text-slate-600">

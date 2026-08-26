@@ -11,6 +11,7 @@ use App\Support\SelfMedia\SelfMediaPlatformCatalog;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
+use RuntimeException;
 
 class SelfMediaAccountService
 {
@@ -84,30 +85,105 @@ class SelfMediaAccountService
         $synced = [];
 
         foreach ($accounts as $accountPayload) {
-            $platformKey = trim((string) ($accountPayload['type'] ?? $accountPayload['platform'] ?? $platform ?? ''));
-            $externalAccountId = trim((string) ($accountPayload['id'] ?? $accountPayload['accountId'] ?? ''));
+            $platformKey = $this->remoteAccountPlatform($accountPayload, $platform);
+            $externalAccountId = $this->remoteAccountId($accountPayload);
             if ($platformKey === '' || $externalAccountId === '' || ! SelfMediaPlatformCatalog::isDomestic($platformKey)) {
                 continue;
             }
 
-            $synced[] = SelfMediaAccount::query()->updateOrCreate([
-                'provider' => 'aitoearn',
-                'platform' => $platformKey,
-                'external_account_id' => $externalAccountId,
-                'owner_admin_id' => (int) $admin->id,
-            ], [
-                'site_id' => (int) $site->id,
-                'account_name' => trim((string) ($accountPayload['nickname'] ?? $accountPayload['name'] ?? $externalAccountId)),
-                'avatar' => trim((string) ($accountPayload['avatar'] ?? '')),
-                'status' => 'bound',
-                'auth_status' => $this->normalizeAccountStatus($accountPayload['status'] ?? 'authorized'),
-                'bound_at' => now(),
-                'last_synced_at' => now(),
-                'raw_account' => $accountPayload,
-            ]);
+            $synced[] = $this->syncExactOwnerAccount($admin, $site, $accountPayload, $platformKey);
         }
 
         return new Collection($synced);
+    }
+
+    /**
+     * @return Collection<int,SelfMediaAccount>
+     */
+    public function refreshOwnerBoundAccounts(Admin $admin, Site $site): Collection
+    {
+        $boundAccounts = SelfMediaAccount::query()
+            ->where('site_id', (int) $site->id)
+            ->where('owner_admin_id', (int) $admin->id)
+            ->where('provider', 'aitoearn')
+            ->where('status', 'bound')
+            ->orderBy('platform')
+            ->orderByDesc('bound_at')
+            ->orderByDesc('id')
+            ->get();
+
+        if ($boundAccounts->isEmpty()) {
+            return new Collection;
+        }
+
+        $synced = [];
+        foreach ($boundAccounts->groupBy('platform') as $platform => $accounts) {
+            $remoteAccounts = $this->remoteAccountsById((string) $platform);
+
+            foreach ($accounts as $account) {
+                $remote = $remoteAccounts[(string) $account->external_account_id] ?? null;
+                if (is_array($remote)) {
+                    $synced[] = $this->syncExactOwnerAccount($admin, $site, $remote, (string) $platform);
+
+                    continue;
+                }
+
+                $account->forceFill([
+                    'auth_status' => 'unavailable',
+                    'last_synced_at' => now(),
+                ])->save();
+
+                $synced[] = $account->refresh();
+            }
+        }
+
+        return new Collection($synced);
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function remoteAccountIds(?string $platform = null): array
+    {
+        return array_values(array_unique(array_filter(array_map(
+            fn (array $account): string => $this->remoteAccountId($account),
+            $this->client->accounts($platform)['list'],
+        ))));
+    }
+
+    /**
+     * @param  array<int,string>  $knownAccountIds
+     */
+    public function syncAuthorizedOwnerAccount(
+        Admin $admin,
+        Site $site,
+        string $platform,
+        array $knownAccountIds,
+        array $statusPayload = [],
+    ): SelfMediaAccount {
+        $remoteAccounts = $this->remoteAccountsById($platform);
+        $candidateIds = $this->candidateAccountIdsFromStatusPayload($statusPayload, $remoteAccounts);
+
+        if ($candidateIds === []) {
+            $knownAccountIds = array_values(array_unique(array_filter(array_map('strval', $knownAccountIds))));
+            $candidateIds = array_values(array_diff(array_keys($remoteAccounts), $knownAccountIds));
+        }
+
+        if ($candidateIds === []) {
+            $candidateIds = $this->fallbackUnambiguousAccountIds($admin, $platform, array_keys($remoteAccounts));
+        }
+
+        if (count($candidateIds) !== 1) {
+            throw new RuntimeException('授权已完成，但无法安全识别本次授权账号。为避免账号串绑，请重新授权或联系管理员处理。');
+        }
+
+        $externalAccountId = (string) $candidateIds[0];
+        $accountPayload = $remoteAccounts[$externalAccountId] ?? null;
+        if (! is_array($accountPayload)) {
+            throw new RuntimeException('授权已完成，但账号列表中没有找到本次授权账号。请重新授权或联系管理员处理。');
+        }
+
+        return $this->syncExactOwnerAccount($admin, $site, $accountPayload, $platform);
     }
 
     public function normalizeAccountStatus(mixed $status): string
@@ -196,5 +272,154 @@ class SelfMediaAccountService
             '0', 'false', 'no', 'n', 'off', 'unsupported', 'unavailable' => false,
             default => $default,
         };
+    }
+
+    /**
+     * @param  array<string,mixed>  $accountPayload
+     */
+    private function syncExactOwnerAccount(Admin $admin, Site $site, array $accountPayload, ?string $platform = null): SelfMediaAccount
+    {
+        $platformKey = $this->remoteAccountPlatform($accountPayload, $platform);
+        $externalAccountId = $this->remoteAccountId($accountPayload);
+        if ($platformKey === '' || $externalAccountId === '' || ! SelfMediaPlatformCatalog::isDomestic($platformKey)) {
+            throw new RuntimeException('授权账号缺少有效平台或账号 ID。');
+        }
+
+        $this->assertAccountCanBindToOwner($admin, $platformKey, $externalAccountId);
+
+        return SelfMediaAccount::query()->updateOrCreate([
+            'provider' => 'aitoearn',
+            'platform' => $platformKey,
+            'external_account_id' => $externalAccountId,
+            'owner_admin_id' => (int) $admin->id,
+        ], [
+            'site_id' => (int) $site->id,
+            'account_name' => trim((string) ($accountPayload['nickname'] ?? $accountPayload['name'] ?? $externalAccountId)),
+            'avatar' => trim((string) ($accountPayload['avatar'] ?? '')),
+            'status' => 'bound',
+            'auth_status' => $this->normalizeAccountStatus($accountPayload['status'] ?? 'authorized'),
+            'bound_at' => now(),
+            'last_synced_at' => now(),
+            'raw_account' => $accountPayload,
+        ]);
+    }
+
+    private function assertAccountCanBindToOwner(Admin $admin, string $platform, string $externalAccountId): void
+    {
+        $conflict = SelfMediaAccount::query()
+            ->where('provider', 'aitoearn')
+            ->where('platform', $platform)
+            ->where('external_account_id', $externalAccountId)
+            ->where('status', 'bound')
+            ->whereNotNull('owner_admin_id')
+            ->where('owner_admin_id', '!=', (int) $admin->id)
+            ->first();
+
+        if ($conflict instanceof SelfMediaAccount) {
+            throw new RuntimeException('该'.$platform.'账号已绑定到其他用户，请联系管理员处理。');
+        }
+    }
+
+    /**
+     * @return array<string,array<string,mixed>>
+     */
+    private function remoteAccountsById(string $platform): array
+    {
+        $accounts = [];
+
+        foreach ($this->client->accounts($platform)['list'] as $accountPayload) {
+            $platformKey = $this->remoteAccountPlatform($accountPayload, $platform);
+            $externalAccountId = $this->remoteAccountId($accountPayload);
+            if ($platformKey !== $platform || $externalAccountId === '' || ! SelfMediaPlatformCatalog::isDomestic($platformKey)) {
+                continue;
+            }
+
+            $accounts[$externalAccountId] = $accountPayload;
+        }
+
+        return $accounts;
+    }
+
+    /**
+     * @param  array<string,mixed>  $statusPayload
+     * @param  array<string,array<string,mixed>>  $remoteAccounts
+     * @return list<string>
+     */
+    private function candidateAccountIdsFromStatusPayload(array $statusPayload, array $remoteAccounts): array
+    {
+        $ids = [];
+
+        foreach ([
+            'accountId',
+            'account_id',
+            'account.accountId',
+            'account.account_id',
+            'account.id',
+            'channelAccount.accountId',
+            'channelAccount.account_id',
+            'channelAccount.id',
+        ] as $key) {
+            $value = trim((string) data_get($statusPayload, $key, ''));
+            if ($value !== '') {
+                $ids[] = $value;
+            }
+        }
+
+        foreach (['accounts', 'accountList', 'items'] as $key) {
+            foreach ((array) data_get($statusPayload, $key, []) as $item) {
+                if (! is_array($item)) {
+                    continue;
+                }
+
+                $value = $this->remoteAccountId($item);
+                if ($value !== '') {
+                    $ids[] = $value;
+                }
+            }
+        }
+
+        return array_values(array_unique(array_filter(
+            $ids,
+            fn (string $id): bool => array_key_exists($id, $remoteAccounts),
+        )));
+    }
+
+    /**
+     * @param  list<string>  $remoteAccountIds
+     * @return list<string>
+     */
+    private function fallbackUnambiguousAccountIds(Admin $admin, string $platform, array $remoteAccountIds): array
+    {
+        if (count($remoteAccountIds) !== 1) {
+            return [];
+        }
+
+        $externalAccountId = (string) $remoteAccountIds[0];
+        $conflict = SelfMediaAccount::query()
+            ->where('provider', 'aitoearn')
+            ->where('platform', $platform)
+            ->where('external_account_id', $externalAccountId)
+            ->where('status', 'bound')
+            ->whereNotNull('owner_admin_id')
+            ->where('owner_admin_id', '!=', (int) $admin->id)
+            ->exists();
+
+        return $conflict ? [] : [$externalAccountId];
+    }
+
+    /**
+     * @param  array<string,mixed>  $accountPayload
+     */
+    private function remoteAccountId(array $accountPayload): string
+    {
+        return trim((string) ($accountPayload['id'] ?? $accountPayload['accountId'] ?? $accountPayload['account_id'] ?? ''));
+    }
+
+    /**
+     * @param  array<string,mixed>  $accountPayload
+     */
+    private function remoteAccountPlatform(array $accountPayload, ?string $fallback = null): string
+    {
+        return trim((string) ($accountPayload['type'] ?? $accountPayload['platform'] ?? $accountPayload['appAlias'] ?? $fallback ?? ''));
     }
 }
