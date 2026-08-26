@@ -47,6 +47,8 @@ class SelfMediaAccountService
                     'logo' => (string) ($fallback[$platform]['logo'] ?? ($platform.'.png')),
                     'logo_url' => $this->stringValue($item['logoUrl'] ?? '', ['url', 'src', 'value']),
                     'status' => $this->stringValue($item['status'] ?? 'available', ['value', 'status', 'name']) ?: 'available',
+                    'auth_supported' => $this->boolValue(data_get($item, 'capabilities.auth.supported'), true),
+                    'auth_type' => $this->stringValue($item['authType'] ?? '', ['value', 'type', 'name']),
                     'raw' => $item,
                 ];
             }
@@ -171,5 +173,28 @@ class SelfMediaAccountService
         }
 
         return '';
+    }
+
+    private function boolValue(mixed $value, bool $default): bool
+    {
+        if ($value === null || $value === '') {
+            return $default;
+        }
+
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_numeric($value)) {
+            return (int) $value === 1;
+        }
+
+        $normalized = strtolower(trim((string) $value));
+
+        return match ($normalized) {
+            '1', 'true', 'yes', 'y', 'on', 'supported', 'available' => true,
+            '0', 'false', 'no', 'n', 'off', 'unsupported', 'unavailable' => false,
+            default => $default,
+        };
     }
 }

@@ -186,7 +186,6 @@ class SelfMediaVideoPublishService
         if ((string) $account->platform === 'bilibili') {
             $payload['option'] = [
                 'tid' => max(1, (int) config('aitoearn.default_bilibili_tid', 21)),
-                'copyright' => 1,
             ];
         }
 

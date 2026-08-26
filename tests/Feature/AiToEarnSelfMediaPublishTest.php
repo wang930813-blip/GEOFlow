@@ -239,6 +239,90 @@ class AiToEarnSelfMediaPublishTest extends TestCase
             ->assertSee(route('admin.crebee-accounts.aitoearn.authorizations.start'), false);
     }
 
+    public function test_aitoearn_account_page_disables_authorization_when_remote_platform_does_not_support_auth(): void
+    {
+        \Illuminate\Support\Facades\Cache::flush();
+
+        [$admin, $site] = $this->provisionSubscribedAdmin('aitoearn_xhs_account_page_owner', 3);
+
+        Http::fake([
+            'https://aitoearn.test/api/v2/channels/platforms' => Http::response([
+                'code' => 0,
+                'message' => '请求成功',
+                'data' => [
+                    [
+                        'platform' => 'xhs',
+                        'displayName' => ['zh-CN' => '小红书'],
+                        'status' => 'available',
+                        'contentLimits' => ['modes' => ['article', 'video']],
+                        'capabilities' => [
+                            'auth' => ['supported' => false],
+                        ],
+                    ],
+                    [
+                        'platform' => 'douyin',
+                        'displayName' => ['zh-CN' => '抖音'],
+                        'status' => 'available',
+                        'contentLimits' => ['modes' => ['article', 'video']],
+                        'capabilities' => [
+                            'auth' => ['supported' => true],
+                        ],
+                    ],
+                ],
+            ]),
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.crebee-accounts.index'))
+            ->assertOk()
+            ->assertSee('小红书')
+            ->assertSee('请先在第三方平台完成授权后点击同步账号')
+            ->assertSee('同步账号后使用')
+            ->assertSee('value="douyin"', false)
+            ->assertDontSee('value="xhs"', false);
+    }
+
+    public function test_starting_authorization_rejects_platforms_without_remote_authorization_support(): void
+    {
+        \Illuminate\Support\Facades\Cache::flush();
+
+        [$admin, $site] = $this->provisionSubscribedAdmin('aitoearn_xhs_authorization_block_owner', 3);
+
+        Http::fake([
+            'https://aitoearn.test/api/v2/channels/platforms' => Http::response([
+                'code' => 0,
+                'message' => '请求成功',
+                'data' => [
+                    [
+                        'platform' => 'xhs',
+                        'displayName' => ['zh-CN' => '小红书'],
+                        'status' => 'available',
+                        'capabilities' => [
+                            'auth' => ['supported' => false],
+                        ],
+                    ],
+                ],
+            ]),
+            'https://aitoearn.test/api/v2/channels/accounts/auth/xhs*' => Http::response([
+                'code' => 0,
+                'message' => 'should not be called',
+                'data' => [],
+            ]),
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->from(route('admin.crebee-accounts.index'))
+            ->post(route('admin.crebee-accounts.aitoearn.authorizations.start'), [
+                'platform' => 'xhs',
+            ])
+            ->assertRedirect(route('admin.crebee-accounts.index'))
+            ->assertSessionHasErrors('platform');
+
+        Http::assertNotSent(fn ($request): bool => str_contains($request->url(), '/api/v2/channels/accounts/auth/xhs'));
+    }
+
     public function test_starting_authorization_uses_callback_url_and_keeps_qr_session_on_page(): void
     {
         [$admin, $site] = $this->provisionSubscribedAdmin('aitoearn_authorization_start_owner', 3);
@@ -786,14 +870,158 @@ class AiToEarnSelfMediaPublishTest extends TestCase
             && $request->url() === 'https://aitoearn.test/api/v2/channels/publish/flows'
             && data_get($request->data(), 'content.media.0.url') === 'https://video.example.test/tasks/video-task/final-1.mp4'
             && data_get($request->data(), 'content.media.0.options') === null
-            && data_get($request->data(), 'content.cover.url') === 'https://cdn.example.test/video-cover.jpg'
-            && data_get($request->data(), 'content.cover.options.adaptation.imageFormat') === 'auto'
-            && data_get($request->data(), 'items.0.option.tid') === 21);
+            && data_get($request->data(), 'content.cover') === null
+            && data_get($request->data(), 'items.0.option') === ['tid' => 21]);
         Http::assertNotSent(fn ($request): bool => str_contains($request->url(), '/api/assets/uploadSign'));
         $this->assertDatabaseHas('self_media_publish_jobs', [
             'id' => (int) $job->id,
             'status' => 'submitted',
             'external_flow_id' => 'flow_remote_video_sanitized_001',
+        ]);
+    }
+
+    public function test_submit_job_retries_bilibili_video_with_imported_assets_when_public_media_is_unreachable(): void
+    {
+        Queue::fake([SyncAiToEarnPublishStatusJob::class]);
+
+        [$admin, $site] = $this->provisionSubscribedAdmin('aitoearn_bilibili_video_retry_owner', 3);
+        $account = $this->selfMediaAccount($site, $admin, 'bilibili', 'account-bilibili-video-retry', 'Bilibili Account');
+        $job = SelfMediaPublishJob::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'provider' => 'aitoearn',
+            'content_type' => 'video',
+            'title' => 'Bilibili video retry',
+            'content_source_type' => 'video_generation',
+            'status' => 'queued',
+            'payload' => [
+                'flowId' => 'geoflow-bilibili-video-retry-1',
+                'content' => [
+                    'title' => 'Bilibili video retry',
+                    'body' => 'Body',
+                    'media' => [
+                        ['url' => 'https://video.example.test/tasks/video-task/final-1.mp4'],
+                    ],
+                    'cover' => [
+                        'url' => 'https://cdn.example.test/video-cover.jpg',
+                    ],
+                ],
+                'publishAt' => '2026-08-25T12:00:00+08:00',
+            ],
+        ]);
+        SelfMediaPublishJobItem::query()->create([
+            'job_id' => (int) $job->id,
+            'self_media_account_id' => (int) $account->id,
+            'provider' => 'aitoearn',
+            'platform' => 'bilibili',
+            'external_account_id' => 'account-bilibili-video-retry',
+            'status' => 'queued',
+            'payload' => [
+                'platform' => 'bilibili',
+                'accountId' => 'account-bilibili-video-retry',
+                'option' => [
+                    'tid' => 21,
+                    'copyright' => 1,
+                ],
+            ],
+        ]);
+
+        Http::fake([
+            'https://aitoearn.test/api/v2/channels/accounts/account-bilibili-video-retry/publish-options/tid/values' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    'items' => [
+                        [
+                            'value' => '21',
+                            'label' => 'Daily',
+                            'disabled' => false,
+                        ],
+                    ],
+                ],
+            ]),
+            'https://aitoearn.test/api/v2/channels/publish/flows' => Http::sequence()
+                ->push([
+                    'code' => 15051,
+                    'message' => 'Publish content validation failed',
+                    'requestId' => 'request-media-unreachable',
+                ])
+                ->push([
+                    'code' => 0,
+                    'message' => 'ok',
+                    'data' => [
+                        'flowId' => 'flow_remote_video_retry_001',
+                        'tasks' => [
+                            [
+                                'id' => 'task_remote_video_retry_001',
+                                'accountId' => 'account-bilibili-video-retry',
+                                'platform' => 'bilibili',
+                                'status' => 0,
+                            ],
+                        ],
+                    ],
+                ]),
+            'https://video.example.test/tasks/video-task/final-1.mp4' => Http::response('video-bytes', 200, [
+                'Content-Type' => 'video/mp4',
+            ]),
+            'https://cdn.example.test/video-cover.jpg' => Http::response('image-bytes', 200, [
+                'Content-Type' => 'image/jpeg',
+            ]),
+            'https://aitoearn.test/api/assets/uploadSign' => function ($request) {
+                $filename = (string) ($request['filename'] ?? '');
+                $id = str_ends_with($filename, '.mp4') ? 'asset-video-001' : 'asset-cover-001';
+
+                return Http::response([
+                    'code' => 0,
+                    'message' => 'ok',
+                    'data' => [
+                        'id' => $id,
+                        'uploadUrl' => 'https://upload.aitoearn.test/'.$id,
+                        'url' => 'https://assets.aitoearn.cn/pending/'.$filename,
+                    ],
+                ]);
+            },
+            'https://upload.aitoearn.test/asset-video-001' => Http::response('', 200),
+            'https://upload.aitoearn.test/asset-cover-001' => Http::response('', 200),
+            'https://aitoearn.test/api/assets/asset-video-001/confirm' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    'id' => 'asset-video-001',
+                    'url' => 'https://assets.aitoearn.cn/confirmed/final-1.mp4',
+                    'type' => 'publishMedia',
+                    'mimeType' => 'video/mp4',
+                ],
+            ]),
+            'https://aitoearn.test/api/assets/asset-cover-001/confirm' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    'id' => 'asset-cover-001',
+                    'url' => 'https://assets.aitoearn.cn/confirmed/video-cover.jpg',
+                    'type' => 'publishMedia',
+                    'mimeType' => 'image/jpeg',
+                ],
+            ]),
+        ]);
+
+        app()->call([app(SubmitAiToEarnPublishFlowJob::class, ['jobId' => (int) $job->id]), 'handle']);
+
+        Http::assertSent(fn ($request): bool => $request->method() === 'POST'
+            && $request->url() === 'https://aitoearn.test/api/assets/uploadSign'
+            && str_ends_with((string) $request['filename'], '.mp4'));
+        Http::assertNotSent(fn ($request): bool => $request->method() === 'POST'
+            && $request->url() === 'https://aitoearn.test/api/assets/uploadSign'
+            && ! str_ends_with((string) $request['filename'], '.mp4'));
+        Http::assertSent(fn ($request): bool => $request->method() === 'POST'
+            && $request->url() === 'https://aitoearn.test/api/v2/channels/publish/flows'
+            && data_get($request->data(), 'content.media.0.url') === 'https://assets.aitoearn.cn/confirmed/final-1.mp4'
+            && data_get($request->data(), 'content.cover') === null
+            && data_get($request->data(), 'items.0.option') === ['tid' => 21]);
+        $this->assertDatabaseHas('self_media_publish_jobs', [
+            'id' => (int) $job->id,
+            'status' => 'submitted',
+            'external_flow_id' => 'flow_remote_video_retry_001',
         ]);
     }
 
@@ -946,7 +1174,8 @@ class AiToEarnSelfMediaPublishTest extends TestCase
 
         Http::assertSent(fn ($request): bool => $request->url() === 'https://aitoearn.test/api/v2/channels/publish/flows'
             && $request['items'][0]['platform'] === 'bilibili'
-            && data_get($request->data(), 'items.0.option.tid') === 21);
+            && data_get($request->data(), 'content.cover') === null
+            && data_get($request->data(), 'items.0.option') === ['tid' => 21]);
         $this->assertDatabaseHas('self_media_publish_jobs', [
             'id' => (int) $job->id,
             'status' => 'submitted',

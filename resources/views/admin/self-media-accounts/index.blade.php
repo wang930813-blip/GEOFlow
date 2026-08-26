@@ -8,6 +8,7 @@
             'pending' => 'bg-amber-50 text-amber-700 ring-1 ring-amber-100',
             'failed' => 'bg-red-50 text-red-700 ring-1 ring-red-100',
             'unavailable' => 'bg-red-50 text-red-700 ring-1 ring-red-100',
+            'sync_required' => 'bg-sky-50 text-sky-700 ring-1 ring-sky-100',
             'expired' => 'bg-slate-100 text-slate-600',
             default => 'bg-slate-100 text-slate-600',
         };
@@ -78,6 +79,7 @@
                         $logoPath = \App\Support\SelfMedia\SelfMediaPlatformCatalog::logoPath((string) $platformKey);
                         $remoteLogo = trim((string) ($platform['logo_url'] ?? ''));
                         $hasPlatformLogo = file_exists(public_path($logoPath));
+                        $authSupported = (bool) ($platform['auth_supported'] ?? true);
                     @endphp
                     <div class="flex min-h-44 flex-col justify-between rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition hover:border-slate-300">
                         <div>
@@ -132,7 +134,11 @@
                                     </div>
                                     @endif
                                 @else
-                                    <div class="rounded-md bg-slate-50 px-3 py-2 text-slate-600">可发起授权</div>
+                                    @if($authSupported)
+                                        <div class="rounded-md bg-slate-50 px-3 py-2 text-slate-600">可发起授权</div>
+                                    @else
+                                        <div class="rounded-md bg-sky-50 px-3 py-2 text-sky-700">请先在第三方平台完成授权后点击同步账号</div>
+                                    @endif
                                 @endif
                             </div>
                         </div>
@@ -162,7 +168,7 @@
                                     </button>
                                 </form>
                             @else
-                                @if($canAuthorize)
+                                @if($canAuthorize && $authSupported)
                                     <form method="POST" action="{{ route('admin.crebee-accounts.aitoearn.authorizations.start') }}" class="w-full">
                                         @csrf
                                         <input type="hidden" name="platform" value="{{ $platformKey }}">
@@ -171,6 +177,11 @@
                                             去授权
                                         </button>
                                     </form>
+                                @elseif($canAuthorize && ! $authSupported)
+                                    <div class="inline-flex h-9 w-full items-center justify-center gap-2 rounded-md border border-sky-100 bg-sky-50 px-3 text-sm font-medium text-sky-700">
+                                        <i data-lucide="refresh-cw" class="h-4 w-4"></i>
+                                        同步账号后使用
+                                    </div>
                                 @else
                                     <div class="inline-flex h-9 w-full items-center justify-center rounded-md bg-slate-100 px-3 text-sm font-medium text-slate-600">
                                         {{ $canManage ? '超管查看' : '无授权操作权限' }}

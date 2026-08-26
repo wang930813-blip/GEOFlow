@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\SelfMediaPublishJob;
 use App\Models\SelfMediaPublishJobItem;
 use App\Services\AiToEarn\AiToEarnClient;
+use App\Services\AiToEarn\AiToEarnException;
 use App\Support\SelfMedia\SelfMediaPlatformCatalog;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -45,7 +46,7 @@ class SubmitAiToEarnPublishFlowJob implements ShouldQueue
 
         try {
             $payload = $this->flowPayload($job, $client);
-            $response = $client->createPublishFlow($payload);
+            $response = $this->createPublishFlowWithMediaFallback($job, $client, $payload);
             $this->applySubmittedResponse($job, $response);
         } catch (Throwable $exception) {
             report($exception);
@@ -82,6 +83,76 @@ class SubmitAiToEarnPublishFlowJob implements ShouldQueue
         $payload['publishAt'] = $this->futurePublishAt($payload['publishAt'] ?? null);
 
         return $this->rootPayloadForPublish($payload);
+    }
+
+    /**
+     * @param  array<string,mixed>  $payload
+     * @return array<string,mixed>
+     */
+    private function createPublishFlowWithMediaFallback(SelfMediaPublishJob $job, AiToEarnClient $client, array $payload): array
+    {
+        try {
+            return $client->createPublishFlow($payload);
+        } catch (AiToEarnException $exception) {
+            if (! $this->shouldRetryWithImportedMedia($job, $exception, $payload)) {
+                throw $exception;
+            }
+        }
+
+        $payload = $this->importPublishMedia($payload, $client);
+        $payload['publishAt'] = $this->futurePublishAt($payload['publishAt'] ?? null);
+
+        return $client->createPublishFlow($this->rootPayloadForPublish($payload));
+    }
+
+    /**
+     * @param  array<string,mixed>  $payload
+     */
+    private function shouldRetryWithImportedMedia(SelfMediaPublishJob $job, AiToEarnException $exception, array $payload): bool
+    {
+        return $exception->businessCode() === 15051
+            && (string) $job->content_type === 'video'
+            && $this->hasImportableMediaUrl($payload);
+    }
+
+    /**
+     * @param  array<string,mixed>  $payload
+     */
+    private function hasImportableMediaUrl(array $payload): bool
+    {
+        $urls = [];
+
+        foreach ((array) data_get($payload, 'content.media', []) as $item) {
+            if (is_array($item)) {
+                $urls[] = trim((string) ($item['url'] ?? ''));
+            }
+        }
+
+        $coverUrl = trim((string) data_get($payload, 'content.cover.url', ''));
+        if ($coverUrl !== '') {
+            $urls[] = $coverUrl;
+        }
+
+        foreach ((array) ($payload['items'] ?? []) as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+
+            foreach ((array) data_get($item, 'overrides.media', []) as $mediaItem) {
+                if (is_array($mediaItem)) {
+                    $urls[] = trim((string) ($mediaItem['url'] ?? ''));
+                }
+            }
+
+            $overrideCoverUrl = trim((string) data_get($item, 'overrides.cover.url', ''));
+            if ($overrideCoverUrl !== '') {
+                $urls[] = $overrideCoverUrl;
+            }
+        }
+
+        return collect($urls)
+            ->filter()
+            ->contains(fn (string $url): bool => ! $this->isAiToEarnAssetUrl($url));
     }
 
     /**
@@ -188,6 +259,55 @@ class SubmitAiToEarnPublishFlowJob implements ShouldQueue
             }
         }
 
+        return $this->normalizeBilibiliVideoCover($payload);
+    }
+
+    /**
+     * @param  array<string,mixed>  $payload
+     * @return array<string,mixed>
+     */
+    private function normalizeBilibiliVideoCover(array $payload): array
+    {
+        if (! array_key_exists('cover', (array) ($payload['content'] ?? []))) {
+            return $payload;
+        }
+
+        $bilibiliItemIndexes = [];
+        $hasNonBilibiliItem = false;
+
+        foreach ((array) ($payload['items'] ?? []) as $index => $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+
+            $platform = trim((string) ($item['platform'] ?? ''));
+            if ($platform === 'bilibili') {
+                $bilibiliItemIndexes[] = $index;
+            } elseif ($platform !== '') {
+                $hasNonBilibiliItem = true;
+            }
+        }
+
+        if ($bilibiliItemIndexes === []) {
+            return $payload;
+        }
+
+        if (! $hasNonBilibiliItem) {
+            unset($payload['content']['cover']);
+
+            return $payload;
+        }
+
+        foreach ($bilibiliItemIndexes as $index) {
+            $overrides = $payload['items'][$index]['overrides'] ?? [];
+            if (! is_array($overrides)) {
+                $overrides = [];
+            }
+
+            $overrides['cover'] ??= null;
+            $payload['items'][$index]['overrides'] = $overrides;
+        }
+
         return $payload;
     }
 
@@ -251,6 +371,15 @@ class SubmitAiToEarnPublishFlowJob implements ShouldQueue
      * @return array<string,mixed>
      */
     private function importArticleImages(array $payload, AiToEarnClient $client): array
+    {
+        return $this->importPublishMedia($payload, $client);
+    }
+
+    /**
+     * @param  array<string,mixed>  $payload
+     * @return array<string,mixed>
+     */
+    private function importPublishMedia(array $payload, AiToEarnClient $client): array
     {
         $cache = [];
 
@@ -421,10 +550,8 @@ class SubmitAiToEarnPublishFlowJob implements ShouldQueue
     {
         if ($platform === 'bilibili') {
             $tid = $this->resolveBilibiliTid($client, $accountId, $option['tid'] ?? null);
-            $copyright = $this->integerIn($option['copyright'] ?? 1, [1, 2]) ?? 1;
             $normalized = [
                 'tid' => $tid,
-                'copyright' => $copyright,
             ];
 
             $noReprint = $this->integerIn($option['no_reprint'] ?? null, [0, 1]);
@@ -440,11 +567,13 @@ class SubmitAiToEarnPublishFlowJob implements ShouldQueue
             }
 
             $source = trim((string) ($option['source'] ?? ''));
+            $copyright = $this->integerIn($option['copyright'] ?? null, [1, 2]);
             if ($copyright === 2) {
                 if ($source === '') {
                     throw new \RuntimeException('B 站转载发布需要填写转载来源 source');
                 }
 
+                $normalized['copyright'] = $copyright;
                 $normalized['source'] = $source;
             }
 

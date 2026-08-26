@@ -48,6 +48,50 @@ class SelfMediaAccountServiceTest extends TestCase
         $this->assertSame('available', $catalog['douyin']['status']);
     }
 
+    public function test_platform_catalog_exposes_remote_authorization_capability(): void
+    {
+        config([
+            'aitoearn.enabled' => true,
+            'aitoearn.base_url' => 'https://aitoearn.test',
+            'aitoearn.api_key' => 'test-api-key',
+            'cache.default' => 'array',
+        ]);
+
+        Http::fake([
+            'https://aitoearn.test/api/v2/channels/platforms' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    [
+                        'platform' => 'xhs',
+                        'displayName' => ['zh-CN' => '小红书'],
+                        'status' => 'available',
+                        'authType' => 'plugin',
+                        'capabilities' => [
+                            'auth' => ['supported' => false],
+                        ],
+                    ],
+                    [
+                        'platform' => 'douyin',
+                        'displayName' => ['zh-CN' => '抖音'],
+                        'status' => 'available',
+                        'authType' => 'qrcode',
+                        'capabilities' => [
+                            'auth' => ['supported' => true],
+                        ],
+                    ],
+                ],
+            ]),
+        ]);
+
+        $catalog = app(SelfMediaAccountService::class)->platformCatalog();
+
+        $this->assertFalse($catalog['xhs']['auth_supported']);
+        $this->assertSame('plugin', $catalog['xhs']['auth_type']);
+        $this->assertTrue($catalog['douyin']['auth_supported']);
+        $this->assertSame('qrcode', $catalog['douyin']['auth_type']);
+    }
+
     public function test_platform_catalog_only_exposes_domestic_platforms(): void
     {
         config([

@@ -225,4 +225,63 @@ class AiToEarnClientTest extends TestCase
         Http::assertSent(fn ($request): bool => $request->method() === 'GET'
             && $request->url() === 'https://aitoearn.test/api/v2/channels/publish/records/record-douyin-001/user-action');
     }
+
+    public function test_import_remote_asset_uses_dedicated_upload_timeout_for_large_asset_transfers(): void
+    {
+        config([
+            'aitoearn.base_url' => 'https://aitoearn.test',
+            'aitoearn.api_key' => 'test-api-key',
+            'aitoearn.timeout' => 60,
+            'aitoearn.connect_timeout' => 5,
+            'aitoearn.upload_timeout' => 300,
+            'aitoearn.upload_connect_timeout' => 20,
+        ]);
+
+        $inspectedUploadOptions = false;
+
+        Http::fake([
+            'https://cdn.example.test/video.mp4' => function ($request, array $options) {
+                $this->assertSame(300, (int) $options['timeout']);
+                $this->assertSame(20, (int) $options['connect_timeout']);
+
+                return Http::response('video-bytes', 200, [
+                    'Content-Type' => 'video/mp4',
+                ]);
+            },
+            'https://aitoearn.test/api/assets/uploadSign' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    'id' => 'asset-video-001',
+                    'uploadUrl' => 'https://upload.aitoearn.test/asset-video-001',
+                    'url' => 'https://assets.aitoearn.cn/pending/video.mp4',
+                ],
+            ]),
+            'https://upload.aitoearn.test/asset-video-001' => function ($request, array $options) use (&$inspectedUploadOptions) {
+                $inspectedUploadOptions = true;
+
+                $this->assertSame(300, (int) $options['timeout']);
+                $this->assertSame(20, (int) $options['connect_timeout']);
+                $this->assertFalse($request->hasHeader('X-Api-Key'));
+
+                return Http::response('', 200);
+            },
+            'https://aitoearn.test/api/assets/asset-video-001/confirm' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    'id' => 'asset-video-001',
+                    'url' => 'https://assets.aitoearn.cn/confirmed/video.mp4',
+                    'type' => 'publishMedia',
+                    'mimeType' => 'video/mp4',
+                    'size' => 11,
+                ],
+            ]),
+        ]);
+
+        $asset = app(AiToEarnClient::class)->importRemoteAsset('https://cdn.example.test/video.mp4');
+
+        $this->assertTrue($inspectedUploadOptions);
+        $this->assertSame('https://assets.aitoearn.cn/confirmed/video.mp4', $asset['url']);
+    }
 }

@@ -225,8 +225,8 @@ class AiToEarnClient
     {
         try {
             $response = Http::accept('*/*')
-                ->connectTimeout(max(1, (int) config('aitoearn.connect_timeout', 10)))
-                ->timeout(max(1, (int) config('aitoearn.timeout', 60)))
+                ->connectTimeout(max(1, (int) config('aitoearn.upload_connect_timeout', config('aitoearn.connect_timeout', 10))))
+                ->timeout(max(1, (int) config('aitoearn.upload_timeout', 300)))
                 ->get($url);
         } catch (Throwable $exception) {
             throw new AiToEarnException('AiToEarn remote asset download failed: '.$exception->getMessage(), previous: $exception);
@@ -253,8 +253,8 @@ class AiToEarnClient
         try {
             $response = Http::withHeaders(['Content-Type' => $mimeType])
                 ->withBody($body, $mimeType)
-                ->connectTimeout(max(1, (int) config('aitoearn.connect_timeout', 10)))
-                ->timeout(max(1, (int) config('aitoearn.timeout', 60)))
+                ->connectTimeout(max(1, (int) config('aitoearn.upload_connect_timeout', config('aitoearn.connect_timeout', 10))))
+                ->timeout(max(1, (int) config('aitoearn.upload_timeout', 300)))
                 ->put($uploadUrl);
         } catch (Throwable $exception) {
             throw new AiToEarnException('AiToEarn signed asset upload failed: '.$exception->getMessage(), previous: $exception);
@@ -317,7 +317,11 @@ class AiToEarnClient
 
         $code = $json['code'] ?? 0;
         if ((int) $code !== 0) {
-            throw new AiToEarnException($this->businessErrorMessage($json));
+            throw new AiToEarnException(
+                $this->businessErrorMessage($json),
+                businessCode: is_numeric($code) ? (int) $code : null,
+                requestId: trim((string) ($json['requestId'] ?? '')),
+            );
         }
 
         $data = $json['data'] ?? [];

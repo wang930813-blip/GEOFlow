@@ -112,7 +112,8 @@ class CrebeeAccountController extends Controller
         $site = app(CurrentSite::class)->get();
         abort_unless($site instanceof Site && $this->adminBelongsToSite($admin, $site), 403);
 
-        $platforms = array_keys($this->selfMediaAccountService->platformCatalog());
+        $platformCatalog = $this->selfMediaAccountService->platformCatalog();
+        $platforms = array_keys($platformCatalog);
         $payload = $request->validate([
             'platform' => ['required', 'string', Rule::in($platforms)],
         ], [
@@ -120,11 +121,21 @@ class CrebeeAccountController extends Controller
             'platform.in' => '暂不支持该自媒体平台',
         ]);
 
+        $platform = (string) $payload['platform'];
+
+        if (! (bool) ($platformCatalog[$platform]['auth_supported'] ?? true)) {
+            $label = (string) ($platformCatalog[$platform]['label'] ?? $platform);
+
+            return back()->withErrors([
+                'platform' => $label.'当前不支持在系统内直接发起授权，请先在第三方平台完成授权后点击同步账号。',
+            ]);
+        }
+
         try {
             $session = $this->selfMediaAuthorizationService->start(
                 $admin,
                 $site,
-                (string) $payload['platform'],
+                $platform,
                 route('admin.crebee-accounts.aitoearn.authorizations.callback')
             );
         } catch (RuntimeException $exception) {
