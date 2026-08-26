@@ -576,6 +576,11 @@ class CrebeeAccountController extends Controller
             ->where('owner_admin_id', (int) $admin->id)
             ->where('provider', 'aitoearn')
             ->whereIn('platform', $platformKeys)
+            ->where('status', 'pending')
+            ->where(function (Builder $query): void {
+                $query->whereNull('expires_at')
+                    ->orWhere('expires_at', '>', now());
+            })
             ->orderByDesc('id')
             ->get()
             ->groupBy('platform');

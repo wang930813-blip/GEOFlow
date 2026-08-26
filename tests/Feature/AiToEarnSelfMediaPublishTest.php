@@ -345,7 +345,7 @@ class AiToEarnSelfMediaPublishTest extends TestCase
                 'data' => [
                     'url' => 'data:image/png;base64,QR-CODE',
                     'sessionId' => 'session_douyin_001',
-                    'expiresAt' => '2026-08-25T05:21:58.440Z',
+                    'expiresAt' => now()->addHour()->toIso8601String(),
                 ],
             ]),
         ]);
@@ -662,6 +662,46 @@ class AiToEarnSelfMediaPublishTest extends TestCase
             ->where('owner_admin_id', (int) $admin->id)
             ->where('provider', 'aitoearn')
             ->count());
+    }
+
+    public function test_failed_authorization_session_does_not_block_reauthorization_card(): void
+    {
+        [$admin, $site] = $this->provisionSubscribedAdmin('aitoearn_failed_auth_owner', 3);
+
+        SelfMediaAuthSession::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'provider' => 'aitoearn',
+            'platform' => 'douyin',
+            'session_id' => 'session_failed_douyin',
+            'authorization_url' => 'data:image/png;base64,FAILED-QR',
+            'status' => 'failed',
+            'expires_at' => now()->addMinutes(10),
+            'raw_response' => [],
+        ]);
+
+        Http::fake([
+            'https://aitoearn.test/api/v2/channels/platforms' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    [
+                        'platform' => 'douyin',
+                        'displayName' => '抖音',
+                        'status' => 'available',
+                        'contentLimits' => ['modes' => ['video', 'article']],
+                    ],
+                ],
+            ]),
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.crebee-accounts.index'))
+            ->assertOk()
+            ->assertSee('去授权')
+            ->assertDontSee('data:image/png;base64,FAILED-QR', false)
+            ->assertDontSee('扫码授权');
     }
 
     public function test_article_list_uses_aitoearn_accounts_in_publish_modal_when_enabled(): void
