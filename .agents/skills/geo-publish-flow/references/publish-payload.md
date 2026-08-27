@@ -10,11 +10,13 @@ POST /api/v2/channels/publish/flows
 请求头: Content-Type: application/json
 ```
 
-国内发布默认使用中国站 Base URL，除非用户配置了其他地址：
+接口 Base URL 由宿主应用配置，内部默认值：
 
 ```text
 https://aitoearn.cn
 ```
+
+普通说明、错误解释和流程分析里不要暴露服务商名称；可写成“三方平台接口地址”。只有用户明确要求可直接执行的请求命令时，才在命令中使用真实 Base URL。
 
 ## 最小视频参数
 

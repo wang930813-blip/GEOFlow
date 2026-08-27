@@ -4,6 +4,7 @@ namespace App\Services\SelfMedia;
 
 use App\Models\Admin;
 use App\Models\SelfMediaAccount;
+use App\Models\SelfMediaAccountGroup;
 use App\Models\Site;
 use App\Services\AiToEarn\AiToEarnClient;
 use App\Services\AiToEarn\AiToEarnException;
@@ -11,6 +12,7 @@ use App\Support\SelfMedia\SelfMediaPlatformCatalog;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Str;
 use RuntimeException;
 
 class SelfMediaAccountService
@@ -76,12 +78,49 @@ class SelfMediaAccountService
             ->get();
     }
 
+    public function ensureOwnerGroup(Admin $admin, Site $site): SelfMediaAccountGroup
+    {
+        $existing = SelfMediaAccountGroup::query()
+            ->where('site_id', (int) $site->id)
+            ->where('owner_admin_id', (int) $admin->id)
+            ->where('provider', 'aitoearn')
+            ->whereNotNull('external_group_id')
+            ->where('external_group_id', '!=', '')
+            ->first();
+
+        if ($existing instanceof SelfMediaAccountGroup) {
+            return $existing;
+        }
+
+        $groupName = 'gpf-'.Str::lower(Str::random(8)).'-'.now()->format('YmdHis');
+        $payload = $this->client->createAccountGroup($groupName);
+        $externalGroupId = $this->remoteGroupId($payload);
+
+        if ($externalGroupId === '') {
+            throw new RuntimeException('账号分组创建失败：接口没有返回可用的分组 ID');
+        }
+
+        return SelfMediaAccountGroup::query()->updateOrCreate([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'provider' => 'aitoearn',
+        ], [
+            'external_group_id' => $externalGroupId,
+            'group_name' => trim((string) ($payload['name'] ?? $groupName)) ?: $groupName,
+            'is_default' => (bool) ($payload['isDefault'] ?? $payload['is_default'] ?? false),
+            'last_synced_at' => now(),
+            'raw_response' => $payload,
+        ]);
+    }
+
     /**
      * @return Collection<int,SelfMediaAccount>
      */
     public function syncOwnerAccounts(Admin $admin, Site $site, ?string $platform = null): Collection
     {
-        $accounts = $this->client->accounts($platform)['list'];
+        $group = $this->ensureOwnerGroup($admin, $site);
+        $externalGroupId = (string) $group->external_group_id;
+        $accounts = $this->client->accounts($platform, $externalGroupId)['list'];
         $synced = [];
 
         foreach ($accounts as $accountPayload) {
@@ -91,8 +130,15 @@ class SelfMediaAccountService
                 continue;
             }
 
-            $synced[] = $this->syncExactOwnerAccount($admin, $site, $accountPayload, $platformKey);
+            $accountGroupId = $this->remoteAccountGroupId($accountPayload);
+            if ($accountGroupId !== $externalGroupId) {
+                continue;
+            }
+
+            $synced[] = $this->syncExactOwnerAccount($admin, $site, $accountPayload, $platformKey, $externalGroupId);
         }
+
+        $group->forceFill(['last_synced_at' => now()])->save();
 
         return new Collection($synced);
     }
@@ -102,6 +148,8 @@ class SelfMediaAccountService
      */
     public function refreshOwnerBoundAccounts(Admin $admin, Site $site): Collection
     {
+        $group = $this->ensureOwnerGroup($admin, $site);
+        $defaultGroupId = (string) $group->external_group_id;
         $boundAccounts = SelfMediaAccount::query()
             ->where('site_id', (int) $site->id)
             ->where('owner_admin_id', (int) $admin->id)
@@ -117,13 +165,14 @@ class SelfMediaAccountService
         }
 
         $synced = [];
-        foreach ($boundAccounts->groupBy('platform') as $platform => $accounts) {
-            $remoteAccounts = $this->remoteAccountsById((string) $platform);
+        foreach ($boundAccounts->groupBy(fn (SelfMediaAccount $account): string => (string) $account->platform.'|'.(trim((string) $account->external_group_id) ?: $defaultGroupId)) as $groupKey => $accounts) {
+            [$platform, $externalGroupId] = explode('|', (string) $groupKey, 2);
+            $remoteAccounts = $this->remoteAccountsById((string) $platform, $externalGroupId);
 
             foreach ($accounts as $account) {
                 $remote = $remoteAccounts[(string) $account->external_account_id] ?? null;
                 if (is_array($remote)) {
-                    $synced[] = $this->syncExactOwnerAccount($admin, $site, $remote, (string) $platform);
+                    $synced[] = $this->syncExactOwnerAccount($admin, $site, $remote, (string) $platform, $externalGroupId);
 
                     continue;
                 }
@@ -143,11 +192,11 @@ class SelfMediaAccountService
     /**
      * @return list<string>
      */
-    public function remoteAccountIds(?string $platform = null): array
+    public function remoteAccountIds(?string $platform = null, ?string $externalGroupId = null): array
     {
         return array_values(array_unique(array_filter(array_map(
             fn (array $account): string => $this->remoteAccountId($account),
-            $this->client->accounts($platform)['list'],
+            $this->client->accounts($platform, $externalGroupId)['list'],
         ))));
     }
 
@@ -160,8 +209,14 @@ class SelfMediaAccountService
         string $platform,
         array $knownAccountIds,
         array $statusPayload = [],
+        ?string $externalGroupId = null,
     ): SelfMediaAccount {
-        $remoteAccounts = $this->remoteAccountsById($platform);
+        $externalGroupId = trim((string) $externalGroupId);
+        if ($externalGroupId === '') {
+            $externalGroupId = (string) $this->ensureOwnerGroup($admin, $site)->external_group_id;
+        }
+
+        $remoteAccounts = $this->remoteAccountsById($platform, $externalGroupId);
         $candidateIds = $this->candidateAccountIdsFromStatusPayload($statusPayload, $remoteAccounts);
 
         if ($candidateIds === []) {
@@ -170,7 +225,7 @@ class SelfMediaAccountService
         }
 
         if ($candidateIds === []) {
-            $candidateIds = $this->fallbackUnambiguousAccountIds($admin, $platform, array_keys($remoteAccounts));
+            $candidateIds = $this->fallbackUnambiguousAccountIds(array_keys($remoteAccounts));
         }
 
         if (count($candidateIds) !== 1) {
@@ -183,7 +238,7 @@ class SelfMediaAccountService
             throw new RuntimeException('授权已完成，但账号列表中没有找到本次授权账号。请重新授权或联系管理员处理。');
         }
 
-        return $this->syncExactOwnerAccount($admin, $site, $accountPayload, $platform);
+        return $this->syncExactOwnerAccount($admin, $site, $accountPayload, $platform, $externalGroupId);
     }
 
     public function normalizeAccountStatus(mixed $status): string
@@ -277,7 +332,7 @@ class SelfMediaAccountService
     /**
      * @param  array<string,mixed>  $accountPayload
      */
-    private function syncExactOwnerAccount(Admin $admin, Site $site, array $accountPayload, ?string $platform = null): SelfMediaAccount
+    private function syncExactOwnerAccount(Admin $admin, Site $site, array $accountPayload, ?string $platform = null, ?string $externalGroupId = null): SelfMediaAccount
     {
         $platformKey = $this->remoteAccountPlatform($accountPayload, $platform);
         $externalAccountId = $this->remoteAccountId($accountPayload);
@@ -285,7 +340,7 @@ class SelfMediaAccountService
             throw new RuntimeException('授权账号缺少有效平台或账号 ID。');
         }
 
-        $this->assertAccountCanBindToOwner($admin, $platformKey, $externalAccountId);
+        $externalGroupId = trim((string) ($externalGroupId ?: $this->remoteAccountGroupId($accountPayload)));
 
         return SelfMediaAccount::query()->updateOrCreate([
             'provider' => 'aitoearn',
@@ -294,6 +349,7 @@ class SelfMediaAccountService
             'owner_admin_id' => (int) $admin->id,
         ], [
             'site_id' => (int) $site->id,
+            'external_group_id' => $externalGroupId !== '' ? $externalGroupId : null,
             'account_name' => trim((string) ($accountPayload['nickname'] ?? $accountPayload['name'] ?? $externalAccountId)),
             'avatar' => trim((string) ($accountPayload['avatar'] ?? '')),
             'status' => 'bound',
@@ -304,33 +360,23 @@ class SelfMediaAccountService
         ]);
     }
 
-    private function assertAccountCanBindToOwner(Admin $admin, string $platform, string $externalAccountId): void
-    {
-        $conflict = SelfMediaAccount::query()
-            ->where('provider', 'aitoearn')
-            ->where('platform', $platform)
-            ->where('external_account_id', $externalAccountId)
-            ->where('status', 'bound')
-            ->whereNotNull('owner_admin_id')
-            ->where('owner_admin_id', '!=', (int) $admin->id)
-            ->first();
-
-        if ($conflict instanceof SelfMediaAccount) {
-            throw new RuntimeException('该'.$platform.'账号已绑定到其他用户，请联系管理员处理。');
-        }
-    }
-
     /**
      * @return array<string,array<string,mixed>>
      */
-    private function remoteAccountsById(string $platform): array
+    private function remoteAccountsById(string $platform, ?string $externalGroupId = null): array
     {
         $accounts = [];
+        $externalGroupId = trim((string) $externalGroupId);
 
-        foreach ($this->client->accounts($platform)['list'] as $accountPayload) {
+        foreach ($this->client->accounts($platform, $externalGroupId !== '' ? $externalGroupId : null)['list'] as $accountPayload) {
             $platformKey = $this->remoteAccountPlatform($accountPayload, $platform);
             $externalAccountId = $this->remoteAccountId($accountPayload);
             if ($platformKey !== $platform || $externalAccountId === '' || ! SelfMediaPlatformCatalog::isDomestic($platformKey)) {
+                continue;
+            }
+
+            $accountGroupId = $this->remoteAccountGroupId($accountPayload);
+            if ($externalGroupId !== '' && $accountGroupId !== $externalGroupId) {
                 continue;
             }
 
@@ -388,23 +434,13 @@ class SelfMediaAccountService
      * @param  list<string>  $remoteAccountIds
      * @return list<string>
      */
-    private function fallbackUnambiguousAccountIds(Admin $admin, string $platform, array $remoteAccountIds): array
+    private function fallbackUnambiguousAccountIds(array $remoteAccountIds): array
     {
         if (count($remoteAccountIds) !== 1) {
             return [];
         }
 
-        $externalAccountId = (string) $remoteAccountIds[0];
-        $conflict = SelfMediaAccount::query()
-            ->where('provider', 'aitoearn')
-            ->where('platform', $platform)
-            ->where('external_account_id', $externalAccountId)
-            ->where('status', 'bound')
-            ->whereNotNull('owner_admin_id')
-            ->where('owner_admin_id', '!=', (int) $admin->id)
-            ->exists();
-
-        return $conflict ? [] : [$externalAccountId];
+        return [(string) $remoteAccountIds[0]];
     }
 
     /**
@@ -421,5 +457,35 @@ class SelfMediaAccountService
     private function remoteAccountPlatform(array $accountPayload, ?string $fallback = null): string
     {
         return trim((string) ($accountPayload['type'] ?? $accountPayload['platform'] ?? $accountPayload['appAlias'] ?? $fallback ?? ''));
+    }
+
+    /**
+     * @param  array<string,mixed>  $accountPayload
+     */
+    private function remoteAccountGroupId(array $accountPayload): string
+    {
+        foreach ([
+            'groupId',
+            'group_id',
+            'accountGroupId',
+            'account_group_id',
+            'group.id',
+            'accountGroup.id',
+        ] as $key) {
+            $value = trim((string) data_get($accountPayload, $key, ''));
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * @param  array<string,mixed>  $groupPayload
+     */
+    private function remoteGroupId(array $groupPayload): string
+    {
+        return trim((string) ($groupPayload['id'] ?? $groupPayload['groupId'] ?? $groupPayload['group_id'] ?? ''));
     }
 }

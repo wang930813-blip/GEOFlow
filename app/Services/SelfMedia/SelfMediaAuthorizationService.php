@@ -19,15 +19,17 @@ class SelfMediaAuthorizationService
 
     public function start(Admin $admin, Site $site, string $platform, string $redirectUri): SelfMediaAuthSession
     {
+        $group = $this->accountService->ensureOwnerGroup($admin, $site);
+        $externalGroupId = (string) $group->external_group_id;
         $knownAccountIds = [];
         $knownAccountSnapshotError = '';
         try {
-            $knownAccountIds = $this->accountService->remoteAccountIds($platform);
+            $knownAccountIds = $this->accountService->remoteAccountIds($platform, $externalGroupId);
         } catch (AiToEarnException $exception) {
             $knownAccountSnapshotError = $exception->getMessage();
         }
 
-        $payload = $this->client->startAuthorization($platform, $redirectUri);
+        $payload = $this->client->startAuthorization($platform, callbackUrl: $redirectUri, groupId: $externalGroupId);
         $sessionId = trim((string) ($payload['sessionId'] ?? $payload['session_id'] ?? ''));
         $url = trim((string) ($payload['url'] ?? $payload['authorizationUrl'] ?? $payload['authorization_url'] ?? ''));
 
@@ -40,11 +42,13 @@ class SelfMediaAuthorizationService
             'owner_admin_id' => (int) $admin->id,
             'provider' => 'aitoearn',
             'platform' => $platform,
+            'external_group_id' => $externalGroupId,
             'session_id' => $sessionId,
             'authorization_url' => $url,
             'status' => 'pending',
             'expires_at' => $this->parseTime($payload['expiresAt'] ?? null),
             'raw_response' => array_merge($payload, [
+                'external_group_id' => $externalGroupId,
                 'known_account_ids_before_authorization' => $knownAccountIds,
                 'known_account_snapshot_error' => $knownAccountSnapshotError,
             ]),
@@ -58,6 +62,13 @@ class SelfMediaAuthorizationService
         $syncedAccount = null;
 
         if ($status === 'authorized' && $session->owner instanceof Admin && $session->site instanceof Site) {
+            $externalGroupId = trim((string) $session->external_group_id);
+            if ($externalGroupId === '') {
+                $externalGroupId = (string) $this->accountService
+                    ->ensureOwnerGroup($session->owner, $session->site)
+                    ->external_group_id;
+            }
+
             try {
                 $syncedAccount = $this->accountService->syncAuthorizedOwnerAccount(
                     $session->owner,
@@ -65,6 +76,7 @@ class SelfMediaAuthorizationService
                     (string) $session->platform,
                     $this->knownAccountIdsBeforeAuthorization($session),
                     $payload,
+                    $externalGroupId,
                 );
             } catch (AiToEarnException $exception) {
                 throw $exception;
@@ -73,6 +85,7 @@ class SelfMediaAuthorizationService
                     'status' => 'failed',
                     'raw_response' => array_merge((array) $session->raw_response, [
                         'status_response' => $payload,
+                        'external_group_id' => $externalGroupId,
                         'failure_reason' => $exception->getMessage(),
                     ]),
                 ])->save();
@@ -83,10 +96,12 @@ class SelfMediaAuthorizationService
 
         $session->forceFill([
             'status' => $status,
+            'external_group_id' => $externalGroupId ?? $session->external_group_id,
             'confirmed_at' => $status === 'authorized' ? now() : $session->confirmed_at,
             'confirmed_account_id' => $syncedAccount?->id ?? $session->confirmed_account_id,
             'raw_response' => array_merge((array) $session->raw_response, [
                 'status_response' => $payload,
+                'external_group_id' => $externalGroupId ?? $session->external_group_id,
             ]),
         ])->save();
 
@@ -124,7 +139,7 @@ class SelfMediaAuthorizationService
         }
 
         try {
-            return Carbon::parse($value);
+            return Carbon::parse($value)->setTimezone((string) config('app.timezone', 'UTC'));
         } catch (\Throwable) {
             return null;
         }

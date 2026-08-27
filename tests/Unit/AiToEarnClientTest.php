@@ -168,6 +168,103 @@ class AiToEarnClientTest extends TestCase
             && ! str_contains($request->url(), 'types=douyin'));
     }
 
+    public function test_accounts_filters_by_group_id_when_group_is_provided(): void
+    {
+        config([
+            'aitoearn.base_url' => 'https://aitoearn.test',
+            'aitoearn.api_key' => 'test-api-key',
+        ]);
+
+        Http::fake([
+            'https://aitoearn.test/api/v2/channels/accounts*' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    'total' => 1,
+                    'accounts' => [
+                        [
+                            'id' => 'account_123',
+                            'type' => 'douyin',
+                            'groupId' => 'group-owner-001',
+                        ],
+                    ],
+                ],
+            ]),
+        ]);
+
+        $accounts = app(AiToEarnClient::class)->accounts('douyin', 'group-owner-001');
+
+        $this->assertSame('account_123', $accounts['list'][0]['id']);
+        Http::assertSent(function ($request): bool {
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+
+            return str_contains($request->url(), '/api/v2/channels/accounts?')
+                && ($query['type'] ?? '') === 'douyin'
+                && ($query['groupId'] ?? '') === 'group-owner-001';
+        });
+    }
+
+    public function test_start_authorization_sends_group_id_when_provided(): void
+    {
+        config([
+            'aitoearn.base_url' => 'https://aitoearn.test',
+            'aitoearn.api_key' => 'test-api-key',
+        ]);
+
+        Http::fake([
+            'https://aitoearn.test/api/v2/channels/accounts/auth/douyin*' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    'url' => 'https://auth.example.test/session',
+                    'sessionId' => 'session_123',
+                ],
+            ]),
+        ]);
+
+        $result = app(AiToEarnClient::class)->startAuthorization(
+            'douyin',
+            callbackUrl: 'https://app.example.test/callback',
+            groupId: 'group-owner-001',
+        );
+
+        $this->assertSame('session_123', $result['sessionId']);
+        Http::assertSent(function ($request): bool {
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+
+            return str_contains($request->url(), '/api/v2/channels/accounts/auth/douyin?')
+                && ($query['callbackUrl'] ?? '') === 'https://app.example.test/callback'
+                && ($query['groupId'] ?? '') === 'group-owner-001';
+        });
+    }
+
+    public function test_client_creates_account_group(): void
+    {
+        config([
+            'aitoearn.base_url' => 'https://aitoearn.test',
+            'aitoearn.api_key' => 'test-api-key',
+        ]);
+
+        Http::fake([
+            'https://aitoearn.test/api/v2/channels/account-groups' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    'id' => 'group-owner-001',
+                    'name' => 'gpf-test-001',
+                    'isDefault' => false,
+                ],
+            ]),
+        ]);
+
+        $group = app(AiToEarnClient::class)->createAccountGroup('gpf-test-001');
+
+        $this->assertSame('group-owner-001', $group['id']);
+        Http::assertSent(fn ($request): bool => $request->method() === 'POST'
+            && $request->url() === 'https://aitoearn.test/api/v2/channels/account-groups'
+            && $request['name'] === 'gpf-test-001');
+    }
+
     public function test_client_fetches_account_publish_option_values(): void
     {
         config([

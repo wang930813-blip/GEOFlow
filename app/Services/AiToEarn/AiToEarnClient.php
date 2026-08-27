@@ -24,11 +24,14 @@ class AiToEarnClient
     /**
      * @return array{total:int,list:list<array<string,mixed>>}
      */
-    public function accounts(?string $platform = null): array
+    public function accounts(?string $platform = null, ?string $groupId = null): array
     {
         $query = [];
         if ($platform !== null && trim($platform) !== '') {
             $query['type'] = trim($platform);
+        }
+        if ($groupId !== null && trim($groupId) !== '') {
+            $query['groupId'] = trim($groupId);
         }
 
         $data = $this->get('/api/v2/channels/accounts', $query);
@@ -43,7 +46,12 @@ class AiToEarnClient
     /**
      * @return array<string,mixed>
      */
-    public function startAuthorization(string $platform, ?string $callbackUrl = null, ?string $redirectUri = null): array
+    public function startAuthorization(
+        string $platform,
+        ?string $callbackUrl = null,
+        ?string $redirectUri = null,
+        ?string $groupId = null,
+    ): array
     {
         $query = [];
         if ($callbackUrl !== null && trim($callbackUrl) !== '') {
@@ -52,8 +60,21 @@ class AiToEarnClient
         if ($redirectUri !== null && trim($redirectUri) !== '') {
             $query['redirectUri'] = trim($redirectUri);
         }
+        if ($groupId !== null && trim($groupId) !== '') {
+            $query['groupId'] = trim($groupId);
+        }
 
         return $this->get('/api/v2/channels/accounts/auth/'.rawurlencode($platform), $query);
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    public function createAccountGroup(string $name): array
+    {
+        return $this->post('/api/v2/channels/account-groups', [
+            'name' => $name,
+        ]);
     }
 
     /**
