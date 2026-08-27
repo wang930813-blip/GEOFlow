@@ -139,7 +139,7 @@ class SelfMediaAuthorizationService
         }
 
         try {
-            return Carbon::parse($value);
+            return Carbon::parse($value)->setTimezone((string) config('app.timezone', 'UTC'));
         } catch (\Throwable) {
             return null;
         }

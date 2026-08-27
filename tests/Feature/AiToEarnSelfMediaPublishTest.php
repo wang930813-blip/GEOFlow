@@ -414,6 +414,77 @@ class AiToEarnSelfMediaPublishTest extends TestCase
         });
     }
 
+    public function test_starting_authorization_keeps_utc_expiration_qr_session_visible_until_local_expiry(): void
+    {
+        \Illuminate\Support\Facades\Cache::flush();
+        Carbon::setTestNow(Carbon::parse('2026-08-27 15:20:00', 'Asia/Shanghai'));
+
+        try {
+            [$admin, $site] = $this->provisionSubscribedAdmin('aitoearn_authorization_utc_expiry_owner', 3);
+
+            Http::fake([
+                'https://aitoearn.test/api/v2/channels/platforms' => Http::response([
+                    'code' => 0,
+                    'message' => 'ok',
+                    'data' => [
+                        [
+                            'platform' => 'douyin',
+                            'displayName' => 'Douyin',
+                            'status' => 'available',
+                        ],
+                    ],
+                ]),
+                'https://aitoearn.test/api/v2/channels/account-groups' => Http::response([
+                    'code' => 0,
+                    'message' => 'ok',
+                    'data' => [
+                        'id' => 'group-auth-utc-expiry-owner',
+                        'name' => 'gpf-auth-utc-expiry-owner',
+                        'isDefault' => false,
+                    ],
+                ]),
+                'https://aitoearn.test/api/v2/channels/accounts/auth/douyin*' => Http::response([
+                    'code' => 0,
+                    'message' => 'ok',
+                    'data' => [
+                        'url' => 'data:image/png;base64,UTC-QR-CODE',
+                        'sessionId' => 'session_douyin_utc_expiry_001',
+                        'expiresAt' => '2026-08-27T07:30:00.000Z',
+                    ],
+                ]),
+                'https://aitoearn.test/api/v2/channels/accounts*' => Http::response([
+                    'code' => 0,
+                    'message' => 'ok',
+                    'data' => [
+                        'total' => 0,
+                        'accounts' => [],
+                    ],
+                ]),
+            ]);
+
+            $this->actingAs($admin, 'admin')
+                ->withSession(['current_site_id' => (int) $site->id])
+                ->post(route('admin.crebee-accounts.aitoearn.authorizations.start'), [
+                    'platform' => 'douyin',
+                ])
+                ->assertRedirect(route('admin.crebee-accounts.index'));
+
+            $session = SelfMediaAuthSession::query()
+                ->where('session_id', 'session_douyin_utc_expiry_001')
+                ->firstOrFail();
+
+            $this->assertSame('2026-08-27 15:30:00', $session->expires_at?->format('Y-m-d H:i:s'));
+
+            $this->actingAs($admin, 'admin')
+                ->withSession(['current_site_id' => (int) $site->id])
+                ->get(route('admin.crebee-accounts.index'))
+                ->assertOk()
+                ->assertSee('data:image/png;base64,UTC-QR-CODE', false);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     public function test_starting_authorization_creates_owner_group_and_uses_group_id_for_remote_requests(): void
     {
         [$admin, $site] = $this->provisionSubscribedAdmin('aitoearn_grouped_authorization_owner', 3);
