@@ -11,6 +11,7 @@ use App\Models\Author;
 use App\Models\Category;
 use App\Models\PlatformPlan;
 use App\Models\SelfMediaAccount;
+use App\Models\SelfMediaAccountGroup;
 use App\Models\SelfMediaAuthSession;
 use App\Models\SelfMediaPublishJob;
 use App\Models\SelfMediaPublishJobItem;
@@ -155,6 +156,15 @@ class AiToEarnSelfMediaPublishTest extends TestCase
         ]);
 
         Http::fake([
+            'https://aitoearn.test/api/v2/channels/account-groups' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    'id' => 'group-auth-owner',
+                    'name' => 'gpf-auth-owner',
+                    'isDefault' => false,
+                ],
+            ]),
             'https://aitoearn.test/api/v2/channels/accounts/auth/douyin/status/session_001' => Http::response([
                 'code' => 0,
                 'message' => '请求成功',
@@ -171,6 +181,7 @@ class AiToEarnSelfMediaPublishTest extends TestCase
                         [
                             'id' => 'account-douyin-auth',
                             'type' => 'douyin',
+                            'groupId' => 'group-auth-owner',
                             'nickname' => '授权完成的抖音号',
                             'avatar' => 'https://cdn.example.com/avatar.png',
                             'status' => 1,
@@ -194,11 +205,13 @@ class AiToEarnSelfMediaPublishTest extends TestCase
             'provider' => 'aitoearn',
             'platform' => 'douyin',
             'external_account_id' => 'account-douyin-auth',
+            'external_group_id' => 'group-auth-owner',
             'auth_status' => 'authorized',
         ]);
 
         Http::assertSent(fn ($request): bool => str_contains($request->url(), '/api/v2/channels/accounts?')
-            && str_contains($request->url(), 'type=douyin'));
+            && str_contains($request->url(), 'type=douyin')
+            && str_contains($request->url(), 'groupId=group-auth-owner'));
     }
 
     public function test_aitoearn_account_page_renders_remote_platforms_and_authorization_controls(): void
@@ -339,6 +352,15 @@ class AiToEarnSelfMediaPublishTest extends TestCase
                     ],
                 ],
             ]),
+            'https://aitoearn.test/api/v2/channels/account-groups' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    'id' => 'group-auth-start-owner',
+                    'name' => 'gpf-auth-start-owner',
+                    'isDefault' => false,
+                ],
+            ]),
             'https://aitoearn.test/api/v2/channels/accounts/auth/douyin*' => Http::response([
                 'code' => 0,
                 'message' => 'ok',
@@ -346,6 +368,14 @@ class AiToEarnSelfMediaPublishTest extends TestCase
                     'url' => 'data:image/png;base64,QR-CODE',
                     'sessionId' => 'session_douyin_001',
                     'expiresAt' => now()->addHour()->toIso8601String(),
+                ],
+            ]),
+            'https://aitoearn.test/api/v2/channels/accounts*' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    'total' => 0,
+                    'accounts' => [],
                 ],
             ]),
         ]);
@@ -363,6 +393,7 @@ class AiToEarnSelfMediaPublishTest extends TestCase
             'provider' => 'aitoearn',
             'platform' => 'douyin',
             'session_id' => 'session_douyin_001',
+            'external_group_id' => 'group-auth-start-owner',
             'authorization_url' => 'data:image/png;base64,QR-CODE',
             'status' => 'pending',
         ]);
@@ -378,8 +409,98 @@ class AiToEarnSelfMediaPublishTest extends TestCase
 
             return str_contains($request->url(), '/api/v2/channels/accounts/auth/douyin?')
                 && ($query['callbackUrl'] ?? '') === route('admin.crebee-accounts.aitoearn.authorizations.callback')
+                && ($query['groupId'] ?? '') === 'group-auth-start-owner'
             && ! array_key_exists('redirectUri', $query);
         });
+    }
+
+    public function test_starting_authorization_creates_owner_group_and_uses_group_id_for_remote_requests(): void
+    {
+        [$admin, $site] = $this->provisionSubscribedAdmin('aitoearn_grouped_authorization_owner', 3);
+
+        Http::fake([
+            'https://aitoearn.test/api/v2/channels/platforms' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    [
+                        'platform' => 'douyin',
+                        'displayName' => 'Douyin',
+                        'status' => 'available',
+                    ],
+                ],
+            ]),
+            'https://aitoearn.test/api/v2/channels/account-groups' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    'id' => 'group-owner-001',
+                    'name' => 'gpf-owner-001',
+                    'isDefault' => false,
+                ],
+            ]),
+            'https://aitoearn.test/api/v2/channels/accounts/auth/douyin*' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    'url' => 'data:image/png;base64,QR-CODE-GROUPED',
+                    'sessionId' => 'session_douyin_grouped_001',
+                    'expiresAt' => now()->addHour()->toIso8601String(),
+                ],
+            ]),
+            'https://aitoearn.test/api/v2/channels/accounts*' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    'total' => 0,
+                    'accounts' => [],
+                ],
+            ]),
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.crebee-accounts.aitoearn.authorizations.start'), [
+                'platform' => 'douyin',
+            ])
+            ->assertRedirect(route('admin.crebee-accounts.index'));
+
+        Http::assertSent(fn ($request): bool => $request->method() === 'POST'
+            && $request->url() === 'https://aitoearn.test/api/v2/channels/account-groups'
+            && str_starts_with((string) $request['name'], 'gpf-'));
+
+        Http::assertSent(function ($request): bool {
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+
+            return str_contains($request->url(), '/api/v2/channels/accounts?')
+                && ($query['type'] ?? '') === 'douyin'
+                && ($query['groupId'] ?? '') === 'group-owner-001';
+        });
+
+        Http::assertSent(function ($request): bool {
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+
+            return str_contains($request->url(), '/api/v2/channels/accounts/auth/douyin?')
+                && ($query['callbackUrl'] ?? '') === route('admin.crebee-accounts.aitoearn.authorizations.callback')
+                && ($query['groupId'] ?? '') === 'group-owner-001'
+                && ! array_key_exists('redirectUri', $query);
+        });
+
+        $this->assertDatabaseHas('self_media_account_groups', [
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'provider' => 'aitoearn',
+            'external_group_id' => 'group-owner-001',
+        ]);
+
+        $this->assertDatabaseHas('self_media_auth_sessions', [
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'provider' => 'aitoearn',
+            'platform' => 'douyin',
+            'session_id' => 'session_douyin_grouped_001',
+            'external_group_id' => 'group-owner-001',
+        ]);
     }
 
     public function test_starting_authorization_stores_long_qr_code_data_url(): void
@@ -399,6 +520,15 @@ class AiToEarnSelfMediaPublishTest extends TestCase
                     ],
                 ],
             ]),
+            'https://aitoearn.test/api/v2/channels/account-groups' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    'id' => 'group-long-qr-owner',
+                    'name' => 'gpf-long-qr-owner',
+                    'isDefault' => false,
+                ],
+            ]),
             'https://aitoearn.test/api/v2/channels/accounts/auth/douyin*' => Http::response([
                 'code' => 0,
                 'message' => 'ok',
@@ -406,6 +536,14 @@ class AiToEarnSelfMediaPublishTest extends TestCase
                     'url' => $qrCode,
                     'sessionId' => 'session_douyin_long_qr_001',
                     'expiresAt' => '2026-08-25T05:21:58.440Z',
+                ],
+            ]),
+            'https://aitoearn.test/api/v2/channels/accounts*' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    'total' => 0,
+                    'accounts' => [],
                 ],
             ]),
         ]);
@@ -423,6 +561,7 @@ class AiToEarnSelfMediaPublishTest extends TestCase
             'provider' => 'aitoearn',
             'platform' => 'douyin',
             'session_id' => 'session_douyin_long_qr_001',
+            'external_group_id' => 'group-long-qr-owner',
             'authorization_url' => $qrCode,
             'status' => 'pending',
         ]);
@@ -433,11 +572,13 @@ class AiToEarnSelfMediaPublishTest extends TestCase
         $this->withMiddleware(ValidateCsrfToken::class);
 
         [$admin, $site] = $this->provisionSubscribedAdmin('aitoearn_authorization_callback_owner', 3);
+        $this->selfMediaAccountGroup($site, $admin, 'group-callback-owner');
         SelfMediaAuthSession::query()->create([
             'site_id' => (int) $site->id,
             'owner_admin_id' => (int) $admin->id,
             'provider' => 'aitoearn',
             'platform' => 'bilibili',
+            'external_group_id' => 'group-callback-owner',
             'session_id' => 'session_bilibili_001',
             'authorization_url' => 'https://aitoearn.test/auth/session_bilibili_001',
             'status' => 'pending',
@@ -461,6 +602,7 @@ class AiToEarnSelfMediaPublishTest extends TestCase
                         [
                             'id' => 'account-bilibili-auth',
                             'type' => 'bilibili',
+                            'groupId' => 'group-callback-owner',
                             'nickname' => 'Bilibili Account',
                             'status' => 1,
                         ],
@@ -485,8 +627,17 @@ class AiToEarnSelfMediaPublishTest extends TestCase
             'provider' => 'aitoearn',
             'platform' => 'bilibili',
             'external_account_id' => 'account-bilibili-auth',
+            'external_group_id' => 'group-callback-owner',
             'auth_status' => 'authorized',
         ]);
+
+        Http::assertSent(function ($request): bool {
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+
+            return str_contains($request->url(), '/api/v2/channels/accounts?')
+                && ($query['type'] ?? '') === 'bilibili'
+                && ($query['groupId'] ?? '') === 'group-callback-owner';
+        });
     }
 
     public function test_authorization_sync_binds_only_account_created_after_session_snapshot(): void
@@ -494,16 +645,19 @@ class AiToEarnSelfMediaPublishTest extends TestCase
         [$existingOwner, $existingSite] = $this->provisionSubscribedAdmin('aitoearn_existing_owner', 3);
         [$admin, $site] = $this->provisionSubscribedAdmin('aitoearn_new_owner', 3);
         $this->selfMediaAccount($existingSite, $existingOwner, 'douyin', 'account-douyin-existing', 'Existing Douyin');
+        $this->selfMediaAccountGroup($site, $admin, 'group-new-owner');
 
         $session = SelfMediaAuthSession::query()->create([
             'site_id' => (int) $site->id,
             'owner_admin_id' => (int) $admin->id,
             'provider' => 'aitoearn',
             'platform' => 'douyin',
+            'external_group_id' => 'group-new-owner',
             'session_id' => 'session_douyin_new_owner',
             'authorization_url' => 'https://aitoearn.test/auth/session_douyin_new_owner',
             'status' => 'pending',
             'raw_response' => [
+                'external_group_id' => 'group-new-owner',
                 'known_account_ids_before_authorization' => ['account-douyin-existing'],
             ],
         ]);
@@ -525,12 +679,14 @@ class AiToEarnSelfMediaPublishTest extends TestCase
                         [
                             'id' => 'account-douyin-existing',
                             'type' => 'douyin',
+                            'groupId' => 'group-new-owner',
                             'nickname' => 'Existing Douyin',
                             'status' => 1,
                         ],
                         [
                             'id' => 'account-douyin-new',
                             'type' => 'douyin',
+                            'groupId' => 'group-new-owner',
                             'nickname' => 'New Owner Douyin',
                             'status' => 1,
                         ],
@@ -550,6 +706,7 @@ class AiToEarnSelfMediaPublishTest extends TestCase
             'provider' => 'aitoearn',
             'platform' => 'douyin',
             'external_account_id' => 'account-douyin-new',
+            'external_group_id' => 'group-new-owner',
             'auth_status' => 'authorized',
         ]);
         $this->assertDatabaseMissing('self_media_accounts', [
@@ -565,9 +722,17 @@ class AiToEarnSelfMediaPublishTest extends TestCase
             ->where('provider', 'aitoearn')
             ->count());
         $this->assertSame('account-douyin-new', (string) $session->refresh()->confirmedAccount?->external_account_id);
+
+        Http::assertSent(function ($request): bool {
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+
+            return str_contains($request->url(), '/api/v2/channels/accounts?')
+                && ($query['type'] ?? '') === 'douyin'
+                && ($query['groupId'] ?? '') === 'group-new-owner';
+        });
     }
 
-    public function test_authorization_does_not_bind_account_already_owned_by_another_user(): void
+    public function test_authorization_allows_same_external_account_for_different_owner_when_group_scoped(): void
     {
         [$existingOwner, $existingSite] = $this->provisionSubscribedAdmin('aitoearn_shared_existing_owner', 3);
         [$admin, $site] = $this->provisionSubscribedAdmin('aitoearn_shared_new_owner', 3);
@@ -587,6 +752,15 @@ class AiToEarnSelfMediaPublishTest extends TestCase
         ]);
 
         Http::fake([
+            'https://aitoearn.test/api/v2/channels/account-groups' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    'id' => 'group-shared-new-owner',
+                    'name' => 'gpf-shared-new-owner',
+                    'isDefault' => false,
+                ],
+            ]),
             'https://aitoearn.test/api/v2/channels/accounts/auth/douyin/status/session_douyin_shared' => Http::response([
                 'code' => 0,
                 'message' => 'ok',
@@ -604,6 +778,7 @@ class AiToEarnSelfMediaPublishTest extends TestCase
                         [
                             'id' => 'account-douyin-shared',
                             'type' => 'douyin',
+                            'groupId' => 'group-shared-new-owner',
                             'nickname' => 'Shared Douyin',
                             'status' => 1,
                         ],
@@ -618,15 +793,29 @@ class AiToEarnSelfMediaPublishTest extends TestCase
             ->post(route('admin.crebee-accounts.aitoearn.auth-sessions.sync', $session))
             ->assertRedirect(route('admin.crebee-accounts.index'));
 
-        $this->assertDatabaseMissing('self_media_accounts', [
+        Http::assertSent(function ($request): bool {
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+
+            return str_contains($request->url(), '/api/v2/channels/accounts?')
+                && ($query['type'] ?? '') === 'douyin'
+                && ($query['groupId'] ?? '') === 'group-shared-new-owner';
+        });
+
+        $this->assertDatabaseHas('self_media_accounts', [
             'site_id' => (int) $site->id,
             'owner_admin_id' => (int) $admin->id,
             'provider' => 'aitoearn',
             'platform' => 'douyin',
             'external_account_id' => 'account-douyin-shared',
+            'external_group_id' => 'group-shared-new-owner',
         ]);
-        $this->assertSame('failed', (string) $session->refresh()->status);
-        $this->assertStringContainsString('已绑定到其他用户', (string) data_get($session->raw_response, 'failure_reason'));
+        $this->assertSame('authorized', (string) $session->refresh()->status);
+        $this->assertSame(2, SelfMediaAccount::query()
+            ->where('provider', 'aitoearn')
+            ->where('platform', 'douyin')
+            ->where('external_account_id', 'account-douyin-shared')
+            ->where('status', 'bound')
+            ->count());
     }
 
     public function test_user_account_sync_refreshes_bound_accounts_without_importing_global_pool(): void
@@ -636,8 +825,18 @@ class AiToEarnSelfMediaPublishTest extends TestCase
         $this->selfMediaAccount($existingSite, $existingOwner, 'douyin', 'account-douyin-existing', 'Existing Douyin');
         $this->selfMediaAccount($existingSite, $existingOwner, 'kuaishou', 'account-kuaishou-existing', 'Existing Kuaishou');
         $this->selfMediaAccount($existingSite, $existingOwner, 'bilibili', 'account-bilibili-existing', 'Existing Bilibili');
+        $this->selfMediaAccount($site, $admin, 'douyin', 'account-douyin-current', 'Current Douyin');
 
         Http::fake([
+            'https://aitoearn.test/api/v2/channels/account-groups' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    'id' => 'group-pool-new-owner',
+                    'name' => 'gpf-pool-new-owner',
+                    'isDefault' => false,
+                ],
+            ]),
             'https://aitoearn.test/api/v2/channels/accounts*' => Http::response([
                 'code' => 0,
                 'message' => 'ok',
@@ -657,11 +856,35 @@ class AiToEarnSelfMediaPublishTest extends TestCase
             ->post(route('admin.crebee-accounts.aitoearn.accounts.sync'))
             ->assertRedirect(route('admin.crebee-accounts.index'));
 
-        $this->assertSame(0, SelfMediaAccount::query()
+        $this->assertSame(1, SelfMediaAccount::query()
             ->where('site_id', (int) $site->id)
             ->where('owner_admin_id', (int) $admin->id)
             ->where('provider', 'aitoearn')
             ->count());
+        $this->assertDatabaseHas('self_media_accounts', [
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'provider' => 'aitoearn',
+            'platform' => 'douyin',
+            'external_account_id' => 'account-douyin-current',
+            'auth_status' => 'unavailable',
+        ]);
+        foreach (['account-douyin-existing', 'account-kuaishou-existing', 'account-bilibili-existing'] as $externalAccountId) {
+            $this->assertDatabaseMissing('self_media_accounts', [
+                'site_id' => (int) $site->id,
+                'owner_admin_id' => (int) $admin->id,
+                'provider' => 'aitoearn',
+                'external_account_id' => $externalAccountId,
+            ]);
+        }
+
+        Http::assertSent(function ($request): bool {
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+
+            return str_contains($request->url(), '/api/v2/channels/accounts?')
+                && ($query['type'] ?? '') === 'douyin'
+                && ($query['groupId'] ?? '') === 'group-pool-new-owner';
+        });
     }
 
     public function test_failed_authorization_session_does_not_block_reauthorization_card(): void
@@ -1651,6 +1874,20 @@ class AiToEarnSelfMediaPublishTest extends TestCase
             'bound_at' => now(),
             'last_synced_at' => now(),
             'raw_account' => [],
+        ]);
+    }
+
+    private function selfMediaAccountGroup(Site $site, Admin $owner, string $externalGroupId): SelfMediaAccountGroup
+    {
+        return SelfMediaAccountGroup::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $owner->id,
+            'provider' => 'aitoearn',
+            'external_group_id' => $externalGroupId,
+            'group_name' => $externalGroupId,
+            'is_default' => false,
+            'last_synced_at' => now(),
+            'raw_response' => ['id' => $externalGroupId],
         ]);
     }
 

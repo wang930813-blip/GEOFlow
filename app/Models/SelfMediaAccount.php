@@ -13,6 +13,7 @@ class SelfMediaAccount extends Model
         'owner_admin_id',
         'provider',
         'platform',
+        'external_group_id',
         'external_account_id',
         'account_name',
         'avatar',
