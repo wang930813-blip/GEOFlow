@@ -1,0 +1,4 @@
+interface:
+  display_name: "geo_publish_flow"
+  short_description: "通过三方平台发布视频到抖音和快手"
+  default_prompt: "使用 $geo-publish-flow 将这个视频发布到抖音或快手。"
