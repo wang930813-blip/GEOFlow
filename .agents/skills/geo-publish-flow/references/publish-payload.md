@@ -55,7 +55,7 @@ https://aitoearn.cn
   "publishAt": "2030-01-01T00:00:00.000Z",
   "items": [
     { "platform": "douyin", "accountId": "douyin-account-id" },
-    { "platform": "KWAT", "accountId": "kwat-account-id" }
+    { "platform": "KWAI", "accountId": "kwai-account-id" }
   ]
 }
 ```
