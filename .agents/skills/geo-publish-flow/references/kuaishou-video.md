@@ -2,7 +2,7 @@
 
 ## 使用场景
 
-目标平台为快手（`KWAT`），且内容类型为视频时读取本文档。
+目标平台为快手（`KWAI`），且内容类型为视频时读取本文档。
 
 ## 必要检查
 
@@ -14,8 +14,8 @@
 
 ```json
 {
-  "platform": "KWAT",
-  "accountId": "current-user-kwat-account-id"
+  "platform": "KWAI",
+  "accountId": "current-user-kwai-account-id"
 }
 ```
 
