@@ -6,7 +6,7 @@
 
 ## 必要检查
 
-- 当前用户/租户在宿主应用中已有已授权的抖音账号绑定。
+- 当前用户/租户在宿主应用中已有已授权的抖音账号绑定；没有绑定时先发起授权，不向用户索要 `accountId`。
 - 视频媒体 URL 是公网可访问地址，或已通过三方平台上传并确认。
 - `publishAt` 是未来的 ISO 8601 时间。
 
@@ -15,7 +15,7 @@
 ```json
 {
   "platform": "douyin",
-  "accountId": "current-user-douyin-account-id"
+  "accountId": "authorized-current-group-douyin-account-id"
 }
 ```
 
