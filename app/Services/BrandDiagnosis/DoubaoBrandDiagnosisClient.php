@@ -23,22 +23,22 @@ class DoubaoBrandDiagnosisClient
      * @param  list<string>  $brandCoreTerms
      * @return list<array{question:string,type:string,core_term:string}>
      */
-    public function generateQuestionPool(string $brandName, int $count, array $platforms, string $brandProfile = '', array $brandCoreTerms = []): array
+    public function generateQuestionPool(string $brandName, int $count, array $platforms, string $brandProfile = '', array $brandCoreTerms = [], string $platform = BrandDiagnosisPlatform::DOUBAO): array
     {
         $brandName = trim($brandName);
         $count = max(1, $count);
         $coreTerms = $this->normalizeBrandCoreTerms($brandCoreTerms, $brandName, 5);
         if ($coreTerms === []) {
-            $coreTerms = $this->extractBrandCoreTerms($brandName, $brandProfile, 5);
+            $coreTerms = $this->extractBrandCoreTerms($brandName, $brandProfile, 5, $platform);
         }
 
-        return $this->generateQuestionsFromCoreTerms($brandName, $count, $brandProfile, $coreTerms);
+        return $this->generateQuestionsFromCoreTerms($brandName, $count, $brandProfile, $coreTerms, $platform);
     }
 
     /**
      * @return list<string>
      */
-    public function extractBrandCoreTerms(string $brandName, string $brandProfile, int $count = 5): array
+    public function extractBrandCoreTerms(string $brandName, string $brandProfile, int $count = 5, string $platform = BrandDiagnosisPlatform::DOUBAO): array
     {
         $brandName = trim($brandName);
         $brandProfile = trim($brandProfile);
@@ -47,7 +47,7 @@ class DoubaoBrandDiagnosisClient
             throw new RuntimeException('品牌介绍为空，无法提取品牌核心词。');
         }
 
-        $response = $this->postResponses($this->buildBrandCoreTermsPrompt($brandName, $brandProfile, $count), BrandDiagnosisPlatform::DOUBAO, false);
+        $response = $this->postResponses($this->buildBrandCoreTermsPrompt($brandName, $brandProfile, $count), $platform, false);
         $coreTerms = $this->parseBrandCoreTerms($this->extractText($response), $brandName, $count);
         $coreTerms = $this->ensureBrandSubjectCoreTerm($coreTerms, $brandName, $count);
         if ($coreTerms === []) {
@@ -61,7 +61,7 @@ class DoubaoBrandDiagnosisClient
      * @param  list<string>  $brandCoreTerms
      * @return list<array{question:string,type:string,core_term:string}>
      */
-    public function generateQuestionsFromCoreTerms(string $brandName, int $count, string $brandProfile, array $brandCoreTerms): array
+    public function generateQuestionsFromCoreTerms(string $brandName, int $count, string $brandProfile, array $brandCoreTerms, string $platform = BrandDiagnosisPlatform::DOUBAO): array
     {
         $brandName = trim($brandName);
         $count = max(1, $count);
@@ -74,7 +74,7 @@ class DoubaoBrandDiagnosisClient
         $candidateCount = max($count, $count * max(1, (int) config('brand_diagnosis.question_candidate_multiplier', 2)));
         $response = $this->postResponses(
             $this->buildQuestionPrompt($brandName, $candidateCount, $count, $brandProfile, $coreTerms),
-            BrandDiagnosisPlatform::DOUBAO,
+            $platform,
             false
         );
         $questions = $this->parseQuestions($this->extractText($response));
@@ -208,6 +208,10 @@ class DoubaoBrandDiagnosisClient
             return $this->postChatCompletions($prompt, $platform, $withWebSearch);
         }
 
+        if ($this->platformRequestStyle($platform) === 'generate_content') {
+            return $this->postGeminiGenerateContent($prompt, $platform, $withWebSearch);
+        }
+
         return $this->postArkResponses($prompt, $platform, $withWebSearch);
     }
 
@@ -218,15 +222,11 @@ class DoubaoBrandDiagnosisClient
     {
         $platform = $this->normalizePlatform($platform);
         $label = $this->platformLabel($platform);
-        $baseUrl = (string) config('brand_diagnosis.'.$platform.'.base_url', '');
-        $apiKey = (string) config('brand_diagnosis.'.$platform.'.api_key', '');
-        $model = (string) config('brand_diagnosis.'.$platform.'.model', '');
-        if ($platform !== BrandDiagnosisPlatform::DOUBAO) {
-            $baseUrl = $baseUrl !== '' ? $baseUrl : (string) config('brand_diagnosis.doubao.base_url', '');
-            $apiKey = $apiKey !== '' ? $apiKey : (string) config('brand_diagnosis.doubao.api_key', '');
-        }
-
-        if (! (bool) config('brand_diagnosis.'.$platform.'.enabled', false)) {
+        $config = $this->platformConfig($platform);
+        $baseUrl = (string) ($config['base_url'] ?? '');
+        $apiKey = (string) ($config['api_key'] ?? '');
+        $model = (string) ($config['model'] ?? '');
+        if (! $this->platformEnabled($platform)) {
             throw new RuntimeException($label.'品牌诊断未启用。');
         }
         if ($baseUrl === '' || $apiKey === '' || $model === '') {
@@ -251,21 +251,83 @@ class DoubaoBrandDiagnosisClient
         if ($withWebSearch) {
             $payload['tools'] = [
                 [
-                    'type' => 'web_search',
-                    'max_keyword' => max(1, (int) config('brand_diagnosis.'.$platform.'.max_keywords', 5)),
+                    'type' => $this->webSearchToolType($platform),
                 ],
             ];
+            $payload['include'] = ['web_search_call.action.sources'];
         }
 
         $response = Http::withToken($apiKey)
             ->acceptJson()
             ->asJson()
-            ->connectTimeout(max(1, (int) config('brand_diagnosis.'.$platform.'.connect_timeout', 10)))
-            ->timeout(max(10, (int) config('brand_diagnosis.'.$platform.'.timeout', 60)))
-            ->post($baseUrl.'/responses', $payload);
+            ->connectTimeout(max(1, (int) ($config['connect_timeout'] ?? 10)))
+            ->timeout(max(10, (int) ($config['timeout'] ?? 60)))
+            ->post($this->responsesUrl($baseUrl), $payload);
 
         if ($response->failed()) {
             throw new RuntimeException($label.'品牌诊断请求失败：HTTP '.$response->status().' '.$response->body());
+        }
+
+        /** @var array<string,mixed> $data */
+        $data = $response->json() ?: [];
+
+        return $data;
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function postGeminiGenerateContent(string $prompt, string $platform, bool $withWebSearch = true): array
+    {
+        $platform = $this->normalizePlatform($platform);
+        $label = $this->platformLabel($platform);
+        $config = $this->platformConfig($platform);
+        $baseUrl = (string) ($config['base_url'] ?? '');
+        $apiKey = (string) ($config['api_key'] ?? '');
+        $model = (string) ($config['model'] ?? '');
+
+        if (! $this->platformEnabled($platform)) {
+            throw new RuntimeException($label.' brand diagnosis is disabled.');
+        }
+        if ($baseUrl === '' || $apiKey === '' || $model === '') {
+            throw new RuntimeException($label.' brand diagnosis API config is incomplete.');
+        }
+
+        $payload = [
+            'contents' => [
+                [
+                    'role' => 'user',
+                    'parts' => [
+                        [
+                            'text' => $prompt,
+                        ],
+                    ],
+                ],
+            ],
+            'generationConfig' => [
+                'responseMimeType' => 'application/json',
+            ],
+        ];
+
+        if ($withWebSearch) {
+            $payload['tools'] = [
+                [
+                    'google_search' => new \stdClass(),
+                ],
+            ];
+        }
+
+        $response = Http::withHeaders([
+            'x-goog-api-key' => $apiKey,
+        ])
+            ->acceptJson()
+            ->asJson()
+            ->connectTimeout(max(1, (int) ($config['connect_timeout'] ?? 10)))
+            ->timeout(max(10, (int) ($config['timeout'] ?? 60)))
+            ->post($this->geminiGenerateContentUrl($baseUrl, $model), $payload);
+
+        if ($response->failed()) {
+            throw new RuntimeException($label.' brand diagnosis request failed: HTTP '.$response->status().' '.$response->body());
         }
 
         /** @var array<string,mixed> $data */
@@ -281,11 +343,12 @@ class DoubaoBrandDiagnosisClient
     {
         $platform = $this->normalizePlatform($platform);
         $label = $this->platformLabel($platform);
-        $baseUrl = (string) config('brand_diagnosis.'.$platform.'.base_url', '');
-        $apiKey = (string) config('brand_diagnosis.'.$platform.'.api_key', '');
-        $model = (string) config('brand_diagnosis.'.$platform.'.model', '');
+        $config = $this->platformConfig($platform);
+        $baseUrl = (string) ($config['base_url'] ?? '');
+        $apiKey = (string) ($config['api_key'] ?? '');
+        $model = (string) ($config['model'] ?? '');
 
-        if (! (bool) config('brand_diagnosis.'.$platform.'.enabled', false)) {
+        if (! $this->platformEnabled($platform)) {
             throw new RuntimeException($label.' brand diagnosis is disabled.');
         }
         if ($baseUrl === '' || $apiKey === '' || $model === '') {
@@ -322,8 +385,8 @@ class DoubaoBrandDiagnosisClient
         $response = Http::withToken($apiKey)
             ->acceptJson()
             ->asJson()
-            ->connectTimeout(max(1, (int) config('brand_diagnosis.'.$platform.'.connect_timeout', 10)))
-            ->timeout(max(10, (int) config('brand_diagnosis.'.$platform.'.timeout', 60)))
+            ->connectTimeout(max(1, (int) ($config['connect_timeout'] ?? 10)))
+            ->timeout(max(10, (int) ($config['timeout'] ?? 60)))
             ->post($this->dashScopeGenerationUrl($baseUrl, $model), $payload);
 
         if ($response->failed()) {
@@ -343,11 +406,12 @@ class DoubaoBrandDiagnosisClient
     {
         $platform = $this->normalizePlatform($platform);
         $label = $this->platformLabel($platform);
-        $baseUrl = (string) config('brand_diagnosis.'.$platform.'.base_url', '');
-        $apiKey = (string) config('brand_diagnosis.'.$platform.'.api_key', '');
-        $model = (string) config('brand_diagnosis.'.$platform.'.model', '');
+        $config = $this->platformConfig($platform);
+        $baseUrl = (string) ($config['base_url'] ?? '');
+        $apiKey = (string) ($config['api_key'] ?? '');
+        $model = (string) ($config['model'] ?? '');
 
-        if (! (bool) config('brand_diagnosis.'.$platform.'.enabled', false)) {
+        if (! $this->platformEnabled($platform)) {
             throw new RuntimeException($label.' brand diagnosis is disabled.');
         }
         if ($baseUrl === '' || $apiKey === '' || $model === '') {
@@ -371,8 +435,8 @@ class DoubaoBrandDiagnosisClient
 
         $request = Http::withToken($apiKey)
             ->asJson()
-            ->connectTimeout(max(1, (int) config('brand_diagnosis.'.$platform.'.connect_timeout', 10)))
-            ->timeout(max(10, (int) config('brand_diagnosis.'.$platform.'.timeout', 60)));
+            ->connectTimeout(max(1, (int) ($config['connect_timeout'] ?? 10)))
+            ->timeout(max(10, (int) ($config['timeout'] ?? 60)));
 
         $request = $expectsStream
             ? $request->accept('text/event-stream')->withOptions(['stream' => true])
@@ -392,6 +456,52 @@ class DoubaoBrandDiagnosisClient
         return in_array($this->normalizePlatform($platform), [
             BrandDiagnosisPlatform::WENXIN,
         ], true);
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function platformConfig(string $platform): array
+    {
+        $platform = $this->normalizePlatform($platform);
+
+        if (BrandDiagnosisPlatform::publicIsSupported($platform)) {
+            return (array) config('brand_diagnosis.public_platforms.'.$platform, []);
+        }
+
+        return (array) config('brand_diagnosis.'.$platform, []);
+    }
+
+    private function platformEnabled(string $platform): bool
+    {
+        $platform = $this->normalizePlatform($platform);
+
+        if (BrandDiagnosisPlatform::publicIsSupported($platform)) {
+            return filter_var(config('brand_diagnosis.public_platforms.'.$platform.'.enabled', false), FILTER_VALIDATE_BOOLEAN);
+        }
+
+        return filter_var(config('brand_diagnosis.'.$platform.'.enabled', false), FILTER_VALIDATE_BOOLEAN);
+    }
+
+    private function platformRequestStyle(string $platform): string
+    {
+        $platform = $this->normalizePlatform($platform);
+
+        if (BrandDiagnosisPlatform::publicIsSupported($platform)) {
+            return strtolower(trim((string) config('brand_diagnosis.public_platforms.'.$platform.'.request_style', 'responses')));
+        }
+
+        return 'responses';
+    }
+
+    private function webSearchToolType(string $platform): string
+    {
+        $platform = $this->normalizePlatform($platform);
+
+        return match ($platform) {
+            BrandDiagnosisPlatform::CHATGPT => 'web_search_preview',
+            default => 'web_search',
+        };
     }
 
     /**
@@ -686,6 +796,33 @@ class DoubaoBrandDiagnosisClient
         return str_ends_with($baseUrl, '/chat/completions')
             ? $baseUrl
             : $baseUrl.'/chat/completions';
+    }
+
+    private function responsesUrl(string $baseUrl): string
+    {
+        $baseUrl = rtrim($baseUrl, '/');
+
+        return str_ends_with($baseUrl, '/responses')
+            ? $baseUrl
+            : $baseUrl.'/responses';
+    }
+
+    private function geminiGenerateContentUrl(string $baseUrl, string $model): string
+    {
+        $baseUrl = rtrim($baseUrl, '/');
+        $model = trim($model);
+
+        if ($model === '') {
+            return $baseUrl;
+        }
+
+        if (str_contains($model, '/')) {
+            $model = trim($model, '/');
+        } elseif (! str_starts_with($model, 'models/')) {
+            $model = 'models/'.$model;
+        }
+
+        return $baseUrl.'/'.$model.':generateContent';
     }
 
     private function buildBrandCoreTermsPrompt(string $brandName, string $brandProfile, int $count): string
@@ -1717,6 +1854,32 @@ class DoubaoBrandDiagnosisClient
             return $dashScopeText;
         }
 
+        $geminiText = trim((string) Arr::get($data, 'candidates.0.content.parts.0.text', ''));
+        if ($geminiText !== '') {
+            return $geminiText;
+        }
+
+        $candidateParts = Arr::get($data, 'candidates.0.content.parts');
+        if (is_array($candidateParts)) {
+            $texts = collect($candidateParts)
+                ->map(static function (mixed $item): string {
+                    if (is_string($item)) {
+                        return $item;
+                    }
+                    if (is_array($item)) {
+                        return trim((string) ($item['text'] ?? ''));
+                    }
+
+                    return '';
+                })
+                ->filter(static fn (string $text): bool => trim($text) !== '')
+                ->values()
+                ->all();
+            if ($texts !== []) {
+                return trim(implode("\n\n", $texts));
+            }
+        }
+
         $preferredTexts = [];
         $fallbackTexts = [];
 
@@ -1833,8 +1996,8 @@ class DoubaoBrandDiagnosisClient
     private function collectSourcesFromArray(array $node, array &$sources): void
     {
         $type = $this->cleanExternalText((string) ($node['type'] ?? $node['source_type'] ?? ''));
-        $url = $this->cleanExternalText((string) ($node['url'] ?? $node['link'] ?? ''));
-        $isKnownSource = in_array($type, ['url_citation', 'web_search_result', 'citation', 'search_result'], true);
+        $url = $this->cleanExternalText((string) ($node['url'] ?? $node['link'] ?? $node['uri'] ?? $node['source_url'] ?? ''));
+        $isKnownSource = in_array($type, ['url_citation', 'web_search_result', 'citation', 'search_result', 'grounding_chunk', 'grounding_source', 'web_result'], true);
         if ($url !== '' && ($isKnownSource || isset($node['title']) || isset($node['snippet']))) {
             $sources[] = [
                 'title' => $this->cleanExternalText((string) ($node['title'] ?? $url)),

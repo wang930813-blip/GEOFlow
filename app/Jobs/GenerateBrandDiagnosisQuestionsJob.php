@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\BrandDiagnosisRun;
+use App\Services\BrandDiagnosis\BrandDiagnosisPlatform;
 use App\Services\BrandDiagnosis\BrandProfileResolver;
 use App\Services\BrandDiagnosis\DoubaoBrandDiagnosisClient;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -62,15 +63,22 @@ class GenerateBrandDiagnosisQuestionsJob implements ShouldQueue
             if ((string) ($brandProfile['status'] ?? '') !== 'success') {
                 throw new \RuntimeException('未检索到可用品牌介绍，请更换更明确的品牌词后重试。');
             }
+            $profilePlatform = BrandDiagnosisPlatform::normalize(
+                (string) data_get($brandProfile, 'meta.platform', ''),
+                BrandDiagnosisPlatform::DOUBAO
+            );
             $diagnosisClient = app(DoubaoBrandDiagnosisClient::class);
             $coreTerms = $diagnosisClient->extractBrandCoreTerms(
                 (string) $run->brand_name,
                 (string) $brandProfile['profile'],
-                5
+                5,
+                $profilePlatform
             );
             $brandProfileMeta = (array) ($brandProfile['meta'] ?? []);
             $brandProfileMeta['core_terms'] = $coreTerms;
-            $brandProfileMeta['core_terms_model'] = 'doubao';
+            $brandProfileMeta['core_terms_model'] = BrandDiagnosisPlatform::publicIsSupported($profilePlatform)
+                ? BrandDiagnosisPlatform::publicLabel($profilePlatform)
+                : BrandDiagnosisPlatform::label($profilePlatform);
 
             $run->update([
                 'brand_profile' => $brandProfile['profile'],
@@ -85,7 +93,8 @@ class GenerateBrandDiagnosisQuestionsJob implements ShouldQueue
                 max(1, (int) config('brand_diagnosis.question_count', 6)),
                 (array) $run->platforms,
                 (string) $brandProfile['profile'],
-                $coreTerms
+                $coreTerms,
+                $profilePlatform
             );
 
             $run->questions()->delete();

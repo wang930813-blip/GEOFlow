@@ -17,7 +17,7 @@ class StoreBrandDiagnosisRequest extends FormRequest
         return [
             'brand_name' => ['required', 'string', 'max:120'],
             'models' => ['required', 'array', 'min:1', 'max:4'],
-            'models.*' => ['string', BrandDiagnosisPlatform::validationRule()],
+            'models.*' => ['string', BrandDiagnosisPlatform::publicValidationRule()],
         ];
     }
 
@@ -26,7 +26,7 @@ class StoreBrandDiagnosisRequest extends FormRequest
         return [
             'brand_name.required' => '品牌词不能为空',
             'models.required' => '请选择至少一个诊断模型',
-            'models.*.in' => '诊断模型仅支持 doubao、deepseek、qianwen、wenxin',
+            'models.*.in' => '诊断模型仅支持 ChatGPT、Grok、Gemini',
         ];
     }
 }

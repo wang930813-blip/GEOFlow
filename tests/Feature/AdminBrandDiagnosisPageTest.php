@@ -52,7 +52,13 @@ class AdminBrandDiagnosisPageTest extends TestCase
             ->assertSee('value=""', false)
             ->assertDontSee('value="策影GEO"', false)
             ->assertSee('name="platforms[]"', false)
-            ->assertSee('value="doubao"', false)
+            ->assertSee('value="chatgpt"', false)
+            ->assertSee('value="grok"', false)
+            ->assertSee('value="gemini"', false)
+            ->assertDontSee('value="doubao"', false)
+            ->assertDontSee('value="deepseek"', false)
+            ->assertDontSee('value="qianwen"', false)
+            ->assertDontSee('value="wenxin"', false)
             ->assertSee('data-platform-checkbox', false)
             ->assertSee('data-selected-platforms', false)
             ->assertSee('数据来源：')
@@ -66,10 +72,10 @@ class AdminBrandDiagnosisPageTest extends TestCase
             ->assertSee('平均提及排名 = 本品牌在所有AI对话中的排名总和')
             ->assertSee('品牌提及次数 = 所有监测AI对话中提及该品牌的次数的总和')
             ->assertSee('正面/中型情感倾向=（正面情感对话数+中性情感对话数）')
-            ->assertSee('豆包')
-            ->assertSee('文心一言')
-            ->assertSee('DeepSeek')
-            ->assertSee('千问')
+            ->assertSee('ChatGPT')
+            ->assertSee('Grok')
+            ->assertSee('Gemini')
+
             ->assertDontSee('元宝')
             ->assertDontSee('开始诊断')
             ->assertDontSee('开始监测品牌')
@@ -120,13 +126,13 @@ class AdminBrandDiagnosisPageTest extends TestCase
             ->assertSee('品牌诊断/报告');
     }
 
-    public function test_brand_diagnosis_page_exposes_four_selectable_platform_models(): void
+    public function test_brand_diagnosis_page_exposes_only_international_platform_models(): void
     {
         $admin = Admin::query()->create([
-            'username' => 'brand_four_platform_admin',
+            'username' => 'brand_international_platform_admin',
             'password' => 'secret-123',
-            'email' => 'brand-four-platform-admin@example.com',
-            'display_name' => 'Brand Four Platform Admin',
+            'email' => 'brand-international-platform-admin@example.com',
+            'display_name' => 'Brand International Platform Admin',
             'role' => 'admin',
             'status' => 'active',
         ]);
@@ -136,8 +142,12 @@ class AdminBrandDiagnosisPageTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        foreach (['doubao', 'deepseek', 'qianwen', 'wenxin'] as $platform) {
+        foreach (['chatgpt', 'grok', 'gemini'] as $platform) {
             $this->assertStringContainsString('value="'.$platform.'" type="checkbox"', $html);
+        }
+
+        foreach (['doubao', 'deepseek', 'qianwen', 'wenxin'] as $platform) {
+            $this->assertStringNotContainsString('value="'.$platform.'" type="checkbox"', $html);
         }
     }
 
@@ -187,7 +197,7 @@ class AdminBrandDiagnosisPageTest extends TestCase
             ->assertSee('确认诊断')
             ->assertSee('品牌介绍')
             ->assertSee('策影GEO 是面向企业 AI 搜索曝光分析的品牌诊断工具。')
-            ->assertSee('豆包')
+            ->assertSee('ChatGPT')
             ->assertSee('name="questions['.$question->id.']"', false)
             ->assertSee('自然核心词标签')
             ->assertSee('怎么选')
@@ -1640,7 +1650,13 @@ class AdminBrandDiagnosisPageTest extends TestCase
             ->assertSee('豆包来源')
             ->assertSee('DeepSeek来源')
             ->assertSee('value="all"', false)
-            ->assertSee('value="doubao"', false)
+            ->assertSee('value="chatgpt"', false)
+            ->assertSee('value="grok"', false)
+            ->assertSee('value="gemini"', false)
+            ->assertDontSee('value="doubao"', false)
+            ->assertDontSee('value="deepseek"', false)
+            ->assertDontSee('value="qianwen"', false)
+            ->assertDontSee('value="wenxin"', false)
             ->assertSee('value="deepseek"', false)
             ->getContent();
 
@@ -1658,14 +1674,14 @@ class AdminBrandDiagnosisPageTest extends TestCase
         $this->assertStringContainsString('"sources"', $html);
     }
 
-    public function test_brand_diagnosis_record_exposes_qianwen_and_wenxin_platform_filters(): void
+    public function test_brand_diagnosis_record_exposes_international_platform_filters(): void
     {
         [$admin, $site] = $this->createAdminWithSite('brand_qianwen_wenxin_page_admin');
         $run = BrandDiagnosisRun::query()->create([
             'site_id' => (int) $site->id,
             'admin_id' => (int) $admin->id,
             'brand_name' => 'Acme AI',
-            'platforms' => ['qianwen', 'wenxin'],
+            'platforms' => ['chatgpt', 'grok'],
             'status' => 'completed',
             'total_questions' => 1,
             'completed_questions' => 1,
@@ -1681,7 +1697,7 @@ class AdminBrandDiagnosisPageTest extends TestCase
             'status' => 'completed',
         ]);
 
-        foreach (['qianwen' => 'Qianwen answer for Acme AI.', 'wenxin' => 'Wenxin answer for Acme AI.'] as $platform => $answer) {
+        foreach (['chatgpt' => 'ChatGPT answer for Acme AI.', 'grok' => 'Grok answer for Acme AI.'] as $platform => $answer) {
             $result = $question->results()->create([
                 'site_id' => (int) $site->id,
                 'run_id' => (int) $run->id,
@@ -1713,16 +1729,16 @@ class AdminBrandDiagnosisPageTest extends TestCase
             ->withSession(['current_site_id' => (int) $site->id])
             ->get(route('admin.brand-diagnosis.index'))
             ->assertOk()
-            ->assertSee('value="qianwen"', false)
-            ->assertSee('value="wenxin"', false)
-            ->assertSee('Qianwen answer for Acme AI.')
-            ->assertSee('Wenxin answer for Acme AI.')
+            ->assertSee('value="chatgpt"', false)
+            ->assertSee('value="grok"', false)
+            ->assertSee('ChatGPT answer for Acme AI.')
+            ->assertSee('Grok answer for Acme AI.')
             ->getContent();
 
-        $this->assertStringContainsString('"qianwen"', $html);
-        $this->assertStringContainsString('"wenxin"', $html);
-        $this->assertStringContainsString('"platform_key":"qianwen"', $html);
-        $this->assertStringContainsString('"platform_key":"wenxin"', $html);
+        $this->assertStringContainsString('"chatgpt"', $html);
+        $this->assertStringContainsString('"grok"', $html);
+        $this->assertStringContainsString('"platform_key":"chatgpt"', $html);
+        $this->assertStringContainsString('"platform_key":"grok"', $html);
     }
 
     public function test_brand_performance_rankings_highlight_target_inline_and_sink_only_after_top_ten(): void

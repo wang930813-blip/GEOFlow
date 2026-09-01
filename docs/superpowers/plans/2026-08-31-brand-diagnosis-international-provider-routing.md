@@ -32,7 +32,6 @@
 - 修改：`app/Jobs/ProcessBrandDiagnosisJob.php`
 - 修改：`app/Services/BrandDiagnosis/BrandDiagnosisRunService.php`
 - 修改：`app/Services/BrandDiagnosis/BrandDiagnosisMentionBackfillService.php`
-- 修改：`app/Services/BrandDiagnosis/McpBrandDiagnosisService.php`
 - 修改：`app/Http/Controllers/Admin/BrandDiagnosisController.php`
 - 修改：`app/Http/Controllers/Admin/BrandDiagnosisOfficialLinkController.php`
 - 修改：`app/Http/Requests/Admin/UpdateBrandDiagnosisOfficialLinksRequest.php`
@@ -41,11 +40,7 @@
 - 修改：`app/Services/BrandDiagnosis/BrandDiagnosisPdfService.php`
 - 修改：`app/Services/MonitoringCenter/MonitoringReportDataService.php`
 - 修改：`app/Http/Requests/Api/V1/StoreBrandDiagnosisRequest.php`
-- 修改：`app/Http/Requests/Api/V1/StoreMcpBrandDiagnosisRequest.php`
-- 修改：`app/Http/Controllers/Api/V1/McpBrandDiagnosisController.php`
 - 修改：`docs/api/brand-diagnosis.md`
-- 修改：`docs/mcp-server.md`
-- 修改：`resources/skills/ceying-geo-content-operations/references/brand-diagnosis.md`
 - 新增测试：`tests/Unit/BrandDiagnosisPlatformTest.php`
 - 新增测试：`tests/Unit/BrandDiagnosisProviderFactoryTest.php`
 - 新增测试：`tests/Feature/BrandDiagnosisInternationalFlowTest.php`
@@ -59,7 +54,6 @@
 - Modify: `app/Services/BrandDiagnosis/BrandDiagnosisPlatform.php`
 - Modify: `config/brand_diagnosis.php`
 - Modify: `app/Http/Requests/Api/V1/StoreBrandDiagnosisRequest.php`
-- Modify: `app/Http/Requests/Api/V1/StoreMcpBrandDiagnosisRequest.php`
 - Modify: `app/Http/Controllers/Admin/BrandDiagnosisController.php`
 - Modify: `app/Http/Controllers/Admin/BrandDiagnosisOfficialLinkController.php`
 - Modify: `app/Http/Requests/Admin/UpdateBrandDiagnosisOfficialLinksRequest.php`
@@ -68,8 +62,6 @@
 - Modify: `app/Services/BrandDiagnosis/BrandDiagnosisPdfService.php`
 - Modify: `app/Services/MonitoringCenter/MonitoringReportDataService.php`
 - Modify: `docs/api/brand-diagnosis.md`
-- Modify: `docs/mcp-server.md`
-- Modify: `resources/skills/ceying-geo-content-operations/references/brand-diagnosis.md`
 - Test: `tests/Unit/BrandDiagnosisPlatformTest.php`
 
 - [ ] **Step 1: 先写平台收口测试**
@@ -84,11 +76,11 @@
 
 - [ ] **Step 3: 改掉所有表单和后台文案里的国内模型名**
   - `BrandDiagnosisController::models()` 改为国际版三模型。
-  - `StoreBrandDiagnosisRequest`、`StoreMcpBrandDiagnosisRequest`、`UpdateBrandDiagnosisOfficialLinksRequest` 的报错文案改成国际版模型名。
+  - `StoreBrandDiagnosisRequest`、`UpdateBrandDiagnosisOfficialLinksRequest` 的报错文案改成国际版模型名。
   - `BrandDiagnosisOfficialLinkController`、`SnapshotVoucherController`、`BrandDiagnosisSnapshotController`、`BrandDiagnosisPdfService`、`MonitoringReportDataService` 只保留国际版展示文案。
 
-- [ ] **Step 4: 同步文档和技能引用**
-  - `docs/api/brand-diagnosis.md`、`docs/mcp-server.md`、技能参考文档中的模型列表改成国际版三模型。
+- [ ] **Step 4: 同步对外 API 文档**
+  - `docs/api/brand-diagnosis.md` 中的模型列表改成国际版三模型。
   - 文档示例里的 `models`、`platform`、错误提示、白名单域名全部同步改掉。
 
 - [ ] **Step 5: 跑这一轮基础校验**
@@ -151,7 +143,6 @@
 - Modify: `app/Jobs/GenerateBrandDiagnosisQuestionsJob.php`
 - Modify: `app/Services/BrandDiagnosis/BrandDiagnosisRunService.php`
 - Modify: `app/Services/BrandDiagnosis/BrandDiagnosisMentionBackfillService.php`
-- Modify: `app/Services/BrandDiagnosis/McpBrandDiagnosisService.php`
 - Test: `tests/Feature/BrandDiagnosisInternationalFlowTest.php`
 
 - [ ] **Step 1: 先写链路级测试**
@@ -173,7 +164,7 @@
   - `BrandDiagnosisRunService::latestReusableQuestionRun()` 不要再按 Doubao 标签过滤。
   - 复用判断只看当前品牌、当前站点和有效的成功记录，不要把国际版 run 排除在外。
   - `normalizePlatforms()` 的默认值改成国际版配置，不再回落到国内模型。
-  - `BrandDiagnosisMentionBackfillService` 和 `McpBrandDiagnosisService` 也要改成 provider 驱动，不能继续直接依赖旧的国内 client。
+  - `BrandDiagnosisMentionBackfillService` 也要改成 provider 驱动，不能继续直接依赖旧的国内 client。
 
 - [ ] **Step 5: 验证这条链路**
   - `docker compose exec app php artisan test tests/Feature/BrandDiagnosisInternationalFlowTest.php --filter=profile`
@@ -231,8 +222,6 @@
 - Modify: `app/Http/Controllers/BrandDiagnosisSnapshotController.php`
 - Modify: `app/Services/MonitoringCenter/MonitoringReportDataService.php`
 - Modify: `app/Http/Requests/Admin/UpdateBrandDiagnosisOfficialLinksRequest.php`
-- Modify: `app/Http/Controllers/Api/V1/McpBrandDiagnosisController.php`
-- Modify: `app/Http/Requests/Api/V1/StoreMcpBrandDiagnosisRequest.php`
 - Modify: `resources/views/admin/brand-diagnosis/index.blade.php`
 - Modify: `resources/views/admin/brand-diagnosis/open-api.blade.php`
 - Modify: `resources/views/admin/brand-diagnosis/report.blade.php`
@@ -242,13 +231,11 @@
 - [ ] **Step 1: 先写 UI 和 API 可见性测试**
   - 后台品牌诊断页面只展示国际版三模型。
   - OpenAPI 诊断记录页、报告页、快照页、官方链接管理页都不能再出现国内模型名。
-  - MCP 请求校验也只能接受国际版模型 key。
 
 - [ ] **Step 2: 更新后台页面和开放 API 页**
   - `BrandDiagnosisController` 的模型卡片、筛选按钮、提示文案都改成国际版。
   - `open-api` 页面不再出现国内模型按钮或说明。
   - 侧边栏 / 顶部菜单如果出现模型名，也要同步替换。
-  - `McpBrandDiagnosisController` 和 `StoreMcpBrandDiagnosisRequest` 的模型说明改成国际版三模型。
 
 - [ ] **Step 3: 更新官方链接和快照展示**
   - `UpdateBrandDiagnosisOfficialLinksRequest` 的域名白名单改成国际版官方域名。
@@ -268,12 +255,10 @@
 
 ---
 
-### Task 6: 同步文档、技能参考和 MCP 说明
+### Task 6: 同步对外 API 文档
 
 **Files:**
 - Modify: `docs/api/brand-diagnosis.md`
-- Modify: `docs/mcp-server.md`
-- Modify: `resources/skills/ceying-geo-content-operations/references/brand-diagnosis.md`
 
 - [ ] **Step 1: 先写文档校验**
   - 文档里的请求示例、返回示例、支持模型列表、错误码说明都只保留国际版三模型。
@@ -282,11 +267,10 @@
 
 - [ ] **Step 2: 更新对外文档**
   - `docs/api/brand-diagnosis.md` 改成国际版模型文档。
-  - `docs/mcp-server.md` 的品牌诊断模型列表同步改掉。
-  - 技能参考文档改成国际版说明，避免后续 agent 再把国内模型写回去。
+  - MCP 模块本轮不开放，`docs/mcp-server.md` 和技能参考文档暂不修改。
 
 - [ ] **Step 3: 跑文档 diff 检查**
-  - `git diff --check docs/api/brand-diagnosis.md docs/mcp-server.md resources/skills/ceying-geo-content-operations/references/brand-diagnosis.md`
+  - `git diff --check docs/api/brand-diagnosis.md`
 
 ---
 
@@ -326,4 +310,5 @@
 - 不改品牌诊断结果 schema，不改评分公式，不改报告结构。
 - 不新增数据库迁移，现有表结构可以承载新平台 key。
 - 不把品牌诊断逻辑塞进 `OpenAiRuntimeProvider`。
-- 不再把国内模型名留在国际版 UI、API、MCP 文档和技能参考里。
+- 国际版品牌诊断先不开放 MCP；MCP 相关控制器、请求、服务、文档和技能参考本轮保留原样，不同步更改。
+- 不再把国内模型名留在国际版 UI、OpenAPI 文档、快照页和报告页里。

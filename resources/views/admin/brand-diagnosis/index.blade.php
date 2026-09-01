@@ -157,10 +157,10 @@
                 <div class="flex flex-wrap items-center gap-4 text-sm text-gray-600">
                     <span class="inline-flex min-h-9 items-center gap-2">
                         <span class="inline-flex h-2 w-2 rounded-full bg-orange-500"></span>
-                        数据来源：<span data-selected-platforms>豆包、DeepSeek、千问、文心一言</span>
+                        数据来源：<span data-selected-platforms>ChatGPT、Grok、Gemini</span>
                     </span>
                 </div>
-                <div class="text-xs text-gray-500">模型限定：豆包、千问、文心一言、DeepSeek</div>
+                <div class="text-xs text-gray-500">模型限定：ChatGPT、Grok、Gemini</div>
             </div>
         </section>
 

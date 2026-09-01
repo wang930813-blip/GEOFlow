@@ -95,11 +95,11 @@ class BrandDiagnosisController extends Controller
         $payload = $request->validate([
             'brand_name' => ['required', 'string', 'max:120'],
             'platforms' => ['nullable', 'array'],
-            'platforms.*' => ['string', BrandDiagnosisPlatform::validationRule()],
+            'platforms.*' => ['string', BrandDiagnosisPlatform::publicValidationRule()],
             'reuse_questions' => ['nullable', 'boolean'],
         ], [
-            'brand_name.required' => '请输入品牌名称',
-            'platforms.*.in' => '当前版本支持豆包、DeepSeek、千问和文心一言诊断',
+            'brand_name.required' => '品牌词不能为空',
+            'platforms.*.in' => '当前版本仅支持 ChatGPT、Grok、Gemini',
         ]);
 
         $admin = auth('admin')->user();
@@ -216,10 +216,9 @@ class BrandDiagnosisController extends Controller
     private function models(): array
     {
         return [
-            ['name' => '豆包', 'key' => 'doubao', 'initial' => '豆', 'color' => 'bg-blue-600', 'logo' => BrandDiagnosisPlatform::logoUrl('doubao'), 'desc' => '网页问答', 'deep' => true, 'available' => true],
-            ['name' => 'DeepSeek', 'key' => 'deepseek', 'initial' => 'DS', 'color' => 'bg-indigo-600', 'logo' => BrandDiagnosisPlatform::logoUrl('deepseek'), 'desc' => '深度推理', 'deep' => true, 'available' => true],
-            ['name' => '千问', 'key' => 'qianwen', 'initial' => '千', 'color' => 'bg-violet-600', 'logo' => BrandDiagnosisPlatform::logoUrl('qianwen'), 'desc' => '通义问答', 'deep' => true, 'available' => true],
-            ['name' => '文心一言', 'key' => 'wenxin', 'initial' => '文', 'color' => 'bg-emerald-600', 'logo' => BrandDiagnosisPlatform::logoUrl('wenxin'), 'desc' => '千帆搜索', 'deep' => false, 'available' => true],
+            ['name' => BrandDiagnosisPlatform::publicLabel(BrandDiagnosisPlatform::CHATGPT), 'key' => BrandDiagnosisPlatform::CHATGPT, 'initial' => BrandDiagnosisPlatform::publicIcon(BrandDiagnosisPlatform::CHATGPT), 'color' => 'bg-sky-600', 'logo' => BrandDiagnosisPlatform::publicLogoUrl(BrandDiagnosisPlatform::CHATGPT), 'desc' => '智能问答', 'deep' => true, 'available' => true],
+            ['name' => BrandDiagnosisPlatform::publicLabel(BrandDiagnosisPlatform::GROK), 'key' => BrandDiagnosisPlatform::GROK, 'initial' => BrandDiagnosisPlatform::publicIcon(BrandDiagnosisPlatform::GROK), 'color' => 'bg-fuchsia-600', 'logo' => BrandDiagnosisPlatform::publicLogoUrl(BrandDiagnosisPlatform::GROK), 'desc' => '实时搜索', 'deep' => true, 'available' => true],
+            ['name' => BrandDiagnosisPlatform::publicLabel(BrandDiagnosisPlatform::GEMINI), 'key' => BrandDiagnosisPlatform::GEMINI, 'initial' => BrandDiagnosisPlatform::publicIcon(BrandDiagnosisPlatform::GEMINI), 'color' => 'bg-emerald-600', 'logo' => BrandDiagnosisPlatform::publicLogoUrl(BrandDiagnosisPlatform::GEMINI), 'desc' => '多模态', 'deep' => true, 'available' => true],
         ];
     }
 

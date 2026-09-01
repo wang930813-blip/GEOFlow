@@ -32,7 +32,7 @@ class BrandDiagnosisApiTest extends TestCase
     {
         $this->postJson('/api/v1/brand-diagnoses', [
             'brand_name' => '武城煊饼',
-            'models' => ['doubao'],
+            'models' => ['chatgpt'],
         ])->assertStatus(401)
             ->assertJsonPath('error.code', 'invalid_api_key');
     }
@@ -62,7 +62,7 @@ class BrandDiagnosisApiTest extends TestCase
         $this->withHeader('X-Api-Key', 'test-open-api-key')
             ->postJson('/api/v1/brand-diagnoses', [
                 'brand_name' => '武城煊饼',
-                'models' => ['doubao'],
+                'models' => ['chatgpt'],
             ])
             ->assertServiceUnavailable()
             ->assertJsonPath('error.code', 'brand_diagnosis_api_not_ready');
@@ -78,13 +78,13 @@ class BrandDiagnosisApiTest extends TestCase
         $response = $this->withHeader('X-Api-Key', 'test-open-api-key')
             ->postJson('/api/v1/brand-diagnoses', [
                 'brand_name' => '武城煊饼',
-                'models' => ['doubao', 'qianwen'],
+                'models' => ['chatgpt', 'grok'],
             ]);
 
         $response->assertCreated()
             ->assertJsonPath('data.brand_name', '武城煊饼')
-            ->assertJsonPath('data.models.0', 'doubao')
-            ->assertJsonPath('data.models.1', 'qianwen')
+            ->assertJsonPath('data.models.0', 'chatgpt')
+            ->assertJsonPath('data.models.1', 'grok')
             ->assertJsonPath('data.status', 'diagnosing')
             ->assertJsonStructure(['data' => ['task_id']]);
 

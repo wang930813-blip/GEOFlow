@@ -47,7 +47,9 @@ class BrandProfileResolver
         return [
             'profile' => $profile,
             'source' => 'web_search',
-            'model' => BrandDiagnosisPlatform::label($platform),
+            'model' => BrandDiagnosisPlatform::publicIsSupported($platform)
+                ? BrandDiagnosisPlatform::publicLabel($platform)
+                : BrandDiagnosisPlatform::label($platform),
             'status' => 'success',
             'meta' => [
                 'platform' => $platform,
@@ -59,9 +61,37 @@ class BrandProfileResolver
 
     private function brandProfileSearchPlatform(array $platforms): string
     {
-        unset($platforms);
+        foreach ($platforms as $platform) {
+            $platform = BrandDiagnosisPlatform::publicNormalize((string) $platform, '');
+            if ($platform === '') {
+                continue;
+            }
+
+            if ($this->platformEnabled($platform)) {
+                return $platform;
+            }
+        }
+
+        $defaultPlatform = BrandDiagnosisPlatform::publicNormalize(
+            (string) config('brand_diagnosis.public_default_platform', BrandDiagnosisPlatform::CHATGPT),
+            BrandDiagnosisPlatform::CHATGPT
+        );
+
+        if ($this->platformEnabled($defaultPlatform)) {
+            return $defaultPlatform;
+        }
 
         return BrandDiagnosisPlatform::DOUBAO;
+    }
+
+    private function platformEnabled(string $platform): bool
+    {
+        $platform = BrandDiagnosisPlatform::publicNormalize($platform, '');
+        if ($platform === '') {
+            return false;
+        }
+
+        return filter_var(config('brand_diagnosis.public_platforms.'.$platform.'.enabled', false), FILTER_VALIDATE_BOOLEAN);
     }
 
     /**

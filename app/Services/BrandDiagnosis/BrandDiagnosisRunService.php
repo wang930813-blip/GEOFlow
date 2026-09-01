@@ -359,7 +359,6 @@ class BrandDiagnosisRunService
             ->where('site_id', $siteId)
             ->where('brand_name', $brandName)
             ->where('brand_profile_source', 'web_search')
-            ->where('brand_profile_model', BrandDiagnosisPlatform::label(BrandDiagnosisPlatform::DOUBAO))
             ->where('brand_profile_status', 'success')
             ->whereNotNull('brand_profile')
             ->where('brand_profile', '<>', '')
