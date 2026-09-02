@@ -21,6 +21,7 @@
         .case-content img{max-width:100%;border-radius:.5rem}
     </style>
     @php
+        $caseRoutes = $caseRoutes ?? ['index' => 'product-cases.index', 'show' => 'product-cases.show'];
         $schemaAtContext = chr(64).'context';
         $schemaAtType = chr(64).'type';
         $schemaJsonOptions = JSON_UNESCAPED_UNICODE
@@ -64,13 +65,13 @@
 <body class="bg-[#f6f7f4] text-slate-900">
     <header class="border-b border-slate-200 bg-white">
         <div class="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
-            <a href="{{ route('product-cases.index') }}" class="inline-flex items-center gap-2 text-lg font-semibold">
+            <a href="{{ route($caseRoutes['index']) }}" class="inline-flex items-center gap-2 text-lg font-semibold">
                 <span class="flex h-9 w-9 items-center justify-center rounded-md bg-slate-950 text-white">
                     <i data-lucide="briefcase-business" class="h-4 w-4"></i>
                 </span>
                 产品案例
             </a>
-            <a href="{{ route('product-cases.index') }}" class="inline-flex items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-950">
+            <a href="{{ route($caseRoutes['index']) }}" class="inline-flex items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-950">
                 <i data-lucide="arrow-left" class="h-4 w-4"></i>
                 返回案例列表
             </a>
@@ -403,7 +404,7 @@
     <footer class="border-t border-slate-200 bg-white">
         <div class="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-6 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
             <span>{{ config('geoflow.site_name', config('app.name')) }}</span>
-            <a href="{{ route('product-cases.index') }}" class="font-medium text-slate-600 hover:text-slate-950">查看更多案例</a>
+            <a href="{{ route($caseRoutes['index']) }}" class="font-medium text-slate-600 hover:text-slate-950">查看更多案例</a>
         </div>
     </footer>
 

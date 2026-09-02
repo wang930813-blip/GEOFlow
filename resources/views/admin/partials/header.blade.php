@@ -52,7 +52,7 @@
         [
             'type' => 'link',
             'key' => 'product_cases',
-            'route' => 'product-cases.index',
+            'route' => 'admin.product-case-library.index',
             'name' => '产品案例',
             'visible' => true,
         ],
@@ -178,6 +178,8 @@
         'admin.dashboard' => 'dashboard',
         'product-cases.index' => 'product_cases',
         'product-cases.show' => 'product_cases',
+        'admin.product-case-library.index' => 'product_cases',
+        'admin.product-case-library.show' => 'product_cases',
         'admin.profile.index' => 'profile',
         'admin.geo-reports.index' => 'geo_reports',
         'admin.brand-diagnosis.index' => 'brand_diagnosis',

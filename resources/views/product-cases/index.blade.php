@@ -8,6 +8,7 @@
     <script src="{{ asset('js/tailwindcss.play-cdn.js') }}"></script>
     <script src="{{ asset('js/lucide.min.js') }}"></script>
     @php
+        $caseRoutes = $caseRoutes ?? ['index' => 'product-cases.index', 'show' => 'product-cases.show'];
         $schemaAtContext = chr(64).'context';
         $schemaAtType = chr(64).'type';
         $schemaItems = [];
@@ -15,7 +16,7 @@
             $schemaItems[] = [
                 $schemaAtType => 'ListItem',
                 'position' => count($schemaItems) + 1,
-                'url' => route('product-cases.show', ['slug' => $schemaCase->slug]),
+                'url' => route($caseRoutes['show'], ['slug' => $schemaCase->slug]),
                 'name' => $schemaCase->title,
             ];
         }
@@ -43,7 +44,7 @@
 <body class="bg-[#f6f7f4] text-slate-900">
     <header class="border-b border-slate-200 bg-white">
         <div class="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
-            <a href="{{ route('product-cases.index') }}" class="inline-flex items-center gap-2 text-lg font-semibold">
+            <a href="{{ route($caseRoutes['index']) }}" class="inline-flex items-center gap-2 text-lg font-semibold">
                 <span class="flex h-9 w-9 items-center justify-center rounded-md bg-slate-950 text-white">
                     <i data-lucide="briefcase-business" class="h-4 w-4"></i>
                 </span>
@@ -84,7 +85,7 @@
         </section>
 
         <section class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-            <form method="GET" action="{{ route('product-cases.index') }}" class="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm lg:grid-cols-[1.4fr_1fr_1fr_1fr_1fr_auto]">
+            <form method="GET" action="{{ route($caseRoutes['index']) }}" class="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm lg:grid-cols-[1.4fr_1fr_1fr_1fr_1fr_auto]">
                 <label class="block">
                     <span class="mb-1 block text-xs font-medium text-slate-500">搜索</span>
                     <input name="keyword" value="{{ $filters['keyword'] }}" placeholder="案例标题 / 品牌名称" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-100">
@@ -130,7 +131,7 @@
                         <i data-lucide="search" class="h-4 w-4"></i>
                         筛选
                     </button>
-                    <a href="{{ route('product-cases.index') }}" class="inline-flex h-10 items-center justify-center rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 transition hover:bg-slate-50">重置</a>
+                    <a href="{{ route($caseRoutes['index']) }}" class="inline-flex h-10 items-center justify-center rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 transition hover:bg-slate-50">重置</a>
                 </div>
             </form>
 
@@ -140,7 +141,7 @@
                         $metrics = $caseMetrics[(int) $case->id] ?? [];
                     @endphp
                     <article class="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
-                        <a href="{{ route('product-cases.show', ['slug' => $case->slug]) }}" class="block">
+                        <a href="{{ route($caseRoutes['show'], ['slug' => $case->slug]) }}" class="block">
                             <div class="relative aspect-[16/9] overflow-hidden bg-slate-900">
                                 @if(trim((string) $case->cover_url) !== '')
                                     <img src="{{ $case->cover_url }}" alt="{{ $case->title }}" class="h-full w-full object-cover">
@@ -170,7 +171,7 @@
                             </div>
 
                             <h2 class="mt-4 line-clamp-2 min-h-14 text-lg font-semibold leading-7 text-slate-950">
-                                <a href="{{ route('product-cases.show', ['slug' => $case->slug]) }}" class="hover:text-orange-700">{{ $case->title }}</a>
+                                <a href="{{ route($caseRoutes['show'], ['slug' => $case->slug]) }}" class="hover:text-orange-700">{{ $case->title }}</a>
                             </h2>
                             <p class="mt-3 line-clamp-3 min-h-[4.5rem] text-sm leading-6 text-slate-600">{{ $case->summary }}</p>
 

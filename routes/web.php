@@ -102,6 +102,10 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
     // 通用入口与语言切换
     Route::get('locale/{locale}', [AdminAuthController::class, 'switchLocale'])->name('locale.switch');
     Route::get('snapshot-voucher', [SnapshotVoucherController::class, 'show'])->name('snapshot-voucher.show');
+    Route::get('product-case-library', [ProductCaseController::class, 'index'])->name('product-case-library.index');
+    Route::get('product-case-library/{slug}', [ProductCaseController::class, 'show'])
+        ->name('product-case-library.show')
+        ->where('slug', '[A-Za-z0-9_-]+');
     Route::match(['get', 'post'], 'crebee-accounts/aitoearn/authorizations/callback', [CrebeeAccountController::class, 'handleAiToEarnAuthorizationCallback'])
         ->withoutMiddleware([ValidateCsrfToken::class])
         ->name('crebee-accounts.aitoearn.authorizations.callback');

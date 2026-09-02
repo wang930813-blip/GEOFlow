@@ -8,7 +8,7 @@
                 <p class="mt-1 text-sm text-gray-600">维护公开产品案例，案例详情以手工内容为主，可关联一个站点/品牌展示监测数据摘要。</p>
             </div>
             <div class="flex flex-wrap gap-2">
-                <a href="{{ route('product-cases.index') }}" target="_blank" rel="noopener noreferrer" class="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50">
+                <a href="{{ route('admin.product-case-library.index') }}" target="_blank" rel="noopener noreferrer" class="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50">
                     <i data-lucide="external-link" class="h-4 w-4"></i>
                     公开列表
                 </a>
@@ -93,7 +93,7 @@
                                 <td class="px-5 py-4 align-top text-right">
                                     <div class="inline-flex flex-wrap items-center justify-end gap-2">
                                         @if($case->status === \App\Models\ProductCase::STATUS_PUBLISHED)
-                                            <a href="{{ route('product-cases.show', ['slug' => $case->slug]) }}" target="_blank" rel="noopener noreferrer" class="text-sm font-medium text-slate-600 hover:text-slate-950">查看</a>
+                                            <a href="{{ route('admin.product-case-library.show', ['slug' => $case->slug]) }}" target="_blank" rel="noopener noreferrer" class="text-sm font-medium text-slate-600 hover:text-slate-950">查看</a>
                                         @endif
                                         <a href="{{ route('admin.product-cases.edit', ['product_case' => $case->id]) }}" class="text-sm font-medium text-indigo-600 hover:text-indigo-800">编辑</a>
                                         <form method="POST" action="{{ route('admin.product-cases.toggle-status', ['product_case' => $case->id]) }}" class="inline">

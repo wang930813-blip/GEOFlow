@@ -9,7 +9,7 @@
             </div>
             <div class="flex flex-wrap gap-2">
                 @if($case->status === \App\Models\ProductCase::STATUS_PUBLISHED)
-                    <a href="{{ route('product-cases.show', ['slug' => $case->slug]) }}" target="_blank" rel="noopener noreferrer" class="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50">
+                    <a href="{{ route('admin.product-case-library.show', ['slug' => $case->slug]) }}" target="_blank" rel="noopener noreferrer" class="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50">
                         <i data-lucide="external-link" class="h-4 w-4"></i>
                         查看公开页
                     </a>

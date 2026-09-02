@@ -13,6 +13,7 @@ class ProductCaseController extends Controller
 {
     public function index(Request $request, ProductCaseReportSummaryService $reports): View
     {
+        $caseRoutes = $this->routeNames($request);
         $filters = [
             'keyword' => trim((string) $request->query('keyword', '')),
             'industry' => trim((string) $request->query('industry', '')),
@@ -44,6 +45,7 @@ class ProductCaseController extends Controller
         return view('product-cases.index', [
             'cases' => $cases,
             'caseMetrics' => $caseMetrics,
+            'caseRoutes' => $caseRoutes,
             'filterOptions' => $this->filterOptions(),
             'filters' => $filters,
             'pageTitle' => '产品案例',
@@ -51,7 +53,7 @@ class ProductCaseController extends Controller
         ]);
     }
 
-    public function show(string $slug, ProductCaseReportSummaryService $reports): View
+    public function show(Request $request, string $slug, ProductCaseReportSummaryService $reports): View
     {
         $case = ProductCase::query()
             ->published()
@@ -65,6 +67,7 @@ class ProductCaseController extends Controller
             'case' => $case,
             'contentHtml' => ArticleHtmlPresenter::markdownToHtml((string) $case->content),
             'report' => $reports->detail($case),
+            'caseRoutes' => $this->routeNames($request),
             'pageTitle' => $case->title,
             'pageDescription' => trim((string) $case->summary) !== '' ? (string) $case->summary : (string) $case->company_name,
         ]);
@@ -122,6 +125,26 @@ class ProductCaseController extends Controller
                 ->sort()
                 ->values()
                 ->all(),
+        ];
+    }
+
+    /**
+     * @return array{index:string,show:string}
+     */
+    private function routeNames(Request $request): array
+    {
+        $currentRouteName = (string) ($request->route()?->getName() ?? '');
+
+        if (str_starts_with($currentRouteName, 'admin.product-case-library.')) {
+            return [
+                'index' => 'admin.product-case-library.index',
+                'show' => 'admin.product-case-library.show',
+            ];
+        }
+
+        return [
+            'index' => 'product-cases.index',
+            'show' => 'product-cases.show',
         ];
     }
 }

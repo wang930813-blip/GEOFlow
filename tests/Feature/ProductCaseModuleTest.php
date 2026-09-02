@@ -124,6 +124,31 @@ class ProductCaseModuleTest extends TestCase
             ->assertDontSee('Restaurant Brand Case');
     }
 
+    public function test_admin_prefixed_product_case_library_routes_render_public_pages(): void
+    {
+        ProductCase::query()->create([
+            'title' => 'Admin Prefixed Product Case',
+            'slug' => 'admin-prefixed-product-case',
+            'company_name' => 'Prefixed Brand',
+            'summary' => 'Public case reachable from the admin path.',
+            'content' => "## Case Body\n\nAdmin-prefixed public content.",
+            'status' => ProductCase::STATUS_PUBLISHED,
+            'published_at' => now()->subMinute(),
+        ]);
+
+        $this->get(route('admin.product-case-library.index'))
+            ->assertOk()
+            ->assertSee('Admin Prefixed Product Case')
+            ->assertSee(route('admin.product-case-library.show', ['slug' => 'admin-prefixed-product-case']), false)
+            ->assertDontSee(route('product-cases.show', ['slug' => 'admin-prefixed-product-case']), false);
+
+        $this->get(route('admin.product-case-library.show', ['slug' => 'admin-prefixed-product-case']))
+            ->assertOk()
+            ->assertSee('Admin Prefixed Product Case')
+            ->assertSee('Case Body')
+            ->assertSee(route('admin.product-case-library.index'), false);
+    }
+
     public function test_product_case_model_relationships_and_scope(): void
     {
         [$owner, $site] = $this->createAdminWithSite('case_owner', 'direct_admin');
@@ -467,7 +492,7 @@ class ProductCaseModuleTest extends TestCase
         $this->actingAs($user, 'admin')
             ->get(route('admin.dashboard'))
             ->assertOk()
-            ->assertSee(route('product-cases.index'), false)
+            ->assertSee(route('admin.product-case-library.index'), false)
             ->assertSee('产品案例')
             ->assertDontSee(route('admin.product-cases.index'), false)
             ->assertDontSee('产品案例管理');
@@ -475,7 +500,7 @@ class ProductCaseModuleTest extends TestCase
         $this->actingAs($superAdmin, 'admin')
             ->get(route('admin.dashboard'))
             ->assertOk()
-            ->assertSee(route('product-cases.index'), false)
+            ->assertSee(route('admin.product-case-library.index'), false)
             ->assertSee(route('admin.product-cases.index'), false)
             ->assertSee('产品案例管理');
     }
