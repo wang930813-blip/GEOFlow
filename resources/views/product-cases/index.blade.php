@@ -77,15 +77,15 @@
                         <div class="mt-1 text-sm text-slate-500">行业类型</div>
                     </div>
                     <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                        <div class="text-2xl font-semibold text-slate-950">{{ count($filterOptions['tags']) }}</div>
-                        <div class="mt-1 text-sm text-slate-500">能力标签</div>
+                        <div class="text-2xl font-semibold text-slate-950">{{ count($filterOptions['regions']) }}</div>
+                        <div class="mt-1 text-sm text-slate-500">地区数量</div>
                     </div>
                 </div>
             </div>
         </section>
 
         <section class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-            <form method="GET" action="{{ route($caseRoutes['index']) }}" class="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm lg:grid-cols-[1.4fr_1fr_1fr_1fr_1fr_auto]">
+            <form method="GET" action="{{ route($caseRoutes['index']) }}" class="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm lg:grid-cols-[1.5fr_1fr_1fr_auto]">
                 <label class="block">
                     <span class="mb-1 block text-xs font-medium text-slate-500">搜索</span>
                     <input name="keyword" value="{{ $filters['keyword'] }}" placeholder="案例标题 / 品牌名称" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-100">
@@ -105,24 +105,6 @@
                         <option value="">全部地区</option>
                         @foreach($filterOptions['regions'] as $region)
                             <option value="{{ $region }}" @selected($filters['region'] === $region)>{{ $region }}</option>
-                        @endforeach
-                    </select>
-                </label>
-                <label class="block">
-                    <span class="mb-1 block text-xs font-medium text-slate-500">模式</span>
-                    <select name="business_mode" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-100">
-                        <option value="">全部模式</option>
-                        @foreach($filterOptions['business_modes'] as $businessMode)
-                            <option value="{{ $businessMode }}" @selected($filters['businessMode'] === $businessMode)>{{ $businessMode }}</option>
-                        @endforeach
-                    </select>
-                </label>
-                <label class="block">
-                    <span class="mb-1 block text-xs font-medium text-slate-500">标签</span>
-                    <select name="tag" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-100">
-                        <option value="">全部标签</option>
-                        @foreach($filterOptions['tags'] as $tag)
-                            <option value="{{ $tag }}" @selected($filters['tag'] === $tag)>{{ $tag }}</option>
                         @endforeach
                     </select>
                 </label>
@@ -150,9 +132,14 @@
                                         <i data-lucide="line-chart" class="h-10 w-10"></i>
                                     </div>
                                 @endif
-                                @if($case->industry !== '')
-                                    <span class="absolute left-4 top-4 rounded-md bg-white/90 px-2.5 py-1 text-xs font-medium text-slate-800">{{ $case->industry }}</span>
-                                @endif
+                                <div class="absolute left-4 top-4 flex flex-wrap gap-2">
+                                    @if($case->industry !== '')
+                                        <span class="rounded-md bg-white/90 px-2.5 py-1 text-xs font-medium text-slate-800">{{ $case->industry }}</span>
+                                    @endif
+                                    @if($case->region !== '')
+                                        <span class="rounded-md bg-white/90 px-2.5 py-1 text-xs font-medium text-slate-800">{{ $case->region }}</span>
+                                    @endif
+                                </div>
                             </div>
                         </a>
                         <div class="p-5">
@@ -166,7 +153,7 @@
                                 </div>
                                 <div class="min-w-0">
                                     <div class="truncate text-sm font-medium text-slate-900">{{ $case->company_name ?: $case->title }}</div>
-                                    <div class="mt-0.5 truncate text-xs text-slate-500">{{ collect([$case->region, $case->business_mode])->filter()->implode(' / ') ?: '案例品牌' }}</div>
+                                    <div class="mt-0.5 truncate text-xs text-slate-500">{{ collect([$case->industry, $case->region])->filter()->implode(' / ') ?: '案例品牌' }}</div>
                                 </div>
                             </div>
 
@@ -186,13 +173,6 @@
                                 </div>
                             @endif
 
-                            @if(!empty($case->module_tags))
-                                <div class="mt-4 flex flex-wrap gap-2">
-                                    @foreach(array_slice((array) $case->module_tags, 0, 3) as $tag)
-                                        <span class="rounded-md bg-orange-50 px-2 py-1 text-xs font-medium text-orange-700">{{ $tag }}</span>
-                                    @endforeach
-                                </div>
-                            @endif
                         </div>
                     </article>
                 @empty

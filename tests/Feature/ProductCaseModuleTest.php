@@ -81,7 +81,7 @@ class ProductCaseModuleTest extends TestCase
             ->assertNotFound();
     }
 
-    public function test_public_case_list_filters_by_keyword_industry_region_and_tag(): void
+    public function test_public_case_list_filters_by_keyword_industry_and_region_without_mode_or_tag_ui(): void
     {
         ProductCase::query()->create([
             'title' => 'Restaurant Brand Case',
@@ -112,16 +112,30 @@ class ProductCaseModuleTest extends TestCase
         $this->get(route('product-cases.index', ['keyword' => 'Jufulou']))
             ->assertOk()
             ->assertSee('Restaurant Brand Case')
-            ->assertDontSee('Education Brand Case');
+            ->assertSee('行业类型')
+            ->assertSee('地区数量')
+            ->assertSee('Restaurant')
+            ->assertSee('Beijing')
+            ->assertDontSee('Education Brand Case')
+            ->assertDontSee('能力标签')
+            ->assertDontSee('全部模式')
+            ->assertDontSee('全部标签')
+            ->assertDontSee('name="business_mode"', false)
+            ->assertDontSee('name="tag"', false)
+            ->assertDontSee('Direct')
+            ->assertDontSee('Brand Diagnosis');
 
         $this->get(route('product-cases.index', [
             'industry' => 'Education',
             'region' => 'Shanghai',
-            'tag' => 'AI Search Inclusion',
         ]))
             ->assertOk()
             ->assertSee('Education Brand Case')
-            ->assertDontSee('Restaurant Brand Case');
+            ->assertSee('Education')
+            ->assertSee('Shanghai')
+            ->assertDontSee('Restaurant Brand Case')
+            ->assertDontSee('Platform')
+            ->assertDontSee('AI Search Inclusion');
     }
 
     public function test_admin_prefixed_product_case_library_routes_render_public_pages(): void

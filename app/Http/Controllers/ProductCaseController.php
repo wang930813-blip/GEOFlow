@@ -18,8 +18,6 @@ class ProductCaseController extends Controller
             'keyword' => trim((string) $request->query('keyword', '')),
             'industry' => trim((string) $request->query('industry', '')),
             'region' => trim((string) $request->query('region', '')),
-            'businessMode' => trim((string) $request->query('business_mode', '')),
-            'tag' => trim((string) $request->query('tag', '')),
         ];
 
         $query = ProductCase::query()
@@ -74,7 +72,7 @@ class ProductCaseController extends Controller
     }
 
     /**
-     * @param  array{keyword:string,industry:string,region:string,businessMode:string,tag:string}  $filters
+     * @param  array{keyword:string,industry:string,region:string}  $filters
      */
     private function applyFilters(Builder $query, array $filters): void
     {
@@ -95,17 +93,10 @@ class ProductCaseController extends Controller
             $query->where('region', $filters['region']);
         }
 
-        if ($filters['businessMode'] !== '') {
-            $query->where('business_mode', $filters['businessMode']);
-        }
-
-        if ($filters['tag'] !== '') {
-            $query->whereJsonContains('module_tags', $filters['tag']);
-        }
     }
 
     /**
-     * @return array{industries:list<string>,regions:list<string>,business_modes:list<string>,tags:list<string>}
+     * @return array{industries:list<string>,regions:list<string>}
      */
     private function filterOptions(): array
     {
@@ -114,17 +105,6 @@ class ProductCaseController extends Controller
         return [
             'industries' => (clone $published)->where('industry', '<>', '')->distinct()->orderBy('industry')->pluck('industry')->all(),
             'regions' => (clone $published)->where('region', '<>', '')->distinct()->orderBy('region')->pluck('region')->all(),
-            'business_modes' => (clone $published)->where('business_mode', '<>', '')->distinct()->orderBy('business_mode')->pluck('business_mode')->all(),
-            'tags' => ProductCase::query()
-                ->published()
-                ->pluck('module_tags')
-                ->flatten()
-                ->filter(fn ($tag): bool => is_string($tag) && trim($tag) !== '')
-                ->map(fn (string $tag): string => trim($tag))
-                ->unique()
-                ->sort()
-                ->values()
-                ->all(),
         ];
     }
 
