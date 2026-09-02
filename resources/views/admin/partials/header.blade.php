@@ -50,6 +50,13 @@
             'visible' => true,
         ],
         [
+            'type' => 'link',
+            'key' => 'product_cases',
+            'route' => 'product-cases.index',
+            'name' => '产品案例',
+            'visible' => true,
+        ],
+        [
             'type' => 'group',
             'key' => 'geo_analysis',
             'name' => '全域数析',
@@ -120,6 +127,7 @@
         ['key' => 'profile', 'route' => 'admin.profile.index', 'name' => '个人中心', 'icon' => 'user-circle', 'visible' => true],
         ['key' => 'ai_config', 'route' => 'admin.ai.configurator', 'name' => __('admin.nav.ai_config'), 'icon' => 'bot', 'visible' => $canManageAiConfig],
         ['key' => 'site_settings', 'route' => 'admin.site-settings.index', 'name' => __('admin.nav.system_settings'), 'icon' => 'settings', 'visible' => ! $isAgentAdmin],
+        ['key' => 'product_cases_manage', 'route' => 'admin.product-cases.index', 'name' => '产品案例管理', 'icon' => 'briefcase-business', 'visible' => $isSuperAdmin],
         ['key' => 'sites', 'route' => 'admin.sites.manage.index', 'name' => '站点管理', 'icon' => 'globe-2', 'visible' => $isSuperAdmin || $isAgentAdmin],
         ['key' => 'platform_plans', 'route' => 'admin.platform-plans.index', 'name' => '平台规格', 'icon' => 'package', 'visible' => $isSuperAdmin],
         ['key' => 'plan_subscriptions', 'route' => 'admin.plan-subscriptions.index', 'name' => '客户开通', 'icon' => 'badge-check', 'visible' => $isSuperAdmin],
@@ -139,6 +147,7 @@
             'items' => [
                 ['key' => 'ai_config', 'route' => 'admin.ai.configurator', 'name' => __('admin.nav.ai_config'), 'icon' => 'bot', 'visible' => $canManageAiConfig],
                 ['key' => 'site_settings', 'route' => 'admin.site-settings.index', 'name' => __('admin.nav.system_settings'), 'icon' => 'settings', 'visible' => ! $isAgentAdmin],
+                ['key' => 'product_cases_manage', 'route' => 'admin.product-cases.index', 'name' => '产品案例管理', 'icon' => 'briefcase-business', 'visible' => $isSuperAdmin],
                 ['key' => 'activity_logs', 'route' => 'admin.admin-activity-logs', 'name' => __('admin.nav.activity_logs'), 'icon' => 'clipboard-list', 'visible' => $isSuperAdmin],
             ],
         ],
@@ -167,6 +176,8 @@
 
     $subMap = [
         'admin.dashboard' => 'dashboard',
+        'product-cases.index' => 'product_cases',
+        'product-cases.show' => 'product_cases',
         'admin.profile.index' => 'profile',
         'admin.geo-reports.index' => 'geo_reports',
         'admin.brand-diagnosis.index' => 'brand_diagnosis',
@@ -284,6 +295,13 @@
         'admin.admin-activity-logs' => 'activity_logs',
         'admin.agent-users.index' => 'agent_users',
         'admin.sites.manage.index' => 'sites',
+        'admin.product-cases.index' => 'product_cases_manage',
+        'admin.product-cases.create' => 'product_cases_manage',
+        'admin.product-cases.store' => 'product_cases_manage',
+        'admin.product-cases.edit' => 'product_cases_manage',
+        'admin.product-cases.update' => 'product_cases_manage',
+        'admin.product-cases.toggle-status' => 'product_cases_manage',
+        'admin.product-cases.destroy' => 'product_cases_manage',
         'admin.platform-plans.index' => 'platform_plans',
         'admin.platform-plans.show' => 'platform_plans',
         'admin.platform-plans.edit' => 'platform_plans',
