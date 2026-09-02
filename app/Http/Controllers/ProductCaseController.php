@@ -109,7 +109,7 @@ class ProductCaseController extends Controller
     }
 
     /**
-     * @return array{index:string,show:string}
+     * @return array{index:string,show:string,home:string}
      */
     private function routeNames(Request $request): array
     {
@@ -119,12 +119,14 @@ class ProductCaseController extends Controller
             return [
                 'index' => 'admin.product-case-library.index',
                 'show' => 'admin.product-case-library.show',
+                'home' => 'admin.dashboard',
             ];
         }
 
         return [
             'index' => 'product-cases.index',
             'show' => 'product-cases.show',
+            'home' => 'site.home',
         ];
     }
 }

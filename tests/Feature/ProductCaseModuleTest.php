@@ -153,6 +153,8 @@ class ProductCaseModuleTest extends TestCase
         $this->get(route('admin.product-case-library.index'))
             ->assertOk()
             ->assertSee('Admin Prefixed Product Case')
+            ->assertSee('href="'.route('admin.dashboard').'"', false)
+            ->assertDontSee('href="'.route('site.home').'"', false)
             ->assertSee(route('admin.product-case-library.show', ['slug' => 'admin-prefixed-product-case']), false)
             ->assertDontSee(route('product-cases.show', ['slug' => 'admin-prefixed-product-case']), false);
 
@@ -193,6 +195,9 @@ class ProductCaseModuleTest extends TestCase
             ->get(route('admin.product-cases.index'))
             ->assertOk()
             ->assertSee('产品案例管理')
+            ->assertSee('data-product-cases-admin-table', false)
+            ->assertSee('w-full', false)
+            ->assertSee('table-fixed', false)
             ->assertSee(route('admin.product-cases.create'), false);
 
         $this->actingAs($superAdmin, 'admin')

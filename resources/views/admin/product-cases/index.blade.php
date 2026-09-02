@@ -46,7 +46,15 @@
 
         <section class="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
             <div class="overflow-x-auto">
-                <table class="min-w-[1120px] divide-y divide-slate-200">
+                <table data-product-cases-admin-table class="w-full min-w-[980px] table-fixed divide-y divide-slate-200">
+                    <colgroup>
+                        <col class="w-[30%]">
+                        <col class="w-[16%]">
+                        <col class="w-[14%]">
+                        <col class="w-[10%]">
+                        <col class="w-[15%]">
+                        <col class="w-[15%]">
+                    </colgroup>
                     <thead class="bg-slate-50">
                         <tr>
                             <th class="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">案例</th>
@@ -61,14 +69,14 @@
                         @forelse($cases as $case)
                             <tr>
                                 <td class="px-5 py-4 align-top">
-                                    <div class="max-w-md font-semibold text-slate-950">{{ $case->title }}</div>
-                                    <div class="mt-1 text-sm text-slate-500">{{ $case->company_name ?: '未设置品牌' }}</div>
-                                    <div class="mt-1 text-xs text-slate-400">/{{ $case->slug }}</div>
+                                    <div class="truncate font-semibold text-slate-950" title="{{ $case->title }}">{{ $case->title }}</div>
+                                    <div class="mt-1 truncate text-sm text-slate-500" title="{{ $case->company_name ?: '未设置品牌' }}">{{ $case->company_name ?: '未设置品牌' }}</div>
+                                    <div class="mt-1 truncate text-xs text-slate-400" title="/{{ $case->slug }}">/{{ $case->slug }}</div>
                                 </td>
                                 <td class="px-5 py-4 align-top text-sm text-slate-600">
                                     @if($case->site)
-                                        <div class="font-medium text-slate-900">{{ $case->site->name }}</div>
-                                        <div class="mt-1 text-xs text-slate-400">{{ $case->site->domain ?: '未绑定域名' }}</div>
+                                        <div class="truncate font-medium text-slate-900" title="{{ $case->site->name }}">{{ $case->site->name }}</div>
+                                        <div class="mt-1 truncate text-xs text-slate-400" title="{{ $case->site->domain ?: '未绑定域名' }}">{{ $case->site->domain ?: '未绑定域名' }}</div>
                                     @else
                                         <span class="text-slate-400">未关联</span>
                                     @endif
@@ -90,8 +98,8 @@
                                 <td class="px-5 py-4 align-top text-sm text-slate-600">
                                     {{ $case->published_at?->format('Y-m-d H:i') ?: '-' }}
                                 </td>
-                                <td class="px-5 py-4 align-top text-right">
-                                    <div class="inline-flex flex-wrap items-center justify-end gap-2">
+                                <td class="whitespace-nowrap px-5 py-4 align-top text-right">
+                                    <div class="inline-flex items-center justify-end gap-2">
                                         @if($case->status === \App\Models\ProductCase::STATUS_PUBLISHED)
                                             <a href="{{ route('admin.product-case-library.show', ['slug' => $case->slug]) }}" target="_blank" rel="noopener noreferrer" class="text-sm font-medium text-slate-600 hover:text-slate-950">查看</a>
                                         @endif

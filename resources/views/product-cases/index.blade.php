@@ -8,7 +8,7 @@
     <script src="{{ asset('js/tailwindcss.play-cdn.js') }}"></script>
     <script src="{{ asset('js/lucide.min.js') }}"></script>
     @php
-        $caseRoutes = $caseRoutes ?? ['index' => 'product-cases.index', 'show' => 'product-cases.show'];
+        $caseRoutes = $caseRoutes ?? ['index' => 'product-cases.index', 'show' => 'product-cases.show', 'home' => 'site.home'];
         $schemaAtContext = chr(64).'context';
         $schemaAtType = chr(64).'type';
         $schemaItems = [];
@@ -50,7 +50,7 @@
                 </span>
                 产品案例
             </a>
-            <a href="{{ route('site.home') }}" class="inline-flex items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-950">
+            <a href="{{ route($caseRoutes['home']) }}" class="inline-flex items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-950">
                 <i data-lucide="home" class="h-4 w-4"></i>
                 返回首页
             </a>
