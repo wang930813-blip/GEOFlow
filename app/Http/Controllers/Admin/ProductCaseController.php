@@ -235,109 +235,12 @@ class ProductCaseController extends Controller
 
     private function industryOptions(?ProductCase $case = null): array
     {
-        return $this->withCurrentOption([
-            '服装',
-            '化工',
-            '玩具',
-            '精细化学品',
-            '食品、饮料',
-            '机械及行业设备',
-            '电子元器件',
-            '礼品、工艺品、饰品',
-            '通信产品',
-            '其他',
-            '二手设备',
-            '五金、工具',
-            '交通运输',
-            '仪器仪表',
-            '传媒、广电',
-            '农业',
-            '冶金矿产',
-            '办公、文教',
-            '包装',
-            '医药、保养',
-            '医药健康',
-            '印刷',
-            '商务服务',
-            '安全、防护',
-            '家居用品',
-            '家用电器',
-            '建筑、建材',
-            '教育培训',
-            '数码、电脑',
-            '服装内衣',
-            '服饰',
-            '橡塑',
-            '汽摩及配件',
-            '照明工业',
-            '环保',
-            '电工电气',
-            '纸业',
-            '纺织、皮革',
-            '能源',
-            '航天航空',
-            '运动、休闲',
-            '鞋包配饰',
-        ], (string) ($case?->industry ?? ''));
+        return ProductCase::industryOptions((string) ($case?->industry ?? ''));
     }
 
     private function regionOptions(?ProductCase $case = null): array
     {
-        return $this->withCurrentOption([
-            '上海市',
-            '苏州市',
-            '深圳市',
-            '成都市',
-            '无锡市',
-            '新乡市',
-            '淄博市',
-            '杭州市',
-            '泉州市',
-            '温州市',
-            '福州市',
-            '烟台市',
-            '长春市',
-            '北京市',
-            '郑州市',
-            '兰州市',
-            '东莞市',
-            '南京市',
-            '贵阳市',
-            '青岛市',
-            '中山市',
-            '广州市',
-            '大连市',
-            '常州市',
-            '武汉市',
-            '宁波市',
-            '厦门市',
-            '绵阳市',
-            '南昌市',
-            '济宁市',
-            '佛山市',
-            '临沂市',
-            '威海市',
-            '哈尔滨市',
-            '金华市',
-            '台州市',
-            '合肥市',
-            '其他市',
-        ], (string) ($case?->region ?? ''));
-    }
-
-    /**
-     * @param  list<string>  $options
-     * @return list<string>
-     */
-    private function withCurrentOption(array $options, string $currentValue): array
-    {
-        $currentValue = trim($currentValue);
-
-        if ($currentValue !== '' && ! in_array($currentValue, $options, true)) {
-            array_unshift($options, $currentValue);
-        }
-
-        return $options;
+        return ProductCase::regionOptions((string) ($case?->region ?? ''));
     }
 
     private function nullableDate(string $value): ?Carbon

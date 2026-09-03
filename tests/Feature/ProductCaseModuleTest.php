@@ -81,59 +81,73 @@ class ProductCaseModuleTest extends TestCase
             ->assertNotFound();
     }
 
-    public function test_public_case_list_filters_by_keyword_industry_and_region_without_mode_or_tag_ui(): void
+    public function test_public_case_list_renders_flat_industry_and_region_filters_with_fixed_options(): void
     {
-        ProductCase::query()->create([
-            'title' => 'Restaurant Brand Case',
-            'slug' => 'restaurant-case',
-            'company_name' => 'Jufulou',
-            'industry' => 'Restaurant',
-            'region' => 'Beijing',
-            'business_mode' => 'Direct',
-            'module_tags' => ['Brand Diagnosis'],
-            'summary' => 'Restaurant GEO case',
-            'status' => ProductCase::STATUS_PUBLISHED,
-            'published_at' => now()->subDay(),
-        ]);
-
         ProductCase::query()->create([
             'title' => 'Education Brand Case',
             'slug' => 'education-case',
-            'company_name' => 'Xueshuyi',
-            'industry' => 'Education',
-            'region' => 'Shanghai',
-            'business_mode' => 'Platform',
-            'module_tags' => ['AI Search Inclusion'],
+            'company_name' => 'Jufulou',
+            'industry' => '教育培训',
+            'region' => '上海市',
+            'business_mode' => 'Direct',
+            'module_tags' => ['Brand Diagnosis'],
             'summary' => 'Education GEO case',
             'status' => ProductCase::STATUS_PUBLISHED,
             'published_at' => now()->subDay(),
         ]);
 
-        $this->get(route('product-cases.index', ['keyword' => 'Jufulou']))
+        ProductCase::query()->create([
+            'title' => 'Service Brand Case',
+            'slug' => 'service-case',
+            'company_name' => 'Xueshuyi',
+            'industry' => '商务服务',
+            'region' => '成都市',
+            'business_mode' => 'Platform',
+            'module_tags' => ['AI Search Inclusion'],
+            'summary' => 'Service GEO case',
+            'status' => ProductCase::STATUS_PUBLISHED,
+            'published_at' => now()->subDay(),
+        ]);
+
+        ProductCase::query()->create([
+            'title' => 'Legacy Custom Industry Case',
+            'slug' => 'legacy-custom-industry-case',
+            'company_name' => 'Legacy Brand',
+            'industry' => 'geo',
+            'region' => 'Custom Region',
+            'summary' => 'Legacy case keeps rendering but custom filters should stay hidden.',
+            'status' => ProductCase::STATUS_PUBLISHED,
+            'published_at' => now()->subDay(),
+        ]);
+
+        $this->get(route('product-cases.index'))
             ->assertOk()
-            ->assertSee('Restaurant Brand Case')
-            ->assertSee('行业类型')
-            ->assertSee('地区数量')
-            ->assertSee('Restaurant')
-            ->assertSee('Beijing')
-            ->assertDontSee('Education Brand Case')
-            ->assertDontSee('能力标签')
-            ->assertDontSee('全部模式')
-            ->assertDontSee('全部标签')
+            ->assertSee('Education Brand Case')
+            ->assertSee('Service Brand Case')
+            ->assertSee('Legacy Custom Industry Case')
+            ->assertSee('type="radio"', false)
+            ->assertSee('peer-checked:border-orange-500', false)
+            ->assertSee('value="食品、饮料"', false)
+            ->assertSee('value="北京市"', false)
+            ->assertDontSee('value="geo"', false)
+            ->assertDontSee('value="Custom Region"', false)
+            ->assertDontSee('onchange="this.form.submit()"', false)
+            ->assertDontSee('<select name="industry"', false)
+            ->assertDontSee('<select name="region"', false)
             ->assertDontSee('name="business_mode"', false)
             ->assertDontSee('name="tag"', false)
             ->assertDontSee('Direct')
             ->assertDontSee('Brand Diagnosis');
 
         $this->get(route('product-cases.index', [
-            'industry' => 'Education',
-            'region' => 'Shanghai',
+            'industry' => '教育培训',
+            'region' => '上海市',
         ]))
             ->assertOk()
             ->assertSee('Education Brand Case')
-            ->assertSee('Education')
-            ->assertSee('Shanghai')
-            ->assertDontSee('Restaurant Brand Case')
+            ->assertSee('教育培训')
+            ->assertSee('上海市')
+            ->assertDontSee('Service Brand Case')
             ->assertDontSee('Platform')
             ->assertDontSee('AI Search Inclusion');
     }

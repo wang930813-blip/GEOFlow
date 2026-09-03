@@ -85,35 +85,56 @@
         </section>
 
         <section class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-            <form method="GET" action="{{ route($caseRoutes['index']) }}" class="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm lg:grid-cols-[1.5fr_1fr_1fr_auto]">
-                <label class="block">
-                    <span class="mb-1 block text-xs font-medium text-slate-500">搜索</span>
-                    <input name="keyword" value="{{ $filters['keyword'] }}" placeholder="案例标题 / 品牌名称" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-100">
-                </label>
-                <label class="block">
-                    <span class="mb-1 block text-xs font-medium text-slate-500">行业</span>
-                    <select name="industry" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-100">
-                        <option value="">全部行业</option>
-                        @foreach($filterOptions['industries'] as $industry)
-                            <option value="{{ $industry }}" @selected($filters['industry'] === $industry)>{{ $industry }}</option>
-                        @endforeach
-                    </select>
-                </label>
-                <label class="block">
-                    <span class="mb-1 block text-xs font-medium text-slate-500">地区</span>
-                    <select name="region" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-100">
-                        <option value="">全部地区</option>
-                        @foreach($filterOptions['regions'] as $region)
-                            <option value="{{ $region }}" @selected($filters['region'] === $region)>{{ $region }}</option>
-                        @endforeach
-                    </select>
-                </label>
-                <div class="flex items-end gap-2">
-                    <button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-slate-950 px-4 text-sm font-medium text-white transition hover:bg-slate-800">
-                        <i data-lucide="search" class="h-4 w-4"></i>
-                        筛选
-                    </button>
-                    <a href="{{ route($caseRoutes['index']) }}" class="inline-flex h-10 items-center justify-center rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 transition hover:bg-slate-50">重置</a>
+            <form method="GET" action="{{ route($caseRoutes['index']) }}" class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                <div class="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
+                    <label class="block">
+                        <span class="mb-1 block text-xs font-medium text-slate-500">搜索</span>
+                        <input name="keyword" value="{{ $filters['keyword'] }}" placeholder="案例标题 / 品牌名称" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-100">
+                    </label>
+                    <div class="flex items-end gap-2">
+                        <button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-slate-950 px-4 text-sm font-medium text-white transition hover:bg-slate-800">
+                            <i data-lucide="search" class="h-4 w-4"></i>
+                            筛选
+                        </button>
+                        <a href="{{ route($caseRoutes['index']) }}" class="inline-flex h-10 items-center justify-center rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 transition hover:bg-slate-50">重置</a>
+                    </div>
+                </div>
+
+                <div class="mt-4 divide-y divide-slate-100 rounded-md border border-slate-100 bg-slate-50/80">
+                    <div class="grid gap-3 px-3 py-3 md:grid-cols-[64px_1fr]">
+                        <div class="pt-1 text-sm font-semibold text-slate-700">行业</div>
+                        <div class="flex flex-wrap gap-2">
+                            @php $industryActive = $filters['industry'] === ''; @endphp
+                            <label class="cursor-pointer">
+                                <input type="radio" name="industry" value="" class="peer sr-only" @checked($industryActive)>
+                                <span class="inline-flex h-8 items-center rounded-md border border-transparent bg-white px-3 text-sm text-slate-600 transition hover:border-slate-200 hover:text-slate-950 peer-checked:border-orange-500 peer-checked:bg-orange-50 peer-checked:font-medium peer-checked:text-orange-700">全部</span>
+                            </label>
+                            @foreach($filterOptions['industries'] as $industry)
+                                @php $industryActive = $filters['industry'] === $industry; @endphp
+                                <label class="cursor-pointer">
+                                    <input type="radio" name="industry" value="{{ $industry }}" class="peer sr-only" @checked($industryActive)>
+                                    <span class="inline-flex h-8 items-center rounded-md border border-transparent bg-white px-3 text-sm text-slate-600 transition hover:border-slate-200 hover:text-slate-950 peer-checked:border-orange-500 peer-checked:bg-orange-50 peer-checked:font-medium peer-checked:text-orange-700">{{ $industry }}</span>
+                                </label>
+                            @endforeach
+                        </div>
+                    </div>
+                    <div class="grid gap-3 px-3 py-3 md:grid-cols-[64px_1fr]">
+                        <div class="pt-1 text-sm font-semibold text-slate-700">地区</div>
+                        <div class="flex flex-wrap gap-2">
+                            @php $regionActive = $filters['region'] === ''; @endphp
+                            <label class="cursor-pointer">
+                                <input type="radio" name="region" value="" class="peer sr-only" @checked($regionActive)>
+                                <span class="inline-flex h-8 items-center rounded-md border border-transparent bg-white px-3 text-sm text-slate-600 transition hover:border-slate-200 hover:text-slate-950 peer-checked:border-orange-500 peer-checked:bg-orange-50 peer-checked:font-medium peer-checked:text-orange-700">全部</span>
+                            </label>
+                            @foreach($filterOptions['regions'] as $region)
+                                @php $regionActive = $filters['region'] === $region; @endphp
+                                <label class="cursor-pointer">
+                                    <input type="radio" name="region" value="{{ $region }}" class="peer sr-only" @checked($regionActive)>
+                                    <span class="inline-flex h-8 items-center rounded-md border border-transparent bg-white px-3 text-sm text-slate-600 transition hover:border-slate-200 hover:text-slate-950 peer-checked:border-orange-500 peer-checked:bg-orange-50 peer-checked:font-medium peer-checked:text-orange-700">{{ $region }}</span>
+                                </label>
+                            @endforeach
+                        </div>
+                    </div>
                 </div>
             </form>
 

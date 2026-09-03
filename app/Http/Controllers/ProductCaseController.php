@@ -100,11 +100,9 @@ class ProductCaseController extends Controller
      */
     private function filterOptions(): array
     {
-        $published = ProductCase::query()->published();
-
         return [
-            'industries' => (clone $published)->where('industry', '<>', '')->distinct()->orderBy('industry')->pluck('industry')->all(),
-            'regions' => (clone $published)->where('region', '<>', '')->distinct()->orderBy('region')->pluck('region')->all(),
+            'industries' => ProductCase::industryOptions(),
+            'regions' => ProductCase::regionOptions(),
         ];
     }
 
