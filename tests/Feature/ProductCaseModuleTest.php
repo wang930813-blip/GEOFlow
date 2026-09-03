@@ -517,6 +517,114 @@ class ProductCaseModuleTest extends TestCase
             ->assertSee('TOP5');
     }
 
+    public function test_logged_in_user_can_view_bound_report_data_for_another_site_case(): void
+    {
+        [$viewer, $viewerSite] = $this->createAdminWithSite('case_cross_site_viewer', 'direct_admin');
+        [$caseOwner, $caseSite] = $this->createAdminWithSite('case_cross_site_owner', 'direct_admin');
+
+        KeywordLibrary::query()->create([
+            'site_id' => $caseSite->id,
+            'owner_admin_id' => $caseOwner->id,
+            'name' => 'Cross Site Library',
+            'company_name' => 'Cross Site Brand',
+            'domain_keyword' => 'Cross Site Service',
+            'industry' => 'Technology Service',
+            'brand_description' => 'Cross Site Brand report data belongs to the product case site.',
+            'status' => 'active',
+        ]);
+
+        ProductCase::query()->create([
+            'site_id' => $caseSite->id,
+            'owner_admin_id' => $caseOwner->id,
+            'title' => 'Cross Site Product Case',
+            'slug' => 'cross-site-product-case',
+            'company_name' => 'Cross Site Brand',
+            'summary' => 'A public product case with report data from another site.',
+            'content' => 'Manual case content.',
+            'status' => ProductCase::STATUS_PUBLISHED,
+            'published_at' => now()->subDay(),
+        ]);
+
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => $caseSite->id,
+            'owner_admin_id' => $caseOwner->id,
+            'admin_id' => $caseOwner->id,
+            'brand_name' => 'Cross Site Brand',
+            'platforms' => ['doubao'],
+            'status' => 'completed',
+            'total_questions' => 1,
+            'completed_questions' => 1,
+            'usage_date' => now()->toDateString(),
+            'started_at' => now()->subHour(),
+            'completed_at' => now()->subMinutes(30),
+        ]);
+
+        $question = BrandDiagnosisQuestion::query()->create([
+            'site_id' => $caseSite->id,
+            'owner_admin_id' => $caseOwner->id,
+            'run_id' => $run->id,
+            'question' => 'Cross site search question',
+            'question_type' => 'recommendation',
+            'sort_order' => 1,
+            'status' => 'completed',
+        ]);
+
+        $result = BrandDiagnosisResult::query()->create([
+            'site_id' => $caseSite->id,
+            'owner_admin_id' => $caseOwner->id,
+            'run_id' => $run->id,
+            'question_id' => $question->id,
+            'platform' => 'doubao',
+            'answer' => 'Cross Site Brand and Cross Site Competitor are both mentioned.',
+            'brand_mentioned' => true,
+            'mention_count' => 1,
+            'mention_rank' => 1,
+            'sentiment' => 'positive',
+            'status' => 'success',
+            'checked_at' => now()->subMinutes(10),
+        ]);
+
+        BrandDiagnosisBrandMention::query()->create([
+            'site_id' => $caseSite->id,
+            'owner_admin_id' => $caseOwner->id,
+            'run_id' => $run->id,
+            'question_id' => $question->id,
+            'result_id' => $result->id,
+            'platform' => 'doubao',
+            'brand_name' => 'Cross Site Brand',
+            'mention_count' => 1,
+            'mention_rank' => 1,
+            'sentiment' => 'positive',
+            'source_count' => 1,
+            'is_target_brand' => true,
+        ]);
+
+        BrandDiagnosisBrandMention::query()->create([
+            'site_id' => $caseSite->id,
+            'owner_admin_id' => $caseOwner->id,
+            'run_id' => $run->id,
+            'question_id' => $question->id,
+            'result_id' => $result->id,
+            'platform' => 'doubao',
+            'brand_name' => 'Cross Site Competitor',
+            'mention_count' => 2,
+            'mention_rank' => 2,
+            'sentiment' => 'neutral',
+            'source_count' => 1,
+            'is_target_brand' => false,
+        ]);
+
+        $this->actingAs($viewer, 'admin')
+            ->withSession(['current_site_id' => (int) $viewerSite->id])
+            ->get(route('product-cases.show', ['slug' => 'cross-site-product-case']))
+            ->assertOk()
+            ->assertSee('Cross Site Product Case')
+            ->assertSee('Cross site search question')
+            ->assertSee('Cross Site Brand')
+            ->assertSee('Cross Site Competitor')
+            ->assertDontSee('暂无搜索报表数据。');
+    }
+
     public function test_product_case_public_nav_is_visible_to_logged_in_users_and_management_only_to_super_admin(): void
     {
         [$superAdmin] = $this->createAdminWithSite('super_nav_case', 'super_admin');
