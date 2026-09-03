@@ -24,7 +24,7 @@ class PlatformPlanManagementTest extends TestCase
 {
     use RefreshDatabase;
 
-    private const CREDIT_DESCRIPTION = '8000条官媒投放,600条b2b行业网站投放';
+    private const CREDIT_DESCRIPTION = '支持官媒和 B2B 网站投放';
 
     public function test_super_admin_can_view_platform_plan_detail_and_edit_page(): void
     {
@@ -44,6 +44,8 @@ class PlatformPlanManagementTest extends TestCase
             ->assertSee('生成视频次数')
             ->assertSee('自媒体发布次数')
             ->assertSee(self::CREDIT_DESCRIPTION)
+            ->assertDontSee('8000条官媒投放')
+            ->assertDontSee('600条b2b行业网站投放')
             ->assertDontSee('B2B网站发布次数')
             ->assertDontSee('API Token 数量')
             ->assertDontSee('CreBee 发布次数');
@@ -56,6 +58,8 @@ class PlatformPlanManagementTest extends TestCase
             ->assertSee('生成视频次数')
             ->assertSee('自媒体发布次数')
             ->assertSee(self::CREDIT_DESCRIPTION)
+            ->assertDontSee('8000条官媒投放')
+            ->assertDontSee('600条b2b行业网站投放')
             ->assertDontSee('B2B网站发布次数')
             ->assertDontSee('API Token 数量')
             ->assertDontSee('CreBee 发布次数');
@@ -71,6 +75,8 @@ class PlatformPlanManagementTest extends TestCase
             ->assertSee('生成视频次数')
             ->assertSee('自媒体发布次数')
             ->assertSee(self::CREDIT_DESCRIPTION)
+            ->assertDontSee('8000条官媒投放')
+            ->assertDontSee('600条b2b行业网站投放')
             ->assertDontSee('B2B网站发布次数')
             ->assertDontSee('API Token 数量')
             ->assertDontSee('CreBee 发布次数');

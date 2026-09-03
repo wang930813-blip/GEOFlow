@@ -34,7 +34,7 @@ class PlatformPlan extends Model
             self::RESOURCE_CREDITS => [
                 'label' => '积分',
                 'unit' => 'points',
-                'description' => '8000条官媒投放,600条b2b行业网站投放',
+                'description' => '支持官媒和 B2B 网站投放',
             ],
             self::RESOURCE_ARTICLE_GENERATIONS => ['label' => 'AI 文章生成次数', 'unit' => 'times'],
             self::RESOURCE_BRAND_DIAGNOSES => ['label' => '品牌诊断次数', 'unit' => 'times'],
