@@ -3,7 +3,9 @@
 namespace App\Services\Admin;
 
 use App\Models\ManualPublishStatEntry;
+use App\Models\PlatformPlan;
 use App\Models\Site;
+use App\Models\SitePlanSubscription;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -107,6 +109,42 @@ class ManualPublishStatService
             ->values();
     }
 
+    /**
+     * @return Collection<int,array{type:string,label:string,resource_key:string|null,used:int,quota:int|null,remaining:int|null,percent:int,is_unlimited:bool,color:string}>
+     */
+    public function progressRowsForSite(Site $site): Collection
+    {
+        $summary = $this->summaryForSite($site);
+        $snapshot = $this->activeEntitlementSnapshotForSite($site);
+
+        return collect(ManualPublishStatEntry::typeKeys())
+            ->map(function (string $type) use ($summary, $snapshot): array {
+                $used = (int) data_get($summary, 'by_type.'.$type.'.quantity', 0);
+                $resourceKey = ManualPublishStatEntry::resourceKeyFor($type);
+                $entitlement = $resourceKey !== null ? (array) ($snapshot[$resourceKey] ?? []) : [];
+                $enabled = (bool) ($entitlement['enabled'] ?? false);
+                $quotaValue = (int) ($entitlement['quota_value'] ?? 0);
+                $isUnlimited = $enabled && $quotaValue <= 0;
+                $quota = $enabled && ! $isUnlimited ? $quotaValue : ($isUnlimited ? null : 0);
+                $percent = $isUnlimited
+                    ? 100
+                    : ($quota > 0 ? min(100, (int) round($used / max(1, $quota) * 100)) : 0);
+
+                return [
+                    'type' => $type,
+                    'label' => ManualPublishStatEntry::labelFor($type),
+                    'resource_key' => $resourceKey,
+                    'used' => $used,
+                    'quota' => $quota,
+                    'remaining' => $isUnlimited ? null : max(0, (int) $quota - $used),
+                    'percent' => $percent,
+                    'is_unlimited' => $isUnlimited,
+                    'color' => ManualPublishStatEntry::colorFor($type),
+                ];
+            })
+            ->values();
+    }
+
     public function entriesForSite(Site $site, int $perPage = 15): LengthAwarePaginator
     {
         return $this->baseQuery($site)
@@ -139,5 +177,40 @@ class ManualPublishStatService
     {
         return ManualPublishStatEntry::query()
             ->where('site_id', (int) $site->id);
+    }
+
+    /**
+     * @return array<string,array{enabled:bool,quota_value:int,quota_period:string,unit:string,meta:array<string,mixed>}>
+     */
+    private function activeEntitlementSnapshotForSite(Site $site): array
+    {
+        $subscription = SitePlanSubscription::query()
+            ->where('site_id', (int) $site->id)
+            ->where('status', 'active')
+            ->where(function (Builder $query): void {
+                $query->whereNull('starts_at')->orWhere('starts_at', '<=', now());
+            })
+            ->where(function (Builder $query): void {
+                $query->whereNull('ends_at')->orWhere('ends_at', '>=', now());
+            })
+            ->orderByDesc('ends_at')
+            ->orderByDesc('id')
+            ->first();
+
+        if (! $subscription instanceof SitePlanSubscription) {
+            return [];
+        }
+
+        return collect((array) $subscription->entitlements_snapshot)
+            ->filter(fn ($entitlement, string $resourceKey): bool => is_array($entitlement)
+                && array_key_exists($resourceKey, PlatformPlan::resourceCatalog()))
+            ->map(fn (array $entitlement): array => [
+                'enabled' => (bool) ($entitlement['enabled'] ?? false),
+                'quota_value' => (int) ($entitlement['quota_value'] ?? 0),
+                'quota_period' => (string) ($entitlement['quota_period'] ?? 'cycle'),
+                'unit' => (string) ($entitlement['unit'] ?? 'items'),
+                'meta' => (array) ($entitlement['meta'] ?? []),
+            ])
+            ->all();
     }
 }

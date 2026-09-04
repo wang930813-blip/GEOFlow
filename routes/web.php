@@ -446,6 +446,15 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
         Route::prefix('plan-usages')->name('plan-usages.')->group(function () {
             Route::get('/', [PlanUsageController::class, 'index'])->name('index');
         });
+        Route::prefix('manual-publish-stats')->name('manual-publish-stats.')->group(function () {
+            Route::get('/', [ManualPublishStatController::class, 'index'])->name('index');
+            Route::middleware('admin.super')->group(function () {
+                Route::post('/', [ManualPublishStatController::class, 'store'])->name('store');
+                Route::delete('{manual_publish_stat}', [ManualPublishStatController::class, 'destroy'])
+                    ->name('destroy')
+                    ->whereNumber('manual_publish_stat');
+            });
+        });
         Route::prefix('crebee-accounts')->name('crebee-accounts.')->group(function () {
             Route::get('/', [CrebeeAccountController::class, 'index'])->name('index');
             Route::post('aitoearn/authorizations', [CrebeeAccountController::class, 'startAiToEarnAuthorization'])
@@ -483,14 +492,6 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
         });
         // Super admin routes
         Route::middleware('admin.super')->group(function () {
-            Route::prefix('manual-publish-stats')->name('manual-publish-stats.')->group(function () {
-                Route::get('/', [ManualPublishStatController::class, 'index'])->name('index');
-                Route::post('/', [ManualPublishStatController::class, 'store'])->name('store');
-                Route::delete('{manual_publish_stat}', [ManualPublishStatController::class, 'destroy'])
-                    ->name('destroy')
-                    ->whereNumber('manual_publish_stat');
-            });
-
             Route::post('product-cases/{product_case}/toggle-status', [AdminProductCaseController::class, 'toggleStatus'])
                 ->name('product-cases.toggle-status')
                 ->whereNumber('product_case');

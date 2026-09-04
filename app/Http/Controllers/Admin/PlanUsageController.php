@@ -9,7 +9,6 @@ use App\Models\AdminPlanSubscription;
 use App\Models\AdminResourceUsage;
 use App\Models\PlatformPlan;
 use App\Models\Site;
-use App\Services\MediaDistribution\MediaPackageDeliveryUsageService;
 use App\Support\AdminWeb;
 use App\Support\CurrentSite;
 use Illuminate\Database\Eloquent\Builder;
@@ -24,14 +23,14 @@ class PlanUsageController extends Controller
         $admin = $request->user('admin');
         abort_unless($admin instanceof Admin, 403);
 
-        $resourceCatalog = PlatformPlan::visibleResourceCatalog();
+        $resourceCatalog = PlatformPlan::usageResourceCatalog();
         $subscriptions = $this->visibleSubscriptions($admin, $request)
             ->with(['admin:id,username,display_name,role,created_by', 'site:id,name,customer_mode,agent_admin_id', 'plan:id,name,code'])
             ->orderByDesc('created_at')
             ->paginate(20)
             ->withQueryString();
 
-        $usageRows = $this->buildUsageRows($subscriptions->getCollection(), $resourceCatalog, app(MediaPackageDeliveryUsageService::class));
+        $usageRows = $this->buildUsageRows($subscriptions->getCollection(), $resourceCatalog);
         $subscriptions->setCollection($usageRows);
 
         return view('admin.plan-usages.index', [
@@ -102,7 +101,7 @@ class PlanUsageController extends Controller
      * @param  array<string,array{label:string,unit:string,description?:string}>  $resourceCatalog
      * @return Collection<int,array<string,mixed>>
      */
-    private function buildUsageRows(Collection $subscriptions, array $resourceCatalog, MediaPackageDeliveryUsageService $mediaDeliveryUsage): Collection
+    private function buildUsageRows(Collection $subscriptions, array $resourceCatalog): Collection
     {
         $subscriptionIds = $subscriptions->pluck('id')->map(fn ($id) => (int) $id)->all();
         $usageBySubscription = AdminResourceUsage::query()
@@ -116,9 +115,7 @@ class PlanUsageController extends Controller
             ->get()
             ->keyBy(fn (AdminCreditAccount $account): string => (int) $account->admin_id.':'.(int) $account->site_id);
 
-        $deliveryStats = $mediaDeliveryUsage->deliveryStatsForSubscriptions($subscriptions);
-
-        return $subscriptions->map(function (AdminPlanSubscription $subscription) use ($resourceCatalog, $usageBySubscription, $creditAccounts, $mediaDeliveryUsage, $deliveryStats): array {
+        return $subscriptions->map(function (AdminPlanSubscription $subscription) use ($resourceCatalog, $usageBySubscription, $creditAccounts): array {
             $usages = $usageBySubscription->get((int) $subscription->id, collect())->keyBy('resource_key');
             $creditAccount = $creditAccounts->get((int) $subscription->admin_id.':'.(int) $subscription->site_id);
             $resources = collect((array) $subscription->entitlements_snapshot)
@@ -167,28 +164,6 @@ class PlanUsageController extends Controller
                 ->values();
 
             $creditEntitlement = (array) data_get((array) $subscription->entitlements_snapshot, PlatformPlan::RESOURCE_CREDITS, []);
-            $statCounts = (array) $deliveryStats->get($mediaDeliveryUsage->key((int) $subscription->admin_id, (int) $subscription->site_id), ['official' => 0, 'b2b' => 0]);
-            $officialDeliveryCount = (int) ($statCounts['official'] ?? 0);
-            $b2bDeliveryCount = (int) ($statCounts['b2b'] ?? 0);
-            if ((bool) ($creditEntitlement['enabled'] ?? false) || $officialDeliveryCount > 0 || $b2bDeliveryCount > 0) {
-                $resources = collect([
-                    $this->mediaDeliveryStatResource(
-                        MediaPackageDeliveryUsageService::OFFICIAL_RESOURCE_KEY,
-                        MediaPackageDeliveryUsageService::OFFICIAL_LABEL,
-                        MediaPackageDeliveryUsageService::OFFICIAL_DESCRIPTION,
-                        $officialDeliveryCount,
-                        'newspaper'
-                    ),
-                    $this->mediaDeliveryStatResource(
-                        MediaPackageDeliveryUsageService::RESOURCE_KEY,
-                        MediaPackageDeliveryUsageService::LABEL,
-                        MediaPackageDeliveryUsageService::DESCRIPTION,
-                        $b2bDeliveryCount,
-                        'megaphone'
-                    ),
-                ])->merge($resources)->values();
-            }
-
             $hasUnlimitedCredits = (bool) ($creditEntitlement['enabled'] ?? false)
                 && (int) ($creditEntitlement['quota_value'] ?? 0) <= 0;
 
@@ -199,27 +174,6 @@ class PlanUsageController extends Controller
                 'hasUnlimitedCredits' => $hasUnlimitedCredits,
             ];
         });
-    }
-
-    /**
-     * @return array<string,mixed>
-     */
-    private function mediaDeliveryStatResource(string $key, string $label, string $description, int $deliveryCount, string $icon): array
-    {
-        return [
-            'key' => $key,
-            'label' => $label,
-            'description' => $description,
-            'quota' => null,
-            'used' => $deliveryCount,
-            'remaining' => null,
-            'period' => 'stat',
-            'unit' => 'items',
-            'percent' => 0,
-            'is_unlimited' => true,
-            'is_stat_only' => true,
-            'icon' => $icon,
-        ];
     }
 
     private function shouldHideResourceForSubscription(AdminPlanSubscription $subscription, string $resourceKey): bool

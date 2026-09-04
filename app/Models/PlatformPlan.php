@@ -21,9 +21,12 @@ class PlatformPlan extends Model
     public const RESOURCE_AI_IMAGE_GENERATIONS = 'ai_image_generations';
     public const RESOURCE_TEAM_MEMBERS = 'team_members';
     public const RESOURCE_API_TOKENS = 'api_tokens';
+    public const RESOURCE_MEDIA_PUBLISHES = 'media_publishes';
     public const RESOURCE_VIDEO_GENERATIONS = 'video_generations';
     public const RESOURCE_CREBEE_PUBLISHES = 'crebee_publishes';
     public const RESOURCE_B2B_WEBSITE_PUBLISHES = 'b2b_website_publishes';
+    public const RESOURCE_OFFICIAL_SITE_PUBLISHES = 'official_site_publishes';
+    public const RESOURCE_VIDEO_PUBLISHES = 'video_publishes';
 
     /**
      * @return array<string,array{label:string,unit:string,description?:string}>
@@ -45,9 +48,12 @@ class PlatformPlan extends Model
             self::RESOURCE_AI_IMAGE_GENERATIONS => ['label' => 'AI 配图次数', 'unit' => 'times'],
             self::RESOURCE_TEAM_MEMBERS => ['label' => '子账号数量', 'unit' => 'accounts'],
             self::RESOURCE_API_TOKENS => ['label' => 'API Token 数量', 'unit' => 'tokens'],
+            self::RESOURCE_MEDIA_PUBLISHES => ['label' => '媒体发布条数', 'unit' => 'items'],
             self::RESOURCE_VIDEO_GENERATIONS => ['label' => '生成视频次数', 'unit' => 'times'],
-            self::RESOURCE_CREBEE_PUBLISHES => ['label' => '自媒体发布次数', 'unit' => 'times'],
-            self::RESOURCE_B2B_WEBSITE_PUBLISHES => ['label' => 'B2B网站发布次数', 'unit' => 'times'],
+            self::RESOURCE_CREBEE_PUBLISHES => ['label' => '自媒体发布条数', 'unit' => 'items'],
+            self::RESOURCE_B2B_WEBSITE_PUBLISHES => ['label' => 'B2B网站发布条数', 'unit' => 'items'],
+            self::RESOURCE_OFFICIAL_SITE_PUBLISHES => ['label' => '官网发布条数', 'unit' => 'items'],
+            self::RESOURCE_VIDEO_PUBLISHES => ['label' => '视频发布条数', 'unit' => 'items'],
         ];
     }
 
@@ -56,9 +62,30 @@ class PlatformPlan extends Model
      */
     public static function visibleResourceCatalog(): array
     {
+        return self::configurableResourceCatalog();
+    }
+
+    /**
+     * @return array<string,array{label:string,unit:string,description?:string}>
+     */
+    public static function configurableResourceCatalog(): array
+    {
         return array_diff_key(self::resourceCatalog(), [
             self::RESOURCE_API_TOKENS => true,
+        ]);
+    }
+
+    /**
+     * @return array<string,array{label:string,unit:string,description?:string}>
+     */
+    public static function usageResourceCatalog(): array
+    {
+        return array_diff_key(self::configurableResourceCatalog(), [
+            self::RESOURCE_MEDIA_PUBLISHES => true,
+            self::RESOURCE_CREBEE_PUBLISHES => true,
             self::RESOURCE_B2B_WEBSITE_PUBLISHES => true,
+            self::RESOURCE_OFFICIAL_SITE_PUBLISHES => true,
+            self::RESOURCE_VIDEO_PUBLISHES => true,
         ]);
     }
 

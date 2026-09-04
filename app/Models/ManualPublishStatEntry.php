@@ -38,6 +38,17 @@ class ManualPublishStatEntry extends Model
         self::TYPE_VIDEO => '#ef4444',
     ];
 
+    /**
+     * @var array<string,string>
+     */
+    public const TYPE_RESOURCE_KEYS = [
+        self::TYPE_MEDIA => PlatformPlan::RESOURCE_MEDIA_PUBLISHES,
+        self::TYPE_SELF_MEDIA => PlatformPlan::RESOURCE_CREBEE_PUBLISHES,
+        self::TYPE_B2B => PlatformPlan::RESOURCE_B2B_WEBSITE_PUBLISHES,
+        self::TYPE_OFFICIAL_SITE => PlatformPlan::RESOURCE_OFFICIAL_SITE_PUBLISHES,
+        self::TYPE_VIDEO => PlatformPlan::RESOURCE_VIDEO_PUBLISHES,
+    ];
+
     protected $fillable = [
         'site_id',
         'owner_admin_id',
@@ -76,6 +87,11 @@ class ManualPublishStatEntry extends Model
     public static function colorFor(string $type): string
     {
         return self::TYPE_COLORS[$type] ?? '#64748b';
+    }
+
+    public static function resourceKeyFor(string $type): ?string
+    {
+        return self::TYPE_RESOURCE_KEYS[$type] ?? null;
     }
 
     public function site(): BelongsTo
