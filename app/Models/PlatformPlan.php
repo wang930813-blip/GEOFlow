@@ -80,13 +80,7 @@ class PlatformPlan extends Model
      */
     public static function usageResourceCatalog(): array
     {
-        return array_diff_key(self::configurableResourceCatalog(), [
-            self::RESOURCE_MEDIA_PUBLISHES => true,
-            self::RESOURCE_CREBEE_PUBLISHES => true,
-            self::RESOURCE_B2B_WEBSITE_PUBLISHES => true,
-            self::RESOURCE_OFFICIAL_SITE_PUBLISHES => true,
-            self::RESOURCE_VIDEO_PUBLISHES => true,
-        ]);
+        return self::configurableResourceCatalog();
     }
 
     protected $fillable = [

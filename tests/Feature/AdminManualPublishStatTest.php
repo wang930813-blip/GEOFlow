@@ -370,9 +370,9 @@ class AdminManualPublishStatTest extends TestCase
         $this->assertStringContainsString('option.hidden = false', $html);
     }
 
-    public function test_manual_publish_resources_are_hidden_from_profile_and_plan_usage_pages(): void
+    public function test_manual_publish_resources_are_visible_in_profile_and_plan_usage_pages(): void
     {
-        [, $site] = $this->createAdminWithSite('manual_stat_usage_owner', 'direct_admin');
+        [$superAdmin, $site] = $this->createAdminWithSite('manual_stat_usage_owner', 'direct_admin');
         $owner = $site->owner;
         $this->openPlanSnapshot($site, [
             PlatformPlan::RESOURCE_BRAND_DIAGNOSES => 9,
@@ -382,34 +382,101 @@ class AdminManualPublishStatTest extends TestCase
             PlatformPlan::RESOURCE_OFFICIAL_SITE_PUBLISHES => 120,
             PlatformPlan::RESOURCE_VIDEO_PUBLISHES => 60,
         ]);
+        DB::table('manual_publish_stat_entries')->insert([
+            [
+                'site_id' => (int) $site->id,
+                'owner_admin_id' => (int) $owner->id,
+                'created_by_admin_id' => (int) $superAdmin->id,
+                'metric_type' => 'media',
+                'quantity' => 12,
+                'stat_date' => '2026-08-01',
+                'remark' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'site_id' => (int) $site->id,
+                'owner_admin_id' => (int) $owner->id,
+                'created_by_admin_id' => (int) $superAdmin->id,
+                'metric_type' => 'self_media',
+                'quantity' => 7,
+                'stat_date' => '2026-08-01',
+                'remark' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'site_id' => (int) $site->id,
+                'owner_admin_id' => (int) $owner->id,
+                'created_by_admin_id' => (int) $superAdmin->id,
+                'metric_type' => 'b2b',
+                'quantity' => 33,
+                'stat_date' => '2026-08-02',
+                'remark' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'site_id' => (int) $site->id,
+                'owner_admin_id' => (int) $owner->id,
+                'created_by_admin_id' => (int) $superAdmin->id,
+                'metric_type' => 'official_site',
+                'quantity' => 5,
+                'stat_date' => '2026-08-02',
+                'remark' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'site_id' => (int) $site->id,
+                'owner_admin_id' => (int) $owner->id,
+                'created_by_admin_id' => (int) $superAdmin->id,
+                'metric_type' => 'video',
+                'quantity' => 2,
+                'stat_date' => '2026-08-03',
+                'remark' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
 
         $usageResponse = $this->actingAs($owner, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
             ->get(route('admin.plan-usages.index'))
             ->assertOk()
             ->assertSee('品牌诊断次数')
-            ->assertDontSee('媒体发布条数')
-            ->assertDontSee('自媒体发布条数')
-            ->assertDontSee('B2B网站发布条数')
-            ->assertDontSee('官网发布条数')
-            ->assertDontSee('视频发布条数');
+            ->assertSee('媒体发布条数')
+            ->assertSee('自媒体发布条数')
+            ->assertSee('B2B网站发布条数')
+            ->assertSee('官网发布条数')
+            ->assertSee('视频发布条数')
+            ->assertSee('已用 12 / 4000')
+            ->assertSee('已用 7 / 500')
+            ->assertSee('已用 33 / 800')
+            ->assertSee('已用 5 / 120')
+            ->assertSee('已用 2 / 60');
 
-        $this->assertStringNotContainsString('data-resource-key="'.PlatformPlan::RESOURCE_MEDIA_PUBLISHES.'"', $usageResponse->getContent());
-        $this->assertStringNotContainsString('data-resource-key="'.PlatformPlan::RESOURCE_CREBEE_PUBLISHES.'"', $usageResponse->getContent());
-        $this->assertStringNotContainsString('data-resource-key="'.PlatformPlan::RESOURCE_B2B_WEBSITE_PUBLISHES.'"', $usageResponse->getContent());
-        $this->assertStringNotContainsString('data-resource-key="'.PlatformPlan::RESOURCE_OFFICIAL_SITE_PUBLISHES.'"', $usageResponse->getContent());
-        $this->assertStringNotContainsString('data-resource-key="'.PlatformPlan::RESOURCE_VIDEO_PUBLISHES.'"', $usageResponse->getContent());
+        $this->assertStringContainsString('data-resource-key="'.PlatformPlan::RESOURCE_MEDIA_PUBLISHES.'"', $usageResponse->getContent());
+        $this->assertStringContainsString('data-resource-key="'.PlatformPlan::RESOURCE_CREBEE_PUBLISHES.'"', $usageResponse->getContent());
+        $this->assertStringContainsString('data-resource-key="'.PlatformPlan::RESOURCE_B2B_WEBSITE_PUBLISHES.'"', $usageResponse->getContent());
+        $this->assertStringContainsString('data-resource-key="'.PlatformPlan::RESOURCE_OFFICIAL_SITE_PUBLISHES.'"', $usageResponse->getContent());
+        $this->assertStringContainsString('data-resource-key="'.PlatformPlan::RESOURCE_VIDEO_PUBLISHES.'"', $usageResponse->getContent());
 
         $this->actingAs($owner, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
             ->get(route('admin.profile.index'))
             ->assertOk()
             ->assertSee('品牌诊断次数')
-            ->assertDontSee('媒体发布条数')
-            ->assertDontSee('自媒体发布条数')
-            ->assertDontSee('B2B网站发布条数')
-            ->assertDontSee('官网发布条数')
-            ->assertDontSee('视频发布条数');
+            ->assertSee('媒体发布条数')
+            ->assertSee('自媒体发布条数')
+            ->assertSee('B2B网站发布条数')
+            ->assertSee('官网发布条数')
+            ->assertSee('视频发布条数')
+            ->assertSee('已用 12 / 4000')
+            ->assertSee('已用 7 / 500')
+            ->assertSee('已用 33 / 800')
+            ->assertSee('已用 5 / 120')
+            ->assertSee('已用 2 / 60');
     }
 
     /**

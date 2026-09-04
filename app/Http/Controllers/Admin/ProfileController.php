@@ -9,6 +9,7 @@ use App\Models\AdminPlanSubscription;
 use App\Models\AdminResourceUsage;
 use App\Models\PlatformPlan;
 use App\Models\Site;
+use App\Services\Admin\ManualPublishStatService;
 use App\Services\MediaDistribution\MediaPackageDeliveryUsageService;
 use App\Support\AdminWeb;
 use App\Support\CurrentSite;
@@ -35,7 +36,12 @@ class ProfileController extends Controller
             'summaryCards' => $this->summaryCards($admin),
             'agentUserRows' => $admin->isSuperAdmin() ? $this->agentUserRows() : collect(),
             'planActivationRows' => $admin->isSuperAdmin() ? $this->planActivationRows() : collect(),
-            'subscriptionRows' => $this->subscriptionRows($admin, $resourceCatalog, app(MediaPackageDeliveryUsageService::class)),
+            'subscriptionRows' => $this->subscriptionRows(
+                $admin,
+                $resourceCatalog,
+                app(MediaPackageDeliveryUsageService::class),
+                app(ManualPublishStatService::class)
+            ),
             'ownerLabel' => $this->ownerLabel($admin),
             'resourceCatalog' => $resourceCatalog,
             'creditDescription' => (string) ($resourceCatalog[PlatformPlan::RESOURCE_CREDITS]['description'] ?? ''),
@@ -142,7 +148,12 @@ class ProfileController extends Controller
      * @param  array<string,array{label:string,unit:string,description?:string}>  $resourceCatalog
      * @return Collection<int,array<string,mixed>>
      */
-    private function subscriptionRows(Admin $admin, array $resourceCatalog, MediaPackageDeliveryUsageService $mediaDeliveryUsage): Collection
+    private function subscriptionRows(
+        Admin $admin,
+        array $resourceCatalog,
+        MediaPackageDeliveryUsageService $mediaDeliveryUsage,
+        ManualPublishStatService $manualPublishStats
+    ): Collection
     {
         $subscriptions = $this->visibleSubscriptionQuery($admin)
             ->whereHas('admin')
@@ -170,16 +181,18 @@ class ProfileController extends Controller
             ->keyBy(fn (AdminCreditAccount $account): string => (int) $account->admin_id.':'.(int) $account->site_id);
 
         $deliveryStats = $mediaDeliveryUsage->deliveryStatsForSubscriptions($subscriptions);
+        $manualUsageBySite = $manualPublishStats->resourceUsageTotalsBySiteIds($subscriptions->pluck('site_id'));
 
-        return $subscriptions->map(function (AdminPlanSubscription $subscription) use ($resourceCatalog, $usages, $creditAccounts, $mediaDeliveryUsage, $deliveryStats): array {
+        return $subscriptions->map(function (AdminPlanSubscription $subscription) use ($resourceCatalog, $usages, $creditAccounts, $mediaDeliveryUsage, $deliveryStats, $manualUsageBySite): array {
             $usageByKey = $usages->get((int) $subscription->id, collect())->keyBy('resource_key');
+            $manualUsageByResource = (array) $manualUsageBySite->get((int) $subscription->site_id, []);
             $creditAccount = $creditAccounts->get((int) $subscription->admin_id.':'.(int) $subscription->site_id);
             $resources = collect((array) $subscription->entitlements_snapshot)
                 ->filter(fn ($entitlement, string $key): bool => is_array($entitlement)
                     && (bool) ($entitlement['enabled'] ?? false)
                     && isset($resourceCatalog[$key])
                     && ! $this->shouldHideResourceForSubscription($subscription, $key))
-                ->map(function (array $entitlement, string $key) use ($resourceCatalog, $usageByKey, $creditAccount): array {
+                ->map(function (array $entitlement, string $key) use ($resourceCatalog, $usageByKey, $manualUsageByResource, $creditAccount): array {
                     $quota = (int) ($entitlement['quota_value'] ?? 0);
                     $period = (string) ($entitlement['quota_period'] ?? 'cycle');
                     $isUnlimited = $period === 'unlimited' || $quota <= 0;
@@ -202,7 +215,9 @@ class ProfileController extends Controller
                         ];
                     }
 
-                    $used = (int) ($usageByKey->get($key)?->used_amount ?? 0);
+                    $used = array_key_exists($key, $manualUsageByResource)
+                        ? (int) $manualUsageByResource[$key]
+                        : (int) ($usageByKey->get($key)?->used_amount ?? 0);
 
                     return [
                         'key' => $key,

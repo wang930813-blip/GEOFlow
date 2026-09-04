@@ -145,6 +145,43 @@ class ManualPublishStatService
             ->values();
     }
 
+    /**
+     * @param  iterable<int,int|string|null>  $siteIds
+     * @return Collection<int,array<string,int>>
+     */
+    public function resourceUsageTotalsBySiteIds(iterable $siteIds): Collection
+    {
+        $ids = collect($siteIds)
+            ->map(fn ($siteId): int => (int) $siteId)
+            ->filter(fn (int $siteId): bool => $siteId > 0)
+            ->unique()
+            ->values();
+
+        if ($ids->isEmpty()) {
+            return collect();
+        }
+
+        $totals = [];
+        $rows = ManualPublishStatEntry::query()
+            ->whereIn('site_id', $ids->all())
+            ->selectRaw('site_id, metric_type, SUM(quantity) as quantity')
+            ->groupBy('site_id', 'metric_type')
+            ->get();
+
+        foreach ($rows as $row) {
+            $resourceKey = ManualPublishStatEntry::resourceKeyFor((string) $row->metric_type);
+            if ($resourceKey === null) {
+                continue;
+            }
+
+            $siteId = (int) $row->site_id;
+            $totals[$siteId] ??= [];
+            $totals[$siteId][$resourceKey] = (int) $row->quantity;
+        }
+
+        return collect($totals);
+    }
+
     public function entriesForSite(Site $site, int $perPage = 15): LengthAwarePaginator
     {
         return $this->baseQuery($site)
