@@ -9,6 +9,7 @@ use App\Models\AdminPlanSubscription;
 use App\Models\AdminResourceUsage;
 use App\Models\PlatformPlan;
 use App\Models\Site;
+use App\Services\MediaDistribution\MediaPackageDeliveryUsageService;
 use App\Support\AdminWeb;
 use App\Support\CurrentSite;
 use Illuminate\Database\Eloquent\Builder;
@@ -34,7 +35,7 @@ class ProfileController extends Controller
             'summaryCards' => $this->summaryCards($admin),
             'agentUserRows' => $admin->isSuperAdmin() ? $this->agentUserRows() : collect(),
             'planActivationRows' => $admin->isSuperAdmin() ? $this->planActivationRows() : collect(),
-            'subscriptionRows' => $this->subscriptionRows($admin, $resourceCatalog),
+            'subscriptionRows' => $this->subscriptionRows($admin, $resourceCatalog, app(MediaPackageDeliveryUsageService::class)),
             'ownerLabel' => $this->ownerLabel($admin),
             'resourceCatalog' => $resourceCatalog,
             'creditDescription' => (string) ($resourceCatalog[PlatformPlan::RESOURCE_CREDITS]['description'] ?? ''),
@@ -141,7 +142,7 @@ class ProfileController extends Controller
      * @param  array<string,array{label:string,unit:string,description?:string}>  $resourceCatalog
      * @return Collection<int,array<string,mixed>>
      */
-    private function subscriptionRows(Admin $admin, array $resourceCatalog): Collection
+    private function subscriptionRows(Admin $admin, array $resourceCatalog, MediaPackageDeliveryUsageService $mediaDeliveryUsage): Collection
     {
         $subscriptions = $this->visibleSubscriptionQuery($admin)
             ->whereHas('admin')
@@ -168,7 +169,9 @@ class ProfileController extends Controller
             ->get()
             ->keyBy(fn (AdminCreditAccount $account): string => (int) $account->admin_id.':'.(int) $account->site_id);
 
-        return $subscriptions->map(function (AdminPlanSubscription $subscription) use ($resourceCatalog, $usages, $creditAccounts): array {
+        $deliveryStats = $mediaDeliveryUsage->deliveryStatsForSubscriptions($subscriptions);
+
+        return $subscriptions->map(function (AdminPlanSubscription $subscription) use ($resourceCatalog, $usages, $creditAccounts, $mediaDeliveryUsage, $deliveryStats): array {
             $usageByKey = $usages->get((int) $subscription->id, collect())->keyBy('resource_key');
             $creditAccount = $creditAccounts->get((int) $subscription->admin_id.':'.(int) $subscription->site_id);
             $resources = collect((array) $subscription->entitlements_snapshot)
@@ -216,12 +219,56 @@ class ProfileController extends Controller
                 })
                 ->values();
 
+            $creditEntitlement = (array) data_get((array) $subscription->entitlements_snapshot, PlatformPlan::RESOURCE_CREDITS, []);
+            $statCounts = (array) $deliveryStats->get($mediaDeliveryUsage->key((int) $subscription->admin_id, (int) $subscription->site_id), ['official' => 0, 'b2b' => 0]);
+            $officialDeliveryCount = (int) ($statCounts['official'] ?? 0);
+            $b2bDeliveryCount = (int) ($statCounts['b2b'] ?? 0);
+            if ((bool) ($creditEntitlement['enabled'] ?? false) || $officialDeliveryCount > 0 || $b2bDeliveryCount > 0) {
+                $resources = collect([
+                    $this->mediaDeliveryStatResource(
+                        MediaPackageDeliveryUsageService::OFFICIAL_RESOURCE_KEY,
+                        MediaPackageDeliveryUsageService::OFFICIAL_LABEL,
+                        MediaPackageDeliveryUsageService::OFFICIAL_DESCRIPTION,
+                        $officialDeliveryCount,
+                        'newspaper'
+                    ),
+                    $this->mediaDeliveryStatResource(
+                        MediaPackageDeliveryUsageService::RESOURCE_KEY,
+                        MediaPackageDeliveryUsageService::LABEL,
+                        MediaPackageDeliveryUsageService::DESCRIPTION,
+                        $b2bDeliveryCount,
+                        'megaphone'
+                    ),
+                ])->merge($resources)->values();
+            }
+
             return [
                 'subscription' => $subscription,
                 'resources' => $resources,
                 'creditAccount' => $creditAccount,
             ];
         });
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function mediaDeliveryStatResource(string $key, string $label, string $description, int $deliveryCount, string $icon): array
+    {
+        return [
+            'key' => $key,
+            'label' => $label,
+            'description' => $description,
+            'quota' => null,
+            'used' => $deliveryCount,
+            'remaining' => null,
+            'period' => 'stat',
+            'unit' => 'items',
+            'percent' => 0,
+            'is_unlimited' => true,
+            'is_stat_only' => true,
+            'icon' => $icon,
+        ];
     }
 
     private function visibleSubscriptionQuery(Admin $admin): Builder

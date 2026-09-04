@@ -602,8 +602,12 @@ class PlatformPlanManagementTest extends TestCase
             ->assertSee('已用 2 / 不限')
             ->assertSee(self::CREDIT_DESCRIPTION)
             ->assertDontSee(PlatformPlan::resourceCatalog()[PlatformPlan::RESOURCE_TEAM_MEMBERS]['label'])
-            ->assertDontSee('官媒累计投放')
-            ->assertDontSee('B2B行业网站累计投放')
+            ->assertSee('官媒累计投放')
+            ->assertSee('201 条')
+            ->assertSee('官媒套餐按 100 条计入，单篇官媒按 1 条计入')
+            ->assertSee('B2B行业网站累计投放')
+            ->assertSee('400 条')
+            ->assertSee('发布 1 次 B2B 网站套餐计入 200 条行业网站投放')
             ->assertDontSee('B2B网站发布条数')
             ->assertDontSee('Profile Deleted User Plan')
             ->assertDontSee('Profile Deleted Site Plan');
@@ -612,8 +616,8 @@ class PlatformPlanManagementTest extends TestCase
         $this->assertStringContainsString('style="width: 0%; min-width: 6px"', $html);
         $this->assertStringContainsString('style="width: 30%"', $html);
         $this->assertStringContainsString('data-resource-key="'.PlatformPlan::RESOURCE_ARTICLE_GENERATIONS.'"', $html);
-        $this->assertStringNotContainsString('data-resource-key="official_media_publishes"', $html);
-        $this->assertStringNotContainsString('data-resource-key="'.PlatformPlan::RESOURCE_B2B_WEBSITE_PUBLISHES.'"', $html);
+        $this->assertStringContainsString('data-resource-key="official_media_publishes"', $html);
+        $this->assertStringContainsString('data-resource-key="'.PlatformPlan::RESOURCE_B2B_WEBSITE_PUBLISHES.'"', $html);
         $this->assertStringNotContainsString('已用 400 /', $html);
 
         $usageResponse = $this->actingAs($agent, 'admin')
@@ -628,8 +632,12 @@ class PlatformPlanManagementTest extends TestCase
             ->assertSee('已用 2 / 不限')
             ->assertSee(self::CREDIT_DESCRIPTION)
             ->assertDontSee(PlatformPlan::resourceCatalog()[PlatformPlan::RESOURCE_TEAM_MEMBERS]['label'])
-            ->assertDontSee('官媒累计投放')
-            ->assertDontSee('B2B行业网站累计投放')
+            ->assertSee('官媒累计投放')
+            ->assertSee('201 条')
+            ->assertSee('官媒套餐按 100 条计入，单篇官媒按 1 条计入')
+            ->assertSee('B2B行业网站累计投放')
+            ->assertSee('400 条')
+            ->assertSee('发布 1 次 B2B 网站套餐计入 200 条行业网站投放')
             ->assertDontSee('B2B网站发布条数')
             ->assertDontSee('Profile Deleted User Plan')
             ->assertDontSee('Profile Deleted Site Plan');
@@ -638,8 +646,8 @@ class PlatformPlanManagementTest extends TestCase
         $this->assertStringContainsString('style="width: 0%; min-width: 6px"', $usageHtml);
         $this->assertStringContainsString('style="width: 30%"', $usageHtml);
         $this->assertStringContainsString('data-resource-key="'.PlatformPlan::RESOURCE_ARTICLE_GENERATIONS.'"', $usageHtml);
-        $this->assertStringNotContainsString('data-resource-key="official_media_publishes"', $usageHtml);
-        $this->assertStringNotContainsString('data-resource-key="'.PlatformPlan::RESOURCE_B2B_WEBSITE_PUBLISHES.'"', $usageHtml);
+        $this->assertStringContainsString('data-resource-key="official_media_publishes"', $usageHtml);
+        $this->assertStringContainsString('data-resource-key="'.PlatformPlan::RESOURCE_B2B_WEBSITE_PUBLISHES.'"', $usageHtml);
         $this->assertStringNotContainsString('已用 400 /', $usageHtml);
     }
 
