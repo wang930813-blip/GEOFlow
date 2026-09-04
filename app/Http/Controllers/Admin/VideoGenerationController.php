@@ -5,9 +5,12 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Admin;
 use App\Models\CrebeeAccount;
+use App\Models\KeywordLibrary;
+use App\Models\KnowledgeBase;
 use App\Models\SelfMediaAccount;
 use App\Models\Site;
 use App\Models\VideoGenerationJob;
+use App\Services\VideoGeneration\VideoContentDraftService;
 use App\Services\VideoGeneration\VideoGenerationService;
 use App\Support\AdminDataScope;
 use App\Support\AdminWeb;
@@ -15,6 +18,7 @@ use App\Support\Crebee\SelfMediaPlatformCatalog;
 use App\Support\SelfMedia\SelfMediaPlatformCatalog as AiToEarnPlatformCatalog;
 use App\Support\CurrentSite;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
@@ -57,14 +61,84 @@ class VideoGenerationController extends Controller
     {
         $admin = $this->admin($request);
         abort_if($admin->isAgentAdmin(), 403);
-        $this->site();
+        $site = $this->site();
 
         return view('admin.video-generations.create', [
             'pageTitle' => '创建生成视频',
             'activeMenu' => 'video_generations',
             'adminSiteName' => AdminWeb::siteName(),
             'admin' => $admin,
+            'keywordLibraries' => $this->draftKeywordLibraries($admin, $site),
+            'knowledgeBases' => $this->draftKnowledgeBases($admin, $site),
         ]);
+    }
+
+    public function topicCandidates(Request $request, VideoContentDraftService $draftService): JsonResponse
+    {
+        $admin = $this->admin($request);
+        abort_if($admin->isAgentAdmin(), 403);
+        $site = $this->site();
+        $payload = $request->validate([
+            'keyword_library_id' => ['required', 'integer', 'min:1'],
+            'knowledge_base_id' => ['nullable', 'integer', 'min:1'],
+        ]);
+
+        try {
+            return response()->json([
+                'success' => true,
+                'data' => $draftService->topicCandidates(
+                    $admin,
+                    $site,
+                    (int) $payload['keyword_library_id'],
+                    isset($payload['knowledge_base_id']) ? (int) $payload['knowledge_base_id'] : null
+                ),
+            ]);
+        } catch (RuntimeException $exception) {
+            return response()->json([
+                'success' => false,
+                'message' => $exception->getMessage(),
+            ], 422);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return response()->json([
+                'success' => false,
+                'message' => '视频主题自动生成失败，请稍后重试',
+            ], 422);
+        }
+    }
+
+    public function scriptDraft(Request $request, VideoContentDraftService $draftService): JsonResponse
+    {
+        $admin = $this->admin($request);
+        abort_if($admin->isAgentAdmin(), 403);
+        $site = $this->site();
+        $payload = $request->validate([
+            'keyword_library_id' => ['nullable', 'integer', 'min:1'],
+            'knowledge_base_id' => ['nullable', 'integer', 'min:1'],
+            'keyword' => ['nullable', 'string', 'max:100'],
+            'style' => ['required', 'string', 'in:question,avoid_pitfall,how_to_choose,comparison,scenario,trend'],
+            'subject' => ['required', 'string', 'max:200'],
+        ]);
+
+        try {
+            return response()->json([
+                'success' => true,
+                'data' => $draftService->scriptDraft($admin, $site, $payload),
+            ]);
+        } catch (RuntimeException $exception) {
+            return response()->json([
+                'success' => false,
+                'message' => $exception->getMessage(),
+            ], 422);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return response()->json([
+                'success' => false,
+                'message' => '视频脚本自动生成失败，请稍后重试',
+            ], 422);
+        }
     }
 
     public function store(Request $request): RedirectResponse
@@ -277,6 +351,39 @@ class VideoGenerationController extends Controller
         if (! ($admin->isSuperAdmin() || $admin->isAgentAdmin())) {
             abort_if((int) $video->owner_admin_id !== (int) $admin->id, 404);
         }
+    }
+
+    private function draftKeywordLibraries(Admin $admin, Site $site)
+    {
+        $query = KeywordLibrary::query()
+            ->withoutGlobalScopes()
+            ->select(['id', 'site_id', 'owner_admin_id', 'name', 'company_name', 'keyword_count', 'created_at'])
+            ->where('site_id', (int) $site->id)
+            ->withCount('keywords as actual_keyword_count')
+            ->orderByDesc('created_at')
+            ->orderByDesc('id');
+
+        if (! $admin->isSuperAdmin()) {
+            $query->where('owner_admin_id', (int) $admin->id);
+        }
+
+        return $query->get();
+    }
+
+    private function draftKnowledgeBases(Admin $admin, Site $site)
+    {
+        $query = KnowledgeBase::query()
+            ->withoutGlobalScopes()
+            ->select(['id', 'site_id', 'owner_admin_id', 'name', 'created_at'])
+            ->where('site_id', (int) $site->id)
+            ->orderByDesc('created_at')
+            ->orderByDesc('id');
+
+        if (! $admin->isSuperAdmin()) {
+            $query->where('owner_admin_id', (int) $admin->id);
+        }
+
+        return $query->get();
     }
 
     private function loadSelfMediaVideoAccounts(Admin $admin, Site $site)

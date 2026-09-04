@@ -6,15 +6,20 @@ use App\Jobs\PollVideoGenerationJob;
 use App\Jobs\StartVideoGenerationJob;
 use App\Models\Admin;
 use App\Models\AdminResourceUsage;
+use App\Models\AiModel;
 use App\Models\CrebeeAccount;
 use App\Models\CrebeeAgent;
 use App\Models\CrebeePublishJob;
 use App\Models\CrebeePublishJobItem;
+use App\Models\Keyword;
+use App\Models\KeywordLibrary;
+use App\Models\KnowledgeBase;
 use App\Models\PlatformPlan;
 use App\Models\Site;
 use App\Models\VideoGenerationJob;
 use App\Services\Billing\AdminPlanSubscriptionService;
 use App\Services\VideoGeneration\VideoGenerationClient;
+use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request as HttpRequest;
@@ -38,6 +43,7 @@ class AdminVideoGenerationTest extends TestCase
             'video-generation.api_key' => '',
             'video-generation.poll_interval' => 10,
             'video-generation.max_poll_minutes' => 60,
+            'aitoearn.enabled' => false,
         ]);
     }
 
@@ -149,12 +155,19 @@ class AdminVideoGenerationTest extends TestCase
     public function test_create_video_generation_form_hides_generation_option_fields(): void
     {
         [$admin, $site] = $this->provisionSubscribedAdmin('video_generation_form_owner', videoQuota: 1, crebeeQuota: 1);
+        $this->keywordLibrary($site, $admin);
+        $this->knowledgeBase($site, $admin);
 
         $response = $this->actingAs($admin, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
             ->get(route('admin.video-generations.create'));
 
         $response->assertOk();
+        $response->assertSee('name="keyword_library_id"', false);
+        $response->assertSee('name="knowledge_base_id"', false);
+        $response->assertSee('自动生成视频主题', false);
+        $response->assertSee('data-topic-url="/geo_admin/video-generations/topic-candidates"', false);
+        $response->assertSee('data-script-url="/geo_admin/video-generations/script-draft"', false);
         $response->assertSee('name="subject"', false);
         $response->assertSee('name="script"', false);
         $response->assertSee('name="cover_image"', false);
@@ -163,6 +176,94 @@ class AdminVideoGenerationTest extends TestCase
         $response->assertDontSee('name="video_aspect"', false);
         $response->assertDontSee('name="video_count"', false);
         $response->assertDontSee('name="video_source"', false);
+    }
+
+    public function test_user_can_generate_video_topic_candidates_from_keyword_library(): void
+    {
+        [$admin, $site] = $this->provisionSubscribedAdmin('video_topic_candidate_owner', videoQuota: 1, crebeeQuota: 1);
+        $library = $this->keywordLibrary($site, $admin);
+        Keyword::query()->create([
+            'library_id' => (int) $library->id,
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'keyword' => '企业团险服务商',
+        ]);
+        $knowledgeBase = $this->knowledgeBase($site, $admin);
+        $this->gpt55Model();
+
+        Http::fake([
+            'https://ai.example.test/v1/chat/completions' => Http::response([
+                'choices' => [
+                    [
+                        'message' => [
+                            'content' => json_encode([
+                                ['style' => 'question', 'style_label' => '问题型', 'subject' => '企业团险服务商怎么选才靠谱'],
+                                ['style' => 'avoid_pitfall', 'style_label' => '避坑型', 'subject' => '企业团险别只盯着低价'],
+                                ['style' => 'how_to_choose', 'style_label' => '怎么选型', 'subject' => '选企业团险重点看哪三点'],
+                                ['style' => 'comparison', 'style_label' => '对比型', 'subject' => '团体意外险和雇主责任险怎么搭配'],
+                                ['style' => 'scenario', 'style_label' => '场景型', 'subject' => '高空作业人员保险怎么配'],
+                                ['style' => 'trend', 'style_label' => '趋势型', 'subject' => '企业用工风险为什么要提前规划'],
+                            ], JSON_UNESCAPED_UNICODE),
+                        ],
+                    ],
+                ],
+            ]),
+        ]);
+        Http::preventStrayRequests();
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->postJson(route('admin.video-generations.topic-candidates'), [
+                'keyword_library_id' => (int) $library->id,
+                'knowledge_base_id' => (int) $knowledgeBase->id,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.keyword', '企业团险服务商')
+            ->assertJsonPath('data.candidates.0.style', 'question')
+            ->assertJsonPath('data.candidates.0.subject', '企业团险服务商怎么选才靠谱')
+            ->assertJsonCount(6, 'data.candidates');
+    }
+
+    public function test_user_can_generate_video_script_draft_from_selected_topic(): void
+    {
+        [$admin, $site] = $this->provisionSubscribedAdmin('video_script_draft_owner', videoQuota: 1, crebeeQuota: 1);
+        $library = $this->keywordLibrary($site, $admin);
+        $this->gpt55Model();
+
+        Http::fake([
+            'https://ai.example.test/v1/chat/completions' => Http::response([
+                'choices' => [
+                    [
+                        'message' => [
+                            'content' => json_encode([
+                                'subject' => '企业团险服务商怎么选才靠谱',
+                                'style' => 'question',
+                                'script' => "企业团险服务商怎么选？\n很多企业容易只看报价，却忽略核保、风控和理赔协同。\n心有灵犀保险代理有限公司聚焦企业团险和企业用工风险场景。\n选企业团险，别只比价格，更要看能不能解决真实风险。",
+                                'cover_text' => '企业团险服务商怎么选',
+                                'publish_copy' => '企业团险服务商怎么选？除了价格，更要看方案、产品资源和理赔协同能力。',
+                            ], JSON_UNESCAPED_UNICODE),
+                        ],
+                    ],
+                ],
+            ]),
+        ]);
+        Http::preventStrayRequests();
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->postJson(route('admin.video-generations.script-draft'), [
+                'keyword_library_id' => (int) $library->id,
+                'keyword' => '企业团险服务商',
+                'style' => 'question',
+                'subject' => '企业团险服务商怎么选才靠谱',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.subject', '企业团险服务商怎么选才靠谱')
+            ->assertJsonPath('data.style', 'question')
+            ->assertJsonPath('data.cover_text', '企业团险服务商怎么选')
+            ->assertJsonFragment(['publish_copy' => '企业团险服务商怎么选？除了价格，更要看方案、产品资源和理赔协同能力。']);
     }
 
     public function test_user_can_delete_own_video_generation_job_from_list(): void
@@ -591,6 +692,56 @@ class AdminVideoGenerationTest extends TestCase
         );
 
         return [$admin, $site];
+    }
+
+    private function keywordLibrary(Site $site, Admin $owner): KeywordLibrary
+    {
+        return KeywordLibrary::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $owner->id,
+            'name' => '企业保险关键词库',
+            'description' => '企业保险内容方向',
+            'company_name' => '心有灵犀保险代理有限公司',
+            'domain_keyword' => '企业保险',
+            'industry' => '保险服务',
+            'brand_description' => '心有灵犀保险代理有限公司聚焦企业团险、团体意外险、雇主责任险和企业用工风险。',
+            'status' => 'active',
+            'keyword_count' => 1,
+        ]);
+    }
+
+    private function knowledgeBase(Site $site, Admin $owner): KnowledgeBase
+    {
+        return KnowledgeBase::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $owner->id,
+            'name' => '企业保险知识库',
+            'content' => '心有灵犀保险代理有限公司聚焦企业团险、雇主责任险、核保协同、理赔协同和用工风险场景。',
+            'character_count' => 45,
+        ]);
+    }
+
+    private function gpt55Model(): AiModel
+    {
+        $crypto = app(ApiKeyCrypto::class);
+        $model = AiModel::query()->withoutGlobalScope('current_site')->create([
+            'name' => 'GPT-5.5',
+            'site_id' => null,
+            'owner_admin_id' => null,
+            'version' => 'test',
+            'api_key' => $crypto->encrypt('test-key'),
+            'model_id' => 'gpt-5.5',
+            'model_type' => 'chat',
+            'api_url' => 'https://ai.example.test/v1',
+            'failover_priority' => 1,
+            'daily_limit' => 0,
+            'used_today' => 0,
+            'total_used' => 0,
+            'status' => 'active',
+        ]);
+        $model->syncOriginal();
+
+        return $model;
     }
 
     private function completedVideo(Site $site, Admin $owner, string $title, string $coverImage = 'https://cdn.example.test/video-cover.jpg'): VideoGenerationJob

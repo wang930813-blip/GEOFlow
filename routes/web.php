@@ -253,6 +253,8 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
         Route::prefix('video-generations')->name('video-generations.')->group(function () {
             Route::get('/', [VideoGenerationController::class, 'index'])->name('index');
             Route::get('create', [VideoGenerationController::class, 'create'])->name('create');
+            Route::post('topic-candidates', [VideoGenerationController::class, 'topicCandidates'])->name('topic-candidates');
+            Route::post('script-draft', [VideoGenerationController::class, 'scriptDraft'])->name('script-draft');
             Route::post('/', [VideoGenerationController::class, 'store'])->name('store');
             Route::get('{videoGeneration}', [VideoGenerationController::class, 'show'])->name('show')->whereNumber('videoGeneration');
             Route::get('{videoGeneration}/download', [VideoGenerationController::class, 'download'])->name('download')->whereNumber('videoGeneration');
