@@ -30,6 +30,7 @@ use App\Http\Controllers\Admin\ImageLibraryController;
 use App\Http\Controllers\Admin\KeywordLibraryController;
 use App\Http\Controllers\Admin\KnowledgeBaseController;
 use App\Http\Controllers\Admin\LegacyController;
+use App\Http\Controllers\Admin\ManualPublishStatController;
 use App\Http\Controllers\Admin\MaterialsController;
 use App\Http\Controllers\Admin\McpServerController;
 use App\Http\Controllers\Admin\MediaDistribution\CreditController as MediaDistributionCreditController;
@@ -482,6 +483,14 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
         });
         // Super admin routes
         Route::middleware('admin.super')->group(function () {
+            Route::prefix('manual-publish-stats')->name('manual-publish-stats.')->group(function () {
+                Route::get('/', [ManualPublishStatController::class, 'index'])->name('index');
+                Route::post('/', [ManualPublishStatController::class, 'store'])->name('store');
+                Route::delete('{manual_publish_stat}', [ManualPublishStatController::class, 'destroy'])
+                    ->name('destroy')
+                    ->whereNumber('manual_publish_stat');
+            });
+
             Route::post('product-cases/{product_case}/toggle-status', [AdminProductCaseController::class, 'toggleStatus'])
                 ->name('product-cases.toggle-status')
                 ->whereNumber('product_case');
