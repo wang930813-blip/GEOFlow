@@ -9,16 +9,19 @@ final class ApiResponse
     /**
      * @param  array<string, mixed>  $data
      */
-    public static function success(array $data, string $requestId, int $status = 200): JsonResponse
+    public static function success(array $data, string $requestId, int $status = 200, array $meta = []): JsonResponse
     {
+        $metadata = [
+            'request_id' => $requestId,
+            'timestamp' => now()->toIso8601String(),
+            ...$meta,
+        ];
+
         return response()->json([
             'success' => true,
             'data' => $data,
             'error' => null,
-            'meta' => [
-                'request_id' => $requestId,
-                'timestamp' => now()->toIso8601String(),
-            ],
+            'meta' => $metadata,
         ], $status);
     }
 

@@ -11,6 +11,14 @@ return [
         'admin_id' => (int) env('BRAND_DIAGNOSIS_OPEN_API_ADMIN_ID', 0) ?: null,
     ],
 
+    'lookup_api' => [
+        'enabled' => filter_var(env('BRAND_DIAGNOSIS_LOOKUP_API_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        'api_key' => trim((string) env('BRAND_DIAGNOSIS_LOOKUP_API_KEY', '')),
+        'cache_ttl' => max(0, (int) env('BRAND_DIAGNOSIS_LOOKUP_CACHE_TTL', 21600)),
+        'rate_limit' => max(1, (int) env('BRAND_DIAGNOSIS_LOOKUP_RATE_LIMIT', 10)),
+        'candidate_limit' => max(20, (int) env('BRAND_DIAGNOSIS_LOOKUP_CANDIDATE_LIMIT', 100)),
+    ],
+
     // 显示层基础值叠加：开启后仅在「已完成」诊断的页面展示时叠加基础数值，不写入存储、不影响真实计算。
     // 关闭则展示真实计算值。各基础值可按需调整。
     'display_baseline' => [

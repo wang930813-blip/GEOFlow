@@ -55,4 +55,15 @@ abstract class BaseApiController extends Controller
 
         return $response;
     }
+
+    /**
+     * Success response variant for endpoints that need additional public meta fields.
+     * Existing endpoint envelopes remain unchanged.
+     *
+     * @param  array<string,mixed>  $meta
+     */
+    protected function successWithMeta(Request $request, array $data, array $meta, int $status = 200): JsonResponse
+    {
+        return ApiResponse::success($data, $this->requestId($request), $status, $meta);
+    }
 }
