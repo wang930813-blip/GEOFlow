@@ -16,6 +16,8 @@ final class BrandDiagnosisLookupRequest extends FormRequest
         'sources',
         'snapshots',
         'competitors',
+        'platform_analysis',
+        'competitor_visibility',
     ];
 
     public function authorize(): bool
@@ -32,6 +34,9 @@ final class BrandDiagnosisLookupRequest extends FormRequest
             'include' => is_string($this->input('include'))
                 ? trim($this->input('include'))
                 : $this->input('include'),
+            'model' => is_string($this->input('model'))
+                ? strtolower(trim($this->input('model')))
+                : $this->input('model'),
         ]);
     }
 
@@ -40,6 +45,7 @@ final class BrandDiagnosisLookupRequest extends FormRequest
         return [
             'brand_word' => ['required', 'string', 'max:120'],
             'include' => ['nullable', 'string', 'max:200'],
+            'model' => ['nullable', 'string', 'max:40', 'in:all,doubao,deepseek,qianwen,wenxin'],
         ];
     }
 
@@ -67,6 +73,16 @@ final class BrandDiagnosisLookupRequest extends FormRequest
         }
 
         return $modules;
+    }
+
+    public function modelFilter(): ?string
+    {
+        $model = strtolower(trim((string) $this->input('model', '')));
+        if ($model === '' || $model === 'all') {
+            return null;
+        }
+
+        return $model;
     }
 
     protected function failedValidation(Validator $validator): void

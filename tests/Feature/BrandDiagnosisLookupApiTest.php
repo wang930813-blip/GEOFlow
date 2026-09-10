@@ -50,6 +50,14 @@ class BrandDiagnosisLookupApiTest extends TestCase
             ->assertJsonPath('error.code', 'validation_failed');
     }
 
+    public function test_lookup_api_rejects_unsupported_model_filter(): void
+    {
+        $this->withHeader('X-Api-Key', 'test-lookup-key')
+            ->getJson('/api/v1/brand-diagnoses/search?brand_word=策影GEO&include=performance&model=yuanbao')
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', 'validation_failed');
+    }
+
     public function test_lookup_api_returns_newest_cross_site_canonical_match(): void
     {
         $older = BrandDiagnosisRun::query()->create([
@@ -318,6 +326,346 @@ class BrandDiagnosisLookupApiTest extends TestCase
             ->assertJsonPath('data.brand_profile', null)
             ->assertJsonPath('data.module_status.competitors', 'included')
             ->assertJsonPath('data.module_status.questions', 'omitted');
+    }
+
+    public function test_lookup_api_filters_brand_performance_by_model(): void
+    {
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => null,
+            'brand_name' => '分模型表现品牌',
+            'platforms' => ['doubao', 'deepseek'],
+            'status' => 'completed',
+            'brand_profile' => '分模型表现品牌是一家企业服务品牌。',
+            'brand_profile_status' => 'success',
+            'total_questions' => 2,
+            'completed_questions' => 2,
+            'brand_score' => 80,
+            'mention_rate' => 75,
+            'average_rank' => 1.5,
+            'mention_count' => 4,
+            'sentiment_rate' => 100,
+        ]);
+        $questionOne = $run->questions()->create([
+            'site_id' => null,
+            'question' => '分模型表现品牌怎么样？',
+            'question_type' => '品牌认知',
+            'sort_order' => 1,
+            'status' => 'completed',
+        ]);
+        $questionTwo = $run->questions()->create([
+            'site_id' => null,
+            'question' => '分模型表现品牌适合哪些场景？',
+            'question_type' => '品牌认知',
+            'sort_order' => 2,
+            'status' => 'completed',
+        ]);
+
+        $doubaoMentioned = $questionOne->results()->create([
+            'site_id' => null,
+            'run_id' => $run->id,
+            'platform' => 'doubao',
+            'status' => 'success',
+            'answer' => '分模型表现品牌在豆包中被推荐。',
+            'brand_mentioned' => true,
+            'mention_count' => 1,
+            'mention_rank' => 1,
+            'sentiment' => 'positive',
+        ]);
+        $questionTwo->results()->create([
+            'site_id' => null,
+            'run_id' => $run->id,
+            'platform' => 'doubao',
+            'status' => 'success',
+            'answer' => '豆包第二条回答没有提及目标品牌。',
+            'brand_mentioned' => false,
+            'mention_count' => 0,
+            'mention_rank' => 0,
+            'sentiment' => 'neutral',
+        ]);
+        $deepseekOne = $questionOne->results()->create([
+            'site_id' => null,
+            'run_id' => $run->id,
+            'platform' => 'deepseek',
+            'status' => 'success',
+            'answer' => 'DeepSeek 第一条推荐分模型表现品牌。',
+            'brand_mentioned' => true,
+            'mention_count' => 1,
+            'mention_rank' => 2,
+            'sentiment' => 'positive',
+        ]);
+        $deepseekTwo = $questionTwo->results()->create([
+            'site_id' => null,
+            'run_id' => $run->id,
+            'platform' => 'deepseek',
+            'status' => 'success',
+            'answer' => 'DeepSeek 第二条也提及分模型表现品牌。',
+            'brand_mentioned' => true,
+            'mention_count' => 1,
+            'mention_rank' => 2,
+            'sentiment' => 'negative',
+        ]);
+
+        $doubaoMentioned->brandMentions()->create([
+            'site_id' => null,
+            'run_id' => $run->id,
+            'question_id' => $questionOne->id,
+            'platform' => 'doubao',
+            'brand_name' => '分模型表现品牌',
+            'mention_count' => 2,
+            'mention_rank' => 1,
+            'sentiment' => 'positive',
+            'source_count' => 1,
+            'is_target_brand' => true,
+        ]);
+        foreach ([$deepseekOne, $deepseekTwo] as $result) {
+            $result->brandMentions()->create([
+                'site_id' => null,
+                'run_id' => $run->id,
+                'question_id' => $result->question_id,
+                'platform' => 'deepseek',
+                'brand_name' => '分模型表现品牌',
+                'mention_count' => 1,
+                'mention_rank' => 2,
+                'sentiment' => $result->id === $deepseekOne->id ? 'positive' : 'negative',
+                'source_count' => 1,
+                'is_target_brand' => true,
+            ]);
+        }
+
+        $response = $this->withHeader('X-Api-Key', 'test-lookup-key')
+            ->getJson('/api/v1/brand-diagnoses/search?brand_word=分模型表现品牌&include=performance&model=doubao')
+            ->assertOk()
+            ->assertJsonPath('data.brand_performance.model', 'doubao')
+            ->assertJsonPath('data.brand_performance.model_label', '豆包')
+            ->assertJsonPath('data.brand_performance.mention_rate', 50)
+            ->assertJsonPath('data.brand_performance.average_rank', '1')
+            ->assertJsonPath('data.brand_performance.mention_count', 2)
+            ->assertJsonPath('data.brand_performance.sentiment_rate', 100)
+            ->assertJsonPath('data.brand_performance.by_model.0.model', 'doubao')
+            ->assertJsonPath('data.module_status.performance', 'included');
+
+        $this->assertCount(1, $response->json('data.brand_performance.by_model'));
+
+        $this->withHeader('X-Api-Key', 'test-lookup-key')
+            ->getJson('/api/v1/brand-diagnoses/search?brand_word=分模型表现品牌&include=performance')
+            ->assertOk()
+            ->assertJsonPath('data.brand_performance.model', 'all')
+            ->assertJsonPath('data.brand_performance.model_label', '全部平台')
+            ->assertJsonPath('data.brand_performance.score', 80)
+            ->assertJsonPath('data.brand_performance.by_model.0.model', 'doubao')
+            ->assertJsonPath('data.brand_performance.by_model.1.model', 'deepseek')
+            ->assertJsonPath('data.brand_performance.by_model.2.model', 'qianwen')
+            ->assertJsonPath('data.brand_performance.by_model.3.model', 'wenxin');
+    }
+
+    public function test_lookup_api_returns_platform_analysis_and_competitor_visibility_modules(): void
+    {
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => null,
+            'brand_name' => '行业分析测试品牌',
+            'platforms' => ['doubao', 'deepseek'],
+            'status' => 'completed',
+            'brand_profile' => '行业分析测试品牌是一家企业服务品牌。',
+            'brand_profile_status' => 'success',
+            'total_questions' => 2,
+            'completed_questions' => 2,
+        ]);
+        $questionOne = $run->questions()->create([
+            'site_id' => null,
+            'question' => '行业分析测试品牌怎么样？',
+            'question_type' => '品牌认知',
+            'sort_order' => 1,
+            'status' => 'completed',
+        ]);
+        $questionTwo = $run->questions()->create([
+            'site_id' => null,
+            'question' => '行业分析测试品牌有哪些竞品？',
+            'question_type' => '竞品分析',
+            'sort_order' => 2,
+            'status' => 'completed',
+        ]);
+
+        $doubaoOne = $questionOne->results()->create([
+            'site_id' => null,
+            'run_id' => $run->id,
+            'platform' => 'doubao',
+            'status' => 'success',
+            'answer' => '豆包推荐行业分析测试品牌和竞品甲。',
+            'sentiment' => 'positive',
+        ]);
+        $doubaoTwo = $questionTwo->results()->create([
+            'site_id' => null,
+            'run_id' => $run->id,
+            'platform' => 'doubao',
+            'status' => 'success',
+            'answer' => '豆包再次提及行业分析测试品牌、竞品甲和竞品乙。',
+            'sentiment' => 'neutral',
+        ]);
+        $deepseekOne = $questionOne->results()->create([
+            'site_id' => null,
+            'run_id' => $run->id,
+            'platform' => 'deepseek',
+            'status' => 'success',
+            'answer' => 'DeepSeek 推荐行业分析测试品牌和竞品甲。',
+            'sentiment' => 'positive',
+        ]);
+
+        $doubaoOne->brandMentions()->createMany([
+            [
+                'site_id' => null,
+                'run_id' => $run->id,
+                'question_id' => $questionOne->id,
+                'platform' => 'doubao',
+                'brand_name' => '行业分析测试品牌',
+                'mention_count' => 1,
+                'mention_rank' => 1,
+                'sentiment' => 'positive',
+                'source_count' => 1,
+                'is_target_brand' => true,
+            ],
+            [
+                'site_id' => null,
+                'run_id' => $run->id,
+                'question_id' => $questionOne->id,
+                'platform' => 'doubao',
+                'brand_name' => '竞品甲',
+                'mention_count' => 2,
+                'mention_rank' => 2,
+                'sentiment' => 'positive',
+                'source_count' => 1,
+                'is_target_brand' => false,
+            ],
+        ]);
+        $doubaoTwo->brandMentions()->createMany([
+            [
+                'site_id' => null,
+                'run_id' => $run->id,
+                'question_id' => $questionTwo->id,
+                'platform' => 'doubao',
+                'brand_name' => '行业分析测试品牌',
+                'mention_count' => 1,
+                'mention_rank' => 2,
+                'sentiment' => 'neutral',
+                'source_count' => 1,
+                'is_target_brand' => true,
+            ],
+            [
+                'site_id' => null,
+                'run_id' => $run->id,
+                'question_id' => $questionTwo->id,
+                'platform' => 'doubao',
+                'brand_name' => '竞品甲',
+                'mention_count' => 1,
+                'mention_rank' => 4,
+                'sentiment' => 'neutral',
+                'source_count' => 1,
+                'is_target_brand' => false,
+            ],
+            [
+                'site_id' => null,
+                'run_id' => $run->id,
+                'question_id' => $questionTwo->id,
+                'platform' => 'doubao',
+                'brand_name' => '竞品乙',
+                'mention_count' => 1,
+                'mention_rank' => 3,
+                'sentiment' => 'neutral',
+                'source_count' => 1,
+                'is_target_brand' => false,
+            ],
+        ]);
+        $deepseekOne->brandMentions()->createMany([
+            [
+                'site_id' => null,
+                'run_id' => $run->id,
+                'question_id' => $questionOne->id,
+                'platform' => 'deepseek',
+                'brand_name' => '行业分析测试品牌',
+                'mention_count' => 1,
+                'mention_rank' => 3,
+                'sentiment' => 'positive',
+                'source_count' => 1,
+                'is_target_brand' => true,
+            ],
+            [
+                'site_id' => null,
+                'run_id' => $run->id,
+                'question_id' => $questionOne->id,
+                'platform' => 'deepseek',
+                'brand_name' => '竞品甲',
+                'mention_count' => 1,
+                'mention_rank' => 1,
+                'sentiment' => 'positive',
+                'source_count' => 1,
+                'is_target_brand' => false,
+            ],
+        ]);
+
+        $run->sources()->createMany([
+            [
+                'site_id' => null,
+                'question_id' => $questionOne->id,
+                'result_id' => $doubaoOne->id,
+                'platform' => 'doubao',
+                'title' => '豆包信源一',
+                'url' => 'https://doubao-source.test/a',
+                'domain' => 'doubao-source.test',
+                'source_type' => 'web_search_result',
+            ],
+            [
+                'site_id' => null,
+                'question_id' => $questionTwo->id,
+                'result_id' => $doubaoTwo->id,
+                'platform' => 'doubao',
+                'title' => '豆包重复域名',
+                'url' => 'https://doubao-source.test/b',
+                'domain' => 'doubao-source.test',
+                'source_type' => 'web_search_result',
+            ],
+            [
+                'site_id' => null,
+                'question_id' => $questionOne->id,
+                'result_id' => $deepseekOne->id,
+                'platform' => 'deepseek',
+                'title' => 'DeepSeek 信源',
+                'url' => 'https://deepseek-source.test/a',
+                'domain' => 'deepseek-source.test',
+                'source_type' => 'web_search_result',
+            ],
+        ]);
+
+        $this->withHeader('X-Api-Key', 'test-lookup-key')
+            ->getJson('/api/v1/brand-diagnoses/search?brand_word=行业分析测试品牌&include=platform_analysis,competitor_visibility')
+            ->assertOk()
+            ->assertJsonPath('data.ai_search_platform_analysis.0.platform_key', 'doubao')
+            ->assertJsonPath('data.ai_search_platform_analysis.0.platform', '豆包')
+            ->assertJsonPath('data.ai_search_platform_analysis.0.analysis_count', 2)
+            ->assertJsonPath('data.ai_search_platform_analysis.0.top_rank_rates.top1', 50)
+            ->assertJsonPath('data.ai_search_platform_analysis.0.top_rank_rates.top2', 50)
+            ->assertJsonPath('data.ai_search_platform_analysis.0.positive_sentiment_rate', 50)
+            ->assertJsonPath('data.ai_search_platform_analysis.0.source_count', 1)
+            ->assertJsonPath('data.ai_search_platform_analysis.1.platform_key', 'deepseek')
+            ->assertJsonPath('data.ai_search_platform_analysis.1.top_rank_rates.top3', 100)
+            ->assertJsonPath('data.ai_search_platform_analysis.2.platform_key', 'qianwen')
+            ->assertJsonPath('data.ai_search_platform_analysis.2.analysis_count', 0)
+            ->assertJsonPath('data.ai_search_platform_analysis.3.platform_key', 'wenxin')
+            ->assertJsonPath('data.ai_search_platform_analysis.3.analysis_count', 0)
+            ->assertJsonPath('data.competitor_visibility.platforms.0.platform_key', 'doubao')
+            ->assertJsonPath('data.competitor_visibility.platforms.1.platform_key', 'deepseek')
+            ->assertJsonPath('data.competitor_visibility.platforms.2.platform_key', 'qianwen')
+            ->assertJsonPath('data.competitor_visibility.platforms.3.platform_key', 'wenxin')
+            ->assertJsonPath('data.competitor_visibility.rows.0.type', 'recommended_competitor')
+            ->assertJsonPath('data.competitor_visibility.rows.0.type_label', '推荐竞品')
+            ->assertJsonPath('data.competitor_visibility.rows.0.brand_name', '竞品甲')
+            ->assertJsonPath('data.competitor_visibility.rows.0.mention_count', 4)
+            ->assertJsonPath('data.competitor_visibility.rows.0.best_rank', 1)
+            ->assertJsonPath('data.competitor_visibility.rows.0.platform_rates.doubao', 100)
+            ->assertJsonPath('data.competitor_visibility.rows.0.platform_rates.deepseek', 100)
+            ->assertJsonPath('data.competitor_visibility.rows.1.brand_name', '竞品乙')
+            ->assertJsonPath('data.competitor_visibility.rows.1.platform_rates.doubao', 50)
+            ->assertJsonPath('data.module_status.platform_analysis', 'included')
+            ->assertJsonPath('data.module_status.competitor_visibility', 'included')
+            ->assertJsonPath('data.competitors', null);
     }
 
     public function test_lookup_api_queues_non_stock_without_running_model(): void

@@ -22,6 +22,8 @@ final class BrandDiagnosisLookupService
         'sources',
         'snapshots',
         'competitors',
+        'platform_analysis',
+        'competitor_visibility',
     ];
 
     public function __construct(
@@ -255,11 +257,32 @@ final class BrandDiagnosisLookupService
 
     private function eagerLoad($query, array $includes): void
     {
+        $needsRunResults = in_array('performance', $includes, true)
+            || in_array('platform_analysis', $includes, true)
+            || in_array('competitor_visibility', $includes, true);
+        $needsRunSources = in_array('sources', $includes, true)
+            || in_array('snapshots', $includes, true)
+            || in_array('platform_analysis', $includes, true);
+        $needsBrandMentions = in_array('competitors', $includes, true)
+            || in_array('performance', $includes, true)
+            || in_array('platform_analysis', $includes, true)
+            || in_array('competitor_visibility', $includes, true);
+
         if (in_array('questions', $includes, true) || in_array('model_results', $includes, true) || in_array('snapshots', $includes, true)) {
             $query->with(['questions' => function ($relation): void {
                 $relation->withoutGlobalScopes(['current_site', 'admin_owner'])
                     ->select(['id', 'run_id', 'question', 'question_type', 'core_term', 'sort_order', 'status'])
                     ->orderBy('sort_order');
+            }]);
+        }
+        if ($needsRunResults) {
+            $query->with(['results' => function ($relation): void {
+                $relation->withoutGlobalScopes(['current_site', 'admin_owner'])
+                    ->select([
+                        'id', 'run_id', 'question_id', 'platform', 'brand_mentioned',
+                        'mention_count', 'mention_rank', 'sentiment', 'status', 'checked_at',
+                    ])
+                    ->orderBy('id');
             }]);
         }
         if (in_array('model_results', $includes, true) || in_array('snapshots', $includes, true)) {
@@ -271,14 +294,14 @@ final class BrandDiagnosisLookupService
                 $relation->withoutGlobalScopes(['current_site', 'admin_owner'])->select($columns)->orderBy('id');
             }]);
         }
-        if (in_array('sources', $includes, true) || in_array('snapshots', $includes, true)) {
+        if ($needsRunSources) {
             $query->with(['sources' => function ($relation): void {
                 $relation->withoutGlobalScopes(['current_site', 'admin_owner'])
                     ->select(['id', 'run_id', 'question_id', 'result_id', 'platform', 'title', 'url', 'domain', 'source_type'])
                     ->orderBy('id');
             }]);
         }
-        if (in_array('competitors', $includes, true)) {
+        if ($needsBrandMentions) {
             $query->with(['brandMentions' => function ($relation): void {
                 $relation->withoutGlobalScopes(['current_site', 'admin_owner'])
                     ->select([
