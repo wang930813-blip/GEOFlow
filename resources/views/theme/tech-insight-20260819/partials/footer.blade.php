@@ -2,8 +2,8 @@
     <div class="tx-shell tx-footer-grid">
         <div>
             <div class="tx-footer-brand">{{ $siteName }}</div>
-            @if(!empty($siteDescription))
-                <p>{{ $siteDescription }}</p>
+            @if(!empty($siteRemark))
+                <p>{!! nl2br(e($siteRemark)) !!}</p>
             @endif
         </div>
         <div class="tx-footer-meta">
