@@ -2,7 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\GenerateBrandDiagnosisLookupJob;
+use App\Models\BrandDiagnosisLookupJob;
 use App\Models\BrandDiagnosisRun;
+use App\Services\BrandDiagnosis\BrandDiagnosisLookupService;
 use App\Services\BrandDiagnosis\BrandProfileNotFoundException;
 use App\Services\BrandDiagnosis\BrandProfileResolver;
 use App\Services\BrandDiagnosis\DoubaoBrandDiagnosisClient;
@@ -168,6 +171,45 @@ class BrandDiagnosisLookupApiTest extends TestCase
             ->assertJsonPath('data.module_status.model_results', 'omitted');
     }
 
+    public function test_lookup_api_sanitizes_legacy_snapshot_answers(): void
+    {
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => null,
+            'brand_name' => '历史快照品牌',
+            'platforms' => ['doubao'],
+            'status' => 'completed',
+            'brand_profile' => '历史快照品牌是一家企业服务品牌。',
+            'brand_profile_status' => 'success',
+        ]);
+        $question = $run->questions()->create([
+            'site_id' => null,
+            'question' => '历史快照品牌怎么样？',
+            'question_type' => '品牌认知',
+            'sort_order' => 1,
+            'status' => 'completed',
+        ]);
+        $result = $question->results()->create([
+            'site_id' => null,
+            'run_id' => $run->id,
+            'platform' => 'doubao',
+            'status' => 'success',
+            'answer' => '备用回答',
+            'checked_at' => now(),
+        ]);
+        $result->forceFill([
+            'snapshot_payload' => [
+                'answer' => '{"answer":"可展示回答","meta":{"internal":"secret"}}',
+                'meta' => ['internal' => 'secret'],
+            ],
+        ])->save();
+
+        $this->withHeader('X-Api-Key', 'test-lookup-key')
+            ->getJson('/api/v1/brand-diagnoses/search?brand_word=历史快照品牌&include=snapshots')
+            ->assertOk()
+            ->assertJsonPath('data.conversation_snapshots.0.answer', '可展示回答')
+            ->assertJsonMissing(['internal' => 'secret']);
+    }
+
     public function test_lookup_api_returns_aggregated_competitors_without_target_brand(): void
     {
         $run = BrandDiagnosisRun::query()->create([
@@ -278,50 +320,141 @@ class BrandDiagnosisLookupApiTest extends TestCase
             ->assertJsonPath('data.module_status.questions', 'omitted');
     }
 
-    public function test_lookup_api_generates_non_stock_profile_and_questions_without_persisting(): void
+    public function test_lookup_api_queues_non_stock_without_running_model(): void
     {
         Queue::fake();
-        $this->mock(BrandProfileResolver::class, function ($mock): void {
-            $mock->shouldReceive('resolveStrict')->once()->andReturn([
-                'profile' => '不存在存量诊断的测试品牌是一家提供企业软件的品牌。',
-                'source' => 'web_search',
-                'model' => '豆包',
-                'status' => 'success',
-                'meta' => ['sources' => [['title' => '官网', 'url' => 'https://example.com']]],
-            ]);
-        });
-        $this->mock(DoubaoBrandDiagnosisClient::class, function ($mock): void {
-            $mock->shouldReceive('generateQuestionPool')->once()->andReturn([
-                ['question' => '不存在存量诊断的测试品牌适合哪些企业？', 'type' => '品牌认知', 'core_term' => '测试品牌'],
-            ]);
-        });
-
-        $this->withHeader('X-Api-Key', 'test-lookup-key')
+        $response = $this->withHeader('X-Api-Key', 'test-lookup-key')
             ->getJson('/api/v1/brand-diagnoses/search?brand_word=不存在存量诊断的测试品牌&include=profile,questions,competitors')
-            ->assertOk()
-            ->assertJsonPath('data.data_source', 'generated_not_stock')
-            ->assertJsonPath('data.match_type', 'none')
-            ->assertJsonPath('data.diagnosis.status', 'not_run')
-            ->assertJsonPath('data.brand_profile.status', 'generated')
-            ->assertJsonPath('data.questions.0.status', 'generated')
-            ->assertJsonPath('data.brand_performance', null)
-            ->assertJsonPath('data.competitors', [])
-            ->assertJsonPath('data.module_status.competitors', 'not_run');
+            ->assertStatus(202)
+            ->assertJsonPath('data.status', 'pending')
+            ->assertJsonPath('data.data_source', 'generated_not_stock');
 
         $this->assertDatabaseCount('brand_diagnosis_runs', 0);
         $this->assertDatabaseCount('brand_diagnosis_questions', 0);
-        Queue::assertNothingPushed();
+        $lookup = BrandDiagnosisLookupJob::query()->firstOrFail();
+        $this->assertSame($lookup->lookup_id, $response->json('data.lookup_id'));
+        Queue::assertPushedOn('geoflow', GenerateBrandDiagnosisLookupJob::class, function (GenerateBrandDiagnosisLookupJob $job) use ($lookup): bool {
+            return $job->lookupJobId === (int) $lookup->id;
+        });
     }
 
     public function test_lookup_api_returns_brand_profile_not_found_error_for_unverified_brand(): void
     {
+        Queue::fake();
         $this->mock(BrandProfileResolver::class, function ($mock): void {
             $mock->shouldReceive('resolveStrict')->once()->andThrow(new BrandProfileNotFoundException('not found'));
         });
 
-        $this->withHeader('X-Api-Key', 'test-lookup-key')
+        $response = $this->withHeader('X-Api-Key', 'test-lookup-key')
             ->getJson('/api/v1/brand-diagnoses/search?brand_word=无法核实的测试品牌')
+            ->assertStatus(202)
+            ->assertJsonPath('data.status', 'pending');
+
+        $lookup = BrandDiagnosisLookupJob::query()->where('lookup_id', $response->json('data.lookup_id'))->firstOrFail();
+        (new GenerateBrandDiagnosisLookupJob((int) $lookup->id))->handle(app(BrandDiagnosisLookupService::class));
+
+        $this->withHeader('X-Api-Key', 'test-lookup-key')
+            ->getJson('/api/v1/brand-diagnoses/search/status/'.$lookup->lookup_id)
             ->assertStatus(422)
             ->assertJsonPath('error.code', 'brand_profile_not_found');
+    }
+
+    public function test_lookup_api_auto_queues_non_stock_without_mode(): void
+    {
+        Queue::fake();
+        $response = $this->withHeader('X-Api-Key', 'test-lookup-key')
+            ->getJson('/api/v1/brand-diagnoses/search?brand_word=异步测试品牌&include=profile,questions')
+            ->assertStatus(202)
+            ->assertJsonPath('data.status', 'pending')
+            ->assertJsonPath('data.data_source', 'generated_not_stock')
+            ->assertJsonPath('data.brand_word', '异步测试品牌')
+            ->assertJsonPath('data.retry_after', 3);
+
+        $lookup = BrandDiagnosisLookupJob::query()->firstOrFail();
+        $this->assertSame($lookup->lookup_id, $response->json('data.lookup_id'));
+        Queue::assertPushedOn('geoflow', GenerateBrandDiagnosisLookupJob::class, function (GenerateBrandDiagnosisLookupJob $job) use ($lookup): bool {
+            return $job->lookupJobId === (int) $lookup->id;
+        });
+    }
+
+    public function test_lookup_api_returns_stored_data_without_queueing_when_stock_exists(): void
+    {
+        Queue::fake();
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => null,
+            'brand_name' => '异步存量品牌',
+            'platforms' => ['doubao'],
+            'status' => 'completed',
+            'brand_profile' => '异步存量品牌是一家企业服务品牌。',
+            'brand_profile_status' => 'success',
+        ]);
+
+        $this->withHeader('X-Api-Key', 'test-lookup-key')
+            ->getJson('/api/v1/brand-diagnoses/search?brand_word=异步存量品牌&include=profile')
+            ->assertOk()
+            ->assertJsonPath('data.data_source', 'stored')
+            ->assertJsonPath('data.diagnosis.brand_name', $run->brand_name)
+            ->assertJsonPath('data.brand_profile.text', '异步存量品牌是一家企业服务品牌。');
+
+        Queue::assertNothingPushed();
+    }
+
+    public function test_lookup_status_returns_accepted_while_job_is_processing(): void
+    {
+        $lookup = BrandDiagnosisLookupJob::query()->create([
+            'lookup_id' => 'bdl_pending_test',
+            'brand_word' => '轮询中的品牌',
+            'canonical_key' => '轮询中的品牌',
+            'includes' => ['profile', 'questions'],
+            'status' => 'processing',
+            'started_at' => now(),
+            'expires_at' => now()->addMinutes(10),
+        ]);
+
+        $this->withHeader('X-Api-Key', 'test-lookup-key')
+            ->getJson('/api/v1/brand-diagnoses/search/status/'.$lookup->lookup_id)
+            ->assertStatus(202)
+            ->assertJsonPath('data.lookup_id', $lookup->lookup_id)
+            ->assertJsonPath('data.status', 'processing')
+            ->assertJsonPath('data.data_source', 'generated_not_stock');
+    }
+
+    public function test_lookup_job_generates_preview_and_status_returns_completed_result(): void
+    {
+        $lookup = BrandDiagnosisLookupJob::query()->create([
+            'lookup_id' => 'bdl_completed_test',
+            'brand_word' => '异步完成品牌',
+            'canonical_key' => '异步完成品牌',
+            'includes' => ['profile', 'questions'],
+            'status' => 'pending',
+            'expires_at' => now()->addMinutes(10),
+        ]);
+        $this->mock(BrandProfileResolver::class, function ($mock): void {
+            $mock->shouldReceive('resolveStrict')->once()->andReturn([
+                'profile' => '异步完成品牌是一家提供企业软件的品牌。',
+                'source' => 'web_search',
+                'model' => '豆包',
+                'status' => 'success',
+                'meta' => [],
+            ]);
+        });
+        $this->mock(DoubaoBrandDiagnosisClient::class, function ($mock): void {
+            $mock->shouldReceive('generateQuestionPool')->once()->andReturn([
+                ['question' => '异步完成品牌适合哪些企业？', 'type' => '品牌认知', 'core_term' => '异步完成品牌'],
+            ]);
+        });
+
+        (new GenerateBrandDiagnosisLookupJob((int) $lookup->id))->handle(app(BrandDiagnosisLookupService::class));
+
+        $lookup->refresh();
+        $this->assertSame('completed', $lookup->status);
+        $this->withHeader('X-Api-Key', 'test-lookup-key')
+            ->getJson('/api/v1/brand-diagnoses/search/status/'.$lookup->lookup_id)
+            ->assertOk()
+            ->assertJsonPath('data.data_source', 'generated_not_stock')
+            ->assertJsonPath('data.diagnosis.status', 'not_run')
+            ->assertJsonPath('data.brand_profile.status', 'generated')
+            ->assertJsonPath('data.brand_profile.text', '异步完成品牌是一家提供企业软件的品牌。')
+            ->assertJsonPath('data.questions.0.status', 'generated');
     }
 }

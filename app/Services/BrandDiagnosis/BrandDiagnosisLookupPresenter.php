@@ -180,7 +180,7 @@ final class BrandDiagnosisLookupPresenter
                 'question_id' => (int) $question->id,
                 'platform' => (string) $result->platform,
                 'question' => (string) $question->question,
-                'answer' => (string) ($payload['answer'] ?? $this->snapshotPayload->displayAnswer((string) ($result->answer ?? ''))),
+                'answer' => $this->snapshotPayload->displayAnswer((string) ($payload['answer'] ?? $result->answer ?? '')),
                 'sources' => $this->snapshotSources((array) ($payload['sources'] ?? [])),
                 'status' => (string) $result->status,
                 'checked_at' => $result->checked_at?->format('Y-m-d H:i:s') ?? '',

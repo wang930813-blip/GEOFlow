@@ -3,10 +3,13 @@
 namespace App\Services\BrandDiagnosis;
 
 use App\Exceptions\ApiException;
+use App\Jobs\GenerateBrandDiagnosisLookupJob;
+use App\Models\BrandDiagnosisLookupJob;
 use App\Models\BrandDiagnosisRun;
 use Illuminate\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Throwable;
 
 final class BrandDiagnosisLookupService
@@ -51,9 +54,9 @@ final class BrandDiagnosisLookupService
      */
     public function lookup(string $brandWord, array $includes = []): array
     {
-        $this->assertSchemaReady();
         $brandWord = trim($brandWord);
         $includes = $this->normalizeIncludes($includes);
+        $this->assertSchemaReady();
 
         $runMatch = $this->findStoredRun($brandWord, $includes);
         if ($runMatch !== null) {
@@ -73,6 +76,103 @@ final class BrandDiagnosisLookupService
             'run' => null,
             'generated' => $this->generatePreview($brandWord),
         ];
+    }
+
+    /**
+     * Return the stored lookup result without starting a generated preview.
+     *
+     * @param  list<string>  $includes
+     * @return array{brand_word:string,data_source:string,match_type:string,run:BrandDiagnosisRun,generated:null}|null
+     */
+    public function findStoredLookup(string $brandWord, array $includes = []): ?array
+    {
+        $brandWord = trim($brandWord);
+        $includes = $this->normalizeIncludes($includes);
+        $this->assertSchemaReady();
+
+        $runMatch = $this->findStoredRun($brandWord, $includes);
+        if ($runMatch === null) {
+            return null;
+        }
+
+        return [
+            'brand_word' => $brandWord,
+            'data_source' => 'stored',
+            'match_type' => $runMatch['match_type'],
+            'run' => $runMatch['run'],
+            'generated' => null,
+        ];
+    }
+
+    /**
+     * Create or reuse a non-stock preview job. The generated result is kept on
+     * the lookup record only and never creates a diagnosis run.
+     *
+     * @param  list<string>  $includes
+     */
+    public function queueAsyncLookup(string $brandWord, array $includes = []): BrandDiagnosisLookupJob
+    {
+        $brandWord = trim($brandWord);
+        $includes = $this->normalizeIncludes($includes);
+        $this->assertSchemaReady();
+        $this->assertAsyncSchemaReady();
+        $canonicalKey = $this->canonicalLookupKey($brandWord);
+
+        try {
+            return Cache::lock('brand-diagnosis-lookup:async:'.$canonicalKey, 15)->block(5, function () use ($brandWord, $includes, $canonicalKey): BrandDiagnosisLookupJob {
+                $active = BrandDiagnosisLookupJob::query()
+                    ->where('canonical_key', $canonicalKey)
+                    ->whereIn('status', ['pending', 'processing'])
+                    ->where(function ($query): void {
+                        $query->whereNull('expires_at')->orWhere('expires_at', '>', now());
+                    })
+                    ->latest('id')
+                    ->first();
+                if ($active instanceof BrandDiagnosisLookupJob) {
+                    $this->mergeAsyncIncludes($active, $includes);
+
+                    return $active;
+                }
+
+                $completed = BrandDiagnosisLookupJob::query()
+                    ->where('canonical_key', $canonicalKey)
+                    ->where('status', 'completed')
+                    ->whereNotNull('result')
+                    ->where(function ($query): void {
+                        $query->whereNull('expires_at')->orWhere('expires_at', '>', now());
+                    })
+                    ->latest('id')
+                    ->first();
+                if ($completed instanceof BrandDiagnosisLookupJob) {
+                    $this->mergeAsyncIncludes($completed, $includes);
+
+                    return $completed;
+                }
+
+                $lookup = BrandDiagnosisLookupJob::query()->create([
+                    'lookup_id' => 'bdl_'.Str::lower(Str::random(32)),
+                    'brand_word' => $brandWord,
+                    'canonical_key' => $canonicalKey,
+                    'includes' => $includes,
+                    'status' => 'pending',
+                    'expires_at' => now()->addSeconds(max(300, (int) config('brand_diagnosis.lookup_api.async_result_ttl', 1800))),
+                ]);
+
+                GenerateBrandDiagnosisLookupJob::dispatch((int) $lookup->id)->onQueue('geoflow');
+
+                return $lookup;
+            });
+        } catch (LockTimeoutException $exception) {
+            throw new ApiException('brand_diagnosis_lookup_busy', '查询任务正在创建，请稍后重试', 503);
+        }
+    }
+
+    /**
+     * @return array{profile:array<string,mixed>,questions:list<array<string,mixed>>}
+     */
+    public function generatePreviewForLookup(string $brandWord): array
+    {
+        return $this->generatePreview(trim($brandWord));
     }
 
     /**
@@ -197,6 +297,30 @@ final class BrandDiagnosisLookupService
             || ! Schema::hasColumn('brand_diagnosis_runs', 'brand_name')
             || ! Schema::hasColumn('brand_diagnosis_runs', 'created_at')) {
             throw new ApiException('brand_diagnosis_lookup_not_ready', '品牌诊断查询服务尚未准备完成', 503);
+        }
+    }
+
+    private function assertAsyncSchemaReady(): void
+    {
+        if (! Schema::hasTable('brand_diagnosis_lookup_jobs')) {
+            throw new ApiException('brand_diagnosis_lookup_not_ready', '品牌诊断查询服务尚未准备完成', 503);
+        }
+    }
+
+    private function canonicalLookupKey(string $brandWord): string
+    {
+        return $this->entityResolver->canonicalKey($brandWord) ?: $this->normalize($brandWord);
+    }
+
+    /**
+     * @param  list<string>  $includes
+     */
+    private function mergeAsyncIncludes(BrandDiagnosisLookupJob $lookup, array $includes): void
+    {
+        $lookupIncludes = $this->normalizeIncludes((array) $lookup->includes);
+        $merged = $this->normalizeIncludes(array_merge($lookupIncludes, $includes));
+        if ($merged !== $lookupIncludes) {
+            $lookup->forceFill(['includes' => $merged])->save();
         }
     }
 

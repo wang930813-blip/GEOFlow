@@ -38,6 +38,8 @@ Route::prefix('v1')
 
         Route::middleware(['throttle:brand-diagnosis-lookup', 'brand-diagnosis.lookup-api-key'])->group(function (): void {
             Route::get('brand-diagnoses/search', [BrandDiagnosisLookupController::class, 'search']);
+            Route::get('brand-diagnoses/search/status/{lookupId}', [BrandDiagnosisLookupController::class, 'status'])
+                ->where('lookupId', '[A-Za-z0-9_]+');
         });
 
         Route::middleware(['throttle:machine-api', 'brand-diagnosis.api-key'])->group(function (): void {

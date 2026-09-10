@@ -17,6 +17,9 @@ return [
         'cache_ttl' => max(0, (int) env('BRAND_DIAGNOSIS_LOOKUP_CACHE_TTL', 21600)),
         'rate_limit' => max(1, (int) env('BRAND_DIAGNOSIS_LOOKUP_RATE_LIMIT', 10)),
         'candidate_limit' => max(20, (int) env('BRAND_DIAGNOSIS_LOOKUP_CANDIDATE_LIMIT', 100)),
+        'async_job_timeout' => max(180, (int) env('BRAND_DIAGNOSIS_LOOKUP_ASYNC_JOB_TIMEOUT', 300)),
+        'async_result_ttl' => max(300, (int) env('BRAND_DIAGNOSIS_LOOKUP_ASYNC_RESULT_TTL', 1800)),
+        'async_poll_after' => max(1, (int) env('BRAND_DIAGNOSIS_LOOKUP_ASYNC_POLL_AFTER', 3)),
     ],
 
     // 显示层基础值叠加：开启后仅在「已完成」诊断的页面展示时叠加基础数值，不写入存储、不影响真实计算。

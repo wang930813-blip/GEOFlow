@@ -40,6 +40,14 @@ GET /api/v1/brand-diagnoses/search?brand_word=策影GEO&include=questions
 GET /api/v1/brand-diagnoses/search?brand_word=策影GEO&include=competitors
 ```
 
+如果品牌词没有匹配到存量诊断，接口会自动创建异步查询任务：
+
+```http
+GET /api/v1/brand-diagnoses/search?brand_word=我的品牌&include=profile,questions
+Accept: application/json
+X-Api-Key: <lookup-key>
+```
+
 `brand_word` 必填，会自动去除首尾空格，最长 120 个字符。`include` 可选，为英文逗号分隔的模块名；不传或传空值时返回全部模块，重复模块会自动去重。
 
 ## 请求字段释义
@@ -71,13 +79,47 @@ GET /api/v1/brand-diagnoses/search?brand_word=策影GEO&include=competitors
 
 检索到诊断记录时，响应中的 `data_source` 为 `stored`，返回该记录当前状态及已生成的数据。
 
-检索不到数据时，接口会核实品牌词并生成品牌介绍和 AI 问题。此时：
+检索不到存量数据时，接口不会在当前请求中调用模型，而是自动创建异步查询任务并立即返回。异步任务会核实品牌词、生成品牌介绍和 AI 问题；任务完成后，使用状态查询接口获取完整结果。此时 `data_source` 为 `generated_not_stock`。
 
-- `data_source` 为 `generated_not_stock`；
-- `diagnosis.status` 为 `not_run`；
-- 品牌表现、模型结果、AI 信源、对话快照、竞品标记为 `not_run` 或空数组。
+如果模型核实后无法获得品牌介绍，状态查询接口返回 `422 brand_profile_not_found`，不会返回不完整的生成结果。
 
-如果模型核实后无法获得品牌介绍，接口返回 `422 brand_profile_not_found`，不会返回不完整的生成结果。
+## 异步查询
+
+### 创建异步查询
+
+当请求没有匹配到存量数据时，接口返回 HTTP `202`：
+
+```json
+{
+  "success": true,
+  "data": {
+    "lookup_id": "bdl_xxxxxxxxx",
+    "brand_word": "我的品牌",
+    "data_source": "generated_not_stock",
+    "status": "pending",
+    "retry_after": 3
+  },
+  "error": null,
+  "meta": {
+    "request_id": "...",
+    "timestamp": "...",
+    "included": ["profile", "questions"],
+    "omitted": ["performance", "model_results", "sources", "snapshots", "competitors"]
+  }
+}
+```
+
+如果请求命中存量数据，直接返回 HTTP `200` 的查询结果，不会创建异步任务。
+
+### 查询异步状态
+
+```http
+GET /api/v1/brand-diagnoses/search/status/{lookup_id}
+Accept: application/json
+X-Api-Key: <lookup-key>
+```
+
+任务处理中返回 HTTP `202`，`data.status` 为 `pending` 或 `processing`。建议按照 `retry_after` 秒数再次请求。任务完成后返回 HTTP `200`，响应结构与同步查询一致；任务失败时返回对应错误码。任务超过保留时间后，状态接口返回 `404 brand_diagnosis_lookup_not_found`。
 
 ## 响应格式
 
@@ -176,6 +218,16 @@ GET /api/v1/brand-diagnoses/search?brand_word=策影GEO&include=competitors
 | `conversation_snapshots` | array/null | 请求包含 `snapshots` 时返回对话快照数组。 |
 | `competitors` | array/null | 请求包含 `competitors` 时返回竞品提及聚合数组。 |
 | `module_status` | object | 七个模块的状态，可能为 `included`、`omitted`、`not_run`、`not_available` 或 `failed`。 |
+
+异步处理中响应的 `data` 字段：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `lookup_id` | string | 异步查询任务 ID，用于调用状态查询接口。 |
+| `brand_word` | string | 本次异步查询的品牌词。 |
+| `data_source` | string | 异步非存量查询固定为 `generated_not_stock`。 |
+| `status` | string | 任务状态：`pending` 或 `processing`。 |
+| `retry_after` | integer | 建议客户端等待的轮询间隔，单位为秒。 |
 
 ### `diagnosis` 字段
 
@@ -299,3 +351,5 @@ GET /api/v1/brand-diagnoses/search?brand_word=策影GEO&include=competitors
 | 502 | `brand_profile_provider_failed` | 品牌核实模型或外部信源调用失败。 |
 | 502 | `brand_questions_generation_failed` | AI 问题生成失败。 |
 | 503 | `brand_diagnosis_lookup_not_ready` | 查询服务依赖尚未准备完成。 |
+| 503 | `brand_diagnosis_lookup_busy` | 异步查询任务正在创建，请稍后重试。 |
+| 404 | `brand_diagnosis_lookup_not_found` | 异步查询任务不存在或已过期。 |
