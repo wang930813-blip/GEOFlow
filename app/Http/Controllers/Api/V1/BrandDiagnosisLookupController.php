@@ -15,16 +15,17 @@ final class BrandDiagnosisLookupController extends BaseApiController
     public function search(BrandDiagnosisLookupRequest $request, BrandDiagnosisLookupService $service, BrandDiagnosisLookupPresenter $presenter): JsonResponse
     {
         $includes = $request->includedModules();
+        $model = $request->modelFilter();
         $brandWord = (string) $request->validated()['brand_word'];
 
         $stored = $service->findStoredLookup($brandWord, $includes);
         if ($stored !== null) {
-            return $this->presentResult($request, $stored, $includes, $presenter);
+            return $this->presentResult($request, $stored, $includes, $presenter, $model);
         }
 
         $lookup = $service->queueAsyncLookup($brandWord, $includes);
         if ((string) $lookup->status === 'completed') {
-            return $this->presentResult($request, $this->generatedResult($lookup), (array) $lookup->includes, $presenter);
+            return $this->presentResult($request, $this->generatedResult($lookup), (array) $lookup->includes, $presenter, $model);
         }
 
         return $this->successWithMeta($request, [
@@ -75,9 +76,9 @@ final class BrandDiagnosisLookupController extends BaseApiController
         ], 202);
     }
 
-    private function presentResult(Request $request, array $result, array $includes, BrandDiagnosisLookupPresenter $presenter): JsonResponse
+    private function presentResult(Request $request, array $result, array $includes, BrandDiagnosisLookupPresenter $presenter, ?string $model = null): JsonResponse
     {
-        $payload = $presenter->present($result, $includes);
+        $payload = $presenter->present($result, $includes, $model);
         $meta = (array) ($payload['_meta'] ?? []);
         unset($payload['_meta']);
 

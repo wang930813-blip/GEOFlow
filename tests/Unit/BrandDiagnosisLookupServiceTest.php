@@ -19,7 +19,7 @@ class BrandDiagnosisLookupServiceTest extends TestCase
         );
 
         $this->assertSame(
-            ['profile', 'questions', 'performance', 'model_results', 'sources', 'snapshots', 'competitors'],
+            ['profile', 'questions', 'performance', 'model_results', 'sources', 'snapshots', 'competitors', 'platform_analysis', 'competitor_visibility'],
             $service->normalizeIncludes([])
         );
     }
