@@ -348,6 +348,63 @@ MD);
             ->assertSee('<link rel="canonical" href="'.route('site.article', $article->slug).'">', false);
     }
 
+    public function test_technology_theme_prefers_configured_homepage_carousel(): void
+    {
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'active_theme'],
+            ['setting_value' => 'tech-insight-20260819']
+        );
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'home_carousel_slides'],
+            ['setting_value' => json_encode([
+                [
+                    'image_url' => 'https://example.com/tech-configured-banner.jpg',
+                    'title' => 'Configured Tech Banner',
+                    'link_url' => '/news',
+                    'enabled' => true,
+                ],
+            ], JSON_UNESCAPED_UNICODE)]
+        );
+        SiteSettingsBag::forget();
+
+        $this->get(route('site.home'))
+            ->assertOk()
+            ->assertSee('https://example.com/tech-configured-banner.jpg', false)
+            ->assertSee('Configured Tech Banner')
+            ->assertDontSee('tech-banner-service.png', false)
+            ->assertDontSee('tech-banner-future.png', false);
+    }
+
+    public function test_technology_theme_footer_uses_site_remark_instead_of_site_description(): void
+    {
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'active_theme'],
+            ['setting_value' => 'tech-insight-20260819']
+        );
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'site_description'],
+            ['setting_value' => '仅用于 SEO 的网站描述']
+        );
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'site_remark'],
+            ['setting_value' => '官网备注内容']
+        );
+        SiteSetting::query()->updateOrCreate(
+            ['setting_key' => 'contact_info'],
+            ['setting_value' => '400-000-0000']
+        );
+        SiteSettingsBag::forget();
+
+        $response = $this->get(route('site.home'))->assertOk();
+        $content = $response->getContent();
+        preg_match('/<footer class="tx-footer">.*?<\/footer>/s', $content, $matches);
+        $footer = (string) ($matches[0] ?? '');
+
+        $this->assertStringContainsString('官网备注内容', $footer);
+        $this->assertStringContainsString('400-000-0000', $footer);
+        $this->assertStringNotContainsString('仅用于 SEO 的网站描述', $footer);
+    }
+
     public function test_technology_theme_fixed_pages_use_banner_and_content_structure(): void
     {
         SiteSetting::query()->updateOrCreate(

@@ -34,16 +34,19 @@
     @php
         $homeArticles = method_exists($articles, 'getCollection') ? $articles->getCollection() : collect($articles);
         $isDefaultHome = $search === '' && !$category && !$categoryMissing;
-        $bannerSlides = collect([
-            [
-                'image_url' => asset('themes/tech-insight-20260819/assets/tech-banner-service.png'),
-                'title' => $siteTitle,
-            ],
-            [
-                'image_url' => asset('themes/tech-insight-20260819/assets/tech-banner-future.png'),
-                'title' => $siteTitle,
-            ],
-        ]);
+        $configuredBannerSlides = collect($homepageCarouselSlides ?? [])->take(3);
+        $bannerSlides = $configuredBannerSlides->isNotEmpty()
+            ? $configuredBannerSlides
+            : collect([
+                [
+                    'image_url' => asset('themes/tech-insight-20260819/assets/tech-banner-service.png'),
+                    'title' => $siteTitle,
+                ],
+                [
+                    'image_url' => asset('themes/tech-insight-20260819/assets/tech-banner-future.png'),
+                    'title' => $siteTitle,
+                ],
+            ]);
         $homeNewsArticles = $homeArticles->take(3);
     @endphp
 

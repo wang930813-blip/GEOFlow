@@ -24,7 +24,7 @@ class PlatformPlanManagementTest extends TestCase
 {
     use RefreshDatabase;
 
-    private const CREDIT_DESCRIPTION = '8000条官媒投放,600条b2b行业网站投放';
+    private const CREDIT_DESCRIPTION = '支持官媒和 B2B 网站投放';
 
     public function test_super_admin_can_view_platform_plan_detail_and_edit_page(): void
     {
@@ -42,9 +42,14 @@ class PlatformPlanManagementTest extends TestCase
             ->assertSee('品牌诊断次数')
             ->assertSee('8')
             ->assertSee('生成视频次数')
-            ->assertSee('自媒体发布次数')
+            ->assertSee('自媒体发布条数')
+            ->assertSee('媒体发布条数')
+            ->assertSee('B2B网站发布条数')
+            ->assertSee('官网发布条数')
+            ->assertSee('视频发布条数')
             ->assertSee(self::CREDIT_DESCRIPTION)
-            ->assertDontSee('B2B网站发布次数')
+            ->assertDontSee('8000条官媒投放')
+            ->assertDontSee('600条b2b行业网站投放')
             ->assertDontSee('API Token 数量')
             ->assertDontSee('CreBee 发布次数');
 
@@ -54,9 +59,14 @@ class PlatformPlanManagementTest extends TestCase
             ->assertSee('编辑规格')
             ->assertSee('详情测试规格')
             ->assertSee('生成视频次数')
-            ->assertSee('自媒体发布次数')
+            ->assertSee('自媒体发布条数')
+            ->assertSee('媒体发布条数')
+            ->assertSee('B2B网站发布条数')
+            ->assertSee('官网发布条数')
+            ->assertSee('视频发布条数')
             ->assertSee(self::CREDIT_DESCRIPTION)
-            ->assertDontSee('B2B网站发布次数')
+            ->assertDontSee('8000条官媒投放')
+            ->assertDontSee('600条b2b行业网站投放')
             ->assertDontSee('API Token 数量')
             ->assertDontSee('CreBee 发布次数');
     }
@@ -69,9 +79,14 @@ class PlatformPlanManagementTest extends TestCase
             ->get(route('admin.platform-plans.index'))
             ->assertOk()
             ->assertSee('生成视频次数')
-            ->assertSee('自媒体发布次数')
+            ->assertSee('自媒体发布条数')
+            ->assertSee('媒体发布条数')
+            ->assertSee('B2B网站发布条数')
+            ->assertSee('官网发布条数')
+            ->assertSee('视频发布条数')
             ->assertSee(self::CREDIT_DESCRIPTION)
-            ->assertDontSee('B2B网站发布次数')
+            ->assertDontSee('8000条官媒投放')
+            ->assertDontSee('600条b2b行业网站投放')
             ->assertDontSee('API Token 数量')
             ->assertDontSee('CreBee 发布次数');
     }
@@ -185,9 +200,11 @@ class PlatformPlanManagementTest extends TestCase
             'resource_key' => PlatformPlan::RESOURCE_CREBEE_PUBLISHES,
             'quota_value' => 5,
         ]);
-        $this->assertDatabaseMissing('platform_plan_entitlements', [
+        $this->assertDatabaseHas('platform_plan_entitlements', [
             'plan_id' => (int) $plan->id,
             'resource_key' => PlatformPlan::RESOURCE_B2B_WEBSITE_PUBLISHES,
+            'enabled' => false,
+            'quota_value' => 0,
         ]);
     }
 
@@ -583,14 +600,15 @@ class PlatformPlanManagementTest extends TestCase
             ->assertSee('已用 6.00 / 1600')
             ->assertSee('已用 3 / 10')
             ->assertSee('已用 2 / 不限')
+            ->assertSee(self::CREDIT_DESCRIPTION)
+            ->assertDontSee(PlatformPlan::resourceCatalog()[PlatformPlan::RESOURCE_TEAM_MEMBERS]['label'])
             ->assertSee('官媒累计投放')
             ->assertSee('201 条')
             ->assertSee('官媒套餐按 100 条计入，单篇官媒按 1 条计入')
             ->assertSee('B2B行业网站累计投放')
             ->assertSee('400 条')
             ->assertSee('发布 1 次 B2B 网站套餐计入 200 条行业网站投放')
-            ->assertSee(self::CREDIT_DESCRIPTION)
-            ->assertDontSee(PlatformPlan::resourceCatalog()[PlatformPlan::RESOURCE_TEAM_MEMBERS]['label'])
+            ->assertDontSee('B2B网站发布条数')
             ->assertDontSee('Profile Deleted User Plan')
             ->assertDontSee('Profile Deleted Site Plan');
 
@@ -600,14 +618,6 @@ class PlatformPlanManagementTest extends TestCase
         $this->assertStringContainsString('data-resource-key="'.PlatformPlan::RESOURCE_ARTICLE_GENERATIONS.'"', $html);
         $this->assertStringContainsString('data-resource-key="official_media_publishes"', $html);
         $this->assertStringContainsString('data-resource-key="'.PlatformPlan::RESOURCE_B2B_WEBSITE_PUBLISHES.'"', $html);
-        $this->assertLessThan(
-            strpos($html, 'data-resource-key="'.PlatformPlan::RESOURCE_CREDITS.'"'),
-            strpos($html, 'data-resource-key="official_media_publishes"')
-        );
-        $this->assertLessThan(
-            strpos($html, 'data-resource-key="'.PlatformPlan::RESOURCE_CREDITS.'"'),
-            strpos($html, 'data-resource-key="'.PlatformPlan::RESOURCE_B2B_WEBSITE_PUBLISHES.'"')
-        );
         $this->assertStringNotContainsString('已用 400 /', $html);
 
         $usageResponse = $this->actingAs($agent, 'admin')
@@ -620,14 +630,15 @@ class PlatformPlanManagementTest extends TestCase
             ->assertSee('已用 6.00 / 1600')
             ->assertSee('已用 3 / 10')
             ->assertSee('已用 2 / 不限')
+            ->assertSee(self::CREDIT_DESCRIPTION)
+            ->assertDontSee(PlatformPlan::resourceCatalog()[PlatformPlan::RESOURCE_TEAM_MEMBERS]['label'])
             ->assertSee('官媒累计投放')
             ->assertSee('201 条')
             ->assertSee('官媒套餐按 100 条计入，单篇官媒按 1 条计入')
             ->assertSee('B2B行业网站累计投放')
             ->assertSee('400 条')
             ->assertSee('发布 1 次 B2B 网站套餐计入 200 条行业网站投放')
-            ->assertSee(self::CREDIT_DESCRIPTION)
-            ->assertDontSee(PlatformPlan::resourceCatalog()[PlatformPlan::RESOURCE_TEAM_MEMBERS]['label'])
+            ->assertDontSee('B2B网站发布条数')
             ->assertDontSee('Profile Deleted User Plan')
             ->assertDontSee('Profile Deleted Site Plan');
 
@@ -637,14 +648,6 @@ class PlatformPlanManagementTest extends TestCase
         $this->assertStringContainsString('data-resource-key="'.PlatformPlan::RESOURCE_ARTICLE_GENERATIONS.'"', $usageHtml);
         $this->assertStringContainsString('data-resource-key="official_media_publishes"', $usageHtml);
         $this->assertStringContainsString('data-resource-key="'.PlatformPlan::RESOURCE_B2B_WEBSITE_PUBLISHES.'"', $usageHtml);
-        $this->assertLessThan(
-            strpos($usageHtml, 'data-resource-key="'.PlatformPlan::RESOURCE_CREDITS.'"'),
-            strpos($usageHtml, 'data-resource-key="official_media_publishes"')
-        );
-        $this->assertLessThan(
-            strpos($usageHtml, 'data-resource-key="'.PlatformPlan::RESOURCE_CREDITS.'"'),
-            strpos($usageHtml, 'data-resource-key="'.PlatformPlan::RESOURCE_B2B_WEBSITE_PUBLISHES.'"')
-        );
         $this->assertStringNotContainsString('已用 400 /', $usageHtml);
     }
 

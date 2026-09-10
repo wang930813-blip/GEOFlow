@@ -83,7 +83,7 @@ class AdminUserController extends Controller
                 'required',
                 'string',
                 'regex:/^[A-Za-z0-9_.-]{3,50}$/',
-                Rule::unique('admins', 'username')->ignore($targetAdmin->id),
+                Rule::unique('admins', 'username')->whereNull('deleted_at')->ignore($targetAdmin->id),
             ],
             'display_name' => ['nullable', 'string', 'max:100'],
             'email' => ['nullable', 'email', 'max:191'],
@@ -133,7 +133,12 @@ class AdminUserController extends Controller
         ]);
 
         $payload = $request->validate([
-            'username' => ['required', 'string', 'regex:/^[A-Za-z0-9_.-]{3,50}$/', 'unique:admins,username'],
+            'username' => [
+                'required',
+                'string',
+                'regex:/^[A-Za-z0-9_.-]{3,50}$/',
+                Rule::unique('admins', 'username')->whereNull('deleted_at'),
+            ],
             'display_name' => ['nullable', 'string', 'max:100'],
             'email' => ['nullable', 'email', 'max:191'],
             'role' => ['nullable', Rule::in(['admin', 'agent_admin', 'direct_admin'])],

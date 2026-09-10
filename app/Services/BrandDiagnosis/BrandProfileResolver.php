@@ -32,6 +32,23 @@ class BrandProfileResolver
     }
 
     /**
+     * Strict variant used by lookup previews. Provider and verification failures
+     * are allowed to reach the caller so they can be mapped to public API errors.
+     *
+     * @param  list<string>  $platforms
+     * @return array{profile:string,source:string,model:string,status:string,meta:array<string,mixed>}
+     */
+    public function resolveStrict(BrandDiagnosisRun $run, array $platforms = []): array
+    {
+        $brandName = trim((string) $run->brand_name);
+        if ($brandName === '') {
+            throw new BrandProfileNotFoundException('品牌词不能为空');
+        }
+
+        return $this->resolveFromWebSearch($brandName, $platforms);
+    }
+
+    /**
      * @param  list<string>  $platforms
      * @return array{profile:string,source:string,model:string,status:string,meta:array<string,mixed>}
      */
@@ -41,7 +58,7 @@ class BrandProfileResolver
         $response = $this->diagnosisClient->generateBrandProfileWithWebSearch($brandName, $platform);
         $profile = $this->parseProfileText((string) ($response['text'] ?? ''));
         if (! $this->profileIsUsable($profile)) {
-            throw new RuntimeException('未检索到可用的品牌介绍。');
+            throw new BrandProfileNotFoundException('未检索到可用的品牌介绍。');
         }
 
         return [

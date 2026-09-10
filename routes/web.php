@@ -30,6 +30,7 @@ use App\Http\Controllers\Admin\ImageLibraryController;
 use App\Http\Controllers\Admin\KeywordLibraryController;
 use App\Http\Controllers\Admin\KnowledgeBaseController;
 use App\Http\Controllers\Admin\LegacyController;
+use App\Http\Controllers\Admin\ManualPublishStatController;
 use App\Http\Controllers\Admin\MaterialsController;
 use App\Http\Controllers\Admin\McpServerController;
 use App\Http\Controllers\Admin\MediaDistribution\CreditController as MediaDistributionCreditController;
@@ -41,6 +42,7 @@ use App\Http\Controllers\Admin\MonitoringCenterController;
 use App\Http\Controllers\Admin\PlanSubscriptionController;
 use App\Http\Controllers\Admin\PlanUsageController;
 use App\Http\Controllers\Admin\PlatformPlanController;
+use App\Http\Controllers\Admin\ProductCaseController as AdminProductCaseController;
 use App\Http\Controllers\Admin\ProfileController;
 use App\Http\Controllers\Admin\SecuritySettingsController;
 use App\Http\Controllers\Admin\SiteContextController;
@@ -55,6 +57,7 @@ use App\Http\Controllers\Admin\VideoSelfMediaPublishController;
 use App\Http\Controllers\BrandDiagnosisSnapshotController;
 use App\Http\Controllers\MediaSubmissionPreviewController;
 use App\Http\Controllers\MonitoringReportShareController;
+use App\Http\Controllers\ProductCaseController;
 use App\Http\Controllers\Site\ArchiveController;
 use App\Http\Controllers\Site\ArticleController as SiteArticleController;
 use App\Http\Controllers\Site\CategoryController as SiteCategoryController;
@@ -76,6 +79,11 @@ Route::get('/monitoring-report/share/{token}', [MonitoringReportShareController:
     ->name('monitoring-report-share.show')
     ->where('token', '[A-Za-z0-9]+');
 
+Route::get('/product-cases', [ProductCaseController::class, 'index'])->name('product-cases.index');
+Route::get('/product-cases/{slug}', [ProductCaseController::class, 'show'])
+    ->name('product-cases.show')
+    ->where('slug', '[A-Za-z0-9_-]+');
+
 Route::middleware(['site.domain', 'site.locale', 'site.view_log'])->group(function (): void {
     Route::get('/', [HomeController::class, 'index'])->name('site.home');
     Route::get('/news', [PageController::class, 'news'])->name('site.news');
@@ -95,6 +103,10 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
     // 通用入口与语言切换
     Route::get('locale/{locale}', [AdminAuthController::class, 'switchLocale'])->name('locale.switch');
     Route::get('snapshot-voucher', [SnapshotVoucherController::class, 'show'])->name('snapshot-voucher.show');
+    Route::get('product-case-library', [ProductCaseController::class, 'index'])->name('product-case-library.index');
+    Route::get('product-case-library/{slug}', [ProductCaseController::class, 'show'])
+        ->name('product-case-library.show')
+        ->where('slug', '[A-Za-z0-9_-]+');
     Route::match(['get', 'post'], 'crebee-accounts/aitoearn/authorizations/callback', [CrebeeAccountController::class, 'handleAiToEarnAuthorizationCallback'])
         ->withoutMiddleware([ValidateCsrfToken::class])
         ->name('crebee-accounts.aitoearn.authorizations.callback');
@@ -242,6 +254,8 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
         Route::prefix('video-generations')->name('video-generations.')->group(function () {
             Route::get('/', [VideoGenerationController::class, 'index'])->name('index');
             Route::get('create', [VideoGenerationController::class, 'create'])->name('create');
+            Route::post('topic-candidates', [VideoGenerationController::class, 'topicCandidates'])->name('topic-candidates');
+            Route::post('script-draft', [VideoGenerationController::class, 'scriptDraft'])->name('script-draft');
             Route::post('/', [VideoGenerationController::class, 'store'])->name('store');
             Route::get('{videoGeneration}', [VideoGenerationController::class, 'show'])->name('show')->whereNumber('videoGeneration');
             Route::get('{videoGeneration}/download', [VideoGenerationController::class, 'download'])->name('download')->whereNumber('videoGeneration');
@@ -432,6 +446,15 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
         Route::prefix('plan-usages')->name('plan-usages.')->group(function () {
             Route::get('/', [PlanUsageController::class, 'index'])->name('index');
         });
+        Route::prefix('manual-publish-stats')->name('manual-publish-stats.')->group(function () {
+            Route::get('/', [ManualPublishStatController::class, 'index'])->name('index');
+            Route::middleware('admin.super')->group(function () {
+                Route::post('/', [ManualPublishStatController::class, 'store'])->name('store');
+                Route::delete('{manual_publish_stat}', [ManualPublishStatController::class, 'destroy'])
+                    ->name('destroy')
+                    ->whereNumber('manual_publish_stat');
+            });
+        });
         Route::prefix('crebee-accounts')->name('crebee-accounts.')->group(function () {
             Route::get('/', [CrebeeAccountController::class, 'index'])->name('index');
             Route::post('aitoearn/authorizations', [CrebeeAccountController::class, 'startAiToEarnAuthorization'])
@@ -469,6 +492,12 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
         });
         // Super admin routes
         Route::middleware('admin.super')->group(function () {
+            Route::post('product-cases/{product_case}/toggle-status', [AdminProductCaseController::class, 'toggleStatus'])
+                ->name('product-cases.toggle-status')
+                ->whereNumber('product_case');
+            Route::resource('product-cases', AdminProductCaseController::class)
+                ->except(['show']);
+
             Route::prefix('platform-plans')->name('platform-plans.')->group(function () {
                 Route::get('/', [PlatformPlanController::class, 'index'])->name('index');
                 Route::post('/', [PlatformPlanController::class, 'store'])->name('store');

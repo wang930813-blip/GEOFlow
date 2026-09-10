@@ -53,6 +53,27 @@ class Admin extends Authenticatable
         ];
     }
 
+    protected static function booted(): void
+    {
+        static::deleting(function (self $admin): void {
+            if ($admin->isForceDeleting() || ! $admin->exists || ! $admin->getKey()) {
+                return;
+            }
+
+            $admin->forceFill([
+                'username' => $admin->releasedUsername(),
+                'mobile' => null,
+            ])->saveQuietly();
+        });
+    }
+
+    private function releasedUsername(): string
+    {
+        $hash = substr(sha1((string) $this->getKey().'|'.(string) $this->getOriginal('username')), 0, 16);
+
+        return 'deleted_'.$this->getKey().'_'.$hash;
+    }
+
     public function getAuthIdentifierName(): string
     {
         return 'id';

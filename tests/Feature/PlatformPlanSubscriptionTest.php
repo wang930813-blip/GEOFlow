@@ -187,7 +187,13 @@ class PlatformPlanSubscriptionTest extends TestCase
         $this->assertArrayHasKey('video_generations', $catalog);
         $this->assertSame('生成视频次数', $catalog['video_generations']['label']);
         $this->assertArrayHasKey('crebee_publishes', $catalog);
-        $this->assertSame('自媒体发布次数', $catalog['crebee_publishes']['label']);
+        $this->assertSame('自媒体发布条数', $catalog['crebee_publishes']['label']);
+        $this->assertArrayHasKey('media_publishes', $catalog);
+        $this->assertSame('媒体发布条数', $catalog['media_publishes']['label']);
+        $this->assertArrayHasKey('official_site_publishes', $catalog);
+        $this->assertSame('官网发布条数', $catalog['official_site_publishes']['label']);
+        $this->assertArrayHasKey('video_publishes', $catalog);
+        $this->assertSame('视频发布条数', $catalog['video_publishes']['label']);
     }
 
     public function test_super_admin_can_create_direct_user_with_site_and_plan_subscription(): void

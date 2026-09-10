@@ -163,6 +163,8 @@ class MonitoringReportDataService
      */
     private function scope(Builder $query, array $context, string $siteColumn = 'site_id', string $ownerColumn = 'owner_admin_id'): Builder
     {
+        $query->withoutGlobalScopes(['current_site', 'admin_owner']);
+
         if ($context['site_id'] !== null) {
             $query->where($siteColumn, (int) $context['site_id']);
         }
@@ -650,10 +652,19 @@ class MonitoringReportDataService
                 'official_share_url',
             ])
             ->with([
-                'brandMentions' => fn ($query) => $query->where('is_target_brand', true)->orderBy('mention_rank'),
-                'question:id,question',
-                'run:id,brand_name',
-                'sources:id,result_id,title,url,domain,platform',
+                'brandMentions' => fn ($query) => $query
+                    ->withoutGlobalScopes(['current_site', 'admin_owner'])
+                    ->where('is_target_brand', true)
+                    ->orderBy('mention_rank'),
+                'question' => fn ($query) => $query
+                    ->withoutGlobalScopes(['current_site', 'admin_owner'])
+                    ->select(['id', 'question']),
+                'run' => fn ($query) => $query
+                    ->withoutGlobalScopes(['current_site', 'admin_owner'])
+                    ->select(['id', 'brand_name']),
+                'sources' => fn ($query) => $query
+                    ->withoutGlobalScopes(['current_site', 'admin_owner'])
+                    ->select(['id', 'result_id', 'title', 'url', 'domain', 'platform']),
             ])
             ->where('status', 'success')
             ->whereNotNull('answer')

@@ -5,6 +5,7 @@ namespace App\Http\Requests\Admin;
 use App\Support\AdminRegistrationCaptcha;
 use App\Support\AdminRegistrationSettings;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
 class AdminRegistrationRequest extends FormRequest
@@ -21,7 +22,13 @@ class AdminRegistrationRequest extends FormRequest
     {
         return [
             'display_name' => ['required', 'string', 'max:100'],
-            'mobile' => ['required', 'string', 'regex:/^1[3-9]\d{9}$/', 'unique:admins,mobile', 'unique:admins,username'],
+            'mobile' => [
+                'required',
+                'string',
+                'regex:/^1[3-9]\d{9}$/',
+                Rule::unique('admins', 'mobile')->whereNull('deleted_at'),
+                Rule::unique('admins', 'username')->whereNull('deleted_at'),
+            ],
             'captcha' => ['required', 'string'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
             'password_confirmation' => ['required', 'string'],

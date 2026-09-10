@@ -235,9 +235,9 @@ class MonitoringReportDataServiceTest extends TestCase
         $rows = $report['search_rows'];
 
         $this->assertSame('北京学术易科技有限公司', $report['context']['company_name']);
-        $this->assertCount(6, $rows);
+        $this->assertCount(7, $rows);
         $this->assertSame(
-            [-1, -2, -3, -4, -5, (int) $dynamic['result']->id],
+            [-1, -2, -3, -4, -5, (int) $dynamic['result']->id, (int) $dynamic['result']->id],
             array_column($rows, 'id')
         );
         $this->assertSame('2026年国内科研选题辅导机构哪些好', $rows[0]['question']);
@@ -245,6 +245,9 @@ class MonitoringReportDataServiceTest extends TestCase
         $this->assertSame('学术易动态品牌诊断问题', $rows[5]['question']);
         $this->assertSame('学术易', $rows[0]['target']);
         $this->assertSame('文心一言', $rows[0]['platform']);
+        $this->assertSame($rows[5]['question'], $rows[6]['question']);
+        $this->assertSame('PC', $rows[5]['terminal']);
+        $this->assertSame('移动', $rows[6]['terminal']);
         $this->assertSame('https://chat.baidu.com/', $rows[0]['platform_url']);
         $this->assertSame(
             route('admin.snapshot-voucher.show', ['id' => -1]),
@@ -261,7 +264,7 @@ class MonitoringReportDataServiceTest extends TestCase
             fn (array $filter): bool => $filter['platform_key'] === 'wenxin' && $filter['terminal'] === 'PC'
         );
 
-        $this->assertSame(6, $allFilter['total']);
+        $this->assertSame(7, $allFilter['total']);
         $this->assertSame(5, $wenxinPcFilter['total']);
     }
 
@@ -503,7 +506,7 @@ class MonitoringReportDataServiceTest extends TestCase
             'platform_key' => 'all',
             'name' => '全部',
             'terminal' => '全部',
-            'total' => 3,
+            'total' => 6,
         ], $report['platform_filters'][0]);
 
         $totals = collect($report['platform_filters'])->mapWithKeys(
@@ -513,10 +516,11 @@ class MonitoringReportDataServiceTest extends TestCase
         $this->assertSame(1, $totals['doubao|PC']);
         $this->assertSame(1, $totals['deepseek|PC']);
         $this->assertSame(1, $totals['yuanbao|PC']);
-        $this->assertSame(0, $totals['doubao|移动']);
+        $this->assertSame(1, $totals['doubao|移动']);
+        $this->assertSame(1, $totals['deepseek|移动']);
+        $this->assertSame(1, $totals['yuanbao|移动']);
         $this->assertSame(0, $totals['qianwen|PC']);
         $this->assertSame(0, $totals['qianwen|移动']);
-        $this->assertSame(0, $totals['yuanbao|移动']);
         $this->assertSame(0, $totals['wenxin|PC']);
         $this->assertSame(0, $totals['wenxin|移动']);
     }

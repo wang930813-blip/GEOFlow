@@ -103,6 +103,37 @@ class AdminUsersManagementTest extends TestCase
         $this->assertNotNull(Admin::withTrashed()->find($standardAdmin->id));
     }
 
+    public function test_super_admin_can_reuse_username_after_admin_is_soft_deleted(): void
+    {
+        $superAdmin = $this->createAdmin('reuse_root_admin', 'super_admin');
+        $standardAdmin = $this->createAdmin('reuse_editor_admin', 'admin', $superAdmin);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.admin-users.delete', ['adminId' => $standardAdmin->id]))
+            ->assertRedirect(route('admin.admin-users.index'));
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.admin-users.store'), [
+                'username' => 'reuse_editor_admin',
+                'display_name' => 'Reused Editor',
+                'email' => 'reused-editor@example.com',
+                'role' => 'admin',
+                'password' => 'secret-123',
+                'confirm_password' => 'secret-123',
+            ])
+            ->assertRedirect(route('admin.admin-users.index'))
+            ->assertSessionHasNoErrors();
+
+        $newAdmin = Admin::query()->where('username', 'reuse_editor_admin')->first();
+
+        $this->assertNotNull($newAdmin);
+        $this->assertNotSame((int) $standardAdmin->id, (int) $newAdmin->id);
+        $this->assertStringStartsWith(
+            'deleted_'.$standardAdmin->id.'_',
+            (string) Admin::withTrashed()->findOrFail($standardAdmin->id)->username
+        );
+    }
+
     public function test_deleting_direct_user_soft_deletes_owned_sites_and_cancels_active_subscriptions(): void
     {
         $superAdmin = $this->createAdmin('delete_direct_root', 'super_admin');

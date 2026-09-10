@@ -28,7 +28,7 @@ class PlatformPlanController extends Controller
                 ->orderBy('sort_order')
                 ->orderBy('id')
                 ->get(),
-            'resourceCatalog' => PlatformPlan::visibleResourceCatalog(),
+            'resourceCatalog' => PlatformPlan::configurableResourceCatalog(),
         ]);
     }
 
@@ -65,7 +65,7 @@ class PlatformPlanController extends Controller
             'activeMenu' => 'platform_plans',
             'adminSiteName' => AdminWeb::siteName(),
             'plan' => $plan,
-            'resourceCatalog' => PlatformPlan::visibleResourceCatalog(),
+            'resourceCatalog' => PlatformPlan::configurableResourceCatalog(),
             'siteSubscriptionCount' => SitePlanSubscription::query()->where('plan_id', (int) $plan->id)->count(),
             'adminSubscriptionCount' => AdminPlanSubscription::query()->where('plan_id', (int) $plan->id)->count(),
         ]);
@@ -80,7 +80,7 @@ class PlatformPlanController extends Controller
             'activeMenu' => 'platform_plans',
             'adminSiteName' => AdminWeb::siteName(),
             'plan' => $plan,
-            'resourceCatalog' => PlatformPlan::visibleResourceCatalog(),
+            'resourceCatalog' => PlatformPlan::configurableResourceCatalog(),
         ]);
     }
 
@@ -155,7 +155,7 @@ class PlatformPlanController extends Controller
             'duration_days.required' => '请填写服务时长',
         ]);
 
-        $catalog = PlatformPlan::visibleResourceCatalog();
+        $catalog = PlatformPlan::configurableResourceCatalog();
         $resources = [];
         $enabledResourceKeys = [];
         $resourceErrors = [];
@@ -231,16 +231,6 @@ class PlatformPlanController extends Controller
      */
     private function syncEntitlements(PlatformPlan $plan, array $resources): void
     {
-        $plan->entitlements()
-            ->where('resource_key', PlatformPlan::RESOURCE_B2B_WEBSITE_PUBLISHES)
-            ->update([
-                'enabled' => false,
-                'quota_value' => 0,
-                'quota_period' => 'cycle',
-                'unit' => 'times',
-                'meta' => [],
-            ]);
-
         foreach ($resources as $key => $resource) {
             $plan->entitlements()->updateOrCreate(
                 ['resource_key' => $key],
