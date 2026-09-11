@@ -10,6 +10,7 @@ use App\Models\BrandDiagnosisRun;
 use App\Models\KeywordLibrary;
 use App\Models\ProductCase;
 use App\Models\Site;
+use App\Services\ProductCases\ProductCaseReportSummaryService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -515,6 +516,163 @@ class ProductCaseModuleTest extends TestCase
             ->assertSee('Competitor Alpha')
             ->assertSee('Competitor Beta')
             ->assertSee('TOP5');
+    }
+
+    public function test_case_report_summary_is_scoped_to_the_case_brand_without_monitoring_center_data(): void
+    {
+        [$owner, $site] = $this->createAdminWithSite('case_scoped_summary_owner', 'direct_admin');
+
+        $caseA = ProductCase::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'title' => 'Scoped Brand A Case',
+            'slug' => 'scoped-brand-a-case',
+            'company_name' => 'Scoped Brand A',
+            'industry' => '商务服务',
+            'region' => '北京市',
+            'summary' => 'Brand A summary.',
+            'content' => 'Brand A content.',
+            'status' => ProductCase::STATUS_PUBLISHED,
+            'published_at' => now()->subDay(),
+        ]);
+        ProductCase::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'title' => 'Scoped Brand B Case',
+            'slug' => 'scoped-brand-b-case',
+            'company_name' => 'Scoped Brand B',
+            'industry' => '商务服务',
+            'region' => '北京市',
+            'summary' => 'Brand B summary.',
+            'content' => 'Brand B content.',
+            'status' => ProductCase::STATUS_PUBLISHED,
+            'published_at' => now()->subDay(),
+        ]);
+
+        $runA = BrandDiagnosisRun::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'admin_id' => $owner->id,
+            'brand_name' => 'Scoped Brand A',
+            'brand_profile' => 'Brand A profile.',
+            'platforms' => ['doubao'],
+            'status' => 'completed',
+            'total_questions' => 1,
+            'completed_questions' => 1,
+            'usage_date' => now()->toDateString(),
+            'started_at' => now()->subHour(),
+            'completed_at' => now()->subMinutes(30),
+        ]);
+        $questionA = BrandDiagnosisQuestion::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'run_id' => $runA->id,
+            'question' => 'Scoped Brand A question',
+            'question_type' => 'brand_profile',
+            'sort_order' => 1,
+            'status' => 'completed',
+        ]);
+        $resultA = BrandDiagnosisResult::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'run_id' => $runA->id,
+            'question_id' => $questionA->id,
+            'platform' => 'doubao',
+            'answer' => 'Scoped Brand A is recommended.',
+            'brand_mentioned' => true,
+            'mention_count' => 2,
+            'mention_rank' => 1,
+            'sentiment' => 'positive',
+            'status' => 'success',
+            'checked_at' => now()->subMinutes(20),
+        ]);
+        BrandDiagnosisBrandMention::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'run_id' => $runA->id,
+            'question_id' => $questionA->id,
+            'result_id' => $resultA->id,
+            'platform' => 'doubao',
+            'brand_name' => 'Scoped Brand A',
+            'mention_count' => 2,
+            'mention_rank' => 1,
+            'sentiment' => 'positive',
+            'source_count' => 1,
+            'is_target_brand' => true,
+        ]);
+        BrandDiagnosisBrandMention::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'run_id' => $runA->id,
+            'question_id' => $questionA->id,
+            'result_id' => $resultA->id,
+            'platform' => 'doubao',
+            'brand_name' => 'Scoped Competitor A',
+            'mention_count' => 1,
+            'mention_rank' => 2,
+            'sentiment' => 'neutral',
+            'source_count' => 1,
+            'is_target_brand' => false,
+        ]);
+
+        $runB = BrandDiagnosisRun::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'admin_id' => $owner->id,
+            'brand_name' => 'Scoped Brand B',
+            'brand_profile' => 'Brand B profile.',
+            'platforms' => ['doubao'],
+            'status' => 'completed',
+            'total_questions' => 1,
+            'completed_questions' => 1,
+            'usage_date' => now()->toDateString(),
+            'started_at' => now()->subHour(),
+            'completed_at' => now()->subMinutes(20),
+        ]);
+        $questionB = BrandDiagnosisQuestion::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'run_id' => $runB->id,
+            'question' => 'Scoped Brand B question',
+            'question_type' => 'brand_profile',
+            'sort_order' => 1,
+            'status' => 'completed',
+        ]);
+        $resultB = BrandDiagnosisResult::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'run_id' => $runB->id,
+            'question_id' => $questionB->id,
+            'platform' => 'doubao',
+            'answer' => 'Scoped Brand B is recommended.',
+            'brand_mentioned' => true,
+            'mention_count' => 1,
+            'mention_rank' => 1,
+            'sentiment' => 'positive',
+            'status' => 'success',
+            'checked_at' => now()->subMinutes(10),
+        ]);
+        BrandDiagnosisBrandMention::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'run_id' => $runB->id,
+            'question_id' => $questionB->id,
+            'result_id' => $resultB->id,
+            'platform' => 'doubao',
+            'brand_name' => 'Scoped Brand B',
+            'mention_count' => 1,
+            'mention_rank' => 1,
+            'sentiment' => 'positive',
+            'source_count' => 1,
+            'is_target_brand' => true,
+        ]);
+
+        $report = app(ProductCaseReportSummaryService::class)->detail($caseA);
+
+        $this->assertSame('Scoped Brand A', data_get($report, 'brand_profile.company_name'));
+        $this->assertSame(1, data_get($report, 'summary.search_report_count'));
+        $this->assertSame('Scoped Brand A question', data_get($report, 'search_rows.0.question'));
+        $this->assertSame(['Scoped Competitor A'], collect(data_get($report, 'competitors', []))->pluck('brand_name')->all());
     }
 
     public function test_logged_in_user_can_view_bound_report_data_for_another_site_case(): void
