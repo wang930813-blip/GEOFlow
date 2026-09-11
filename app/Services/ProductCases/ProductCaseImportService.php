@@ -341,8 +341,6 @@ class ProductCaseImportService
         if ($summary !== '') {
             $sections[] = "## 案例摘要\n\n".$summary;
         }
-        $sections[] = "## 数据说明\n\n本案例由 GEO 案例库导入，品牌诊断明细为系统生成的演示数据。";
-
         return implode("\n\n", $sections);
     }
 

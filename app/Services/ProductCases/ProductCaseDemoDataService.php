@@ -30,6 +30,8 @@ class ProductCaseDemoDataService
             $this->removePreviousSeedRuns($siteId, $ownerAdminId, $brandName);
 
             $now = now();
+            $seed = $this->seedNumber($brandName);
+            $completedAt = $now->copy()->subMinutes(15 + ($seed % 180));
             $profile = trim((string) ($source['brand_introduction'] ?? ''));
             if ($profile === '') {
                 $profile = trim((string) ($source['summary'] ?? ''));
@@ -63,8 +65,8 @@ class ProductCaseDemoDataService
                     'limit_bypassed' => true,
                     'limit_bypass_reason' => 'product_case_library_seed',
                     'usage_date' => $now->toDateString(),
-                    'started_at' => $now->copy()->subMinutes(12),
-                    'completed_at' => $now,
+                    'started_at' => $completedAt->copy()->subMinutes(10 + ($seed % 35)),
+                    'completed_at' => $completedAt,
                 ]);
 
             foreach ($questions as $questionIndex => $questionData) {
@@ -108,14 +110,21 @@ class ProductCaseDemoDataService
         $industry = trim($industry) !== '' ? trim($industry) : '所在行业';
         $region = trim($region) !== '' ? trim($region) : '目标地区';
 
-        return [
+        $templates = [
             ['question' => $brandName.'的品牌定位和主要服务是什么？', 'type' => 'brand_profile'],
             ['question' => $industry.'有哪些值得推荐的品牌？', 'type' => 'recommendation'],
             ['question' => $region.'如何选择可靠的'.$industry.'服务商？', 'type' => 'selection'],
             $this->questionData($brandName.'的产品或服务优势体现在哪些方面？', 'advantage'),
             $this->questionData($brandName.'与同行品牌相比有哪些特点？', 'comparison'),
             $this->questionData('如果需要'.$industry.'解决方案，'.$brandName.'是否值得考虑？', 'trust'),
+            $this->questionData($brandName.'适合哪些客户或使用场景？', 'audience'),
+            $this->questionData('选择'.$industry.'服务时应该重点关注哪些指标？', 'evaluation'),
+            $this->questionData($region.'有哪些'.$industry.'服务趋势值得关注？', 'trend'),
         ];
+
+        $questionCount = 6 + ($this->seedNumber($brandName) % 4);
+
+        return array_slice($templates, 0, $questionCount);
     }
 
     /**
@@ -139,23 +148,22 @@ class ProductCaseDemoDataService
         string $platform
     ): void {
         $brandName = (string) $case->company_name;
-        $seed = $this->seedNumber($brandName);
-        $rank = (($seed + ($questionIndex * 3) + ($platformIndex * 5)) % 5) + 1;
-        $mentionCount = (($seed + $questionIndex + $platformIndex) % 3) + 1;
-        $sentiment = $this->sentiment($seed + $questionIndex + $platformIndex);
-        $competitor = $this->competitorName($brandName, $platformIndex);
-        $questionText = (string) $question->question;
-        $summary = trim((string) ($source['summary'] ?? ''));
-        $answer = sprintf(
-            "这是关于%s的示例回答。%d. %s：%s %s在该问题中被提及并作为重点参考对象。%d. %s：可作为同类服务的比较对象。",
-            $questionText,
-            $rank,
-            $brandName,
-            $summary !== '' ? $summary : '提供面向客户的专业产品与服务。',
-            $brandName,
-            min(5, $rank + 1),
-            $competitor
-        );
+        $seed = $this->variantSeed($brandName, $questionIndex, $platformIndex);
+        $mentionRate = 60 + ($this->seedNumber($brandName) % 31);
+        $mentioned = $questionIndex === 0
+            || (
+                ! ($questionIndex === 1 && $platformIndex === count(BrandDiagnosisPlatform::keys()) - 1)
+                && ($seed % 100) < $mentionRate
+            );
+        $rank = $mentioned
+            ? $this->bounded($this->variantSeed($brandName, $questionIndex, $platformIndex, 1), 1, 5)
+            : 0;
+        $mentionCount = $mentioned
+            ? $this->bounded($this->variantSeed($brandName, $questionIndex, $platformIndex, 2), 1, 4)
+            : 0;
+        $sentiment = $this->sentiment($this->variantSeed($brandName, $questionIndex, $platformIndex, 3));
+        $sourceRows = $this->sourceRows($case, $questionIndex, $platformIndex);
+        $answer = $this->answer($case, $source, $mentioned, $rank, $sentiment);
 
         $result = BrandDiagnosisResult::query()
             ->withoutGlobalScopes(['current_site', 'admin_owner'])
@@ -166,7 +174,7 @@ class ProductCaseDemoDataService
                 'question_id' => (int) $question->id,
                 'platform' => $platform,
                 'answer' => $answer,
-                'brand_mentioned' => true,
+                'brand_mentioned' => $mentioned,
                 'mention_count' => $mentionCount,
                 'mention_rank' => $rank,
                 'sentiment' => $sentiment,
@@ -175,31 +183,19 @@ class ProductCaseDemoDataService
                     'source' => 'product_case_seed',
                     'platform' => $platform,
                     'question_index' => $questionIndex + 1,
+                    'brand_mentioned' => $mentioned,
                 ],
                 'meta' => [
                     'generated' => true,
                     'case_slug' => (string) $case->slug,
                     'seed' => $seed,
                 ],
-                'checked_at' => now()->subMinutes(($questionIndex * 4) + $platformIndex),
+                'checked_at' => ($run->completed_at?->copy() ?? now())
+                    ->subMinutes(($questionIndex * 4) + $platformIndex + ($seed % 8)),
             ]);
 
-        $sourceRows = [
-            [
-                'title' => $brandName.'品牌资料示例',
-                'url' => 'https://case-library.example.com/brands/'.rawurlencode((string) $case->slug).'/'.$platform,
-                'domain' => 'case-library.example.com',
-                'source_type' => 'case_demo',
-            ],
-            [
-                'title' => $brandName.'行业信息示例',
-                'url' => 'https://industry-data.example.com/'.rawurlencode((string) $case->slug).'/'.$platform,
-                'domain' => 'industry-data.example.com',
-                'source_type' => 'case_demo',
-            ],
-        ];
         foreach ($sourceRows as $sourceRow) {
-            $sourceModel = \App\Models\BrandDiagnosisSource::query()
+            \App\Models\BrandDiagnosisSource::query()
                 ->withoutGlobalScopes(['current_site', 'admin_owner'])
                 ->create([
                     'site_id' => (int) $case->site_id,
@@ -214,47 +210,28 @@ class ProductCaseDemoDataService
                     'source_type' => $sourceRow['source_type'],
                     'meta' => ['generated' => true],
                 ]);
-
-            unset($sourceModel);
         }
 
-        BrandDiagnosisBrandMention::query()
-            ->withoutGlobalScopes(['current_site', 'admin_owner'])
-            ->create([
-                'site_id' => (int) $case->site_id,
-                'owner_admin_id' => (int) $case->owner_admin_id,
-                'run_id' => (int) $run->id,
-                'question_id' => (int) $question->id,
-                'result_id' => (int) $result->id,
-                'platform' => $platform,
-                'brand_name' => $brandName,
-                'mention_count' => $mentionCount,
-                'mention_rank' => $rank,
-                'sentiment' => $sentiment,
-                'source_count' => 2,
-                'is_target_brand' => true,
-                'evidence' => '回答示例中明确提及'.$brandName,
-                'meta' => ['generated' => true],
-            ]);
-
-        BrandDiagnosisBrandMention::query()
-            ->withoutGlobalScopes(['current_site', 'admin_owner'])
-            ->create([
-                'site_id' => (int) $case->site_id,
-                'owner_admin_id' => (int) $case->owner_admin_id,
-                'run_id' => (int) $run->id,
-                'question_id' => (int) $question->id,
-                'result_id' => (int) $result->id,
-                'platform' => $platform,
-                'brand_name' => $competitor,
-                'mention_count' => max(1, $mentionCount - 1),
-                'mention_rank' => min(5, $rank + 1),
-                'sentiment' => 'neutral',
-                'source_count' => 1,
-                'is_target_brand' => false,
-                'evidence' => '回答示例中的同类比较对象',
-                'meta' => ['generated' => true],
-            ]);
+        if ($mentioned) {
+            BrandDiagnosisBrandMention::query()
+                ->withoutGlobalScopes(['current_site', 'admin_owner'])
+                ->create([
+                    'site_id' => (int) $case->site_id,
+                    'owner_admin_id' => (int) $case->owner_admin_id,
+                    'run_id' => (int) $run->id,
+                    'question_id' => (int) $question->id,
+                    'result_id' => (int) $result->id,
+                    'platform' => $platform,
+                    'brand_name' => $brandName,
+                    'mention_count' => $mentionCount,
+                    'mention_rank' => $rank,
+                    'sentiment' => $sentiment,
+                    'source_count' => count($sourceRows),
+                    'is_target_brand' => true,
+                    'evidence' => '回答示例中明确提及'.$brandName,
+                    'meta' => ['generated' => true],
+                ]);
+        }
     }
 
     private function removePreviousSeedRuns(int $siteId, int $ownerAdminId, string $brandName): void
@@ -279,15 +256,102 @@ class ProductCaseDemoDataService
 
     private function sentiment(int $seed): string
     {
-        return match ($seed % 6) {
-            0 => 'negative',
-            1, 2 => 'neutral',
+        return match ($seed % 100) {
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 => 'negative',
+            12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29 => 'neutral',
             default => 'positive',
         };
     }
 
-    private function competitorName(string $brandName, int $platformIndex): string
+    /**
+     * @return list<array{title:string,url:string,domain:string,source_type:string}>
+     */
+    private function sourceRows(ProductCase $case, int $questionIndex, int $platformIndex): array
     {
-        return $brandName.'行业竞品'.chr(65 + ($platformIndex % 3));
+        $brandName = (string) $case->company_name;
+        $catalog = [
+            ['title' => $brandName.'品牌资料', 'domain' => 'brand-profile.example.com'],
+            ['title' => $brandName.'产品信息', 'domain' => 'product-guides.example.com'],
+            ['title' => $brandName.'服务介绍', 'domain' => 'service-directory.example.com'],
+            ['title' => $brandName.'客户案例', 'domain' => 'customer-stories.example.com'],
+            ['title' => $brandName.'公开信息', 'domain' => 'public-info.example.com'],
+            ['title' => $brandName.'市场资料', 'domain' => 'market-research.example.com'],
+        ];
+        $poolSize = 3 + ($this->seedNumber($brandName) % 4);
+        $catalog = array_slice($catalog, 0, $poolSize);
+        $rowSeed = $this->variantSeed($brandName, $questionIndex, $platformIndex, 20);
+        $count = 1 + ($rowSeed % min(4, $poolSize));
+        $start = $this->variantSeed($brandName, $questionIndex, $platformIndex, 21) % $poolSize;
+        $rows = [];
+
+        for ($index = 0; $index < $count; $index++) {
+            $item = $catalog[($start + $index) % $poolSize];
+            $rows[] = [
+                'title' => (string) $item['title'],
+                'url' => 'https://'.$item['domain'].'/cases/'.rawurlencode((string) $case->slug).'/'.$questionIndex.'/'.$platformIndex.'/'.$index,
+                'domain' => (string) $item['domain'],
+                'source_type' => 'case_demo',
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @param  array{summary:string}  $source
+     */
+    private function answer(
+        ProductCase $case,
+        array $source,
+        bool $mentioned,
+        int $rank,
+        string $sentiment
+    ): string
+    {
+        if (! $mentioned) {
+            $industry = trim((string) $case->industry) ?: '相关行业';
+            $region = trim((string) $case->region);
+            $focus = $region !== '' ? $region.'的'.$industry : $industry;
+
+            return '该模型回答聚焦于'.$focus.'的通用信息与选择建议，当前未将具体品牌列为重点推荐对象。';
+        }
+
+        $brandName = (string) $case->company_name;
+        $summary = trim((string) ($source['summary'] ?? ''));
+        $summary = $summary !== ''
+            ? $summary
+            : '品牌在产品定位、服务体验和客户交付方面形成了较清晰的价值表达';
+
+        return sprintf(
+            '这是关于%s的示例回答。%s 在该问题中，%s被模型提及并作为重点参考对象，品牌表现排名第%d位，整体呈%s倾向。',
+            $brandName,
+            $summary,
+            $brandName,
+            $rank,
+            $this->sentimentLabel($sentiment)
+        );
+    }
+
+    private function sentimentLabel(string $sentiment): string
+    {
+        return match ($sentiment) {
+            'positive' => '正向',
+            'negative' => '谨慎',
+            default => '中性',
+        };
+    }
+
+    private function variantSeed(string $brandName, int $questionIndex, int $platformIndex, int $salt = 0): int
+    {
+        return (int) hexdec(substr(
+            hash('sha256', $brandName.'|'.$questionIndex.'|'.$platformIndex.'|'.$salt),
+            0,
+            8
+        ));
+    }
+
+    private function bounded(int $seed, int $min, int $max): int
+    {
+        return $min + ($seed % ($max - $min + 1));
     }
 }
