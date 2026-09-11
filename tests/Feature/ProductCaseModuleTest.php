@@ -153,6 +153,36 @@ class ProductCaseModuleTest extends TestCase
             ->assertDontSee('AI Search Inclusion');
     }
 
+    public function test_public_case_region_filter_matches_partial_region_names(): void
+    {
+        ProductCase::query()->create([
+            'title' => 'Pudong Education Case',
+            'slug' => 'pudong-education-case',
+            'company_name' => 'Pudong Education Brand',
+            'industry' => '教育培训',
+            'region' => '上海市浦东新区',
+            'summary' => 'A case with a detailed Shanghai region.',
+            'status' => ProductCase::STATUS_PUBLISHED,
+            'published_at' => now()->subDay(),
+        ]);
+
+        ProductCase::query()->create([
+            'title' => 'Beijing Education Case',
+            'slug' => 'beijing-education-case',
+            'company_name' => 'Beijing Education Brand',
+            'industry' => '教育培训',
+            'region' => '北京市朝阳区',
+            'summary' => 'A case from Beijing.',
+            'status' => ProductCase::STATUS_PUBLISHED,
+            'published_at' => now()->subDay(),
+        ]);
+
+        $this->get(route('product-cases.index', ['region' => '上海市']))
+            ->assertOk()
+            ->assertSee('Pudong Education Case')
+            ->assertDontSee('Beijing Education Case');
+    }
+
     public function test_admin_prefixed_product_case_library_routes_render_public_pages(): void
     {
         ProductCase::query()->create([

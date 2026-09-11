@@ -270,11 +270,12 @@
                 <div class="mb-6">
                     <p class="text-sm font-semibold uppercase tracking-wide text-orange-600">Industry Report</p>
                     <h2 class="mt-2 text-2xl font-semibold text-slate-950">行业竞争力</h2>
-                    <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-600">基于品牌诊断结果整理品牌画像、竞品提及、排名曝光和情感倾向，作为案例效果的补充证明。</p>
+                    <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-600">基于品牌诊断结果整理品牌画像、@if(!empty($competitors))竞品提及、@endif排名曝光和情感倾向，作为案例效果的补充证明。</p>
                 </div>
 
-                <div class="grid gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(300px,.75fr)]">
-                    <section class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+                <div class="{{ !empty($competitors) ? 'grid gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(300px,.75fr)]' : '' }}">
+                    @if(!empty($competitors))
+                        <section class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
                         <div class="flex items-center justify-between gap-4">
                             <div>
                                 <p class="text-sm font-semibold uppercase tracking-wide text-orange-600">Competitors</p>
@@ -324,7 +325,8 @@
                                 <p class="rounded-md bg-slate-50 px-4 py-3 text-sm text-slate-500">暂无竞品提及数据。</p>
                             @endforelse
                         </div>
-                    </section>
+                        </section>
+                    @endif
 
                     <div class="space-y-6">
                         <section class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">

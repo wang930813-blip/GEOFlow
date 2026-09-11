@@ -51,10 +51,30 @@ class ImportProductCasesCommandTest extends TestCase
             $this->assertSame(1, ImageLibrary::query()->count());
             $this->assertSame(2, Image::query()->count());
             $this->assertSame(2, BrandDiagnosisRun::query()->count());
-            $this->assertSame(12, BrandDiagnosisQuestion::query()->count());
-            $this->assertSame(48, BrandDiagnosisResult::query()->count());
-            $this->assertGreaterThan(48, BrandDiagnosisBrandMention::query()->count());
+            $this->assertGreaterThanOrEqual(12, BrandDiagnosisQuestion::query()->count());
+            $this->assertLessThanOrEqual(18, BrandDiagnosisQuestion::query()->count());
+            $this->assertSame(
+                BrandDiagnosisQuestion::query()->count() * 4,
+                BrandDiagnosisResult::query()->count()
+            );
+            $this->assertSame(0, BrandDiagnosisBrandMention::query()->where('is_target_brand', false)->count());
             $this->assertSame(2, $uploadCount);
+
+            $seededRuns = BrandDiagnosisRun::query()
+                ->where('billing_mode', 'product_case_seed')
+                ->orderBy('id')
+                ->get();
+            $this->assertCount(2, $seededRuns);
+            $this->assertTrue($seededRuns->every(
+                static fn (BrandDiagnosisRun $run): bool => count((array) $run->platforms) === 4
+            ));
+            $this->assertTrue($seededRuns->every(
+                static fn (BrandDiagnosisRun $run): bool => (int) $run->mention_rate < 100
+            ));
+            $this->assertNotSame(
+                $seededRuns[0]->total_questions,
+                $seededRuns[1]->total_questions
+            );
 
             $this->assertDatabaseHas('product_cases', [
                 'site_id' => $site->id,
@@ -72,11 +92,18 @@ class ImportProductCasesCommandTest extends TestCase
             ]);
 
             $case = ProductCase::query()->where('company_name', '恒风通风设备')->firstOrFail();
+            $this->assertStringNotContainsString('数据说明', (string) $case->content);
+            $competitors = BrandDiagnosisBrandMention::query()
+                ->where('run_id', BrandDiagnosisRun::query()->where('brand_name', '恒风通风设备')->value('id'))
+                ->where('is_target_brand', false)
+                ->pluck('brand_name');
+            $this->assertCount(0, $competitors);
             $this->get(route('product-cases.show', ['slug' => $case->slug]))
                 ->assertOk()
                 ->assertSee('恒风通风设备')
                 ->assertSee('恒风通风设备的品牌定位')
-                ->assertSee('竞品表现')
+                ->assertDontSee('竞品表现')
+                ->assertDontSee('竞品提及')
                 ->assertSee('AI 平台表现');
 
             $this->artisan('geoflow:import-product-cases', ['--source' => $source])
@@ -86,8 +113,13 @@ class ImportProductCasesCommandTest extends TestCase
             $this->assertSame(1, ImageLibrary::query()->count());
             $this->assertSame(2, Image::query()->count());
             $this->assertSame(2, BrandDiagnosisRun::query()->count());
-            $this->assertSame(12, BrandDiagnosisQuestion::query()->count());
-            $this->assertSame(48, BrandDiagnosisResult::query()->count());
+            $this->assertGreaterThanOrEqual(12, BrandDiagnosisQuestion::query()->count());
+            $this->assertLessThanOrEqual(18, BrandDiagnosisQuestion::query()->count());
+            $this->assertSame(
+                BrandDiagnosisQuestion::query()->count() * 4,
+                BrandDiagnosisResult::query()->count()
+            );
+            $this->assertSame(0, BrandDiagnosisBrandMention::query()->where('is_target_brand', false)->count());
             $this->assertSame(2, $uploadCount);
         } finally {
             @unlink($source);

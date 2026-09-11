@@ -90,7 +90,8 @@ class ProductCaseController extends Controller
         }
 
         if ($filters['region'] !== '') {
-            $query->where('region', $filters['region']);
+            $like = '%'.str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], mb_strtolower($filters['region'], 'UTF-8')).'%';
+            $query->whereRaw('LOWER(region) LIKE ?', [$like]);
         }
 
     }
