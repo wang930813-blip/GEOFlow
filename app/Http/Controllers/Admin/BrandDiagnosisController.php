@@ -99,7 +99,7 @@ class BrandDiagnosisController extends Controller
             'reuse_questions' => ['nullable', 'boolean'],
         ], [
             'brand_name.required' => '品牌词不能为空',
-            'platforms.*.in' => '当前版本仅支持 ChatGPT、Grok、Gemini',
+            'platforms.*.in' => '当前版本仅支持 ChatGPT、Grok、Gemini、Claude',
         ]);
 
         $admin = auth('admin')->user();
@@ -219,6 +219,7 @@ class BrandDiagnosisController extends Controller
             ['name' => BrandDiagnosisPlatform::publicLabel(BrandDiagnosisPlatform::CHATGPT), 'key' => BrandDiagnosisPlatform::CHATGPT, 'initial' => BrandDiagnosisPlatform::publicIcon(BrandDiagnosisPlatform::CHATGPT), 'color' => 'bg-sky-600', 'logo' => BrandDiagnosisPlatform::publicLogoUrl(BrandDiagnosisPlatform::CHATGPT), 'desc' => '智能问答', 'deep' => true, 'available' => true],
             ['name' => BrandDiagnosisPlatform::publicLabel(BrandDiagnosisPlatform::GROK), 'key' => BrandDiagnosisPlatform::GROK, 'initial' => BrandDiagnosisPlatform::publicIcon(BrandDiagnosisPlatform::GROK), 'color' => 'bg-fuchsia-600', 'logo' => BrandDiagnosisPlatform::publicLogoUrl(BrandDiagnosisPlatform::GROK), 'desc' => '实时搜索', 'deep' => true, 'available' => true],
             ['name' => BrandDiagnosisPlatform::publicLabel(BrandDiagnosisPlatform::GEMINI), 'key' => BrandDiagnosisPlatform::GEMINI, 'initial' => BrandDiagnosisPlatform::publicIcon(BrandDiagnosisPlatform::GEMINI), 'color' => 'bg-emerald-600', 'logo' => BrandDiagnosisPlatform::publicLogoUrl(BrandDiagnosisPlatform::GEMINI), 'desc' => '多模态', 'deep' => true, 'available' => true],
+            ['name' => BrandDiagnosisPlatform::publicLabel(BrandDiagnosisPlatform::CLAUDE), 'key' => BrandDiagnosisPlatform::CLAUDE, 'initial' => BrandDiagnosisPlatform::publicIcon(BrandDiagnosisPlatform::CLAUDE), 'color' => 'bg-stone-700', 'logo' => BrandDiagnosisPlatform::publicLogoUrl(BrandDiagnosisPlatform::CLAUDE), 'desc' => '长文本分析', 'deep' => true, 'available' => true],
         ];
     }
 

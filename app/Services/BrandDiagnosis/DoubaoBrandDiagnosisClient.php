@@ -212,6 +212,10 @@ class DoubaoBrandDiagnosisClient
             return $this->postGeminiGenerateContent($prompt, $platform, $withWebSearch);
         }
 
+        if ($this->platformRequestStyle($platform) === 'messages') {
+            return $this->postClaudeMessages($prompt, $platform, $withWebSearch);
+        }
+
         return $this->postArkResponses($prompt, $platform, $withWebSearch);
     }
 
@@ -312,7 +316,7 @@ class DoubaoBrandDiagnosisClient
         if ($withWebSearch) {
             $payload['tools'] = [
                 [
-                    'google_search' => new \stdClass(),
+                    'google_search' => new \stdClass,
                 ],
             ];
         }
@@ -332,6 +336,86 @@ class DoubaoBrandDiagnosisClient
 
         /** @var array<string,mixed> $data */
         $data = $response->json() ?: [];
+
+        return $data;
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function postClaudeMessages(string $prompt, string $platform, bool $withWebSearch = true): array
+    {
+        $platform = $this->normalizePlatform($platform);
+        $label = $this->platformLabel($platform);
+        $config = $this->platformConfig($platform);
+        $baseUrl = (string) ($config['base_url'] ?? '');
+        $apiKey = (string) ($config['api_key'] ?? '');
+        $model = (string) ($config['model'] ?? '');
+
+        if (! $this->platformEnabled($platform)) {
+            throw new RuntimeException($label.' brand diagnosis is disabled.');
+        }
+        if ($baseUrl === '' || $apiKey === '' || $model === '') {
+            throw new RuntimeException($label.' brand diagnosis API config is incomplete.');
+        }
+
+        $tools = [];
+        if ($withWebSearch && filter_var($config['supports_web_search'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            $tools = [
+                [
+                    'type' => 'web_search_20250305',
+                    'name' => 'web_search',
+                    'max_uses' => max(1, (int) ($config['max_keywords'] ?? 5)),
+                ],
+            ];
+        }
+
+        $messages = [
+            [
+                'role' => 'user',
+                'content' => $prompt,
+            ],
+        ];
+        $data = [];
+
+        for ($attempt = 0; $attempt < 3; $attempt++) {
+            $payload = [
+                'model' => $model,
+                'max_tokens' => max(1, (int) ($config['max_tokens'] ?? 4096)),
+                'messages' => $messages,
+            ];
+            if ($tools !== []) {
+                $payload['tools'] = $tools;
+            }
+
+            $response = Http::withHeaders([
+                'x-api-key' => $apiKey,
+                'anthropic-version' => (string) ($config['anthropic_version'] ?? '2023-06-01'),
+            ])
+                ->acceptJson()
+                ->asJson()
+                ->connectTimeout(max(1, (int) ($config['connect_timeout'] ?? 10)))
+                ->timeout(max(10, (int) ($config['timeout'] ?? 60)))
+                ->post($this->claudeMessagesUrl($baseUrl), $payload);
+
+            if ($response->failed()) {
+                throw new RuntimeException($label.' brand diagnosis request failed: HTTP '.$response->status().' '.$response->body());
+            }
+
+            /** @var array<string,mixed> $data */
+            $data = $response->json() ?: [];
+            $shouldContinue = ($data['stop_reason'] ?? '') === 'pause_turn'
+                && $tools !== []
+                && is_array($data['content'] ?? null);
+            if (! $shouldContinue) {
+                return $data;
+            }
+
+            $messages[] = [
+                'role' => 'assistant',
+                'content' => $data['content'],
+            ];
+        }
 
         return $data;
     }
@@ -823,6 +907,19 @@ class DoubaoBrandDiagnosisClient
         }
 
         return $baseUrl.'/'.$model.':generateContent';
+    }
+
+    private function claudeMessagesUrl(string $baseUrl): string
+    {
+        $baseUrl = rtrim($baseUrl, '/');
+
+        if (str_ends_with($baseUrl, '/messages')) {
+            return $baseUrl;
+        }
+
+        return str_ends_with($baseUrl, '/v1')
+            ? $baseUrl.'/messages'
+            : $baseUrl.'/v1/messages';
     }
 
     private function buildBrandCoreTermsPrompt(string $brandName, string $brandProfile, int $count): string
@@ -1825,6 +1922,12 @@ class DoubaoBrandDiagnosisClient
             }
         }
 
+        $claudeTexts = [];
+        $this->collectTextValues(Arr::get($data, 'content'), $claudeTexts);
+        if ($claudeTexts !== []) {
+            return trim((string) end($claudeTexts));
+        }
+
         $dashScopeContent = Arr::get($data, 'output.choices.0.message.content');
         if (is_string($dashScopeContent) && trim($dashScopeContent) !== '') {
             return trim($dashScopeContent);
@@ -1918,6 +2021,40 @@ class DoubaoBrandDiagnosisClient
         return trim(implode("\n\n", $fallbackTexts));
     }
 
+    /**
+     * @param  list<string>  $texts
+     */
+    private function collectTextValues(mixed $node, array &$texts): void
+    {
+        if (is_string($node)) {
+            $text = trim($node);
+            if ($text !== '') {
+                $texts[] = $text;
+            }
+
+            return;
+        }
+
+        if (! is_array($node)) {
+            return;
+        }
+
+        foreach ($node as $key => $value) {
+            if ($key === 'text' && is_string($value)) {
+                $text = trim($value);
+                if ($text !== '') {
+                    $texts[] = $text;
+                }
+
+                continue;
+            }
+
+            if (is_array($value)) {
+                $this->collectTextValues($value, $texts);
+            }
+        }
+    }
+
     private function normalizePlatform(string $platform): string
     {
         return BrandDiagnosisPlatform::normalize($platform);
@@ -1997,7 +2134,7 @@ class DoubaoBrandDiagnosisClient
     {
         $type = $this->cleanExternalText((string) ($node['type'] ?? $node['source_type'] ?? ''));
         $url = $this->cleanExternalText((string) ($node['url'] ?? $node['link'] ?? $node['uri'] ?? $node['source_url'] ?? ''));
-        $isKnownSource = in_array($type, ['url_citation', 'web_search_result', 'citation', 'search_result', 'grounding_chunk', 'grounding_source', 'web_result'], true);
+        $isKnownSource = in_array($type, ['url_citation', 'web_search_result', 'web_search_result_location', 'web_search_result_source', 'web_search_tool_result', 'citation', 'search_result', 'grounding_chunk', 'grounding_source', 'web_result'], true);
         if ($url !== '' && ($isKnownSource || isset($node['title']) || isset($node['snippet']))) {
             $sources[] = [
                 'title' => $this->cleanExternalText((string) ($node['title'] ?? $url)),

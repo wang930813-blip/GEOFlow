@@ -26,7 +26,7 @@ class StoreBrandDiagnosisRequest extends FormRequest
         return [
             'brand_name.required' => '品牌词不能为空',
             'models.required' => '请选择至少一个诊断模型',
-            'models.*.in' => '诊断模型仅支持 ChatGPT、Grok、Gemini',
+            'models.*.in' => '诊断模型仅支持 ChatGPT、Grok、Gemini、Claude',
         ];
     }
 }

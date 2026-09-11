@@ -23,7 +23,7 @@ final class AdminWeb
 
     public static function siteName(): string
     {
-        return 'AI生成引擎优化师';
+        return 'AI GEO Optimizer';
     }
 
     public static function basePath(): string

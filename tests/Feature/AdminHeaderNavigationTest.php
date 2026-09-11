@@ -13,8 +13,6 @@ class AdminHeaderNavigationTest extends TestCase
 
     public function test_header_shows_grouped_top_navigation_and_single_user_menu_for_super_admin(): void
     {
-        Config::set('geoflow.operation_guide_url', 'https://guide.example.test/start');
-
         $admin = $this->createAdmin('header_super_admin', 'super_admin');
 
         $html = $this->actingAs($admin, 'admin')
@@ -26,13 +24,12 @@ class AdminHeaderNavigationTest extends TestCase
         $userMenu = $this->section($html, 'data-admin-user-menu');
 
         $this->assertStringContainsString(route('admin.dashboard'), $primaryNav);
-        $this->assertStringContainsString('https://guide.example.test/start', $primaryNav);
-        $this->assertStringContainsString('target="_blank"', $primaryNav);
         $this->assertStringContainsString('全域数析', $primaryNav);
         $this->assertStringContainsString(route('admin.brand-diagnosis.index'), $primaryNav);
         $this->assertStringContainsString(route('admin.monitoring-center.index'), $primaryNav);
-        $this->assertStringContainsString('官媒发布', $primaryNav);
-        $this->assertStringContainsString(route('admin.media-distribution.resources.index'), $primaryNav);
+        $this->assertStringNotContainsString('官媒发布', $primaryNav);
+        $this->assertStringNotContainsString(route('admin.media-distribution.resources.index'), $primaryNav);
+        $this->assertStringNotContainsString('操作指引', $primaryNav);
         $this->assertStringContainsString(route('admin.crebee-accounts.index'), $primaryNav);
         $this->assertStringContainsString(route('admin.video-generations.index'), $primaryNav);
         $this->assertStringNotContainsString(route('admin.platform-plans.index'), $primaryNav);
@@ -59,6 +56,7 @@ class AdminHeaderNavigationTest extends TestCase
         $this->assertStringContainsString(route('admin.locale.switch', ['locale' => 'en']), $html);
         $this->assertStringNotContainsString('id="admin-locale-select"', $html);
         $this->assertStringNotContainsString('onclick="toggleModuleMenu()"', $html);
+        $this->assertStringContainsString('AI GEO Optimizer', $html);
     }
 
     public function test_header_user_menu_is_filtered_for_agent_admin(): void
@@ -175,7 +173,7 @@ class AdminHeaderNavigationTest extends TestCase
         $this->assertMenuRouteActive($primaryNav, route('admin.crebee-accounts.index'));
     }
 
-    public function test_operation_guide_url_is_selected_by_admin_role(): void
+    public function test_operation_guide_is_hidden_from_primary_navigation_for_all_admin_roles(): void
     {
         Config::set('geoflow.operation_guide_url', 'https://guide.example.test/default');
         Config::set('geoflow.operation_guide_agent_url', 'https://guide.example.test/agent');
@@ -190,29 +188,33 @@ class AdminHeaderNavigationTest extends TestCase
             ->get(route('admin.dashboard'))
             ->assertOk()
             ->getContent(), 'data-admin-primary-nav');
-        $this->assertStringContainsString('https://guide.example.test/agent', $agentPrimaryNav);
+        $this->assertStringNotContainsString('https://guide.example.test/agent', $agentPrimaryNav);
         $this->assertStringNotContainsString('https://guide.example.test/user', $agentPrimaryNav);
+        $this->assertStringNotContainsString('操作指引', $agentPrimaryNav);
 
         $siteUserPrimaryNav = $this->section($this->actingAs($siteUser, 'admin')
             ->get(route('admin.dashboard'))
             ->assertOk()
             ->getContent(), 'data-admin-primary-nav');
-        $this->assertStringContainsString('https://guide.example.test/user', $siteUserPrimaryNav);
+        $this->assertStringNotContainsString('https://guide.example.test/user', $siteUserPrimaryNav);
         $this->assertStringNotContainsString('https://guide.example.test/agent', $siteUserPrimaryNav);
+        $this->assertStringNotContainsString('操作指引', $siteUserPrimaryNav);
 
         $directAdminPrimaryNav = $this->section($this->actingAs($directAdmin, 'admin')
             ->get(route('admin.dashboard'))
             ->assertOk()
             ->getContent(), 'data-admin-primary-nav');
-        $this->assertStringContainsString('https://guide.example.test/user', $directAdminPrimaryNav);
+        $this->assertStringNotContainsString('https://guide.example.test/user', $directAdminPrimaryNav);
         $this->assertStringNotContainsString('https://guide.example.test/agent', $directAdminPrimaryNav);
+        $this->assertStringNotContainsString('操作指引', $directAdminPrimaryNav);
 
         $superAdminPrimaryNav = $this->section($this->actingAs($superAdmin, 'admin')
             ->get(route('admin.dashboard'))
             ->assertOk()
             ->getContent(), 'data-admin-primary-nav');
-        $this->assertStringContainsString('https://guide.example.test/default', $superAdminPrimaryNav);
+        $this->assertStringNotContainsString('https://guide.example.test/default', $superAdminPrimaryNav);
         $this->assertStringNotContainsString('https://guide.example.test/agent', $superAdminPrimaryNav);
+        $this->assertStringNotContainsString('操作指引', $superAdminPrimaryNav);
     }
 
     public function test_top_navigation_group_dropdowns_are_hover_driven(): void

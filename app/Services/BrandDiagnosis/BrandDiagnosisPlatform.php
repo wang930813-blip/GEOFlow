@@ -5,13 +5,20 @@ namespace App\Services\BrandDiagnosis;
 final class BrandDiagnosisPlatform
 {
     public const DOUBAO = 'doubao';
+
     public const DEEPSEEK = 'deepseek';
+
     public const QIANWEN = 'qianwen';
+
     public const WENXIN = 'wenxin';
 
     public const CHATGPT = 'chatgpt';
+
     public const GROK = 'grok';
+
     public const GEMINI = 'gemini';
+
+    public const CLAUDE = 'claude';
 
     /**
      * @return list<string>
@@ -40,6 +47,7 @@ final class BrandDiagnosisPlatform
             self::CHATGPT,
             self::GROK,
             self::GEMINI,
+            self::CLAUDE,
         ];
     }
 
@@ -80,6 +88,7 @@ final class BrandDiagnosisPlatform
             self::CHATGPT => 'ChatGPT',
             self::GROK => 'Grok',
             self::GEMINI => 'Gemini',
+            self::CLAUDE => 'Claude',
             self::DEEPSEEK => 'DeepSeek',
             self::QIANWEN => '千问',
             self::WENXIN => '文心一言',
@@ -97,6 +106,7 @@ final class BrandDiagnosisPlatform
             self::CHATGPT => 'ChatGPT',
             self::GROK => 'Grok',
             self::GEMINI => 'Gemini',
+            self::CLAUDE => 'Claude',
             default => $platform,
         };
     }
@@ -184,6 +194,7 @@ final class BrandDiagnosisPlatform
             self::CHATGPT => 'https://chatgpt.com/',
             self::GROK => 'https://grok.com/',
             self::GEMINI => 'https://gemini.google.com/',
+            self::CLAUDE => 'https://claude.ai/',
             self::DOUBAO => 'https://www.doubao.com/chat/',
             self::DEEPSEEK => 'https://chat.deepseek.com/',
             self::QIANWEN => 'https://tongyi.aliyun.com/qianwen/',

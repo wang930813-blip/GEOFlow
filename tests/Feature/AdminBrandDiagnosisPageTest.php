@@ -55,10 +55,11 @@ class AdminBrandDiagnosisPageTest extends TestCase
             ->assertSee('value="chatgpt"', false)
             ->assertSee('value="grok"', false)
             ->assertSee('value="gemini"', false)
-            ->assertDontSee('value="doubao"', false)
-            ->assertDontSee('value="deepseek"', false)
-            ->assertDontSee('value="qianwen"', false)
-            ->assertDontSee('value="wenxin"', false)
+            ->assertSee('value="claude"', false)
+            ->assertDontSee('value="doubao" type="checkbox"', false)
+            ->assertDontSee('value="deepseek" type="checkbox"', false)
+            ->assertDontSee('value="qianwen" type="checkbox"', false)
+            ->assertDontSee('value="wenxin" type="checkbox"', false)
             ->assertSee('data-platform-checkbox', false)
             ->assertSee('data-selected-platforms', false)
             ->assertSee('数据来源：')
@@ -142,7 +143,7 @@ class AdminBrandDiagnosisPageTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        foreach (['chatgpt', 'grok', 'gemini'] as $platform) {
+        foreach (['chatgpt', 'grok', 'gemini', 'claude'] as $platform) {
             $this->assertStringContainsString('value="'.$platform.'" type="checkbox"', $html);
         }
 
@@ -1653,10 +1654,10 @@ class AdminBrandDiagnosisPageTest extends TestCase
             ->assertSee('value="chatgpt"', false)
             ->assertSee('value="grok"', false)
             ->assertSee('value="gemini"', false)
-            ->assertDontSee('value="doubao"', false)
-            ->assertDontSee('value="deepseek"', false)
-            ->assertDontSee('value="qianwen"', false)
-            ->assertDontSee('value="wenxin"', false)
+            ->assertDontSee('value="doubao" type="checkbox"', false)
+            ->assertDontSee('value="deepseek" type="checkbox"', false)
+            ->assertDontSee('value="qianwen" type="checkbox"', false)
+            ->assertDontSee('value="wenxin" type="checkbox"', false)
             ->assertSee('value="deepseek"', false)
             ->getContent();
 

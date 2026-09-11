@@ -28,19 +28,6 @@
     $notificationGithubUrl = (string) ($updateLinks['github'] ?? 'https://github.com/yaojingang/GEOFlow');
     $supportedLocales = \App\Support\AdminWeb::supportedLocales();
     $currentAdminLocale = app()->getLocale();
-    $operationGuideDefaultUrl = trim((string) config('geoflow.operation_guide_url', ''));
-    $operationGuideAgentUrl = trim((string) config('geoflow.operation_guide_agent_url', ''));
-    $operationGuideUserUrl = trim((string) config('geoflow.operation_guide_user_url', ''));
-    $operationGuideUrl = $operationGuideDefaultUrl;
-    if ($isAgentAdmin) {
-        $operationGuideUrl = $operationGuideAgentUrl !== '' ? $operationGuideAgentUrl : $operationGuideDefaultUrl;
-    } elseif ($isDirectAdmin || $isSiteUser || ! $isSuperAdmin) {
-        $operationGuideUrl = $operationGuideUserUrl !== '' ? $operationGuideUserUrl : $operationGuideDefaultUrl;
-    }
-    if ($operationGuideUrl === '' && ! $isAgentAdmin) {
-        $operationGuideUrl = $operationGuideUserUrl;
-    }
-
     $primaryMenu = [
         [
             'type' => 'link',
@@ -81,7 +68,6 @@
             'name' => '文章发布',
             'visible' => true,
             'items' => [
-                ['key' => 'media_distribution', 'route' => 'admin.media-distribution.resources.index', 'name' => '官媒发布', 'visible' => true],
                 ['key' => 'crebee_accounts', 'route' => 'admin.crebee-accounts.index', 'name' => '自媒体发布', 'visible' => true],
                 ['key' => 'b2b_websites', 'route' => 'admin.b2b-websites.index', 'name' => 'B2B 行业网站', 'visible' => true],
             ],
@@ -97,14 +83,6 @@
                 ['key' => 'articles', 'route' => 'admin.articles.index', 'name' => '文章管理', 'visible' => true],
                 ['key' => 'video_generations', 'route' => 'admin.video-generations.index', 'name' => '生成视频', 'visible' => true],
             ],
-        ],
-        [
-            'type' => 'link',
-            'key' => 'operation_guide',
-            'url' => $operationGuideUrl,
-            'name' => '操作指引',
-            'external' => true,
-            'visible' => $operationGuideUrl !== '',
         ],
     ];
 
