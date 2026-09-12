@@ -12,6 +12,7 @@ final class BrandDiagnosisLookupRequest extends FormRequest
         'profile',
         'questions',
         'performance',
+        'rankings',
         'model_results',
         'sources',
         'snapshots',
