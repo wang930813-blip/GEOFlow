@@ -7,6 +7,7 @@ use App\Services\ProductCases\ProductCaseReportSummaryService;
 use App\Support\Site\ArticleHtmlPresenter;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\View\View;
 
 class ProductCaseController extends Controller
@@ -26,19 +27,51 @@ class ProductCaseController extends Controller
 
         $this->applyFilters($query, $filters);
 
-        $cases = $query
+        $rankedCases = $query
             ->orderByDesc('sort_order')
             ->orderByDesc('published_at')
             ->orderByDesc('id')
-            ->paginate(12)
-            ->withQueryString();
+            ->get()
+            ->map(function (ProductCase $case) use ($reports): array {
+                $report = $reports->detail($case);
 
-        $caseMetrics = [];
-        foreach ($cases as $case) {
-            if ($case instanceof ProductCase) {
-                $caseMetrics[(int) $case->id] = $reports->cardMetrics($case);
-            }
-        }
+                return [
+                    'case' => $case,
+                    'report' => $report,
+                    'score' => $reports->performanceScoreFromReport($report),
+                    'sort_order' => (int) $case->sort_order,
+                    'published_at' => (int) ($case->published_at?->getTimestamp() ?? 0),
+                    'id' => (int) $case->id,
+                ];
+            })
+            ->sort(function (array $left, array $right): int {
+                foreach (['score', 'sort_order', 'published_at', 'id'] as $key) {
+                    $comparison = ((int) $right[$key]) <=> ((int) $left[$key]);
+                    if ($comparison !== 0) {
+                        return $comparison;
+                    }
+                }
+
+                return 0;
+            })
+            ->values();
+
+        $page = max(1, (int) $request->query('page', 1));
+        $perPage = 12;
+        $pageItems = $rankedCases->forPage($page, $perPage)->values();
+        $cases = new LengthAwarePaginator(
+            $pageItems->pluck('case')->values(),
+            $rankedCases->count(),
+            $perPage,
+            $page,
+            ['path' => $request->url(), 'query' => $request->query()]
+        );
+
+        $caseMetrics = $pageItems
+            ->mapWithKeys(fn (array $item): array => [
+                (int) $item['case']->id => $reports->cardMetricsFromReport((array) $item['report']),
+            ])
+            ->all();
 
         return view('product-cases.index', [
             'cases' => $cases,
@@ -61,10 +94,12 @@ class ProductCaseController extends Controller
 
         $case->increment('view_count');
 
+        $searchPage = max(1, (int) $request->query('search_page', 1));
+
         return view('product-cases.show', [
             'case' => $case,
             'contentHtml' => ArticleHtmlPresenter::markdownToHtml((string) $case->content),
-            'report' => $reports->detail($case),
+            'report' => $reports->detail($case, $searchPage),
             'caseRoutes' => $this->routeNames($request),
             'pageTitle' => $case->title,
             'pageDescription' => trim((string) $case->summary) !== '' ? (string) $case->summary : (string) $case->company_name,

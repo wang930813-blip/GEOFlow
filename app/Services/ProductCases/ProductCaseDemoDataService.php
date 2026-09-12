@@ -6,14 +6,16 @@ use App\Models\BrandDiagnosisBrandMention;
 use App\Models\BrandDiagnosisQuestion;
 use App\Models\BrandDiagnosisResult;
 use App\Models\BrandDiagnosisRun;
+use App\Models\BrandDiagnosisSource;
 use App\Models\ProductCase;
 use App\Services\BrandDiagnosis\BrandDiagnosisMetricsCalculator;
-use App\Services\BrandDiagnosis\BrandDiagnosisPlatform;
 use Illuminate\Support\Facades\DB;
 
 class ProductCaseDemoDataService
 {
     public const BILLING_MODE = 'product_case_seed';
+
+    private const QUESTION_COUNT = 6;
 
     /**
      * Generate one isolated, repeatable diagnosis run for a product case.
@@ -38,6 +40,7 @@ class ProductCaseDemoDataService
             }
 
             $questions = $this->questions($brandName, (string) $case->industry, (string) $case->region);
+            $platforms = $this->demoPlatforms();
             $run = BrandDiagnosisRun::query()
                 ->withoutGlobalScopes(['current_site', 'admin_owner'])
                 ->create([
@@ -55,7 +58,7 @@ class ProductCaseDemoDataService
                         'region' => (string) $case->region,
                         'case_slug' => (string) $case->slug,
                     ],
-                    'platforms' => BrandDiagnosisPlatform::keys(),
+                    'platforms' => $platforms,
                     'status' => 'completed',
                     'total_questions' => count($questions),
                     'completed_questions' => count($questions),
@@ -82,7 +85,7 @@ class ProductCaseDemoDataService
                         'status' => 'completed',
                     ]);
 
-                foreach (BrandDiagnosisPlatform::keys() as $platformIndex => $platform) {
+                foreach ($platforms as $platformIndex => $platform) {
                     $this->seedResult(
                         $run,
                         $question,
@@ -120,11 +123,17 @@ class ProductCaseDemoDataService
             $this->questionData($brandName.'适合哪些客户或使用场景？', 'audience'),
             $this->questionData('选择'.$industry.'服务时应该重点关注哪些指标？', 'evaluation'),
             $this->questionData($region.'有哪些'.$industry.'服务趋势值得关注？', 'trend'),
+            $this->questionData($industry.'品牌如何提升 AI 搜索推荐率？', 'ai_visibility'),
+            $this->questionData($brandName.'在'.$region.'市场的交付优势是什么？', 'delivery'),
+            $this->questionData('采购'.$industry.'方案时如何比较品牌实力？', 'procurement'),
+            $this->questionData($brandName.'有哪些可验证的客户价值？', 'value'),
+            $this->questionData($industry.'企业做 GEO 增长应优先优化哪些内容？', 'geo_growth'),
+            $this->questionData($brandName.'与主流竞品相比有哪些差异化卖点？', 'differentiation'),
+            $this->questionData($region.$industry.'服务商有哪些口碑表现？', 'reputation'),
+            $this->questionData('AI 平台如何评价'.$brandName.'的产品能力？', 'ai_evaluation'),
         ];
 
-        $questionCount = 6 + ($this->seedNumber($brandName) % 4);
-
-        return array_slice($templates, 0, $questionCount);
+        return array_slice($templates, 0, self::QUESTION_COUNT);
     }
 
     /**
@@ -152,7 +161,7 @@ class ProductCaseDemoDataService
         $mentionRate = 60 + ($this->seedNumber($brandName) % 31);
         $mentioned = $questionIndex === 0
             || (
-                ! ($questionIndex === 1 && $platformIndex === count(BrandDiagnosisPlatform::keys()) - 1)
+                ! ($questionIndex === 1 && $platformIndex === count($this->demoPlatforms()) - 1)
                 && ($seed % 100) < $mentionRate
             );
         $rank = $mentioned
@@ -195,7 +204,7 @@ class ProductCaseDemoDataService
             ]);
 
         foreach ($sourceRows as $sourceRow) {
-            \App\Models\BrandDiagnosisSource::query()
+            BrandDiagnosisSource::query()
                 ->withoutGlobalScopes(['current_site', 'admin_owner'])
                 ->create([
                     'site_id' => (int) $case->site_id,
@@ -276,11 +285,15 @@ class ProductCaseDemoDataService
             ['title' => $brandName.'客户案例', 'domain' => 'customer-stories.example.com'],
             ['title' => $brandName.'公开信息', 'domain' => 'public-info.example.com'],
             ['title' => $brandName.'市场资料', 'domain' => 'market-research.example.com'],
+            ['title' => $brandName.'行业榜单', 'domain' => 'industry-ranking.example.com'],
+            ['title' => $brandName.'采购指南', 'domain' => 'buying-guide.example.com'],
+            ['title' => $brandName.'口碑评价', 'domain' => 'reviews.example.com'],
+            ['title' => $brandName.'技术资料', 'domain' => 'technical-docs.example.com'],
         ];
-        $poolSize = 3 + ($this->seedNumber($brandName) % 4);
+        $poolSize = 6 + ($this->seedNumber($brandName) % 5);
         $catalog = array_slice($catalog, 0, $poolSize);
         $rowSeed = $this->variantSeed($brandName, $questionIndex, $platformIndex, 20);
-        $count = 1 + ($rowSeed % min(4, $poolSize));
+        $count = 2 + ($rowSeed % min(5, $poolSize));
         $start = $this->variantSeed($brandName, $questionIndex, $platformIndex, 21) % $poolSize;
         $rows = [];
 
@@ -298,6 +311,24 @@ class ProductCaseDemoDataService
     }
 
     /**
+     * @return list<string>
+     */
+    private function demoPlatforms(): array
+    {
+        return [
+            'chatgpt',
+            'gemini',
+            'claude',
+            'grok',
+            'deepseek',
+            'doubao',
+            'qianwen',
+            'wenxin',
+            'yuanbao',
+        ];
+    }
+
+    /**
      * @param  array{summary:string}  $source
      */
     private function answer(
@@ -306,8 +337,7 @@ class ProductCaseDemoDataService
         bool $mentioned,
         int $rank,
         string $sentiment
-    ): string
-    {
+    ): string {
         if (! $mentioned) {
             $industry = trim((string) $case->industry) ?: '相关行业';
             $region = trim((string) $case->region);

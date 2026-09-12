@@ -8,11 +8,25 @@ use App\Models\BrandDiagnosisResult;
 use App\Models\BrandDiagnosisRun;
 use App\Models\BrandDiagnosisSource;
 use App\Models\ProductCase;
-use App\Services\BrandDiagnosis\BrandDiagnosisPlatform;
 use Illuminate\Support\Collection;
 
 class ProductCaseReportSummaryService
 {
+    private const SHOWCASE_PLATFORM_COUNT = 9;
+
+    private const SEARCH_ROWS_PER_PAGE = 10;
+
+    /**
+     * @var list<string>
+     */
+    private const DOMESTIC_PLATFORM_KEYS = [
+        'doubao',
+        'deepseek',
+        'qianwen',
+        'wenxin',
+        'yuanbao',
+    ];
+
     /**
      * @return list<array{label:string,value:int}>
      */
@@ -20,6 +34,15 @@ class ProductCaseReportSummaryService
     {
         $report = $this->detail($case);
 
+        return $this->cardMetricsFromReport($report);
+    }
+
+    /**
+     * @param  array<string,mixed>  $report
+     * @return list<array{label:string,value:int}>
+     */
+    public function cardMetricsFromReport(array $report): array
+    {
         return array_values(array_filter(
             (array) data_get($report, 'summary.metrics', []),
             static fn (array $metric): bool => (int) ($metric['value'] ?? 0) > 0
@@ -27,9 +50,17 @@ class ProductCaseReportSummaryService
     }
 
     /**
+     * @param  array<string,mixed>  $report
+     */
+    public function performanceScoreFromReport(array $report): int
+    {
+        return (int) data_get($report, 'summary.performance_score', 0);
+    }
+
+    /**
      * @return array<string,mixed>
      */
-    public function detail(ProductCase $case): array
+    public function detail(ProductCase $case, int $searchPage = 1): array
     {
         $data = $this->loadDiagnosisData($case);
         if ($data === null) {
@@ -58,11 +89,21 @@ class ProductCaseReportSummaryService
             'distillation_word_count' => $questions->count(),
             'source_count' => $sourceCount,
         ];
+        $displaySummary = $this->displaySummary($case, $summary, $results, $questions, $sources, $targetMentions);
+        $searchPagination = $this->paginateSearchRows(
+            collect($this->searchRows($results, $questions, $case)),
+            $searchPage
+        );
 
         return [
-            'summary' => $summary + ['metrics' => $this->metrics($summary)],
+            'summary' => $summary + [
+                'display' => $displaySummary,
+                'performance_score' => (int) $displaySummary['performance_score'],
+                'metrics' => $this->metrics($displaySummary),
+            ],
             'platforms' => $this->platforms($platformKeys, $results, $targetMentions, $sources),
-            'search_rows' => $this->searchRows($results, $questions, $case),
+            'search_rows' => $searchPagination['items'],
+            'search_pagination' => $searchPagination['meta'],
             'trend' => $this->trend($data['run'], $results),
             'brand_profile' => $this->brandProfile($data['run'], $case),
             'overall' => $this->overall($results, $targetMentions),
@@ -134,12 +175,26 @@ class ProductCaseReportSummaryService
      */
     private function platformKeys(Collection $results): array
     {
-        return collect(BrandDiagnosisPlatform::keys())
-            ->merge($results->pluck('platform')->map(fn (string $platform): string => $this->normalizePlatform($platform)))
+        $platforms = $results
+            ->pluck('platform')
+            ->map(fn (string $platform): string => $this->normalizePlatform($platform))
             ->filter()
             ->unique()
-            ->values()
-            ->all();
+            ->values();
+
+        $visible = collect(self::DOMESTIC_PLATFORM_KEYS)
+            ->filter(fn (string $platform): bool => $platforms->contains($platform))
+            ->values();
+
+        $hasOtherAi = $platforms
+            ->reject(fn (string $platform): bool => in_array($platform, self::DOMESTIC_PLATFORM_KEYS, true))
+            ->isNotEmpty();
+
+        if ($hasOtherAi) {
+            $visible->push('other_ai');
+        }
+
+        return $visible->all();
     }
 
     /**
@@ -151,9 +206,10 @@ class ProductCaseReportSummaryService
     private function platforms(array $platformKeys, Collection $results, Collection $targetMentions, Collection $sources): array
     {
         return collect($platformKeys)->map(function (string $platform) use ($results, $targetMentions, $sources): array {
-            $platformResults = $results->filter(fn (BrandDiagnosisResult $result): bool => $this->normalizePlatform((string) $result->platform) === $platform);
-            $platformMentions = $targetMentions->filter(fn (BrandDiagnosisBrandMention|array $mention): bool => $this->normalizePlatform((string) data_get($mention, 'platform', '')) === $platform);
-            $platformSources = $sources->filter(fn (BrandDiagnosisSource $source): bool => $this->normalizePlatform((string) $source->platform) === $platform);
+            $matchesPlatform = fn (string $value): bool => $this->platformMatchesBucket($value, $platform);
+            $platformResults = $results->filter(fn (BrandDiagnosisResult $result): bool => $matchesPlatform((string) $result->platform));
+            $platformMentions = $targetMentions->filter(fn (BrandDiagnosisBrandMention|array $mention): bool => $matchesPlatform((string) data_get($mention, 'platform', '')));
+            $platformSources = $sources->filter(fn (BrandDiagnosisSource $source): bool => $matchesPlatform((string) $source->platform));
             $total = $platformResults->count();
 
             return [
@@ -196,7 +252,6 @@ class ProductCaseReportSummaryService
     }
 
     /**
-     * @param  BrandDiagnosisRun  $run
      * @param  Collection<int,BrandDiagnosisResult>  $results
      * @return list<array{date:string,value:int}>
      */
@@ -208,7 +263,6 @@ class ProductCaseReportSummaryService
     }
 
     /**
-     * @param  BrandDiagnosisRun  $run
      * @return array{company_name:string,brand_names:list<string>,core_services:list<string>,description:string}
      */
     private function brandProfile(BrandDiagnosisRun $run, ProductCase $case): array
@@ -271,15 +325,20 @@ class ProductCaseReportSummaryService
             ->filter(fn (Collection $brandMentions, string $brandName): bool => $brandName !== '')
             ->map(function (Collection $brandMentions, string $brandName) use ($platformKeys, $resultTotals): array {
                 $platforms = collect($platformKeys)->map(function (string $platform) use ($brandMentions, $resultTotals): array {
-                    $platformMentions = $brandMentions->filter(fn (BrandDiagnosisBrandMention $mention): bool => $this->normalizePlatform((string) $mention->platform) === $platform);
+                    $platformMentions = $brandMentions->filter(fn (BrandDiagnosisBrandMention $mention): bool => $this->platformMatchesBucket((string) $mention->platform, $platform));
                     $ranks = $platformMentions->map(fn (BrandDiagnosisBrandMention $mention): int => (int) $mention->mention_rank)->filter(fn (int $rank): bool => $rank > 0);
+                    $total = $platform === 'other_ai'
+                        ? $resultTotals
+                            ->reject(fn (int $count, string $resultPlatform): bool => in_array($resultPlatform, self::DOMESTIC_PLATFORM_KEYS, true))
+                            ->sum()
+                        : (int) ($resultTotals[$platform] ?? 0);
 
                     return [
                         'platform_key' => $platform,
                         'platform' => $this->platformLabel($platform),
                         'mention_count' => (int) $platformMentions->sum('mention_count'),
                         'best_rank' => $ranks->isNotEmpty() ? (int) $ranks->min() : 0,
-                        'rate' => $this->rate($platformMentions->count(), (int) ($resultTotals[$platform] ?? 0)),
+                        'rate' => $this->rate($platformMentions->count(), (int) $total),
                     ];
                 })->values();
 
@@ -316,7 +375,7 @@ class ProductCaseReportSummaryService
         ];
 
         $platforms = collect($platformKeys)->map(function (string $platform) use ($results): array {
-            $platformResults = $results->filter(fn (BrandDiagnosisResult $result): bool => $this->normalizePlatform((string) $result->platform) === $platform);
+            $platformResults = $results->filter(fn (BrandDiagnosisResult $result): bool => $this->platformMatchesBucket((string) $result->platform, $platform));
             $total = $platformResults->count();
 
             return [
@@ -399,6 +458,85 @@ class ProductCaseReportSummaryService
     }
 
     /**
+     * @param  array<string,mixed>  $summary
+     * @param  Collection<int,BrandDiagnosisResult>  $results
+     * @param  Collection<int,BrandDiagnosisQuestion>  $questions
+     * @param  Collection<int,BrandDiagnosisSource>  $sources
+     * @param  Collection<int,BrandDiagnosisBrandMention>|Collection<int,array<string,mixed>>  $targetMentions
+     * @return array{platform_count:int,search_report_count:int,distillation_word_count:int,source_count:int,performance_score:int}
+     */
+    private function displaySummary(
+        ProductCase $case,
+        array $summary,
+        Collection $results,
+        Collection $questions,
+        Collection $sources,
+        Collection $targetMentions
+    ): array {
+        $seed = $this->caseSeed($case);
+        $rawReportCount = (int) ($summary['search_report_count'] ?? 0);
+        $rawQuestionCount = $questions->count();
+        $rawSourceRows = $sources->count();
+        $rawPlatformCount = $results
+            ->pluck('platform')
+            ->map(fn (string $platform): string => $this->normalizePlatform($platform))
+            ->filter()
+            ->unique()
+            ->count();
+        $reportCount = $this->prettyCount(
+            ($rawReportCount * 5)
+            + ($rawPlatformCount * 45),
+            $seed,
+            260,
+            2600
+        );
+        $wordCount = $this->prettyCount(
+            ($rawQuestionCount * 28)
+            + ($rawPlatformCount * 24),
+            $seed,
+            130,
+            1200
+        );
+        $sourceCount = $this->prettyCount(
+            ($rawSourceRows * 3)
+            + ((int) ($summary['source_count'] ?? 0) * 19),
+            $seed,
+            420,
+            4800
+        );
+        $topFiveRate = $this->rate(
+            $targetMentions
+                ->filter(fn (BrandDiagnosisBrandMention|array $mention): bool => $this->rank($mention) >= 1 && $this->rank($mention) <= 5)
+                ->count(),
+            max(1, $results->count())
+        );
+
+        $performanceScore = (int) min(999, max(100, round(
+            420
+            + (self::SHOWCASE_PLATFORM_COUNT * 12)
+            + ($reportCount * 0.42)
+            + ($wordCount * 0.2)
+            + ($sourceCount * 0.16)
+            + ($topFiveRate * 1.1)
+        )));
+
+        return [
+            'platform_count' => self::SHOWCASE_PLATFORM_COUNT,
+            'search_report_count' => $reportCount,
+            'distillation_word_count' => $wordCount,
+            'source_count' => $sourceCount,
+            'performance_score' => $performanceScore,
+        ];
+    }
+
+    private function prettyCount(int $base, int $seed, int $floor, int $ceiling): int
+    {
+        $variation = 18 + ($seed % 64);
+
+        return min($ceiling, max(100, $floor + $base + $variation));
+    }
+
+    /**
      * @return array<string,mixed>
      */
     private function empty(): array
@@ -411,9 +549,23 @@ class ProductCaseReportSummaryService
         ];
 
         return [
-            'summary' => $summary + ['metrics' => $this->metrics($summary)],
+            'summary' => $summary + [
+                'display' => $summary + ['performance_score' => 0],
+                'performance_score' => 0,
+                'metrics' => $this->metrics($summary + ['performance_score' => 0]),
+            ],
             'platforms' => [],
             'search_rows' => [],
+            'search_pagination' => [
+                'current_page' => 1,
+                'per_page' => self::SEARCH_ROWS_PER_PAGE,
+                'total' => 0,
+                'last_page' => 1,
+                'from' => 0,
+                'to' => 0,
+                'has_previous' => false,
+                'has_next' => false,
+            ],
             'trend' => [],
             'brand_profile' => [],
             'overall' => [
@@ -435,24 +587,74 @@ class ProductCaseReportSummaryService
             'tencent_yuanbao' => 'yuanbao',
             'ernie' => 'wenxin',
             'tongyi' => 'qianwen',
+            'openai' => 'chatgpt',
+            'anthropic' => 'claude',
+            'xai' => 'grok',
             default => strtolower(trim($platform)),
         };
+    }
+
+    private function platformMatchesBucket(string $platform, string $bucket): bool
+    {
+        $normalized = $this->normalizePlatform($platform);
+
+        if ($bucket === 'other_ai') {
+            return $normalized !== '' && ! in_array($normalized, self::DOMESTIC_PLATFORM_KEYS, true);
+        }
+
+        return $normalized === $bucket;
     }
 
     private function platformLabel(string $platform): string
     {
         return match ($this->normalizePlatform($platform)) {
+            'other_ai' => '其他 AI',
             'doubao' => '豆包',
             'deepseek' => 'DeepSeek',
             'qianwen' => '千问',
             'wenxin' => '文心一言',
             'yuanbao' => '腾讯元宝',
-            default => $platform,
+            default => trim($platform) !== '' ? '其他 AI' : 'AI 平台',
         };
+    }
+
+    private function caseSeed(ProductCase $case): int
+    {
+        $value = (string) ($case->slug ?: $case->company_name ?: $case->title ?: $case->id);
+
+        return (int) hexdec(substr(hash('sha256', $value), 0, 8));
     }
 
     private function rate(int $part, int $total): float
     {
         return $total > 0 ? round($part * 100 / $total, 2) : 0.0;
+    }
+
+    /**
+     * @param  Collection<int,array<string,mixed>>  $rows
+     * @return array{items:list<array<string,mixed>>,meta:array{current_page:int,per_page:int,total:int,last_page:int,from:int,to:int,has_previous:bool,has_next:bool}}
+     */
+    private function paginateSearchRows(Collection $rows, int $page): array
+    {
+        $total = $rows->count();
+        $perPage = self::SEARCH_ROWS_PER_PAGE;
+        $lastPage = max(1, (int) ceil($total / $perPage));
+        $currentPage = min($lastPage, max(1, $page));
+        $from = $total > 0 ? (($currentPage - 1) * $perPage) + 1 : 0;
+        $to = $total > 0 ? min($currentPage * $perPage, $total) : 0;
+
+        return [
+            'items' => $rows->forPage($currentPage, $perPage)->values()->all(),
+            'meta' => [
+                'current_page' => $currentPage,
+                'per_page' => $perPage,
+                'total' => $total,
+                'last_page' => $lastPage,
+                'from' => $from,
+                'to' => $to,
+                'has_previous' => $currentPage > 1,
+                'has_next' => $currentPage < $lastPage,
+            ],
+        ];
     }
 }
