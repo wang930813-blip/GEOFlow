@@ -238,7 +238,7 @@ class ProductCaseSpreadsheetReader
             $id = trim((string) ($relationship['Id'] ?? ''));
             $target = trim((string) ($relationship['Target'] ?? ''));
             if ($id !== '' && $target !== '') {
-                $relationshipMap[$id] = $this->normalizeZipPath(dirname($drawingName).'/'.$target);
+                $relationshipMap[$id] = $this->relationshipTargetPath($drawingName, $target);
             }
         }
 
@@ -322,6 +322,17 @@ class ProductCaseSpreadsheetReader
         }
 
         return implode('/', $parts);
+    }
+
+    private function relationshipTargetPath(string $sourceName, string $target): string
+    {
+        $target = str_replace('\\', '/', trim($target));
+
+        if (str_starts_with($target, '/')) {
+            return $this->normalizeZipPath(ltrim($target, '/'));
+        }
+
+        return $this->normalizeZipPath(dirname($sourceName).'/'.$target);
     }
 
     private function columnNumber(string $letters): int

@@ -20,7 +20,8 @@ class ProductCaseImportService
     public function __construct(
         private readonly ProductCaseSpreadsheetReader $reader,
         private readonly ExternalImageHostClient $imageHostClient,
-        private readonly ProductCaseDemoDataService $demoData
+        private readonly ProductCaseDemoDataService $demoData,
+        private readonly ProductCaseIndustryNormalizer $industryNormalizer
     ) {}
 
     /**
@@ -114,7 +115,7 @@ class ProductCaseImportService
                         'company_name' => trim((string) $row['brand_name']),
                         'logo_url' => '',
                         'cover_url' => (string) ($imageResult['url'] ?? ''),
-                        'industry' => trim((string) $row['industry']),
+                        'industry' => $this->industryNormalizer->normalize((string) $row['industry']),
                         'region' => trim((string) $row['region']),
                         'business_mode' => '',
                         'module_tags' => ['品牌诊断', 'AI问题', 'AI信源', '竞品分析'],

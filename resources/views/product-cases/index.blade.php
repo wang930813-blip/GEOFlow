@@ -184,7 +184,7 @@
                             <p class="mt-3 line-clamp-3 min-h-[4.5rem] text-sm leading-6 text-slate-600">{{ $case->summary }}</p>
 
                             @if(!empty($metrics))
-                                <div class="mt-4 grid grid-cols-3 gap-2">
+                                <div class="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
                                     @foreach($metrics as $metric)
                                         <div class="rounded-md bg-slate-50 px-3 py-2">
                                             <div class="text-base font-semibold text-slate-950">{{ $metric['value'] }}</div>

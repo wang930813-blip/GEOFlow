@@ -11,6 +11,7 @@ use App\Models\Image;
 use App\Models\ImageLibrary;
 use App\Models\ProductCase;
 use App\Models\Site;
+use App\Services\ProductCases\ProductCaseIndustryNormalizer;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Http;
@@ -51,10 +52,10 @@ class ImportProductCasesCommandTest extends TestCase
             $this->assertSame(1, ImageLibrary::query()->count());
             $this->assertSame(2, Image::query()->count());
             $this->assertSame(2, BrandDiagnosisRun::query()->count());
-            $this->assertGreaterThanOrEqual(12, BrandDiagnosisQuestion::query()->count());
-            $this->assertLessThanOrEqual(18, BrandDiagnosisQuestion::query()->count());
+            $this->assertGreaterThanOrEqual(24, BrandDiagnosisQuestion::query()->count());
+            $this->assertLessThanOrEqual(32, BrandDiagnosisQuestion::query()->count());
             $this->assertSame(
-                BrandDiagnosisQuestion::query()->count() * 4,
+                BrandDiagnosisQuestion::query()->count() * 9,
                 BrandDiagnosisResult::query()->count()
             );
             $this->assertSame(0, BrandDiagnosisBrandMention::query()->where('is_target_brand', false)->count());
@@ -66,22 +67,28 @@ class ImportProductCasesCommandTest extends TestCase
                 ->get();
             $this->assertCount(2, $seededRuns);
             $this->assertTrue($seededRuns->every(
-                static fn (BrandDiagnosisRun $run): bool => count((array) $run->platforms) === 4
+                static fn (BrandDiagnosisRun $run): bool => count((array) $run->platforms) === 9
             ));
             $this->assertTrue($seededRuns->every(
                 static fn (BrandDiagnosisRun $run): bool => (int) $run->mention_rate < 100
             ));
-            $this->assertNotSame(
-                $seededRuns[0]->total_questions,
-                $seededRuns[1]->total_questions
-            );
+            $this->assertTrue($seededRuns->every(
+                static fn (BrandDiagnosisRun $run): bool => (int) $run->total_questions >= 12
+                    && (int) $run->total_questions <= 16
+            ));
 
             $this->assertDatabaseHas('product_cases', [
                 'site_id' => $site->id,
                 'owner_admin_id' => $admin->id,
                 'company_name' => '恒风通风设备',
+                'industry' => '机械及行业设备',
                 'cover_url' => 'https://cdn.example.com/geo-cases/case-1.png',
                 'status' => ProductCase::STATUS_PUBLISHED,
+            ]);
+            $this->assertDatabaseHas('product_cases', [
+                'company_name' => '森居系统门窗',
+                'industry' => '建筑、建材',
+                'cover_url' => 'https://cdn.example.com/geo-cases/case-2.png',
             ]);
             $this->assertDatabaseHas('brand_diagnosis_runs', [
                 'site_id' => $site->id,
@@ -113,10 +120,10 @@ class ImportProductCasesCommandTest extends TestCase
             $this->assertSame(1, ImageLibrary::query()->count());
             $this->assertSame(2, Image::query()->count());
             $this->assertSame(2, BrandDiagnosisRun::query()->count());
-            $this->assertGreaterThanOrEqual(12, BrandDiagnosisQuestion::query()->count());
-            $this->assertLessThanOrEqual(18, BrandDiagnosisQuestion::query()->count());
+            $this->assertGreaterThanOrEqual(24, BrandDiagnosisQuestion::query()->count());
+            $this->assertLessThanOrEqual(32, BrandDiagnosisQuestion::query()->count());
             $this->assertSame(
-                BrandDiagnosisQuestion::query()->count() * 4,
+                BrandDiagnosisQuestion::query()->count() * 9,
                 BrandDiagnosisResult::query()->count()
             );
             $this->assertSame(0, BrandDiagnosisBrandMention::query()->where('is_target_brand', false)->count());
@@ -124,6 +131,17 @@ class ImportProductCasesCommandTest extends TestCase
         } finally {
             @unlink($source);
         }
+    }
+
+    public function test_it_normalizes_imported_industries_to_existing_filter_options(): void
+    {
+        $normalizer = app(ProductCaseIndustryNormalizer::class);
+
+        $this->assertSame('食品、饮料', $normalizer->normalize('茶业 / 茶叶品牌'));
+        $this->assertSame('传媒、广电', $normalizer->normalize('影视制作 / 宣传片'));
+        $this->assertSame('机械及行业设备', $normalizer->normalize('工业制造 / 通风设备'));
+        $this->assertSame('建筑、建材', $normalizer->normalize('家居家装 / 门窗'));
+        $this->assertSame('其他', $normalizer->normalize('非常小众的新行业'));
     }
 
     public function test_it_requires_an_active_super_admin_default_site(): void
@@ -198,8 +216,8 @@ XML);
         $zip->addFromString('xl/drawings/_rels/drawing1.xml.rels', <<<'XML'
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-    <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image.png"/>
-    <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image2.png"/>
+    <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="/xl/media/image.png"/>
+    <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="/xl/media/image2.png"/>
 </Relationships>
 XML);
         $zip->addFromString('xl/media/image.png', 'case-image-one');
