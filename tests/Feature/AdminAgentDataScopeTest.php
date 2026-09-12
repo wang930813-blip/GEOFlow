@@ -37,6 +37,8 @@ class AdminAgentDataScopeTest extends TestCase
 
     public function test_agent_can_open_self_media_page_without_own_site_and_only_sees_child_user_accounts(): void
     {
+        config(['aitoearn.enabled' => false]);
+
         $own = $this->agentScenario('agent_self_media_own');
         $other = $this->agentScenario('agent_self_media_other');
         $agent = $this->crebeeAgent();
@@ -70,7 +72,7 @@ class AdminAgentDataScopeTest extends TestCase
             ->assertDontSee('admin.b2b-websites.open');
 
         $this->actingAs($scenario['agent'], 'admin')
-            ->post(route('admin.b2b-websites.open', ['websiteKey' => 'tianzhu']))
+            ->post(route('admin.b2b-websites.open', ['websiteKey' => 'alibaba']))
             ->assertForbidden();
     }
 
@@ -178,6 +180,8 @@ class AdminAgentDataScopeTest extends TestCase
 
     public function test_agent_publish_records_are_scoped_to_child_user_sites_without_current_site(): void
     {
+        config(['aitoearn.enabled' => false]);
+
         $own = $this->agentScenario('agent_publish_records_own');
         $other = $this->agentScenario('agent_publish_records_other');
         $direct = $this->directScenario('agent_publish_records_direct');

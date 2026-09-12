@@ -214,7 +214,7 @@ class AiToEarnSelfMediaPublishTest extends TestCase
             && str_contains($request->url(), 'groupId=group-auth-owner'));
     }
 
-    public function test_aitoearn_account_page_renders_remote_platforms_and_authorization_controls(): void
+    public function test_aitoearn_account_page_renders_only_international_remote_platforms(): void
     {
         [$admin, $site] = $this->provisionSubscribedAdmin('aitoearn_account_page_owner', 3);
 
@@ -234,6 +234,18 @@ class AiToEarnSelfMediaPublishTest extends TestCase
                         'displayName' => 'YouTube',
                         'status' => 'available',
                         'contentLimits' => ['modes' => ['video']],
+                        'capabilities' => [
+                            'auth' => ['supported' => false],
+                        ],
+                    ],
+                    [
+                        'platform' => 'facebook',
+                        'displayName' => 'Facebook',
+                        'status' => 'available',
+                        'contentLimits' => ['modes' => ['article', 'video']],
+                        'capabilities' => [
+                            'auth' => ['supported' => true],
+                        ],
                     ],
                 ],
             ]),
@@ -244,15 +256,19 @@ class AiToEarnSelfMediaPublishTest extends TestCase
             ->get(route('admin.crebee-accounts.index'))
             ->assertOk()
             ->assertSee('自媒体账号授权')
-            ->assertSee('Douyin')
-            ->assertDontSee('YouTube')
+            ->assertSee('YouTube')
+            ->assertSee('Facebook')
+            ->assertDontSee('Douyin')
+            ->assertDontSee('抖音')
             ->assertDontSee('数据范围')
             ->assertDontSee('AiToEarn')
             ->assertSee('去授权')
-            ->assertSee(route('admin.crebee-accounts.aitoearn.authorizations.start'), false);
+            ->assertSee(route('admin.crebee-accounts.aitoearn.authorizations.start'), false)
+            ->assertDontSee('海外平台授权功能将持续优化')
+            ->assertDontSee('仅展示');
     }
 
-    public function test_aitoearn_account_page_disables_authorization_when_remote_platform_does_not_support_auth(): void
+    public function test_aitoearn_account_page_keeps_international_platform_cards_when_remote_has_no_international_entries(): void
     {
         \Illuminate\Support\Facades\Cache::flush();
 
@@ -289,11 +305,78 @@ class AiToEarnSelfMediaPublishTest extends TestCase
             ->withSession(['current_site_id' => (int) $site->id])
             ->get(route('admin.crebee-accounts.index'))
             ->assertOk()
-            ->assertSee('小红书')
-            ->assertSee('请联系管理员绑定账号')
-            ->assertSee('联系管理员绑定')
-            ->assertSee('value="douyin"', false)
-            ->assertDontSee('value="xhs"', false);
+            ->assertSee('YouTube')
+            ->assertSee('去授权')
+            ->assertDontSee('小红书')
+            ->assertDontSee('抖音')
+            ->assertDontSee('联系管理员绑定');
+    }
+
+    public function test_starting_authorization_accepts_international_platform(): void
+    {
+        \Illuminate\Support\Facades\Cache::flush();
+
+        [$admin, $site] = $this->provisionSubscribedAdmin('aitoearn_international_authorization_owner', 3);
+
+        Http::fake([
+            'https://aitoearn.test/api/v2/channels/platforms' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    [
+                        'platform' => 'youtube',
+                        'displayName' => 'YouTube',
+                        'status' => 'available',
+                        'capabilities' => [
+                            'auth' => ['supported' => true],
+                        ],
+                    ],
+                ],
+            ]),
+            'https://aitoearn.test/api/v2/channels/account-groups' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    'id' => 'group-international-auth-owner',
+                    'name' => 'gpf-international-auth-owner',
+                    'isDefault' => false,
+                ],
+            ]),
+            'https://aitoearn.test/api/v2/channels/accounts/auth/youtube*' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    'url' => 'https://aitoearn.test/auth/youtube/session_001',
+                    'sessionId' => 'session_youtube_001',
+                    'expiresAt' => now()->addHour()->toIso8601String(),
+                ],
+            ]),
+            'https://aitoearn.test/api/v2/channels/accounts*' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    'total' => 0,
+                    'accounts' => [],
+                ],
+            ]),
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.crebee-accounts.aitoearn.authorizations.start'), [
+                'platform' => 'youtube',
+            ])
+            ->assertRedirect('https://aitoearn.test/auth/youtube/session_001');
+
+        $this->assertDatabaseHas('self_media_auth_sessions', [
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'provider' => 'aitoearn',
+            'platform' => 'youtube',
+            'session_id' => 'session_youtube_001',
+            'external_group_id' => 'group-international-auth-owner',
+            'status' => 'pending',
+        ]);
     }
 
     public function test_starting_authorization_rejects_platforms_without_remote_authorization_support(): void
@@ -336,7 +419,7 @@ class AiToEarnSelfMediaPublishTest extends TestCase
         Http::assertNotSent(fn ($request): bool => str_contains($request->url(), '/api/v2/channels/accounts/auth/xhs'));
     }
 
-    public function test_starting_authorization_uses_callback_url_and_keeps_qr_session_on_page(): void
+    public function test_starting_authorization_uses_callback_url_and_keeps_domestic_qr_session_out_of_international_page(): void
     {
         [$admin, $site] = $this->provisionSubscribedAdmin('aitoearn_authorization_start_owner', 3);
 
@@ -402,7 +485,8 @@ class AiToEarnSelfMediaPublishTest extends TestCase
             ->withSession(['current_site_id' => (int) $site->id])
             ->get(route('admin.crebee-accounts.index'))
             ->assertOk()
-            ->assertSee('data:image/png;base64,QR-CODE', false);
+            ->assertDontSee('data:image/png;base64,QR-CODE', false)
+            ->assertSee('YouTube');
 
         Http::assertSent(function ($request): bool {
             parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
@@ -414,7 +498,7 @@ class AiToEarnSelfMediaPublishTest extends TestCase
         });
     }
 
-    public function test_starting_authorization_keeps_utc_expiration_qr_session_visible_until_local_expiry(): void
+    public function test_starting_authorization_keeps_utc_expiration_domestic_qr_session_out_of_international_page(): void
     {
         \Illuminate\Support\Facades\Cache::flush();
         Carbon::setTestNow(Carbon::parse('2026-08-27 15:20:00', 'Asia/Shanghai'));
@@ -479,7 +563,8 @@ class AiToEarnSelfMediaPublishTest extends TestCase
                 ->withSession(['current_site_id' => (int) $site->id])
                 ->get(route('admin.crebee-accounts.index'))
                 ->assertOk()
-                ->assertSee('data:image/png;base64,UTC-QR-CODE', false);
+                ->assertDontSee('data:image/png;base64,UTC-QR-CODE', false)
+                ->assertSee('YouTube');
         } finally {
             Carbon::setTestNow();
         }

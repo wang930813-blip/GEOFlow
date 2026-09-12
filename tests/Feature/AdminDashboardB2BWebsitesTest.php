@@ -21,8 +21,7 @@ class AdminDashboardB2BWebsitesTest extends TestCase
 
         $response
             ->assertOk()
-            ->assertDontSee('天助网')
-            ->assertDontSee('/assets/b2b-sites/01.png', false);
+            ->assertDontSee('Alibaba.com 阿里国际');
     }
 
     public function test_b2b_industry_website_page_shows_cards(): void
@@ -36,7 +35,9 @@ class AdminDashboardB2BWebsitesTest extends TestCase
         $response
             ->assertOk()
             ->assertSee('B2B行业网站')
-            ->assertSee('天助网')
+            ->assertSee('Alibaba.com 阿里国际')
+            ->assertSee('Thomasnet')
+            ->assertDontSee('天助网')
             ->assertSee('未开通')
             ->assertSee('开通');
     }
@@ -51,8 +52,8 @@ class AdminDashboardB2BWebsitesTest extends TestCase
 
         $response
             ->assertOk()
-            ->assertSee('/assets/b2b-sites/01.png', false)
-            ->assertDontSee('>TZ<', false);
+            ->assertSee('https://www.google.com/s2/favicons?domain=alibaba.com&amp;sz=128', false)
+            ->assertDontSee('>AL<', false);
     }
 
     public function test_admin_can_open_b2b_website_for_current_site_and_account(): void
@@ -61,13 +62,13 @@ class AdminDashboardB2BWebsitesTest extends TestCase
 
         $this->actingAs($admin, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
-            ->post(route('admin.b2b-websites.open', ['websiteKey' => 'tianzhu']))
+            ->post(route('admin.b2b-websites.open', ['websiteKey' => 'alibaba']))
             ->assertRedirect(route('admin.b2b-websites.index'));
 
         $this->assertDatabaseHas('admin_b2b_website_openings', [
             'site_id' => (int) $site->id,
             'owner_admin_id' => (int) $admin->id,
-            'website_key' => 'tianzhu',
+            'website_key' => 'alibaba',
         ]);
 
         $this->actingAs($admin, 'admin')
@@ -84,20 +85,20 @@ class AdminDashboardB2BWebsitesTest extends TestCase
 
         $this->actingAs($adminOne, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
-            ->post(route('admin.b2b-websites.open', ['websiteKey' => 'tianzhu']))
+            ->post(route('admin.b2b-websites.open', ['websiteKey' => 'alibaba']))
             ->assertRedirect(route('admin.b2b-websites.index'));
 
         $this->assertDatabaseMissing('admin_b2b_website_openings', [
             'site_id' => (int) $site->id,
             'owner_admin_id' => (int) $adminTwo->id,
-            'website_key' => 'tianzhu',
+            'website_key' => 'alibaba',
         ]);
 
         $this->actingAs($adminTwo, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
             ->get(route('admin.b2b-websites.index'))
             ->assertOk()
-            ->assertSee('天助网')
+            ->assertSee('Alibaba.com 阿里国际')
             ->assertSee('未开通');
     }
 

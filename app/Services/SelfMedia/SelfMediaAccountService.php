@@ -61,6 +61,71 @@ class SelfMediaAccountService
     }
 
     /**
+     * Return the international platform catalog used by the international-site
+     * account page.
+     *
+     * @return array<string,array<string,mixed>>
+     */
+    public function internationalPlatformCatalog(): array
+    {
+        $fallback = $this->internationalFallbackCatalog();
+
+        if (! (bool) config('aitoearn.enabled', false) || trim((string) config('aitoearn.api_key', '')) === '') {
+            return $fallback;
+        }
+
+        return Cache::remember('aitoearn:platforms:v2:international-display', now()->addMinutes(10), function () use ($fallback): array {
+            try {
+                $remote = $this->client->platforms();
+            } catch (AiToEarnException) {
+                return $fallback;
+            }
+
+            $remoteByPlatform = [];
+            foreach ($remote as $item) {
+                $platform = $this->stringValue($item['platform'] ?? '');
+                if ($platform === '' || ! SelfMediaPlatformCatalog::isInternational($platform)) {
+                    continue;
+                }
+
+                $remoteByPlatform[$platform] = $item;
+            }
+
+            $catalog = [];
+            foreach (SelfMediaPlatformCatalog::internationalPlatforms() as $platform) {
+                $base = $fallback[$platform];
+                $item = $remoteByPlatform[$platform] ?? null;
+
+                if (! is_array($item)) {
+                    $catalog[$platform] = $base;
+
+                    continue;
+                }
+
+                $catalog[$platform] = [
+                    'label' => $this->stringValue(
+                        $item['displayName'] ?? '',
+                        ['en-US', 'en_US', 'en', 'name', 'label', 'value']
+                    ) ?: (string) $base['label'],
+                    'desc' => $this->platformDescription($platform, (array) ($item['contentLimits'] ?? [])),
+                    'logo' => (string) $base['logo'],
+                    'logo_url' => $this->stringValue($item['logoUrl'] ?? '', ['url', 'src', 'value'])
+                        ?: (string) ($base['logo_url'] ?? ''),
+                    'status' => $this->stringValue($item['status'] ?? 'available', ['value', 'status', 'name']) ?: 'available',
+                    // International cards use the regular authorization action.
+                    // The remote capability flag is kept in raw for diagnostics,
+                    // but must not turn the page into a display-only catalog.
+                    'auth_supported' => true,
+                    'auth_type' => $this->stringValue($item['authType'] ?? '', ['value', 'type', 'name']),
+                    'raw' => $item,
+                ];
+            }
+
+            return $catalog;
+        });
+    }
+
+    /**
      * @return Collection<int,SelfMediaAccount>
      */
     public function boundAccountsForOwner(Admin $admin, Site $site, ?array $platforms = null): Collection
@@ -126,7 +191,7 @@ class SelfMediaAccountService
         foreach ($accounts as $accountPayload) {
             $platformKey = $this->remoteAccountPlatform($accountPayload, $platform);
             $externalAccountId = $this->remoteAccountId($accountPayload);
-            if ($platformKey === '' || $externalAccountId === '' || ! SelfMediaPlatformCatalog::isDomestic($platformKey)) {
+            if ($platformKey === '' || $externalAccountId === '' || ! $this->isSupportedAiToEarnPlatform($platformKey)) {
                 continue;
             }
 
@@ -254,6 +319,35 @@ class SelfMediaAccountService
             : ($status === '' ? 'authorized' : $status);
     }
 
+    /**
+     * @return array<string,array<string,mixed>>
+     */
+    private function internationalFallbackCatalog(): array
+    {
+        $catalog = [];
+
+        foreach (SelfMediaPlatformCatalog::internationalPlatforms() as $platform) {
+            $base = SelfMediaPlatformCatalog::all()[$platform] ?? [
+                'label' => $platform,
+                'desc' => '内容发布',
+                'logo' => $platform.'.png',
+            ];
+
+            $catalog[$platform] = [
+                'label' => (string) ($base['label'] ?? $platform),
+                'desc' => (string) ($base['desc'] ?? '内容发布'),
+                'logo' => (string) ($base['logo'] ?? ($platform.'.png')),
+                'logo_url' => (string) ($base['logo_url'] ?? ''),
+                'status' => 'available',
+                'auth_supported' => true,
+                'auth_type' => '',
+                'raw' => [],
+            ];
+        }
+
+        return $catalog;
+    }
+
     private function platformDescription(string $platform, array $contentLimits): string
     {
         $modes = collect((array) ($contentLimits['modes'] ?? []))
@@ -329,6 +423,12 @@ class SelfMediaAccountService
         };
     }
 
+    private function isSupportedAiToEarnPlatform(string $platform): bool
+    {
+        return SelfMediaPlatformCatalog::isDomestic($platform)
+            || SelfMediaPlatformCatalog::isInternational($platform);
+    }
+
     /**
      * @param  array<string,mixed>  $accountPayload
      */
@@ -336,7 +436,7 @@ class SelfMediaAccountService
     {
         $platformKey = $this->remoteAccountPlatform($accountPayload, $platform);
         $externalAccountId = $this->remoteAccountId($accountPayload);
-        if ($platformKey === '' || $externalAccountId === '' || ! SelfMediaPlatformCatalog::isDomestic($platformKey)) {
+        if ($platformKey === '' || $externalAccountId === '' || ! $this->isSupportedAiToEarnPlatform($platformKey)) {
             throw new RuntimeException('授权账号缺少有效平台或账号 ID。');
         }
 
@@ -371,7 +471,7 @@ class SelfMediaAccountService
         foreach ($this->client->accounts($platform, $externalGroupId !== '' ? $externalGroupId : null)['list'] as $accountPayload) {
             $platformKey = $this->remoteAccountPlatform($accountPayload, $platform);
             $externalAccountId = $this->remoteAccountId($accountPayload);
-            if ($platformKey !== $platform || $externalAccountId === '' || ! SelfMediaPlatformCatalog::isDomestic($platformKey)) {
+            if ($platformKey !== $platform || $externalAccountId === '' || ! $this->isSupportedAiToEarnPlatform($platformKey)) {
                 continue;
             }
 

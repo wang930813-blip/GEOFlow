@@ -112,7 +112,10 @@ class CrebeeAccountController extends Controller
         $site = app(CurrentSite::class)->get();
         abort_unless($site instanceof Site && $this->adminBelongsToSite($admin, $site), 403);
 
-        $platformCatalog = $this->selfMediaAccountService->platformCatalog();
+        $platformCatalog = array_replace(
+            $this->selfMediaAccountService->platformCatalog(),
+            $this->selfMediaAccountService->internationalPlatformCatalog()
+        );
         $platforms = array_keys($platformCatalog);
         $payload = $request->validate([
             'platform' => ['required', 'string', Rule::in($platforms)],
@@ -447,7 +450,7 @@ class CrebeeAccountController extends Controller
         $site = app(CurrentSite::class)->get();
         abort_unless($site instanceof Site || $admin->isSuperAdmin() || $admin->isAgentAdmin(), 403);
 
-        $platforms = $this->selfMediaAccountService->platformCatalog();
+        $platforms = $this->selfMediaAccountService->internationalPlatformCatalog();
         $platformKeys = array_keys($platforms);
         $boundAccounts = $this->visibleAiToEarnAccounts($admin, $site)
             ->with(['owner:id,username,display_name,role', 'site:id,name'])

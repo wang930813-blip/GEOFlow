@@ -1,7 +1,9 @@
 @extends('admin.layouts.app')
 
 @section('content')
-    @php($canOpenB2BWebsites = (bool) ($canOpenB2BWebsites ?? true))
+    @php
+        $canOpenB2BWebsites = (bool) ($canOpenB2BWebsites ?? true);
+    @endphp
     <div class="space-y-6">
         <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
@@ -16,6 +18,11 @@
 
         <section class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
             @foreach ($b2bWebsites ?? [] as $website)
+                @php
+                    $logo = trim((string) ($website['logo'] ?? ''));
+                    $logoUrl = preg_match('/^https?:\/\//i', $logo) === 1 ? $logo : asset($logo);
+                    $websiteUrl = trim((string) ($website['website_url'] ?? ''));
+                @endphp
                 <div class="flex min-h-[210px] flex-col justify-between rounded-lg bg-white p-4 shadow-sm ring-1 ring-gray-200 transition hover:-translate-y-0.5 hover:shadow-md">
                     <div>
                         <div class="mb-3 flex h-7 items-center justify-end">
@@ -26,11 +33,17 @@
                             @endif
                         </div>
 
-                        <div class="flex h-16 w-full items-center justify-center px-2 py-1">
-                            <img src="{{ asset($website['logo']) }}" alt="{{ $website['name'] }} logo" class="max-h-14 max-w-[190px] object-contain">
-                        </div>
+                        @if($websiteUrl !== '')
+                            <a href="{{ $websiteUrl }}" target="_blank" rel="noopener noreferrer" class="block rounded-md focus:outline-none focus:ring-2 focus:ring-slate-400">
+                        @endif
+                            <div class="flex h-16 w-full items-center justify-center px-2 py-1">
+                                <img src="{{ $logoUrl }}" alt="{{ $website['name'] }} logo" class="max-h-14 max-w-[190px] object-contain" referrerpolicy="no-referrer">
+                            </div>
 
-                        <h3 class="mt-4 truncate text-base font-semibold leading-6 text-gray-900" title="{{ $website['name'] }}">{{ $website['name'] }}</h3>
+                            <h3 class="mt-4 truncate text-base font-semibold leading-6 text-gray-900" title="{{ $website['name'] }}">{{ $website['name'] }}</h3>
+                        @if($websiteUrl !== '')
+                            </a>
+                        @endif
                     </div>
 
                     <div class="mt-5">

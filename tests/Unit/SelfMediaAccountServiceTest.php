@@ -131,4 +131,64 @@ class SelfMediaAccountServiceTest extends TestCase
         $this->assertArrayNotHasKey('youtube', $catalog);
         $this->assertArrayNotHasKey('facebook', $catalog);
     }
+
+    public function test_international_display_catalog_returns_exactly_eight_overseas_platforms_in_fixed_order(): void
+    {
+        config([
+            'aitoearn.enabled' => true,
+            'aitoearn.base_url' => 'https://aitoearn.test',
+            'aitoearn.api_key' => 'test-api-key',
+            'cache.default' => 'array',
+        ]);
+        \Illuminate\Support\Facades\Cache::flush();
+
+        Http::fake([
+            'https://aitoearn.test/api/v2/channels/platforms' => Http::response([
+                'code' => 0,
+                'message' => 'ok',
+                'data' => [
+                    [
+                        'platform' => 'douyin',
+                        'displayName' => 'Douyin',
+                        'status' => 'available',
+                    ],
+                    [
+                        'platform' => 'linkedin',
+                        'displayName' => 'LinkedIn API',
+                        'status' => 'available',
+                        'logoUrl' => 'https://cdn.example.com/linkedin.png',
+                    ],
+                    [
+                        'platform' => 'youtube',
+                        'displayName' => 'YouTube API',
+                        'status' => 'available',
+                    ],
+                    [
+                        'platform' => 'facebook',
+                        'displayName' => 'Facebook API',
+                        'status' => 'available',
+                    ],
+                ],
+            ]),
+        ]);
+
+        $catalog = app(SelfMediaAccountService::class)->internationalPlatformCatalog();
+
+        $this->assertSame([
+            'youtube',
+            'twitter',
+            'tiktok',
+            'facebook',
+            'instagram',
+            'threads',
+            'pinterest',
+            'linkedin',
+        ], array_keys($catalog));
+        $this->assertSame('YouTube API', $catalog['youtube']['label']);
+        $this->assertSame('Facebook API', $catalog['facebook']['label']);
+        $this->assertSame('LinkedIn API', $catalog['linkedin']['label']);
+        $this->assertSame('https://cdn.example.com/linkedin.png', $catalog['linkedin']['logo_url']);
+        $this->assertArrayNotHasKey('douyin', $catalog);
+        $this->assertSame('available', $catalog['twitter']['status']);
+    }
 }

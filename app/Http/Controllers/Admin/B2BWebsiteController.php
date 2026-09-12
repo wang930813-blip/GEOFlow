@@ -49,7 +49,7 @@ class B2BWebsiteController extends Controller
     }
 
     /**
-     * @return list<array{key: string, name: string, logo: string, opened: bool}>
+     * @return list<array{key: string, name: string, logo: string, website_url: string, opened: bool}>
      */
     private function buildB2BWebsites(B2BIndustryWebsiteCatalog $b2bCatalog): array
     {
