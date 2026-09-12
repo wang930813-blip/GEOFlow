@@ -586,7 +586,6 @@ X-Api-Key: <lookup-key>
 | 403 | `brand_diagnosis_lookup_api_disabled` | 查询 API 未启用。 |
 | 422 | `validation_failed` | 请求参数校验失败，包括品牌词为空、`include` 含未知模块，或 `model` 不是 `all`、`doubao`、`deepseek`、`qianwen`、`wenxin`。 |
 | 422 | `brand_profile_not_found` | 品牌词不在存量数据中，且模型核实后无法获得品牌介绍。 |
-| 429 | `lookup_rate_limited` | 查询频率超过配置限制。 |
 | 502 | `brand_profile_provider_failed` | 品牌核实模型或外部信源调用失败。 |
 | 502 | `brand_questions_generation_failed` | AI 问题生成失败。 |
 | 503 | `brand_diagnosis_lookup_not_ready` | 查询服务依赖尚未准备完成。 |

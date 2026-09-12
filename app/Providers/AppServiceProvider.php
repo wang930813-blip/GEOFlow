@@ -13,7 +13,6 @@ use App\Services\GeoFlow\JobQueueService;
 use App\Services\GeoFlow\TaskLifecycleService;
 use App\Services\GeoFlow\TaskMonitoringQueryService;
 use App\Support\AdminDisplaySettings;
-use App\Support\ApiResponse;
 use App\Support\CurrentSite;
 use App\View\Composers\SiteLayoutComposer;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -86,16 +85,6 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('machine-api', static fn (Request $request): Limit => Limit::perMinute(
             max(1, (int) config('geoflow.machine_api_ip_rate_limit_per_minute', 300))
         )->by('machine-api-ip:'.($request->ip() ?? 'unknown')));
-
-        RateLimiter::for('brand-diagnosis-lookup', static fn (Request $request): Limit => Limit::perMinute(
-            max(1, (int) config('brand_diagnosis.lookup_api.rate_limit', 10))
-        )->by('brand-diagnosis-lookup-ip:'.($request->ip() ?? 'unknown'))
-            ->response(static function (Request $request, array $headers) {
-                $requestId = (string) ($request->attributes->get('request_id') ?? '');
-
-                return ApiResponse::error('lookup_rate_limited', '查询请求过于频繁，请稍后重试', $requestId, 429)
-                    ->withHeaders($headers);
-            }));
 
         RateLimiter::for('api-token', static function (Request $request): Limit {
             $context = $request->attributes->get('api_auth');
