@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Admin;
 use App\Models\Site;
+use App\Support\AdminDashboard\B2BIndustryWebsiteCatalog;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -21,10 +22,10 @@ class AdminDashboardB2BWebsitesTest extends TestCase
 
         $response
             ->assertOk()
-            ->assertDontSee('Alibaba.com 阿里国际');
+            ->assertDontSee('LinkedIn');
     }
 
-    public function test_b2b_industry_website_page_shows_cards(): void
+    public function test_b2b_industry_website_page_shows_overseas_cards(): void
     {
         [$admin, $site] = $this->createAdminWithSite('b2b_page_admin');
 
@@ -34,42 +35,33 @@ class AdminDashboardB2BWebsitesTest extends TestCase
 
         $response
             ->assertOk()
-            ->assertSee('B2B行业网站')
-            ->assertSee('Alibaba.com 阿里国际')
-            ->assertSee('Thomasnet')
-            ->assertDontSee('天助网')
-            ->assertSee('未开通')
-            ->assertSee('开通');
+            ->assertSee('LinkedIn')
+            ->assertSee('Medium')
+            ->assertSee('Stack Exchange')
+            ->assertDontSee('Alibaba.com')
+            ->assertDontSee('Thomasnet');
     }
 
-    public function test_b2b_website_page_uses_logo_images_instead_of_initials(): void
+    public function test_b2b_website_page_uses_local_logo_images(): void
     {
         [$admin, $site] = $this->createAdminWithSite('b2b_dashboard_logo_admin');
+        $catalog = app(B2BIndustryWebsiteCatalog::class)->all();
 
         $html = $this->actingAs($admin, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
             ->get(route('admin.b2b-websites.index'))
             ->assertOk()
-            ->assertSee(asset('assets/b2b-sites/alibaba.svg'), false)
-            ->assertSee(asset('assets/b2b-sites/thomasnet.svg'), false)
+            ->assertSee(asset('assets/b2b-sites/linkedin.png'), false)
+            ->assertSee(asset('assets/b2b-sites/stack-exchange.png'), false)
             ->getContent();
 
         $this->assertStringNotContainsString('https://www.google.com/s2/favicons', $html);
         $this->assertStringNotContainsString('>AL<', $html);
 
-        foreach ([
-            'alibaba.svg',
-            'thomasnet.svg',
-            'kompass.svg',
-            'directindustry.svg',
-            'europages.svg',
-            'globalspec.svg',
-            'wlw-industrystock.svg',
-            'made-in-china.svg',
-            'amazon-business.svg',
-            'global-sources.svg',
-        ] as $logo) {
-            $this->assertFileExists(public_path('assets/b2b-sites/'.$logo));
+        $this->assertCount(20, $catalog);
+        foreach ($catalog as $website) {
+            $this->assertStringStartsWith('assets/b2b-sites/', $website['logo']);
+            $this->assertFileExists(public_path($website['logo']));
         }
     }
 
@@ -79,20 +71,20 @@ class AdminDashboardB2BWebsitesTest extends TestCase
 
         $this->actingAs($admin, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
-            ->post(route('admin.b2b-websites.open', ['websiteKey' => 'alibaba']))
+            ->post(route('admin.b2b-websites.open', ['websiteKey' => 'linkedin']))
             ->assertRedirect(route('admin.b2b-websites.index'));
 
         $this->assertDatabaseHas('admin_b2b_website_openings', [
             'site_id' => (int) $site->id,
             'owner_admin_id' => (int) $admin->id,
-            'website_key' => 'alibaba',
+            'website_key' => 'linkedin',
         ]);
 
         $this->actingAs($admin, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
             ->get(route('admin.b2b-websites.index'))
             ->assertOk()
-            ->assertSee('已开通');
+            ->assertSee('LinkedIn');
     }
 
     public function test_b2b_website_open_state_is_isolated_by_site_and_account(): void
@@ -102,21 +94,20 @@ class AdminDashboardB2BWebsitesTest extends TestCase
 
         $this->actingAs($adminOne, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
-            ->post(route('admin.b2b-websites.open', ['websiteKey' => 'alibaba']))
+            ->post(route('admin.b2b-websites.open', ['websiteKey' => 'linkedin']))
             ->assertRedirect(route('admin.b2b-websites.index'));
 
         $this->assertDatabaseMissing('admin_b2b_website_openings', [
             'site_id' => (int) $site->id,
             'owner_admin_id' => (int) $adminTwo->id,
-            'website_key' => 'alibaba',
+            'website_key' => 'linkedin',
         ]);
 
         $this->actingAs($adminTwo, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
             ->get(route('admin.b2b-websites.index'))
             ->assertOk()
-            ->assertSee('Alibaba.com 阿里国际')
-            ->assertSee('未开通');
+            ->assertSee('LinkedIn');
     }
 
     public function test_invalid_b2b_website_key_returns_not_found(): void
