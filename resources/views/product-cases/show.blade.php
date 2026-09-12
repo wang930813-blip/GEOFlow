@@ -401,8 +401,7 @@
     </main>
 
     <footer class="border-t border-slate-200 bg-white">
-        <div class="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-6 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
-            <span>{{ config('geoflow.site_name', config('app.name')) }}</span>
+        <div class="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-6 text-right text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-end sm:px-6 lg:px-8">
             <a href="{{ route($caseRoutes['index']) }}" class="font-medium text-slate-600 hover:text-slate-950">查看更多案例</a>
         </div>
     </footer>
