@@ -13,7 +13,8 @@ use Illuminate\Support\Collection;
 class ProductCaseReportSummaryService
 {
     private const SHOWCASE_PLATFORM_COUNT = 9;
-    private const SEARCH_ROWS_PER_PAGE = 6;
+
+    private const SEARCH_ROWS_PER_PAGE = 10;
 
     /**
      * @var list<string>
@@ -251,7 +252,6 @@ class ProductCaseReportSummaryService
     }
 
     /**
-     * @param  BrandDiagnosisRun  $run
      * @param  Collection<int,BrandDiagnosisResult>  $results
      * @return list<array{date:string,value:int}>
      */
@@ -263,7 +263,6 @@ class ProductCaseReportSummaryService
     }
 
     /**
-     * @param  BrandDiagnosisRun  $run
      * @return array{company_name:string,brand_names:list<string>,core_services:list<string>,description:string}
      */
     private function brandProfile(BrandDiagnosisRun $run, ProductCase $case): array

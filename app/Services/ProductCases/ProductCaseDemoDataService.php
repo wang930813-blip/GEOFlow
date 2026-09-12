@@ -6,6 +6,7 @@ use App\Models\BrandDiagnosisBrandMention;
 use App\Models\BrandDiagnosisQuestion;
 use App\Models\BrandDiagnosisResult;
 use App\Models\BrandDiagnosisRun;
+use App\Models\BrandDiagnosisSource;
 use App\Models\ProductCase;
 use App\Services\BrandDiagnosis\BrandDiagnosisMetricsCalculator;
 use Illuminate\Support\Facades\DB;
@@ -13,6 +14,8 @@ use Illuminate\Support\Facades\DB;
 class ProductCaseDemoDataService
 {
     public const BILLING_MODE = 'product_case_seed';
+
+    private const QUESTION_COUNT = 6;
 
     /**
      * Generate one isolated, repeatable diagnosis run for a product case.
@@ -130,9 +133,7 @@ class ProductCaseDemoDataService
             $this->questionData('AI 平台如何评价'.$brandName.'的产品能力？', 'ai_evaluation'),
         ];
 
-        $questionCount = 12 + ($this->seedNumber($brandName) % 5);
-
-        return array_slice($templates, 0, $questionCount);
+        return array_slice($templates, 0, self::QUESTION_COUNT);
     }
 
     /**
@@ -203,7 +204,7 @@ class ProductCaseDemoDataService
             ]);
 
         foreach ($sourceRows as $sourceRow) {
-            \App\Models\BrandDiagnosisSource::query()
+            BrandDiagnosisSource::query()
                 ->withoutGlobalScopes(['current_site', 'admin_owner'])
                 ->create([
                     'site_id' => (int) $case->site_id,
@@ -336,8 +337,7 @@ class ProductCaseDemoDataService
         bool $mentioned,
         int $rank,
         string $sentiment
-    ): string
-    {
+    ): string {
         if (! $mentioned) {
             $industry = trim((string) $case->industry) ?: '相关行业';
             $region = trim((string) $case->region);

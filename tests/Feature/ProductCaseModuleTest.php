@@ -64,6 +64,7 @@ class ProductCaseModuleTest extends TestCase
         $this->get(route('product-cases.index'))
             ->assertOk()
             ->assertSee($published->title)
+            ->assertDontSee($published->summary)
             ->assertDontSee('Draft Product Case')
             ->assertDontSee('Hidden Product Case')
             ->assertDontSee('Deleted Product Case');
@@ -484,18 +485,17 @@ class ProductCaseModuleTest extends TestCase
 
         $report = app(ProductCaseReportSummaryService::class)->detail($case);
 
-        $this->assertCount(6, data_get($report, 'search_rows'));
+        $this->assertCount(10, data_get($report, 'search_rows'));
         $this->assertSame(18, data_get($report, 'search_pagination.total'));
-        $this->assertSame(6, data_get($report, 'search_pagination.per_page'));
+        $this->assertSame(10, data_get($report, 'search_pagination.per_page'));
         $this->assertSame(1, data_get($report, 'search_pagination.current_page'));
-        $this->assertSame(3, data_get($report, 'search_pagination.last_page'));
+        $this->assertSame(2, data_get($report, 'search_pagination.last_page'));
 
         $this->get(route('product-cases.show', ['slug' => $case->slug, 'search_page' => 2]))
             ->assertOk()
             ->assertSee('搜索报表摘要')
             ->assertSee('data-search-pagination', false)
-            ->assertSee('search_page=1', false)
-            ->assertSee('search_page=3', false);
+            ->assertSee('search_page=1', false);
     }
 
     public function test_product_case_list_prioritizes_cases_with_better_geo_metrics(): void

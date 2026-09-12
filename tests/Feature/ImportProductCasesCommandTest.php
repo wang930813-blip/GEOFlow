@@ -52,8 +52,7 @@ class ImportProductCasesCommandTest extends TestCase
             $this->assertSame(1, ImageLibrary::query()->count());
             $this->assertSame(2, Image::query()->count());
             $this->assertSame(2, BrandDiagnosisRun::query()->count());
-            $this->assertGreaterThanOrEqual(24, BrandDiagnosisQuestion::query()->count());
-            $this->assertLessThanOrEqual(32, BrandDiagnosisQuestion::query()->count());
+            $this->assertSame(12, BrandDiagnosisQuestion::query()->count());
             $this->assertSame(
                 BrandDiagnosisQuestion::query()->count() * 9,
                 BrandDiagnosisResult::query()->count()
@@ -73,8 +72,7 @@ class ImportProductCasesCommandTest extends TestCase
                 static fn (BrandDiagnosisRun $run): bool => (int) $run->mention_rate < 100
             ));
             $this->assertTrue($seededRuns->every(
-                static fn (BrandDiagnosisRun $run): bool => (int) $run->total_questions >= 12
-                    && (int) $run->total_questions <= 16
+                static fn (BrandDiagnosisRun $run): bool => (int) $run->total_questions === 6
             ));
 
             $this->assertDatabaseHas('product_cases', [
@@ -120,8 +118,7 @@ class ImportProductCasesCommandTest extends TestCase
             $this->assertSame(1, ImageLibrary::query()->count());
             $this->assertSame(2, Image::query()->count());
             $this->assertSame(2, BrandDiagnosisRun::query()->count());
-            $this->assertGreaterThanOrEqual(24, BrandDiagnosisQuestion::query()->count());
-            $this->assertLessThanOrEqual(32, BrandDiagnosisQuestion::query()->count());
+            $this->assertSame(12, BrandDiagnosisQuestion::query()->count());
             $this->assertSame(
                 BrandDiagnosisQuestion::query()->count() * 9,
                 BrandDiagnosisResult::query()->count()
