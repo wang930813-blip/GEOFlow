@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -71,11 +71,11 @@
                 <span class="flex h-9 w-9 items-center justify-center rounded-md bg-slate-950 text-white">
                     <i data-lucide="briefcase-business" class="h-4 w-4"></i>
                 </span>
-                Product Cases
+                {{ __('admin.product_cases.public.nav_title') }}
             </a>
             <a href="{{ route($caseRoutes['index']) }}" class="inline-flex items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-950">
                 <i data-lucide="arrow-left" class="h-4 w-4"></i>
-                Back to Cases
+                {{ __('admin.product_cases.public.back_cases') }}
             </a>
         </div>
     </header>
@@ -111,25 +111,25 @@
                         </div>
                         <dl class="mt-5 grid gap-3 text-sm">
                             <div class="flex justify-between gap-4 border-t border-slate-200 pt-3">
-                                <dt class="text-slate-500">Customer Level</dt>
+                                <dt class="text-slate-500">{{ __('admin.product_cases.public.customer_level') }}</dt>
                                 <dd class="font-medium text-slate-900">
                                     @if($customerLevelRating !== null)
-                                        <span class="inline-flex items-center gap-0.5" aria-label="{{ $customerLevelRating }} of 5 stars" title="{{ $customerLevelRating }} stars">
+                                        <span class="inline-flex items-center gap-0.5" aria-label="{{ __('admin.product_cases.public.stars_label', ['count' => $customerLevelRating]) }}" title="{{ __('admin.product_cases.public.stars_title', ['count' => $customerLevelRating]) }}">
                                             @for($star = 1; $star <= 5; $star++)
                                                 <span class="{{ $star <= $customerLevelRating ? 'text-amber-400' : 'text-slate-300' }}">★</span>
                                             @endfor
                                         </span>
                                     @else
-                                        {{ $customerLevelRaw !== '' ? $customerLevelRaw : 'Not Set' }}
+                                        {{ $customerLevelRaw !== '' ? $customerLevelRaw : __('admin.product_cases.public.not_set') }}
                                     @endif
                                 </dd>
                             </div>
                             <div class="flex justify-between gap-4 border-t border-slate-200 pt-3">
-                                <dt class="text-slate-500">Service Start</dt>
-                                <dd class="font-medium text-slate-900">{{ $case->started_at?->format('Y-m-d') ?: 'Not Set' }}</dd>
+                                <dt class="text-slate-500">{{ __('admin.product_cases.public.service_start') }}</dt>
+                                <dd class="font-medium text-slate-900">{{ $case->started_at?->format('Y-m-d') ?: __('admin.product_cases.public.not_set') }}</dd>
                             </div>
                             <div class="flex justify-between gap-4 border-t border-slate-200 pt-3">
-                                <dt class="text-slate-500">Views</dt>
+                                <dt class="text-slate-500">{{ __('admin.product_cases.public.views') }}</dt>
                                 <dd class="font-medium text-slate-900">{{ $case->view_count }}</dd>
                             </div>
                         </dl>
@@ -150,15 +150,15 @@
                     @if($contentHtml !== '')
                         {!! $contentHtml !!}
                     @else
-                        <p>No case content yet.</p>
+                        <p>{{ __('admin.product_cases.public.no_case_content') }}</p>
                     @endif
                 </div>
             </article>
 
             <aside class="space-y-5">
                 <section class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-                    <p class="text-sm font-semibold uppercase tracking-wide text-orange-600">Case Profile</p>
-                    <h2 class="mt-2 text-lg font-semibold text-slate-950">Case Profile</h2>
+                    <p class="text-sm font-semibold uppercase tracking-wide text-orange-600">{{ __('admin.product_cases.public.case_profile') }}</p>
+                    <h2 class="mt-2 text-lg font-semibold text-slate-950">{{ __('admin.product_cases.public.case_profile') }}</h2>
                     @if(!empty($case->module_tags))
                         <div class="mt-4 flex flex-wrap gap-2">
                             @foreach((array) $case->module_tags as $tag)
@@ -168,23 +168,23 @@
                     @endif
                     <div class="mt-5 space-y-3 text-sm text-slate-600">
                         <div class="flex justify-between gap-3">
-                            <span>Industry</span>
-                            <span class="font-medium text-slate-900">{{ $caseIndustryLabel ?: 'Not Set' }}</span>
+                            <span>{{ __('admin.product_cases.public.industry') }}</span>
+                            <span class="font-medium text-slate-900">{{ $caseIndustryLabel ?: __('admin.product_cases.public.not_set') }}</span>
                         </div>
                         <div class="flex justify-between gap-3">
-                            <span>Region</span>
-                            <span class="font-medium text-slate-900">{{ $caseRegionLabel ?: 'Not Set' }}</span>
+                            <span>{{ __('admin.product_cases.public.region') }}</span>
+                            <span class="font-medium text-slate-900">{{ $caseRegionLabel ?: __('admin.product_cases.public.not_set') }}</span>
                         </div>
                         <div class="flex justify-between gap-3">
-                            <span>Mode</span>
-                            <span class="font-medium text-slate-900">{{ $case->business_mode ?: 'Not Set' }}</span>
+                            <span>{{ __('admin.product_cases.public.mode') }}</span>
+                            <span class="font-medium text-slate-900">{{ $case->business_mode ?: __('admin.product_cases.public.not_set') }}</span>
                         </div>
                     </div>
                 </section>
 
                 <section class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-                    <p class="text-sm font-semibold uppercase tracking-wide text-orange-600">GEO Data</p>
-                    <h2 class="mt-2 text-lg font-semibold text-slate-950">GEO Performance Overview</h2>
+                    <p class="text-sm font-semibold uppercase tracking-wide text-orange-600">{{ __('admin.product_cases.public.geo_data') }}</p>
+                    <h2 class="mt-2 text-lg font-semibold text-slate-950">{{ __('admin.product_cases.public.geo_performance_overview') }}</h2>
                     <div class="mt-5 grid grid-cols-2 gap-3">
                         @foreach(data_get($report, 'summary.metrics', []) as $metric)
                             <div class="rounded-md bg-slate-50 p-4">
@@ -202,8 +202,8 @@
                 <section class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
                     <div class="flex items-center justify-between gap-4">
                         <div>
-                            <p class="text-sm font-semibold uppercase tracking-wide text-orange-600">AI Platforms</p>
-                            <h2 class="mt-2 text-xl font-semibold text-slate-950">AI Platform Performance</h2>
+                            <p class="text-sm font-semibold uppercase tracking-wide text-orange-600">{{ __('admin.product_cases.public.ai_platforms') }}</p>
+                            <h2 class="mt-2 text-xl font-semibold text-slate-950">{{ __('admin.product_cases.public.ai_platform_performance') }}</h2>
                         </div>
                     </div>
                     <div class="mt-5 space-y-3">
@@ -214,39 +214,39 @@
                             @endphp
                             <div class="rounded-md border border-slate-200 p-4">
                                 <div class="flex items-center justify-between gap-3">
-                                    <div class="font-medium text-slate-950">{{ data_get($platform, 'platform', 'AI Platform') }}</div>
-                                    <div class="text-sm text-slate-500">{{ (int) data_get($platform, 'analysis_count', 0) }} analyses</div>
+                                    <div class="font-medium text-slate-950">{{ data_get($platform, 'platform', __('admin.product_cases.public.ai_platform_default')) }}</div>
+                                    <div class="text-sm text-slate-500">{{ (int) data_get($platform, 'analysis_count', 0) }} {{ __('admin.product_cases.public.analyses') }}</div>
                                 </div>
                                 <div class="mt-3 grid grid-cols-2 gap-3 text-sm">
                                     <div class="rounded-md bg-slate-50 px-3 py-2">
                                         <div class="font-semibold text-slate-950">{{ $topRate }}%</div>
-                                        <div class="mt-0.5 text-xs text-slate-500">TOP1 Rate</div>
+                                        <div class="mt-0.5 text-xs text-slate-500">{{ __('admin.product_cases.public.top1_rate') }}</div>
                                     </div>
                                     <div class="rounded-md bg-slate-50 px-3 py-2">
                                         <div class="font-semibold text-slate-950">{{ $positiveRate }}%</div>
-                                        <div class="mt-0.5 text-xs text-slate-500">Positive Sentiment</div>
+                                        <div class="mt-0.5 text-xs text-slate-500">{{ __('admin.product_cases.public.positive_sentiment') }}</div>
                                     </div>
                                 </div>
                             </div>
                         @empty
-                            <p class="rounded-md bg-slate-50 px-4 py-3 text-sm text-slate-500">No AI platform performance data yet.</p>
+                            <p class="rounded-md bg-slate-50 px-4 py-3 text-sm text-slate-500">{{ __('admin.product_cases.public.no_ai_platform_data') }}</p>
                         @endforelse
                     </div>
                 </section>
 
                 <section class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
                     <div>
-                        <p class="text-sm font-semibold uppercase tracking-wide text-orange-600">Search Report</p>
-                        <h2 class="mt-2 text-xl font-semibold text-slate-950">Search Report Summary</h2>
+                        <p class="text-sm font-semibold uppercase tracking-wide text-orange-600">{{ __('admin.product_cases.public.search_report') }}</p>
+                        <h2 class="mt-2 text-xl font-semibold text-slate-950">{{ __('admin.product_cases.public.search_report_summary') }}</h2>
                     </div>
                     <div class="mt-5 overflow-x-auto">
                         @if(!empty(data_get($report, 'search_rows', [])))
                             <table class="min-w-full divide-y divide-slate-200 text-sm">
                                 <thead class="bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
                                     <tr>
-                                        <th class="px-3 py-3 text-left">Question</th>
-                                        <th class="px-3 py-3 text-left">Platform</th>
-                                        <th class="px-3 py-3 text-left">Conversion Target</th>
+                                        <th class="px-3 py-3 text-left">{{ __('admin.product_cases.public.question') }}</th>
+                                        <th class="px-3 py-3 text-left">{{ __('admin.product_cases.public.platform') }}</th>
+                                        <th class="px-3 py-3 text-left">{{ __('admin.product_cases.public.conversion_target') }}</th>
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-slate-200">
@@ -260,7 +260,7 @@
                                 </tbody>
                             </table>
                         @else
-                            <p class="rounded-md bg-slate-50 px-4 py-3 text-sm text-slate-500">No search report data yet.</p>
+                            <p class="rounded-md bg-slate-50 px-4 py-3 text-sm text-slate-500">{{ __('admin.product_cases.public.no_search_data') }}</p>
                         @endif
                     </div>
                 </section>
@@ -270,19 +270,19 @@
         @if($hasIndustryReport)
             <section class="mx-auto max-w-7xl px-4 pb-14 sm:px-6 lg:px-8">
                 <div class="mb-6">
-                    <p class="text-sm font-semibold uppercase tracking-wide text-orange-600">Industry Report</p>
-                    <h2 class="mt-2 text-2xl font-semibold text-slate-950">Industry Competitiveness</h2>
-                    <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Brand diagnostics summarize the brand profile, competitor mentions, ranking exposure, and sentiment as supporting evidence for this case.</p>
+                    <p class="text-sm font-semibold uppercase tracking-wide text-orange-600">{{ __('admin.product_cases.public.industry_report') }}</p>
+                    <h2 class="mt-2 text-2xl font-semibold text-slate-950">{{ __('admin.product_cases.public.industry_competitiveness') }}</h2>
+                    <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{{ __('admin.product_cases.public.industry_desc') }}</p>
                 </div>
 
                 <div class="grid gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(300px,.75fr)]">
                     <section class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
                         <div class="flex items-center justify-between gap-4">
                             <div>
-                                <p class="text-sm font-semibold uppercase tracking-wide text-orange-600">Competitors</p>
-                                <h3 class="mt-2 text-xl font-semibold text-slate-950">Competitor Performance</h3>
+                                <p class="text-sm font-semibold uppercase tracking-wide text-orange-600">{{ __('admin.product_cases.public.competitors') }}</p>
+                                <h3 class="mt-2 text-xl font-semibold text-slate-950">{{ __('admin.product_cases.public.competitor_performance') }}</h3>
                             </div>
-                            <span class="rounded-md bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">{{ count($competitors) }} objects</span>
+                            <span class="rounded-md bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">{{ count($competitors) }} {{ __('admin.product_cases.public.objects') }}</span>
                         </div>
 
                         <div class="mt-5 space-y-4">
@@ -300,10 +300,10 @@
                                         <div class="min-w-0">
                                             <div class="truncate font-medium text-slate-950">{{ data_get($competitor, 'brand_name', '-') }}</div>
                                             <div class="mt-1 text-xs text-slate-500">
-                                                {{ $mentionCount }} mentions
+                                                {{ $mentionCount }} {{ __('admin.product_cases.public.mentions') }}
                                                 @if($bestRank > 0)
                                                     <span class="mx-1 text-slate-300">/</span>
-                                                    best rank #{{ $bestRank }}
+                                                    {{ __('admin.product_cases.public.best_rank', ['rank' => $bestRank]) }}
                                                 @endif
                                             </div>
                                         </div>
@@ -323,23 +323,23 @@
                                     @endif
                                 </div>
                             @empty
-                                <p class="rounded-md bg-slate-50 px-4 py-3 text-sm text-slate-500">No competitor mention data yet.</p>
+                                <p class="rounded-md bg-slate-50 px-4 py-3 text-sm text-slate-500">{{ __('admin.product_cases.public.no_competitor_data') }}</p>
                             @endforelse
                         </div>
                     </section>
 
                     <div class="space-y-6">
                         <section class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-                            <p class="text-sm font-semibold uppercase tracking-wide text-orange-600">Brand Profile</p>
-                            <h3 class="mt-2 text-xl font-semibold text-slate-950">Brand Profile</h3>
+                            <p class="text-sm font-semibold uppercase tracking-wide text-orange-600">{{ __('admin.product_cases.public.brand_profile') }}</p>
+                            <h3 class="mt-2 text-xl font-semibold text-slate-950">{{ __('admin.product_cases.public.brand_profile') }}</h3>
                             <div class="mt-5 space-y-4 text-sm">
                                 <div>
-                                    <div class="text-xs text-slate-500">Brand Name</div>
+                                    <div class="text-xs text-slate-500">{{ __('admin.product_cases.public.brand_name') }}</div>
                                     <div class="mt-1 font-medium text-slate-950">{{ data_get($brandProfile, 'company_name', $case->company_name ?: $case->title) }}</div>
                                 </div>
                                 @if(!empty(data_get($brandProfile, 'core_services', [])))
                                     <div>
-                                        <div class="text-xs text-slate-500">Core Services</div>
+                                        <div class="text-xs text-slate-500">{{ __('admin.product_cases.public.core_services') }}</div>
                                         <div class="mt-2 flex flex-wrap gap-2">
                                             @foreach((array) data_get($brandProfile, 'core_services', []) as $service)
                                                 <span class="rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">{{ $service }}</span>
@@ -354,16 +354,16 @@
                         </section>
 
                         <section class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-                            <p class="text-sm font-semibold uppercase tracking-wide text-orange-600">Ranking</p>
-                            <h3 class="mt-2 text-xl font-semibold text-slate-950">Ranking Performance</h3>
+                            <p class="text-sm font-semibold uppercase tracking-wide text-orange-600">{{ __('admin.product_cases.public.ranking') }}</p>
+                            <h3 class="mt-2 text-xl font-semibold text-slate-950">{{ __('admin.product_cases.public.ranking_performance') }}</h3>
                             <div class="mt-5 grid grid-cols-2 gap-3">
                                 <div class="rounded-md bg-slate-50 p-4">
                                     <div class="text-2xl font-semibold text-slate-950">{{ (float) data_get($overall, 'top5_rate', 0) }}%</div>
-                                    <div class="mt-1 text-xs text-slate-500">TOP5 Exposure Rate</div>
+                                    <div class="mt-1 text-xs text-slate-500">{{ __('admin.product_cases.public.top5_exposure_rate') }}</div>
                                 </div>
                                 <div class="rounded-md bg-slate-50 p-4">
                                     <div class="text-2xl font-semibold text-slate-950">{{ (int) data_get($overall, 'top5_count', 0) }}</div>
-                                    <div class="mt-1 text-xs text-slate-500">TOP5 Hits</div>
+                                    <div class="mt-1 text-xs text-slate-500">{{ __('admin.product_cases.public.top5_hits') }}</div>
                                 </div>
                             </div>
                             <div class="mt-4 grid grid-cols-5 gap-2 text-center text-xs">
@@ -377,13 +377,13 @@
                         </section>
 
                         <section class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-                            <p class="text-sm font-semibold uppercase tracking-wide text-orange-600">Sentiment</p>
-                            <h3 class="mt-2 text-xl font-semibold text-slate-950">Sentiment</h3>
+                            <p class="text-sm font-semibold uppercase tracking-wide text-orange-600">{{ __('admin.product_cases.public.sentiment') }}</p>
+                            <h3 class="mt-2 text-xl font-semibold text-slate-950">{{ __('admin.product_cases.public.sentiment') }}</h3>
                             <div class="mt-5 space-y-3">
                                 @foreach([
-                                    ['label' => 'Positive', 'rate' => (float) data_get($sentimentOverall, 'positive_rate', 0), 'color' => 'bg-emerald-500'],
-                                    ['label' => 'Neutral', 'rate' => (float) data_get($sentimentOverall, 'neutral_rate', 0), 'color' => 'bg-sky-500'],
-                                    ['label' => 'Negative', 'rate' => (float) data_get($sentimentOverall, 'negative_rate', 0), 'color' => 'bg-rose-500'],
+                                    ['label' => __('admin.product_cases.public.positive'), 'rate' => (float) data_get($sentimentOverall, 'positive_rate', 0), 'color' => 'bg-emerald-500'],
+                                    ['label' => __('admin.product_cases.public.neutral'), 'rate' => (float) data_get($sentimentOverall, 'neutral_rate', 0), 'color' => 'bg-sky-500'],
+                                    ['label' => __('admin.product_cases.public.negative'), 'rate' => (float) data_get($sentimentOverall, 'negative_rate', 0), 'color' => 'bg-rose-500'],
                                 ] as $sentiment)
                                     <div>
                                         <div class="flex items-center justify-between text-sm">
@@ -406,7 +406,7 @@
     <footer class="border-t border-slate-200 bg-white">
         <div class="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-6 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
             <span>{{ config('geoflow.site_name', config('app.name')) }}</span>
-            <a href="{{ route($caseRoutes['index']) }}" class="font-medium text-slate-600 hover:text-slate-950">View More Cases</a>
+            <a href="{{ route($caseRoutes['index']) }}" class="font-medium text-slate-600 hover:text-slate-950">{{ __('admin.product_cases.public.view_more') }}</a>
         </div>
     </footer>
 

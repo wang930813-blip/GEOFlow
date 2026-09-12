@@ -35,9 +35,9 @@ class ProductCaseReportSummaryService
             ->count();
 
         return array_values(array_filter([
-            ['label' => 'AI Platforms', 'value' => $platformCount],
-            ['label' => 'Search Reports', 'value' => $searchReportCount],
-            ['label' => 'Question Terms', 'value' => $distillationWordCount],
+            ['label' => __('admin.product_cases.public.metrics.ai_platforms'), 'value' => $platformCount],
+            ['label' => __('admin.product_cases.public.metrics.search_reports'), 'value' => $searchReportCount],
+            ['label' => __('admin.product_cases.public.metrics.question_terms'), 'value' => $distillationWordCount],
         ], static fn (array $metric): bool => (int) $metric['value'] > 0));
     }
 
@@ -87,10 +87,10 @@ class ProductCaseReportSummaryService
     private function metrics(array $summary): array
     {
         return [
-            ['label' => 'AI Platform Coverage', 'value' => (int) data_get($summary, 'platform_count.display', 0)],
-            ['label' => 'Search Report Count', 'value' => (int) data_get($summary, 'search_report_count.display', 0)],
-            ['label' => 'AI Search Terms', 'value' => (int) data_get($summary, 'distillation_word_count.display', 0)],
-            ['label' => 'Citation Sources', 'value' => (int) data_get($summary, 'source_count.display', 0)],
+            ['label' => __('admin.product_cases.public.metrics.ai_platform_coverage'), 'value' => (int) data_get($summary, 'platform_count.display', 0)],
+            ['label' => __('admin.product_cases.public.metrics.search_report_count'), 'value' => (int) data_get($summary, 'search_report_count.display', 0)],
+            ['label' => __('admin.product_cases.public.metrics.ai_search_terms'), 'value' => (int) data_get($summary, 'distillation_word_count.display', 0)],
+            ['label' => __('admin.product_cases.public.metrics.citation_sources'), 'value' => (int) data_get($summary, 'source_count.display', 0)],
         ];
     }
 
@@ -106,10 +106,10 @@ class ProductCaseReportSummaryService
                 'distillation_word_count' => 0,
                 'source_count' => 0,
                 'metrics' => [
-                    ['label' => 'AI Platform Coverage', 'value' => 0],
-                    ['label' => 'Search Report Count', 'value' => 0],
-                    ['label' => 'AI Search Terms', 'value' => 0],
-                    ['label' => 'Citation Sources', 'value' => 0],
+                    ['label' => __('admin.product_cases.public.metrics.ai_platform_coverage'), 'value' => 0],
+                    ['label' => __('admin.product_cases.public.metrics.search_report_count'), 'value' => 0],
+                    ['label' => __('admin.product_cases.public.metrics.ai_search_terms'), 'value' => 0],
+                    ['label' => __('admin.product_cases.public.metrics.citation_sources'), 'value' => 0],
                 ],
             ],
             'platforms' => [],

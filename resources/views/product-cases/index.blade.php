@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -32,7 +32,7 @@
 {!! json_encode([
     $schemaAtContext => 'https://schema.org',
     $schemaAtType => 'CollectionPage',
-    'name' => 'Product Cases',
+    'name' => $pageTitle,
     'description' => $pageDescription,
     'mainEntity' => [
         $schemaAtType => 'ItemList',
@@ -48,11 +48,11 @@
                 <span class="flex h-9 w-9 items-center justify-center rounded-md bg-slate-950 text-white">
                     <i data-lucide="briefcase-business" class="h-4 w-4"></i>
                 </span>
-                Product Cases
+                {{ __('admin.product_cases.public.nav_title') }}
             </a>
             <a href="{{ route($caseRoutes['home']) }}" class="inline-flex items-center gap-1 text-sm font-medium text-slate-600 hover:text-slate-950">
                 <i data-lucide="home" class="h-4 w-4"></i>
-                Back to Home
+                {{ __('admin.product_cases.public.back_home') }}
             </a>
         </div>
     </header>
@@ -61,24 +61,24 @@
         <section class="border-b border-slate-200 bg-white">
             <div class="mx-auto grid max-w-7xl gap-8 px-4 py-12 sm:px-6 lg:grid-cols-[1fr_0.72fr] lg:px-8 lg:py-16">
                 <div>
-                    <p class="text-sm font-semibold uppercase tracking-wide text-orange-600">GEO Case Library</p>
-                    <h1 class="mt-3 max-w-3xl text-3xl font-semibold tracking-normal text-slate-950 sm:text-5xl">Product Cases</h1>
+                    <p class="text-sm font-semibold uppercase tracking-wide text-orange-600">{{ __('admin.product_cases.public.eyebrow') }}</p>
+                    <h1 class="mt-3 max-w-3xl text-3xl font-semibold tracking-normal text-slate-950 sm:text-5xl">{{ __('admin.product_cases.public.title') }}</h1>
                     <p class="mt-5 max-w-2xl text-base leading-8 text-slate-600">
-                        Explore real brand case studies across GEO content operations, AI answer visibility, brand diagnostics, and measurable content growth.
+                        {{ __('admin.product_cases.public.description') }}
                     </p>
                 </div>
                 <div class="grid gap-3 sm:grid-cols-3 lg:content-end">
                     <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
                         <div class="text-2xl font-semibold text-slate-950">{{ $cases->total() }}</div>
-                        <div class="mt-1 text-sm text-slate-500">Published Cases</div>
+                        <div class="mt-1 text-sm text-slate-500">{{ __('admin.product_cases.public.stats.published_cases') }}</div>
                     </div>
                     <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
                         <div class="text-2xl font-semibold text-slate-950">{{ count($filterOptions['industries']) }}</div>
-                        <div class="mt-1 text-sm text-slate-500">Industries</div>
+                        <div class="mt-1 text-sm text-slate-500">{{ __('admin.product_cases.public.stats.industries') }}</div>
                     </div>
                     <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
                         <div class="text-2xl font-semibold text-slate-950">{{ count($filterOptions['regions']) }}</div>
-                        <div class="mt-1 text-sm text-slate-500">Global Regions</div>
+                        <div class="mt-1 text-sm text-slate-500">{{ __('admin.product_cases.public.stats.global_regions') }}</div>
                     </div>
                 </div>
             </div>
@@ -88,26 +88,26 @@
             <form method="GET" action="{{ route($caseRoutes['index']) }}" class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
                 <div class="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
                     <label class="block">
-                        <span class="mb-1 block text-xs font-medium text-slate-500">Search</span>
-                        <input name="keyword" value="{{ $filters['keyword'] }}" placeholder="Case title / brand name" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-100">
+                        <span class="mb-1 block text-xs font-medium text-slate-500">{{ __('admin.product_cases.public.search') }}</span>
+                        <input name="keyword" value="{{ $filters['keyword'] }}" placeholder="{{ __('admin.product_cases.public.search_placeholder') }}" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-100">
                     </label>
                     <div class="flex items-end gap-2">
                         <button type="submit" class="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-slate-950 px-4 text-sm font-medium text-white transition hover:bg-slate-800">
                             <i data-lucide="search" class="h-4 w-4"></i>
-                            Filter
+                            {{ __('admin.product_cases.public.filter') }}
                         </button>
-                        <a href="{{ route($caseRoutes['index']) }}" class="inline-flex h-10 items-center justify-center rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 transition hover:bg-slate-50">Reset</a>
+                        <a href="{{ route($caseRoutes['index']) }}" class="inline-flex h-10 items-center justify-center rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 transition hover:bg-slate-50">{{ __('admin.product_cases.public.reset') }}</a>
                     </div>
                 </div>
 
                 <div class="mt-4 divide-y divide-slate-100 rounded-md border border-slate-100 bg-slate-50/80">
                     <div class="grid gap-3 px-3 py-3 md:grid-cols-[64px_1fr]">
-                        <div class="pt-1 text-sm font-semibold text-slate-700">Industry</div>
+                        <div class="pt-1 text-sm font-semibold text-slate-700">{{ __('admin.product_cases.public.industry') }}</div>
                         <div class="flex flex-wrap gap-2">
                             @php $industryActive = $filters['industry'] === ''; @endphp
                             <label class="cursor-pointer">
                                 <input type="radio" name="industry" value="" class="peer sr-only" @checked($industryActive)>
-                                <span class="inline-flex h-8 items-center rounded-md border border-transparent bg-white px-3 text-sm text-slate-600 transition hover:border-slate-200 hover:text-slate-950 peer-checked:border-orange-500 peer-checked:bg-orange-50 peer-checked:font-medium peer-checked:text-orange-700">All</span>
+                                <span class="inline-flex h-8 items-center rounded-md border border-transparent bg-white px-3 text-sm text-slate-600 transition hover:border-slate-200 hover:text-slate-950 peer-checked:border-orange-500 peer-checked:bg-orange-50 peer-checked:font-medium peer-checked:text-orange-700">{{ __('admin.product_cases.public.all') }}</span>
                             </label>
                             @foreach($filterOptions['industries'] as $industry)
                                 @php $industryActive = $filters['industry'] === $industry; @endphp
@@ -119,12 +119,12 @@
                         </div>
                     </div>
                     <div class="grid gap-3 px-3 py-3 md:grid-cols-[64px_1fr]">
-                        <div class="pt-1 text-sm font-semibold text-slate-700">Region</div>
+                        <div class="pt-1 text-sm font-semibold text-slate-700">{{ __('admin.product_cases.public.region') }}</div>
                         <div class="flex flex-wrap gap-2">
                             @php $regionActive = $filters['region'] === ''; @endphp
                             <label class="cursor-pointer">
                                 <input type="radio" name="region" value="" class="peer sr-only" @checked($regionActive)>
-                                <span class="inline-flex h-8 items-center rounded-md border border-transparent bg-white px-3 text-sm text-slate-600 transition hover:border-slate-200 hover:text-slate-950 peer-checked:border-orange-500 peer-checked:bg-orange-50 peer-checked:font-medium peer-checked:text-orange-700">All</span>
+                                <span class="inline-flex h-8 items-center rounded-md border border-transparent bg-white px-3 text-sm text-slate-600 transition hover:border-slate-200 hover:text-slate-950 peer-checked:border-orange-500 peer-checked:bg-orange-50 peer-checked:font-medium peer-checked:text-orange-700">{{ __('admin.product_cases.public.all') }}</span>
                             </label>
                             @foreach($filterOptions['regions'] as $region)
                                 @php $regionActive = $filters['region'] === $region; @endphp
@@ -176,7 +176,7 @@
                                 </div>
                                 <div class="min-w-0">
                                     <div class="truncate text-sm font-medium text-slate-900">{{ $case->company_name ?: $case->title }}</div>
-                                    <div class="mt-0.5 truncate text-xs text-slate-500">{{ collect([$industryLabel, $regionLabel])->filter()->implode(' / ') ?: 'Case Brand' }}</div>
+                                    <div class="mt-0.5 truncate text-xs text-slate-500">{{ collect([$industryLabel, $regionLabel])->filter()->implode(' / ') ?: __('admin.product_cases.public.case_brand') }}</div>
                                 </div>
                             </div>
 
@@ -201,8 +201,8 @@
                 @empty
                     <div class="md:col-span-2 xl:col-span-3 rounded-lg border border-dashed border-slate-300 bg-white px-6 py-14 text-center">
                         <i data-lucide="folder-open" class="mx-auto h-10 w-10 text-slate-300"></i>
-                        <h2 class="mt-4 text-base font-semibold text-slate-900">No product cases yet</h2>
-                        <p class="mt-2 text-sm text-slate-500">Adjust the filters or check back after new cases are published.</p>
+                        <h2 class="mt-4 text-base font-semibold text-slate-900">{{ __('admin.product_cases.public.empty_title') }}</h2>
+                        <p class="mt-2 text-sm text-slate-500">{{ __('admin.product_cases.public.empty_desc') }}</p>
                     </div>
                 @endforelse
             </div>
@@ -218,7 +218,7 @@
     <footer class="border-t border-slate-200 bg-white">
         <div class="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-6 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
             <span>{{ config('geoflow.site_name', config('app.name')) }}</span>
-            <span>Product Case Library</span>
+            <span>{{ __('admin.product_cases.public.footer_label') }}</span>
         </div>
     </footer>
 

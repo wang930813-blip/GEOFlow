@@ -157,6 +157,54 @@ class ProductCaseModuleTest extends TestCase
             ->assertDontSee('AI Search Inclusion');
     }
 
+    public function test_product_case_public_pages_follow_locale_while_filters_stay_in_english(): void
+    {
+        ProductCase::query()->create([
+            'title' => 'Localized Product Case',
+            'slug' => 'localized-product-case',
+            'company_name' => 'Localized Brand',
+            'industry' => '教育培训',
+            'region' => '上海市',
+            'summary' => 'Localized case summary.',
+            'content' => 'Localized case content.',
+            'status' => ProductCase::STATUS_PUBLISHED,
+            'published_at' => now()->subDay(),
+        ]);
+
+        $this->withSession(['locale' => 'zh_CN'])
+            ->get(route('product-cases.index'))
+            ->assertOk()
+            ->assertSee('产品案例')
+            ->assertSee('返回首页')
+            ->assertSee('案例标题 / 品牌名称')
+            ->assertSee('筛选')
+            ->assertSee('重置')
+            ->assertSee('已发布案例')
+            ->assertSee('行业')
+            ->assertSee('全球地区')
+            ->assertSee('Education &amp; Training', false)
+            ->assertSee('Asia-Pacific')
+            ->assertDontSee('Product Cases')
+            ->assertDontSee('Back to Home')
+            ->assertDontSee('教育培训')
+            ->assertDontSee('上海市');
+
+        $this->withSession(['locale' => 'zh_CN'])
+            ->get(route('product-cases.show', ['slug' => 'localized-product-case']))
+            ->assertOk()
+            ->assertSee('返回案例列表')
+            ->assertSee('客户等级')
+            ->assertSee('案例档案')
+            ->assertSee('行业')
+            ->assertSee('全球地区')
+            ->assertSee('Education &amp; Training', false)
+            ->assertSee('Asia-Pacific')
+            ->assertDontSee('Back to Cases')
+            ->assertDontSee('Customer Level')
+            ->assertDontSee('教育培训')
+            ->assertDontSee('上海市');
+    }
+
     public function test_admin_prefixed_product_case_library_routes_render_public_pages(): void
     {
         ProductCase::query()->create([
@@ -213,7 +261,7 @@ class ProductCaseModuleTest extends TestCase
         $this->actingAs($superAdmin, 'admin')
             ->get(route('admin.product-cases.index'))
             ->assertOk()
-            ->assertSee('Product Case Management')
+            ->assertSee('产品案例管理')
             ->assertSee('data-product-cases-admin-table', false)
             ->assertSee('w-full', false)
             ->assertSee('table-fixed', false)
@@ -356,8 +404,8 @@ class ProductCaseModuleTest extends TestCase
         $this->get(route('product-cases.show', ['slug' => 'monitoring-summary-case']))
             ->assertOk()
             ->assertSee('Manual case content should stay primary.')
-            ->assertSee('GEO Performance Overview')
-            ->assertSee('AI Platform Coverage');
+            ->assertSee('GEO 表现概览')
+            ->assertSee('AI 平台覆盖');
     }
 
     public function test_case_detail_hides_bound_site_name_and_renders_numeric_customer_level_as_stars(): void
@@ -382,8 +430,8 @@ class ProductCaseModuleTest extends TestCase
             ->assertOk()
             ->assertSee('Public Brand')
             ->assertDontSee($site->name)
-            ->assertSee('aria-label="4 of 5 stars"', false)
-            ->assertSee('Not Set');
+            ->assertSee('aria-label="4 / 5 星"', false)
+            ->assertSee('未设置');
     }
 
     public function test_case_detail_includes_industry_competition_report_blocks(): void
@@ -514,10 +562,10 @@ class ProductCaseModuleTest extends TestCase
 
         $this->get(route('product-cases.show', ['slug' => 'industry-competition-case']))
             ->assertOk()
-            ->assertSee('Industry Competitiveness')
-            ->assertSee('Brand Profile')
-            ->assertSee('Competitor Performance')
-            ->assertSee('Sentiment')
+            ->assertSee('行业竞争力')
+            ->assertSee('品牌档案')
+            ->assertSee('竞品表现')
+            ->assertSee('情感倾向')
             ->assertSee('Competitor Alpha')
             ->assertSee('Competitor Beta')
             ->assertSee('TOP5');

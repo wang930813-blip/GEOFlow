@@ -41,7 +41,7 @@ class ProductCaseController extends Controller
             ->withQueryString();
 
         return view('admin.product-cases.index', [
-            'pageTitle' => 'Product Case Management',
+            'pageTitle' => __('admin.product_cases.admin.management_title'),
             'activeMenu' => 'product_cases_manage',
             'adminSiteName' => AdminWeb::siteName(),
             'cases' => $cases,
@@ -55,7 +55,7 @@ class ProductCaseController extends Controller
         $this->authorizedAdmin();
 
         return view('admin.product-cases.create', [
-            'pageTitle' => 'New Product Case',
+            'pageTitle' => __('admin.product_cases.admin.create_title'),
             'activeMenu' => 'product_cases_manage',
             'adminSiteName' => AdminWeb::siteName(),
             'case' => new ProductCase,
@@ -64,7 +64,7 @@ class ProductCaseController extends Controller
             'industryOptions' => $this->industryOptions(),
             'regionOptions' => $this->regionOptions(),
             'statusLabels' => $this->statusLabels(),
-            'submitLabel' => 'Create Case',
+            'submitLabel' => __('admin.product_cases.admin.form.create_submit'),
         ]);
     }
 
@@ -80,7 +80,7 @@ class ProductCaseController extends Controller
 
         return redirect()
             ->route('admin.product-cases.index')
-            ->with('message', 'Product case created: '.$case->title);
+            ->with('message', __('admin.product_cases.admin.messages.created', ['title' => $case->title]));
     }
 
     public function edit(ProductCase $productCase): View
@@ -88,7 +88,7 @@ class ProductCaseController extends Controller
         $this->authorizedAdmin();
 
         return view('admin.product-cases.edit', [
-            'pageTitle' => 'Edit Product Case',
+            'pageTitle' => __('admin.product_cases.admin.edit_title'),
             'activeMenu' => 'product_cases_manage',
             'adminSiteName' => AdminWeb::siteName(),
             'case' => $productCase,
@@ -97,7 +97,7 @@ class ProductCaseController extends Controller
             'industryOptions' => $this->industryOptions($productCase),
             'regionOptions' => $this->regionOptions($productCase),
             'statusLabels' => $this->statusLabels(),
-            'submitLabel' => 'Save Changes',
+            'submitLabel' => __('admin.product_cases.admin.form.save_submit'),
         ]);
     }
 
@@ -111,7 +111,7 @@ class ProductCaseController extends Controller
 
         return redirect()
             ->route('admin.product-cases.index')
-            ->with('message', 'Product case updated');
+            ->with('message', __('admin.product_cases.admin.messages.updated'));
     }
 
     public function toggleStatus(ProductCase $productCase): RedirectResponse
@@ -131,7 +131,9 @@ class ProductCaseController extends Controller
 
         return redirect()
             ->route('admin.product-cases.index')
-            ->with('message', $nextStatus === ProductCase::STATUS_PUBLISHED ? 'Product case published' : 'Product case hidden');
+            ->with('message', $nextStatus === ProductCase::STATUS_PUBLISHED
+                ? __('admin.product_cases.admin.messages.published')
+                : __('admin.product_cases.admin.messages.hidden'));
     }
 
     public function destroy(ProductCase $productCase): RedirectResponse
@@ -141,7 +143,7 @@ class ProductCaseController extends Controller
 
         return redirect()
             ->route('admin.product-cases.index')
-            ->with('message', 'Product case deleted');
+            ->with('message', __('admin.product_cases.admin.messages.deleted'));
     }
 
     /**
@@ -172,9 +174,9 @@ class ProductCaseController extends Controller
             'sort_order' => ['nullable', 'integer', 'min:-999999', 'max:999999'],
             'published_at' => ['nullable', 'date'],
         ], [
-            'title.required' => 'Please enter a case title.',
-            'slug.regex' => 'The case slug may only contain letters, numbers, hyphens, and underscores.',
-            'status.in' => 'The selected case status is invalid.',
+            'title.required' => __('admin.product_cases.admin.validation.title_required'),
+            'slug.regex' => __('admin.product_cases.admin.validation.slug_regex'),
+            'status.in' => __('admin.product_cases.admin.validation.status_invalid'),
         ]);
 
         $site = null;
@@ -282,9 +284,9 @@ class ProductCaseController extends Controller
     private function statusLabels(): array
     {
         return [
-            ProductCase::STATUS_DRAFT => 'Draft',
-            ProductCase::STATUS_PUBLISHED => 'Published',
-            ProductCase::STATUS_HIDDEN => 'Hidden',
+            ProductCase::STATUS_DRAFT => __('admin.product_cases.admin.status.draft'),
+            ProductCase::STATUS_PUBLISHED => __('admin.product_cases.admin.status.published'),
+            ProductCase::STATUS_HIDDEN => __('admin.product_cases.admin.status.hidden'),
         ];
     }
 

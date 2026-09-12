@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\ProductCase;
 use App\Services\ProductCases\ProductCaseReportSummaryService;
 use App\Support\Site\ArticleHtmlPresenter;
+use App\Support\AdminWeb;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -13,6 +14,8 @@ class ProductCaseController extends Controller
 {
     public function index(Request $request, ProductCaseReportSummaryService $reports): View
     {
+        $this->applyLocale($request);
+
         $caseRoutes = $this->routeNames($request);
         $filters = [
             'keyword' => trim((string) $request->query('keyword', '')),
@@ -46,13 +49,15 @@ class ProductCaseController extends Controller
             'caseRoutes' => $caseRoutes,
             'filterOptions' => $this->filterOptions(),
             'filters' => $filters,
-            'pageTitle' => 'Product Cases',
-            'pageDescription' => 'Explore GEO and AI search optimization case studies, including brand diagnostics, AI answer visibility, and content growth outcomes.',
+            'pageTitle' => __('admin.product_cases.public.title'),
+            'pageDescription' => __('admin.product_cases.public.description'),
         ]);
     }
 
     public function show(Request $request, string $slug, ProductCaseReportSummaryService $reports): View
     {
+        $this->applyLocale($request);
+
         $case = ProductCase::query()
             ->published()
             ->with(['site:id,name,owner_admin_id', 'owner:id,username,display_name'])
@@ -126,5 +131,17 @@ class ProductCaseController extends Controller
             'show' => 'product-cases.show',
             'home' => 'site.home',
         ];
+    }
+
+    private function applyLocale(Request $request): void
+    {
+        $locale = (string) $request->session()->get('locale', '');
+        if (! AdminWeb::isSupportedLocale($locale)) {
+            $locale = trim((string) config('geoflow.public_locale', 'zh_CN'));
+        }
+
+        if (AdminWeb::isSupportedLocale($locale)) {
+            app()->setLocale($locale);
+        }
     }
 }
