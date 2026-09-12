@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>大模型数据报表 - 静态复刻</title>
+  <title>Enterprise Sentiment Analysis Report</title>
   <style>
     :root {
       --bg: #020816;
@@ -231,7 +231,9 @@
       top: calc(100% + 6px);
       right: 0;
       z-index: 2001;
-      min-width: 226px;
+      width: 330px;
+      min-width: 100%;
+      max-width: min(330px, calc(100vw - 32px));
       padding: 6px;
       border: 1px solid rgba(60, 190, 255, .46);
       border-radius: 7px;
@@ -245,7 +247,8 @@
       border-radius: 5px;
       color: #d9f4ff;
       text-decoration: none;
-      white-space: nowrap;
+      white-space: normal;
+      overflow-wrap: anywhere;
       font-weight: 750;
       line-height: 1.25;
     }
@@ -572,14 +575,15 @@
     .platform-icon.logo-icon {
       overflow: hidden;
       background: rgba(255,255,255,.96);
+      padding: 5px;
       box-shadow: 0 0 12px rgba(38, 150, 255, .36);
     }
     .platform-icon.logo-icon img {
       width: 100%;
       height: 100%;
       display: block;
-      border-radius: inherit;
-      object-fit: cover;
+      border-radius: 0;
+      object-fit: contain;
     }
     .dashboard-grid {
       display: grid;
@@ -1871,6 +1875,117 @@
       cursor: default;
       user-select: none;
     }
+    @media (min-width: 1361px) {
+      .report-title {
+        left: calc(50% - 120px);
+        max-width: min(760px, calc(100vw - 920px));
+        font-size: clamp(25px, 2.15vw, 38px);
+        line-height: 1.08;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .company-meta {
+        width: 270px;
+        flex-basis: 270px;
+        font-size: 13px;
+      }
+      .report-menu {
+        width: 260px;
+        flex-basis: 260px;
+        min-width: 260px;
+      }
+      .report-menu summary {
+        min-height: 44px;
+        height: 44px;
+        font-size: 14px;
+        line-height: 1.18;
+      }
+      .report-menu-list {
+        width: 360px;
+        max-width: min(360px, calc(100vw - 32px));
+      }
+    }
+    #metric-cards .metric-label {
+      max-width: 100%;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      font-size: clamp(12px, 3.25cqw, 17px);
+      line-height: 1.22;
+    }
+    #metric-cards .metric-label.info-label {
+      display: inline-flex;
+      align-items: flex-start;
+    }
+    #metric-cards .metric-label.info-label::after {
+      flex: 0 0 auto;
+      margin-top: .08em;
+    }
+    #metric-cards .metric-content {
+      gap: clamp(5px, 1.7cqw, 10px);
+    }
+    #metric-cards .metric-sub {
+      flex-wrap: wrap;
+      gap: 5px 12px;
+      font-size: clamp(11px, 3.1cqw, 16px);
+      line-height: 1.2;
+    }
+    #metric-cards .metric-sub > span,
+    #metric-cards .metric-value-label {
+      white-space: normal;
+    }
+    #metric-cards .metric-value-label {
+      margin-top: clamp(5px, 1.8cqw, 10px);
+      font-size: clamp(11px, 3cqw, 15px);
+      line-height: 1.18;
+    }
+    #metric-cards .metric-stat-grid {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 7%;
+    }
+    #metric-cards .metric-card.is-conversion .metric-stat-grid {
+      gap: 9%;
+    }
+    #metric-cards .metric-card.is-single .metric-content,
+    #metric-cards .metric-card.is-platform .metric-content,
+    #metric-cards .metric-card.is-conversion .metric-content {
+      right: 6%;
+    }
+    @media (max-width: 1360px) and (min-width: 1101px) {
+      .report-header {
+        grid-template-columns: 300px minmax(0, 1fr) 520px;
+      }
+      .report-title {
+        position: static;
+        transform: none;
+        max-width: 100%;
+        font-size: clamp(24px, 2.4vw, 34px);
+        line-height: 1.12;
+        white-space: normal;
+      }
+      .company-meta {
+        width: 235px;
+        flex-basis: 235px;
+        white-space: normal;
+      }
+      .report-menu {
+        width: 230px;
+        flex-basis: 230px;
+        min-width: 230px;
+      }
+      .report-menu-list {
+        width: 330px;
+        max-width: min(330px, calc(100vw - 32px));
+      }
+      .report-menu summary {
+        min-height: 44px;
+        height: auto;
+        padding-top: 6px;
+        padding-bottom: 6px;
+        font-size: 13px;
+        line-height: 1.18;
+      }
+    }
     @media (max-width: 720px) {
       .monitoring-share-action {
         width: 100%;
@@ -1893,73 +2008,73 @@
       <div class="brand-strip">
         <img class="brand-logo" src="ceying-ai-logo.png" alt="AI" />
       </div>
-      <h1 class="report-title">企业輿情分析报表</h1>
+      <h1 class="report-title">Enterprise Sentiment Analysis Report</h1>
       <div class="company-box">
         <div class="company-meta">
           @php($monitoringContext = $reportData['context'] ?? [])
-          <div>{{ $monitoringContext['company_name'] ?? '未识别企业' }}</div>
-          <div>数据更新日期：{{ $monitoringContext['date'] ?? now()->format('Y-m-d') }}</div>
+          <div>{{ $monitoringContext['company_name'] ?? 'Unknown Company' }}</div>
+          <div>Data Updated: {{ $monitoringContext['date'] ?? now()->format('Y-m-d') }}</div>
           <div>新知地（成都）人工智能科技有限公司</div>
-          <div>数据更新日期：2026-06-17</div>
+          <div>Data Updated: 2026-06-17</div>
         </div>
         @if($isSharedView ?? false)
           <div class="report-menu monitoring-fixed-report" data-monitoring-fixed-report>
-            <span>企业舆情分析报表</span>
+            <span>Enterprise Sentiment Analysis Report</span>
           </div>
         @else
           <details class="report-menu">
-            <summary>企业輿情分析报表</summary>
+            <summary>Enterprise Sentiment Analysis Report</summary>
             <div class="report-menu-list">
-              <span>企业輿情分析报表</span>
-              <a href="ai-search-competition-report.html">行业竞争力分析报表</a>
+              <span>Enterprise Sentiment Analysis Report</span>
+              <a href="ai-search-competition-report.html">Industry Competitiveness Analysis Report</a>
             </div>
           </details>
         @endif
         @if(!empty($shareCreateUrl ?? ''))
-          <button type="button" class="monitoring-share-action" data-monitoring-share-button onclick="createMonitoringReportShare(this)">分享</button>
+          <button type="button" class="monitoring-share-action" data-monitoring-share-button onclick="createMonitoringReportShare(this)">Share</button>
         @endif
       </div>
     </header>
 
     <section id="model-collection" class="model-collection panel">
       <div class="collection-head">
-        <h2 class="section-title"><span class="title-icon model" aria-hidden="true"></span>大模型收录</h2>
-        <div class="collection-total"><span>收录总量</span><strong id="collectionTotal">0</strong></div>
+        <h2 class="section-title"><span class="title-icon model" aria-hidden="true"></span>AI Model Inclusion</h2>
+        <div class="collection-total"><span>Total</span><strong id="collectionTotal">0</strong></div>
       </div>
       <div class="collection-chart" id="modelCollectionChart"></div>
     </section>
 
     <section class="dashboard-grid">
       <div id="metric-cards" class="metric-cards panel">
-        <h2 class="section-title"><span class="title-icon metrics" aria-hidden="true"></span>数据指标</h2>
+        <h2 class="section-title"><span class="title-icon metrics" aria-hidden="true"></span>Data Metrics</h2>
         <div class="metric-grid" id="metricGrid"></div>
       </div>
       <div id="keyword-cloud" class="keyword-cloud panel">
-        <h2 class="section-title"><span class="title-icon cloud" aria-hidden="true"></span>蒸馏词</h2>
+        <h2 class="section-title"><span class="title-icon cloud" aria-hidden="true"></span>Distilled Terms</h2>
         <div class="cloud-stage" id="cloudStage"></div>
       </div>
     </section>
 
     <section id="trend-chart" class="trend-panel panel">
       <div class="trend-head">
-        <h2 class="section-title"><span class="title-icon trend" aria-hidden="true"></span>文章数据与收录趋势图</h2>
+        <h2 class="section-title"><span class="title-icon trend" aria-hidden="true"></span>Article Data & Inclusion Trend</h2>
         <select class="period-select" id="periodSelect">
-          <option value="30">近30日</option>
-          <option value="7">近7日</option>
+          <option value="30">Last 30 Days</option>
+          <option value="7">Last 7 Days</option>
         </select>
       </div>
       <div class="legend">
-        <span class="create">文章创作</span>
-        <span class="publish">文章发布</span>
+        <span class="create">Created</span>
+        <span class="publish">Published</span>
       </div>
       <div class="chart">
         <div class="y-lines"><i></i><i></i><i></i><i></i><i></i></div>
-        <span class="y-label" style="--tick:0">350条</span>
-        <span class="y-label" style="--tick:.2">280条</span>
-        <span class="y-label" style="--tick:.4">210条</span>
-        <span class="y-label" style="--tick:.6">140条</span>
-        <span class="y-label" style="--tick:.8">70条</span>
-        <span class="y-label" style="--tick:1">0条</span>
+        <span class="y-label" style="--tick:0">350</span>
+        <span class="y-label" style="--tick:.2">280</span>
+        <span class="y-label" style="--tick:.4">210</span>
+        <span class="y-label" style="--tick:.6">140</span>
+        <span class="y-label" style="--tick:.8">70</span>
+        <span class="y-label" style="--tick:1">0</span>
         <div class="bars" id="bars"></div>
         <div class="chart-tooltip" id="chartTooltip" role="status" aria-live="polite"></div>
         <div class="x-labels" id="trendAxisLabels"></div>
@@ -1967,15 +2082,15 @@
     </section>
 
     <section class="report-section panel">
-      <h2 class="section-title"><span class="title-icon report" aria-hidden="true"></span>搜索报表</h2>
+      <h2 class="section-title"><span class="title-icon report" aria-hidden="true"></span>Search Report</h2>
       <div id="platform-filter" class="platform-filter"></div>
       <div id="search-filter" class="search-filter">
         <div class="date-range">
-          <input id="startDate" class="input" type="text" placeholder="开始日期" onfocus="this.type='date'" />
+          <input id="startDate" class="input" type="text" placeholder="Start Date" onfocus="this.type='date'" />
           <span style="text-align:center">-</span>
-          <input id="endDate" class="input" type="text" placeholder="结束日期" onfocus="this.type='date'" />
+          <input id="endDate" class="input" type="text" placeholder="End Date" onfocus="this.type='date'" />
         </div>
-        <input id="questionSearch" class="input search-input" placeholder="请输入问题" />
+        <input id="questionSearch" class="input search-input" placeholder="Search questions" />
       </div>
       <div class="table-wrap">
         <table id="report-table">
@@ -1989,12 +2104,12 @@
           </colgroup>
           <thead>
             <tr>
-              <th>序号</th>
-              <th>问题 ⓘ</th>
-              <th>平台</th>
-              <th>查询时间</th>
-              <th>转化目标</th>
-              <th>操作</th>
+              <th>No.</th>
+              <th>Question ⓘ</th>
+              <th>Model</th>
+              <th>Checked At</th>
+              <th>Conversion Target</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody id="tableBody"></tbody>
@@ -2004,19 +2119,19 @@
     </section>
   </main>
 
-  <div id="snapshot-modal" class="snapshot-modal" role="dialog" aria-modal="true" aria-label="快照凭证">
+  <div id="snapshot-modal" class="snapshot-modal" role="dialog" aria-modal="true" aria-label="Snapshot Voucher">
     <div class="voucher">
       <div class="voucher-head">
         <div class="voucher-platform" id="voucherPlatform"></div>
-        <button class="close-btn" onclick="closeSnapshot()" aria-label="关闭">×</button>
+        <button class="close-btn" onclick="closeSnapshot()" aria-label="Close">×</button>
       </div>
       <div class="voucher-body">
         <h2 class="voucher-title" id="voucherTitle"></h2>
         <div class="voucher-time" id="voucherTime"></div>
         <div class="ai-content" id="voucherContent"></div>
-        <h3>参考资料</h3>
+        <h3>References</h3>
         <div class="refs" id="voucherRefs"></div>
-        <button class="primary-btn" onclick="continueChat()">继续聊</button>
+        <button class="primary-btn" onclick="continueChat()">Continue Chat</button>
       </div>
     </div>
   </div>
@@ -2035,37 +2150,30 @@
       && dynamicReport.has_xueshuyi_static_search_rows !== true;
     let activeSnapshotRow = null;
     const iconStyles = {
-      "DeepSeek": "linear-gradient(135deg,#5e7cff,#8368ff)",
-      "豆包": "linear-gradient(135deg,#f4b0b9,#7f89ff)",
-      "元宝": "linear-gradient(135deg,#48dabd,#56a5ff)",
-      "文心一言": "linear-gradient(135deg,#2b7bff,#5bd9ff)",
-      "千问": "linear-gradient(135deg,#6b6cff,#a46bff)",
-      "纳米AI": "linear-gradient(135deg,#ff526c,#ff9f4f)",
+      "ChatGPT": "linear-gradient(135deg,#10a37f,#6ee7b7)",
+      "Grok": "linear-gradient(135deg,#111827,#64748b)",
+      "Gemini": "linear-gradient(135deg,#4285f4,#a855f7)",
+      "Claude": "linear-gradient(135deg,#b45309,#f59e0b)",
       "Kimi": "linear-gradient(135deg,#111827,#4b5563)",
-      "讯飞星火": "linear-gradient(135deg,#3bc7ff,#ff6d6d)",
-      "百度AI": "linear-gradient(135deg,#7545ff,#b56cff)",
-      "抖音AI": "linear-gradient(135deg,#0f172a,#ff3d6d)",
-      "夸克AI": "linear-gradient(135deg,#3751ff,#5c7cff)"
+      "Spark": "linear-gradient(135deg,#3bc7ff,#ff6d6d)",
+      "Baidu AI": "linear-gradient(135deg,#7545ff,#b56cff)"
     };
-    const modelLogos = {
-      "DeepSeek": "assets/ai-platforms/deepseek.png",
-      "豆包": "assets/ai-platforms/doubao.png",
-      "元宝": "assets/ai-platforms/yuanbao.png",
-      "腾讯元宝": "assets/ai-platforms/yuanbao.png",
-      "文心一言": "assets/ai-platforms/wenxin.png",
-      "千问": "assets/ai-platforms/qianwen.png"
-    };
+    const modelLogos = {!! json_encode([
+      'ChatGPT' => asset('ceying-geo-static/ai-platforms/chatgpt.svg'),
+      'Grok' => asset('ceying-geo-static/ai-platforms/grok.svg'),
+      'Gemini' => asset('ceying-geo-static/ai-platforms/gemini.svg'),
+      'Claude' => asset('ceying-geo-static/ai-platforms/claude.svg'),
+    ], JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) !!};
 
     let modelCollection = [
-      ["DeepSeek", 106758], ["豆包", 153278], ["元宝", 174100], ["文心一言", 51143],
-      ["千问", 12723]
+      ["ChatGPT", 153278], ["Grok", 106758], ["Gemini", 51143], ["Claude", 12723]
     ];
 
     let metrics = [
-      { label: "AI大模型排名收录总量 ⓘ", value: 1046784, sub: [["今日新增", 7142], ["较昨日", 33324]], cardClass: "is-single", bgAsset: "assets/image-to-code/metric-card-backgrounds/card-ai-total.png", cardRatio: "381 / 168", accent: "#f08b35" },
-      { label: "AI搜索词数量 ⓘ　新增词数量 ⓘ", value: "74620　246", sub: [["较30日", 57886], ["较30日", 235]], cardClass: "is-search", bgAsset: "assets/image-to-code/metric-card-backgrounds/card-search-terms.png", cardRatio: "372 / 168", accent: "#0aa8ff" },
-      { label: "收录AI平台数量 ⓘ", value: 11, sub: [["总平台数", 11]], cardClass: "is-platform", bgAsset: "assets/image-to-code/metric-card-backgrounds/card-ai-platforms.png", cardRatio: "372 / 183", accent: "#8c52ff" },
-      { label: "AI搜索转化方式收录总量 ⓘ", value: "25992　40412", sub: [["站内跳转曝光", ""], ["联系方式曝光", ""]], cardClass: "is-conversion", bgAsset: "assets/image-to-code/metric-card-backgrounds/card-conversion.png", cardRatio: "372 / 177", accent: "#17d9a2", summaryLabel: "AI搜索转化方式收录总量 ⓘ", valueLabels: ["站内跳转曝光", "联系方式曝光"] }
+      { label: "AI Model Ranking Inclusion Total ⓘ", value: 1046784, sub: [["New Today", 7142], ["vs Yesterday", 33324]], cardClass: "is-single", bgAsset: "assets/image-to-code/metric-card-backgrounds/card-ai-total.png", cardRatio: "381 / 168", accent: "#f08b35" },
+      { label: "AI Search Terms ⓘ　New Terms ⓘ", value: "74620　246", sub: [["Last 30 Days", 57886], ["Last 30 Days", 235]], cardClass: "is-search", bgAsset: "assets/image-to-code/metric-card-backgrounds/card-search-terms.png", cardRatio: "372 / 168", accent: "#0aa8ff" },
+      { label: "Included AI Platforms ⓘ", value: 4, sub: [["Total platforms", 4]], cardClass: "is-platform", bgAsset: "assets/image-to-code/metric-card-backgrounds/card-ai-platforms.png", cardRatio: "372 / 183", accent: "#8c52ff" },
+      { label: "AI Search Conversion Inclusion Total ⓘ", value: "25992　40412", sub: [["Website Click Exposure", ""], ["Contact Exposure", ""]], cardClass: "is-conversion", bgAsset: "assets/image-to-code/metric-card-backgrounds/card-conversion.png", cardRatio: "372 / 177", accent: "#17d9a2", summaryLabel: "AI Search Conversion Inclusion Total ⓘ", valueLabels: ["Website Click Exposure", "Contact Exposure"] }
     ];
 
     let cloudWords = [
@@ -2093,17 +2201,15 @@
 
     const reportToday = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai" }).format(new Date());
     let platformFilters = [
-      ["全部", "全部", 25],
-      ["DeepSeek", "PC", 3],
-      ["DeepSeek", "移动", 2],
-      ["豆包", "PC", 3],
-      ["豆包", "移动", 2],
-      ["腾讯元宝", "PC", 3],
-      ["腾讯元宝", "移动", 2],
-      ["文心一言", "PC", 5],
-      ["文心一言", "移动", 0],
-      ["千问", "PC", 3],
-      ["千问", "移动", 2]
+      ["All", "All", 25],
+      ["ChatGPT", "PC", 8],
+      ["ChatGPT", "Mobile", 2],
+      ["Grok", "PC", 3],
+      ["Grok", "Mobile", 2],
+      ["Gemini", "PC", 3],
+      ["Gemini", "Mobile", 2],
+      ["Claude", "PC", 3],
+      ["Claude", "Mobile", 2]
     ];
 
     const wenxinStaticSnapshots = [
@@ -2302,42 +2408,42 @@
         ]
       }
     ];
-    const wenxinRows = wenxinStaticSnapshots.map((item, index) => ({
+    const chatgptRows = wenxinStaticSnapshots.map((item, index) => ({
       id: -(index + 1),
       question: item.question,
-      platform: "文心一言",
+      platform: "ChatGPT",
       terminal: "PC",
       date: reportToday,
       time: `${reportToday} 10:${String(30 + index).padStart(2, "0")}:00`,
       target: "学术易",
       answer: item.answer,
-      refs: (item.refs || []).map(ref => ref.title).concat(["文心一言原始对话"]),
+      refs: (item.refs || []).map(ref => ref.title).concat(["Original AI Conversation"]),
       sourceUrls: (item.refs || []).map(ref => ref.url).concat([item.url]),
       officialUrl: item.url,
-      platformUrl: "https://chat.baidu.com/",
+      platformUrl: "https://chatgpt.com/",
       relatedArticles: []
     }));
     const supplementalStaticRows = [
-      { question: "论文润色和写作指导怎么选？有没有适合科研人员使用的智能学术服务平台推荐？", platform: "DeepSeek", terminal: "PC" },
-      { question: "论文润色和写作指导平台怎么判断是否专业？学术易这类AI学术和科研论文服务平台值得考虑吗？", platform: "DeepSeek", terminal: "PC" },
-      { question: "做科研论文服务时，论文查重、降重、润色和写作指导应该找什么样的机构或平台比较靠谱？", platform: "DeepSeek", terminal: "PC" },
-      { question: "北京学术易科技有限公司的学术易适合做论文写作指导和科研辅导吗？和其他论文辅导服务相比怎么样？", platform: "DeepSeek", terminal: "移动" },
-      { question: "如果需要文献梳理、科研选题和研究方法指导，选择智能学术服务平台时应重点看哪些能力？", platform: "DeepSeek", terminal: "移动" },
-      { question: "论文润色和写作指导怎么选？北京学术易科技有限公司的学术易适合科研论文服务吗？", platform: "豆包", terminal: "PC" },
-      { question: "学术易这类AI学术平台能提供论文查重、论文降重和论文写作指导吗，适合硕博科研辅导吗？", platform: "豆包", terminal: "PC" },
-      { question: "如果需要科研选题、文献梳理、论文润色和写作指导，应该选择学术辅导机构还是智能学术服务平台？", platform: "豆包", terminal: "PC" },
-      { question: "北京学术易科技有限公司的学术易在科研论文服务、论文辅导和智能写作方面口碑怎么样？", platform: "豆包", terminal: "移动" },
-      { question: "做科研论文写作时，想找智能学术服务平台辅助论文辅导、文献梳理和研究方法指导，有哪些靠谱选择？", platform: "豆包", terminal: "移动" },
-      { question: "国内有哪些提供SCI/SSCI论文辅导？", platform: "腾讯元宝", terminal: "PC" },
-      { question: "想找靠谱的科研论文服务机构做论文写作指导和发表辅导，北京学术易科技有限公司怎么样？", platform: "腾讯元宝", terminal: "PC" },
-      { question: "北京学术易科技有限公司的学术易主要提供哪些论文辅导和AI学术服务，适合科研人员使用吗？", platform: "腾讯元宝", terminal: "PC" },
-      { question: "有哪些靠谱的论文润色机构推荐，适合科研论文投稿前语言和逻辑优化？", platform: "腾讯元宝", terminal: "移动" },
-      { question: "国内做科研论文服务和论文写作指导的平台有哪些，学术易这类智能学术服务平台值得了解吗？", platform: "腾讯元宝", terminal: "移动" },
-      { question: "想找论文查重、降重和润色一体化服务，有没有正规的学术辅导机构推荐？", platform: "千问", terminal: "PC" },
-      { question: "研究生论文需要文献梳理、研究方法指导和写作辅导，哪些科研辅导平台比较专业？", platform: "千问", terminal: "PC" },
-      { question: "国内科研选题辅导平台哪些好", platform: "千问", terminal: "PC" },
-      { question: "论文发表辅导机构怎么选？有没有适合科研新手的智能学术服务平台推荐？", platform: "千问", terminal: "移动" },
-      { question: "选择科研论文服务机构时，如何判断论文辅导、查重降重和写作指导是否靠谱？", platform: "千问", terminal: "移动" }
+      { question: "论文润色和写作指导怎么选？有没有适合科研人员使用的智能学术服务平台推荐？", platform: "Grok", terminal: "PC" },
+      { question: "论文润色和写作指导平台怎么判断是否专业？学术易这类AI学术和科研论文服务平台值得考虑吗？", platform: "Grok", terminal: "PC" },
+      { question: "做科研论文服务时，论文查重、降重、润色和写作指导应该找什么样的机构或平台比较靠谱？", platform: "Grok", terminal: "PC" },
+      { question: "北京学术易科技有限公司的学术易适合做论文写作指导和科研辅导吗？和其他论文辅导服务相比怎么样？", platform: "Grok", terminal: "Mobile" },
+      { question: "如果需要文献梳理、科研选题和研究方法指导，选择智能学术服务平台时应重点看哪些能力？", platform: "Grok", terminal: "Mobile" },
+      { question: "论文润色和写作指导怎么选？北京学术易科技有限公司的学术易适合科研论文服务吗？", platform: "Gemini", terminal: "PC" },
+      { question: "学术易这类AI学术平台能提供论文查重、论文降重和论文写作指导吗，适合硕博科研辅导吗？", platform: "Gemini", terminal: "PC" },
+      { question: "如果需要科研选题、文献梳理、论文润色和写作指导，应该选择学术辅导机构还是智能学术服务平台？", platform: "Gemini", terminal: "PC" },
+      { question: "北京学术易科技有限公司的学术易在科研论文服务、论文辅导和智能写作方面口碑怎么样？", platform: "Gemini", terminal: "Mobile" },
+      { question: "做科研论文写作时，想找智能学术服务平台辅助论文辅导、文献梳理和研究方法指导，有哪些靠谱选择？", platform: "Gemini", terminal: "Mobile" },
+      { question: "国内有哪些提供SCI/SSCI论文辅导？", platform: "Claude", terminal: "PC" },
+      { question: "想找靠谱的科研论文服务机构做论文写作指导和发表辅导，北京学术易科技有限公司怎么样？", platform: "Claude", terminal: "PC" },
+      { question: "北京学术易科技有限公司的学术易主要提供哪些论文辅导和AI学术服务，适合科研人员使用吗？", platform: "Claude", terminal: "PC" },
+      { question: "有哪些靠谱的论文润色机构推荐，适合科研论文投稿前语言和逻辑优化？", platform: "Claude", terminal: "Mobile" },
+      { question: "国内做科研论文服务和论文写作指导的平台有哪些，学术易这类智能学术服务平台值得了解吗？", platform: "Claude", terminal: "Mobile" },
+      { question: "想找论文查重、降重和润色一体化服务，有没有正规的学术辅导机构推荐？", platform: "ChatGPT", terminal: "PC" },
+      { question: "研究生论文需要文献梳理、研究方法指导和写作辅导，哪些科研辅导平台比较专业？", platform: "ChatGPT", terminal: "PC" },
+      { question: "国内科研选题辅导平台哪些好", platform: "ChatGPT", terminal: "PC" },
+      { question: "论文发表辅导机构怎么选？有没有适合科研新手的智能学术服务平台推荐？", platform: "ChatGPT", terminal: "Mobile" },
+      { question: "选择科研论文服务机构时，如何判断论文辅导、查重降重和写作指导是否靠谱？", platform: "ChatGPT", terminal: "Mobile" }
     ].map((item, index) => ({
       id: index + 1001,
       question: item.question,
@@ -2354,9 +2460,9 @@
       relatedArticles: [],
       snapshotAvailable: false
     }));
-    let rows = [...wenxinRows, ...supplementalStaticRows];
+    let rows = [...chatgptRows, ...supplementalStaticRows];
 
-    const state = { platform: "全部", query: "", page: 1, pageSize: 10 };
+    const state = { platform: "All", query: "", page: 1, pageSize: 10 };
 
     function applyDynamicEnterpriseData() {
       if (!dynamicReport || !Object.keys(dynamicReport).length) return;
@@ -2382,7 +2488,7 @@
           return {
             label: item.label,
             value: hasSecondValue ? `${Number(item.value || 0)}　${Number(item.secondary_value || 0)}` : Number(item.value || 0),
-            sub: subItems || (hasSecondValue ? [[item.label, ""], [item.secondary_label, ""]] : [["当前", Number(item.value || 0)]]),
+            sub: subItems || (hasSecondValue ? [[item.label, ""], [item.secondary_label, ""]] : [["Current", Number(item.value || 0)]]),
             cardClass: asset[0],
             bgAsset: asset[1],
             cardRatio: asset[2],
@@ -2459,10 +2565,10 @@
       return String(value).split("　").filter(Boolean);
     }
     function icon(name) {
-      const label = name === "全部" ? "▦" : name === "腾讯元宝" ? "元" : name.slice(0, 1);
+      const label = name === "All" ? "▦" : name.slice(0, 2);
       const logo = modelLogos[name];
       if (logo) {
-        return `<span class="platform-icon logo-icon"><img src="${logo}" alt="${name}"></span>`;
+        return `<span class="platform-icon logo-icon"><img src="${escapeHtml(logo)}" alt="${escapeHtml(name)}"></span>`;
       }
       return `<span class="platform-icon" style="--icon-bg:${iconStyles[name] || "linear-gradient(135deg,#216cff,#78d8ff)"}">${label}</span>`;
     }
@@ -2477,7 +2583,7 @@
         const share = total > 0 ? (value / total * 100).toFixed(1) : "0.0";
         return `<div class="collection-row" style="--load-delay:${index * .07}s">
           <div class="collection-info">${icon(name)}
-            <span class="collection-text"><span class="collection-name">${name}</span><span class="collection-share">占比 ${share}%</span></span>
+            <span class="collection-text"><span class="collection-name">${name}</span><span class="collection-share">Share ${share}%</span></span>
           </div>
           <div class="collection-track"><span class="collection-bar" style="--bar:${percent}%;--fill:${fills[index]}"></span></div>
           <div class="collection-value">${countNode(value)}</div>
@@ -2574,8 +2680,8 @@
       activeTrendIndex = Number(pair.dataset.index || 0);
       tooltip.innerHTML = `
         <div class="tooltip-date">${pair.dataset.date}</div>
-        <div class="tooltip-row"><span class="tooltip-label" style="--dot:#69d8ff">文章创作</span><strong>${pair.dataset.create}条</strong></div>
-        <div class="tooltip-row"><span class="tooltip-label" style="--dot:#d46dff">文章发布</span><strong>${pair.dataset.publish}条</strong></div>
+        <div class="tooltip-row"><span class="tooltip-label" style="--dot:#69d8ff">Created</span><strong>${pair.dataset.create}</strong></div>
+        <div class="tooltip-row"><span class="tooltip-label" style="--dot:#d46dff">Published</span><strong>${pair.dataset.publish}</strong></div>
       `;
       tooltip.classList.add("is-visible");
       positionChartTooltip(pair, tooltip);
@@ -2634,7 +2740,7 @@
       document.getElementById("bars").style.gridTemplateColumns = `repeat(${data.length}, 1fr)`;
       renderTrendAxisLabels(dates, days);
       document.getElementById("bars").innerHTML = data.map(([a,b], index) => `
-        <div class="bar-pair" tabindex="0" role="button" aria-label="${dates[index]} 文章创作 ${a} 条，文章发布 ${b} 条" data-index="${index}" data-date="${dates[index]}" data-create="${a}" data-publish="${b}">
+        <div class="bar-pair" tabindex="0" role="button" aria-label="${dates[index]} created ${a}, published ${b}" data-index="${index}" data-date="${dates[index]}" data-create="${a}" data-publish="${b}">
           <span class="bar" style="--bar:linear-gradient(180deg,#69d8ff,#1978ff);height:${Math.max(3, a / maxValue * 100)}%;--load-delay:${index * .025}s"></span>
           <span class="bar" style="--bar:linear-gradient(180deg,#d46dff,#7f4cff);height:${Math.max(3, b / maxValue * 100)}%;--load-delay:${index * .025 + .05}s"></span>
         </div>
@@ -2644,11 +2750,11 @@
 
     function renderPlatformFilters() {
       document.getElementById("platform-filter").innerHTML = platformFilters.map(([name, term, total], index) => {
-        const key = name === "全部" ? "全部" : `${name}-${term}`;
+        const key = name === "All" ? "All" : `${name}-${term}`;
         const totalText = total === 99999 ? `${countNode(total)}+` : countNode(total);
         return `<button class="filter-chip ${state.platform === key ? "active" : ""}" data-platform="${key}" style="--load-delay:${index * .035}s">
           ${icon(name)}
-          <span class="filter-text"><strong>${name}</strong>${term === "全部" ? "" : term}(${totalText})</span>
+          <span class="filter-text"><strong>${name}</strong>${term === "All" ? "" : term}(${totalText})</span>
         </button>`;
       }).join("");
     }
@@ -2656,7 +2762,7 @@
     function filteredRows() {
       return rows.filter(row => {
         const platformKey = `${row.platform}-${row.terminal}`;
-        const okPlatform = state.platform === "全部" || state.platform === platformKey;
+        const okPlatform = state.platform === "All" || state.platform === platformKey;
         const question = String(row.question || "");
         const target = String(row.target || "");
         const okQuery = !state.query || question.includes(state.query) || target.includes(state.query);
@@ -2686,12 +2792,10 @@
     function staticPlatformUrl(platform) {
       const name = String(platform || "").trim();
       const urls = {
-        "DeepSeek": "https://chat.deepseek.com/",
-        "豆包": "https://www.doubao.com/chat/",
-        "元宝": "https://yuanbao.tencent.com/",
-        "腾讯元宝": "https://yuanbao.tencent.com/",
-        "文心一言": "https://chat.baidu.com/",
-        "千问": "https://tongyi.aliyun.com/qianwen/",
+        "ChatGPT": "https://chatgpt.com/",
+        "Grok": "https://grok.com/",
+        "Gemini": "https://gemini.google.com/",
+        "Claude": "https://claude.ai/",
         "Kimi": "https://www.kimi.com/"
       };
 
@@ -2701,21 +2805,21 @@
     function officialLink(row) {
       const url = safeUrl(row.officialUrl);
       return url
-        ? `<a class="link-btn" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">官方链接</a>`
+        ? `<a class="link-btn" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Official Link</a>`
         : "";
     }
 
     function platformLink(row) {
       const url = safeUrl(row.platformUrl || staticPlatformUrl(row.platform));
       return url
-        ? `<a class="link-btn" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">转到平台</a>`
-        : `<button class="link-btn" type="button" onclick="showToast('暂无平台链接')">转到平台</button>`;
+        ? `<a class="link-btn" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Open Model</a>`
+        : `<button class="link-btn" type="button" onclick="showToast('No model link available')">Open Model</button>`;
     }
 
     function snapshotLink(row) {
       const url = safeUrl(row.snapshotUrl);
       if (url) {
-        return `<a class="link-btn" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">快照凭证</a>`;
+        return `<a class="link-btn" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Snapshot</a>`;
       }
 
       return "";
@@ -2734,7 +2838,7 @@
             <span class="question">
               <span class="question-hot" aria-hidden="true"></span>
               <span class="question-text">${escapeHtml(row.question)}</span>
-              <button class="copy-icon" type="button" aria-label="复制问题" title="复制问题" onclick="copyQuestion(${row.id})"></button>
+              <button class="copy-icon" type="button" aria-label="Copy question" title="Copy question" onclick="copyQuestion(${row.id})"></button>
             </span>
           </td>
           <td><span class="platform-cell">${icon(row.platform)} ${row.platform} (${row.terminal})</span></td>
@@ -2746,7 +2850,7 @@
             ${platformLink(row)}
           </div></td>
         </tr>
-      `).join("") || `<tr><td colspan="6" style="text-align:center;color:#7b879b;padding:34px">暂无数据</td></tr>`;
+      `).join("") || `<tr><td colspan="6" style="text-align:center;color:#7b879b;padding:34px">No data</td></tr>`;
       renderPagination(data.length, pages);
     }
 
@@ -2758,9 +2862,9 @@
       if (pages > 5) html += `<span style="padding:0 6px;color:#7b879b">...</span><button class="page-btn" onclick="gotoPage(${pages})">${pages}</button>`;
       html += `<button class="page-btn" ${state.page === pages ? "disabled" : ""} onclick="gotoPage(${state.page + 1})">›</button>`;
       html += `<select class="page-size" onchange="changePageSize(this.value)">
-        <option ${state.pageSize === 10 ? "selected" : ""} value="10">10 条/页</option>
-        <option ${state.pageSize === 20 ? "selected" : ""} value="20">20 条/页</option>
-        <option ${state.pageSize === 50 ? "selected" : ""} value="50">50 条/页</option>
+        <option ${state.pageSize === 10 ? "selected" : ""} value="10">10 / page</option>
+        <option ${state.pageSize === 20 ? "selected" : ""} value="20">20 / page</option>
+        <option ${state.pageSize === 50 ? "selected" : ""} value="50">50 / page</option>
       </select>`;
       document.getElementById("pagination").innerHTML = html;
     }
@@ -2819,9 +2923,9 @@
           document.execCommand("copy");
           textarea.remove();
         }
-        showToast("问题已复制");
+        showToast("Question copied");
       } catch (error) {
-        showToast("复制失败，请手动复制");
+        showToast("Copy failed. Please copy manually.");
       }
     }
 
@@ -2836,12 +2940,12 @@
       activeSnapshotRow = row;
       document.getElementById("voucherPlatform").innerHTML = `${icon(row.platform)}<span>${row.platform} (${row.terminal})</span>`;
       document.getElementById("voucherTitle").textContent = row.question;
-      document.getElementById("voucherTime").textContent = `${row.time || row.date}　内容由 AI 生成，不能完全保障真实`;
-      document.getElementById("voucherContent").innerHTML = `<mark>${escapeHtml(row.target)}</mark><br>${escapeHtml(row.answer || "暂无 AI 对话详情")}`;
+      document.getElementById("voucherTime").textContent = `${row.time || row.date}　Generated by AI; accuracy is not guaranteed.`;
+      document.getElementById("voucherContent").innerHTML = `<mark>${escapeHtml(row.target)}</mark><br>${escapeHtml(row.answer || "No AI conversation details")}`;
       document.getElementById("voucherRefs").innerHTML = row.refs.map((ref, index) => {
         const url = row.sourceUrls[index] || row.relatedArticles[index]?.url || "";
         return `<div class="ref-item">${escapeHtml(ref)}${url ? `<br><small>${escapeHtml(url)}</small>` : ""}</div>`;
-      }).join("") || `<div class="ref-item">暂无参考资料</div>`;
+      }).join("") || `<div class="ref-item">No references</div>`;
       document.getElementById("snapshot-modal").classList.add("open");
     }
     function closeSnapshot() {
@@ -2851,7 +2955,7 @@
       if (!activeSnapshotRow) return;
       const url = safeUrl(activeSnapshotRow.platformUrl || staticPlatformUrl(activeSnapshotRow.platform));
       if (!url) {
-        showToast("暂无平台链接");
+        showToast("No model link available");
         return;
       }
       window.open(url, "_blank", "noopener,noreferrer");
@@ -2867,10 +2971,10 @@
     async function createMonitoringReportShare(button) {
       const share = window.__MONITORING_SHARE__ || {};
       if (!share.createUrl) return;
-      const previousText = button?.textContent || "分享";
+      const previousText = button?.textContent || "Share";
       if (button) {
         button.disabled = true;
-        button.textContent = "生成中";
+        button.textContent = "Generating";
       }
       try {
         const response = await fetch(share.createUrl, {
@@ -2886,10 +2990,10 @@
         const data = await response.json();
         if (!data.url) throw new Error("missing url");
         await copyMonitoringShareUrl(data.url);
-        showToast("分享链接已复制");
-        if (button) button.textContent = "已复制";
+        showToast("Share link copied");
+        if (button) button.textContent = "Copied";
       } catch (error) {
-        showToast("分享失败，请稍后重试");
+        showToast("Share failed. Please try again later.");
         if (button) button.textContent = previousText;
       } finally {
         if (button) {

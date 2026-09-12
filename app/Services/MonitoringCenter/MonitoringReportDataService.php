@@ -21,24 +21,22 @@ use Illuminate\Support\Collection;
 class MonitoringReportDataService
 {
     private const DEFAULT_MODEL_PLATFORMS = [
-        'doubao',
-        'qianwen',
-        'deepseek',
-        'yuanbao',
-        'wenxin',
+        BrandDiagnosisPlatform::CHATGPT,
+        BrandDiagnosisPlatform::GROK,
+        BrandDiagnosisPlatform::GEMINI,
+        BrandDiagnosisPlatform::CLAUDE,
     ];
 
     private const DEFAULT_SEARCH_REPORT_PLATFORMS = [
-        'deepseek',
-        'doubao',
-        'yuanbao',
-        'wenxin',
-        'qianwen',
+        BrandDiagnosisPlatform::CHATGPT,
+        BrandDiagnosisPlatform::GROK,
+        BrandDiagnosisPlatform::GEMINI,
+        BrandDiagnosisPlatform::CLAUDE,
     ];
 
     private const SEARCH_REPORT_TERMINALS = [
         'PC',
-        '移动',
+        'Mobile',
     ];
 
     private const ARTICLE_TREND_DISPLAY_OVERRIDES = [
@@ -115,10 +113,10 @@ class MonitoringReportDataService
         $report = [
             'context' => $this->reportContext($context, $companyName),
             'summary' => [
-                $this->metric((int) $this->scope(KeywordQuestionVariant::query(), $context)->count(), 20) + ['label' => '蒸馏词数量(个)'],
-                $this->metric((int) $this->scope(BrandDiagnosisResult::query(), $context)->where('status', 'success')->count(), 10) + ['label' => 'AI搜索竞争力分析数量(次)'],
-                $this->metric($this->distinctPlatforms($context)->count(), 5) + ['label' => '覆盖AI平台'],
-                $this->metric($sourceCount, 10) + ['label' => '引用信源平台数(个)'],
+                $this->metric((int) $this->scope(KeywordQuestionVariant::query(), $context)->count(), 20) + ['label' => 'Distilled Search Terms'],
+                $this->metric((int) $this->scope(BrandDiagnosisResult::query(), $context)->where('status', 'success')->count(), 10) + ['label' => 'AI Search Competitiveness Analyses'],
+                $this->metric($this->distinctPlatforms($context)->count(), 5) + ['label' => 'Covered AI Platforms'],
+                $this->metric($sourceCount, 10) + ['label' => 'Citation Source Platforms'],
             ],
             'brand_profile' => $this->brandProfile($context, $companyName),
             'overall' => $this->overallTopRankShare($context),
@@ -317,7 +315,9 @@ class MonitoringReportDataService
             ->orderByDesc('result_count')
             ->orderBy('platform')
             ->get()
-            ->mapWithKeys(fn ($row): array => [(string) $row->platform => (int) $row->result_count]);
+            ->groupBy(fn ($row): string => $this->normalizePlatformKey((string) $row->platform))
+            ->map(fn (Collection $rows): int => (int) $rows->sum('result_count'))
+            ->filter(fn (int $count, string $platform): bool => $this->isReportPlatform($platform));
 
         if ($checkedPlatforms->isEmpty() && $collected->isEmpty()) {
             return [];
@@ -326,6 +326,8 @@ class MonitoringReportDataService
         return collect(self::DEFAULT_MODEL_PLATFORMS)
             ->merge($checkedPlatforms)
             ->merge($collected->keys())
+            ->map(fn (string $platform): string => $this->normalizePlatformKey($platform))
+            ->filter(fn (string $platform): bool => $this->isReportPlatform($platform))
             ->unique()
             ->map(fn (string $platform): array => [
                 'name' => $this->modelPlatformLabel($platform),
@@ -346,7 +348,8 @@ class MonitoringReportDataService
             ->orderByDesc('id')
             ->get(['platforms'])
             ->flatMap(fn (GeoInclusionCheckRun $run): array => (array) $run->platforms)
-            ->map(static fn (mixed $platform): string => strtolower(trim((string) $platform)))
+            ->map(fn (mixed $platform): string => $this->normalizePlatformKey((string) $platform))
+            ->filter(fn (string $platform): bool => $this->isReportPlatform($platform))
             ->filter()
             ->unique()
             ->values();
@@ -389,43 +392,43 @@ class MonitoringReportDataService
 
         return [
             [
-                'label' => 'AI大模型排名收录总量',
+                'label' => 'AI Model Ranking Inclusion Total',
                 'value' => $total,
                 'actual' => $total,
                 'sub_items' => [
-                    ['label' => '今日新增', 'value' => $todayCollectionTotal],
-                    ['label' => '较昨日', 'value' => $total - $yesterdayCollectionTotal],
+                    ['label' => 'New Today', 'value' => $todayCollectionTotal],
+                    ['label' => 'vs Yesterday', 'value' => $total - $yesterdayCollectionTotal],
                 ],
                 'accent' => '#f08b35',
             ],
             [
-                'label' => 'AI搜索词数量',
+                'label' => 'AI Search Terms',
                 'value' => $distillationWords,
                 'actual' => $distillationWords,
-                'secondary_label' => '新增词数量',
+                'secondary_label' => 'New Terms',
                 'secondary_value' => $newWords,
                 'sub_items' => [
-                    ['label' => '较30日', 'value' => $thirtyDayDistillationWords],
-                    ['label' => '较30日', 'value' => $thirtyDayNewWords],
+                    ['label' => 'Last 30 Days', 'value' => $thirtyDayDistillationWords],
+                    ['label' => 'Last 30 Days', 'value' => $thirtyDayNewWords],
                 ],
                 'accent' => '#0aa8ff',
             ],
             [
-                'label' => '收录AI平台数量',
+                'label' => 'Included AI Platforms',
                 'value' => $platformCount,
                 'actual' => $platformCount,
                 'sub_items' => [
-                    ['label' => '总平台数', 'value' => count(self::DEFAULT_MODEL_PLATFORMS)],
+                    ['label' => 'Total platforms', 'value' => count(self::DEFAULT_MODEL_PLATFORMS)],
                 ],
                 'accent' => '#8c52ff',
             ],
             [
-                'label' => 'AI搜索转化方式收录总量',
+                'label' => 'AI Search Conversion Inclusion Total',
                 'value' => $siteJumpSourceCount,
                 'actual' => $sourceCount,
-                'secondary_label' => '联系方式曝光',
+                'secondary_label' => 'Contact Exposure',
                 'secondary_value' => $contactSourceCount,
-                'value_labels' => ['站内跳转曝光', '联系方式曝光'],
+                'value_labels' => ['Website Click Exposure', 'Contact Exposure'],
                 'accent' => '#17d9a2',
             ],
         ];
@@ -466,8 +469,8 @@ class MonitoringReportDataService
         $items = [[
             'key' => 'all',
             'platform_key' => 'all',
-            'name' => '全部',
-            'terminal' => '全部',
+            'name' => 'All',
+            'terminal' => 'All',
             'total' => count($searchRows),
         ]];
 
@@ -672,6 +675,7 @@ class MonitoringReportDataService
             ->orderByDesc('checked_at')
             ->orderByDesc('id')
             ->get()
+            ->filter(fn (BrandDiagnosisResult $result): bool => $this->isReportPlatform((string) $result->platform))
             ->flatMap(function (BrandDiagnosisResult $result) use ($articles, $companyName): array {
                 $question = (string) ($result->question?->question ?? '');
                 $relatedArticles = $this->relatedArticles($articles, $question, $companyName);
@@ -680,13 +684,14 @@ class MonitoringReportDataService
                 $officialShareUrl = trim((string) ($result->official_share_url ?? ''));
                 $snapshotToken = trim((string) ($result->snapshot_token ?? ''));
                 $hasTargetBrandMention = $this->hasTargetBrandMention($result, $target);
+                $platform = $this->normalizePlatformKey((string) $result->platform);
 
                 $baseRow = [
                     'id' => (int) $result->id,
                     'question' => $question,
-                    'platform_key' => (string) $result->platform,
-                    'platform' => $this->platformLabel((string) $result->platform),
-                    'platform_url' => $this->platformUrl((string) $result->platform),
+                    'platform_key' => $platform,
+                    'platform' => $this->platformLabel($platform),
+                    'platform_url' => $this->platformUrl($platform),
                     'date' => $checkedAt?->format('Y-m-d') ?? '',
                     'time' => $checkedAt?->format('Y-m-d H:i:s') ?? '',
                     'target' => $target,
@@ -737,9 +742,9 @@ class MonitoringReportDataService
                 return [
                     'id' => $snapshotId,
                     'question' => (string) $snapshot['question'],
-                    'platform_key' => BrandDiagnosisPlatform::WENXIN,
-                    'platform' => BrandDiagnosisPlatform::label(BrandDiagnosisPlatform::WENXIN),
-                    'platform_url' => BrandDiagnosisPlatform::chatUrl(BrandDiagnosisPlatform::WENXIN),
+                    'platform_key' => BrandDiagnosisPlatform::CHATGPT,
+                    'platform' => $this->platformLabel(BrandDiagnosisPlatform::CHATGPT),
+                    'platform_url' => BrandDiagnosisPlatform::chatUrl(BrandDiagnosisPlatform::CHATGPT),
                     'terminal' => 'PC',
                     'date' => $checkedAt->toDateString(),
                     'time' => $checkedAt->format('Y-m-d H:i:s'),
@@ -861,11 +866,10 @@ class MonitoringReportDataService
     private function platformUrl(string $platform): string
     {
         return match ($this->normalizePlatformKey($platform)) {
-            'deepseek' => 'https://chat.deepseek.com/',
-            'doubao' => 'https://www.doubao.com/chat/',
-            'yuanbao' => 'https://yuanbao.tencent.com/',
-            'wenxin' => 'https://chat.baidu.com/',
-            'qianwen' => 'https://tongyi.aliyun.com/qianwen/',
+            BrandDiagnosisPlatform::CHATGPT => 'https://chatgpt.com/',
+            BrandDiagnosisPlatform::GROK => 'https://grok.com/',
+            BrandDiagnosisPlatform::GEMINI => 'https://gemini.google.com/',
+            BrandDiagnosisPlatform::CLAUDE => 'https://claude.ai/',
             default => '',
         };
     }
@@ -887,7 +891,8 @@ class MonitoringReportDataService
 
         return $geoPlatforms
             ->merge($diagnosisPlatforms)
-            ->filter()
+            ->map(fn (mixed $platform): string => $this->normalizePlatformKey((string) $platform))
+            ->filter(fn (string $platform): bool => $this->isReportPlatform($platform))
             ->unique()
             ->values();
     }
@@ -958,21 +963,27 @@ class MonitoringReportDataService
             ->map(fn (BrandDiagnosisResult $result): array => [
                 'platform_key' => $this->normalizePlatformKey((string) $result->platform),
                 'sentiment' => (string) $result->sentiment,
-            ]);
+            ])
+            ->filter(fn (array $result): bool => $this->isReportPlatform((string) $result['platform_key']))
+            ->values();
         $mentions = $this->scope(BrandDiagnosisBrandMention::query(), $context)
             ->where('is_target_brand', true)
             ->get(['platform', 'mention_rank'])
             ->map(fn (BrandDiagnosisBrandMention $mention): array => [
                 'platform_key' => $this->normalizePlatformKey((string) $mention->platform),
                 'mention_rank' => (int) $mention->mention_rank,
-            ]);
+            ])
+            ->filter(fn (array $mention): bool => $this->isReportPlatform((string) $mention['platform_key']))
+            ->values();
         $sources = $this->scope(BrandDiagnosisSource::query(), $context)
             ->get(['platform', 'domain', 'url'])
             ->map(fn (BrandDiagnosisSource $source): array => [
                 'platform_key' => $this->normalizePlatformKey((string) $source->platform),
                 'domain' => (string) $source->domain,
                 'url' => (string) $source->url,
-            ]);
+            ])
+            ->filter(fn (array $source): bool => $this->isReportPlatform((string) $source['platform_key']))
+            ->values();
 
         return $this->industryPlatformKeys($results)
             ->map(function (string $platform) use ($results, $mentions, $sources): array {
@@ -1009,6 +1020,7 @@ class MonitoringReportDataService
             ->get(['platform'])
             ->map(fn (BrandDiagnosisResult $result): string => $this->normalizePlatformKey((string) $result->platform))
             ->filter()
+            ->filter(fn (string $platform): bool => $this->isReportPlatform($platform))
             ->countBy();
         $platformKeys = collect($resultTotals->keys())
             ->merge(self::DEFAULT_SEARCH_REPORT_PLATFORMS)
@@ -1024,6 +1036,7 @@ class MonitoringReportDataService
                 'mention_count' => (int) $mention->mention_count,
                 'mention_rank' => (int) $mention->mention_rank,
             ])
+            ->filter(fn (array $mention): bool => $this->isReportPlatform((string) $mention['platform_key']))
             ->groupBy('brand_name')
             ->map(function (Collection $mentions, string $brandName) use ($platformKeys, $resultTotals): array {
                 $platforms = $platformKeys
@@ -1072,7 +1085,9 @@ class MonitoringReportDataService
             ->map(fn (BrandDiagnosisResult $result): array => [
                 'platform_key' => $this->normalizePlatformKey((string) $result->platform),
                 'sentiment' => (string) $result->sentiment,
-            ]);
+            ])
+            ->filter(fn (array $result): bool => $this->isReportPlatform((string) $result['platform_key']))
+            ->values();
         $total = $results->count();
 
         return [
@@ -1112,6 +1127,7 @@ class MonitoringReportDataService
             ->keys()
             ->merge(self::DEFAULT_SEARCH_REPORT_PLATFORMS)
             ->filter()
+            ->filter(fn (string $platform): bool => $this->isReportPlatform($platform))
             ->unique()
             ->values();
     }
@@ -1166,25 +1182,26 @@ class MonitoringReportDataService
 
     private function modelPlatformLabel(string $platform): string
     {
-        return match (strtolower($platform)) {
-            'yuanbao', 'tencent_yuanbao' => '元宝',
-            default => $this->platformLabel($platform),
-        };
+        return $this->platformLabel($platform);
     }
 
     private function platformLabel(string $platform): string
     {
-        return match (strtolower($platform)) {
-            'doubao' => '豆包',
-            'deepseek' => 'DeepSeek',
-            'yuanbao', 'tencent_yuanbao' => '腾讯元宝',
-            'wenxin', 'ernie' => '文心一言',
-            'qianwen', 'tongyi' => '千问',
+        return match ($this->normalizePlatformKey($platform)) {
+            BrandDiagnosisPlatform::CHATGPT => 'ChatGPT',
+            BrandDiagnosisPlatform::GROK => 'Grok',
+            BrandDiagnosisPlatform::GEMINI => 'Gemini',
+            BrandDiagnosisPlatform::CLAUDE => 'Claude',
             'kimi' => 'Kimi',
-            'xinghuo', 'spark' => '讯飞星火',
-            'baidu_ai' => '百度AI',
+            'xinghuo', 'spark' => 'Spark',
+            'baidu_ai' => 'Baidu AI',
             default => $platform,
         };
+    }
+
+    private function isReportPlatform(string $platform): bool
+    {
+        return in_array($this->normalizePlatformKey($platform), self::DEFAULT_SEARCH_REPORT_PLATFORMS, true);
     }
 
     private function normalizePlatformKey(string $platform): string

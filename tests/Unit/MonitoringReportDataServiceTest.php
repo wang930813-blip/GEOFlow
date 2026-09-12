@@ -54,7 +54,7 @@ class MonitoringReportDataServiceTest extends TestCase
             'question' => '星河智能科技有限公司适合做 AI 搜索优化吗？',
             'keyword' => 'AI 搜索优化',
             'competitor' => '蓝海智能科技有限公司',
-            'platform' => 'doubao',
+            'platform' => 'chatgpt',
             'sourceTitle' => '星河智能案例报道',
             'articleTitle' => '星河智能 AI 搜索优化实践',
         ]);
@@ -63,11 +63,11 @@ class MonitoringReportDataServiceTest extends TestCase
             'question' => '其他公司问题不应出现',
             'keyword' => '其他关键词',
             'competitor' => '其他竞品',
-            'platform' => 'deepseek',
+            'platform' => 'grok',
             'sourceTitle' => '其他来源',
             'articleTitle' => '其他文章',
         ]);
-        $officialShareUrl = 'https://www.doubao.com/thread/dynamic-report-share';
+        $officialShareUrl = 'https://chatgpt.com/share/dynamic-report-share';
         $current['result']->forceFill(['official_share_url' => $officialShareUrl])->save();
 
         $report = app(MonitoringReportDataService::class)->enterpriseReport($admin, $site);
@@ -78,34 +78,33 @@ class MonitoringReportDataServiceTest extends TestCase
         $this->assertSame(1, $report['summary']['search_report_count']['actual']);
         $this->assertSame(1, $report['summary']['model_collection_total']['actual']);
         $this->assertSame([
-            ['name' => '豆包', 'value' => 1],
-            ['name' => '千问', 'value' => 0],
-            ['name' => 'DeepSeek', 'value' => 0],
-            ['name' => '元宝', 'value' => 0],
-            ['name' => '文心一言', 'value' => 0],
+            ['name' => 'ChatGPT', 'value' => 1],
+            ['name' => 'Grok', 'value' => 0],
+            ['name' => 'Gemini', 'value' => 0],
+            ['name' => 'Claude', 'value' => 0],
         ], $report['model_collection']);
         $this->assertSame([
-            ['label' => '今日新增', 'value' => 1],
-            ['label' => '较昨日', 'value' => 1],
+            ['label' => 'New Today', 'value' => 1],
+            ['label' => 'vs Yesterday', 'value' => 1],
         ], $report['metrics'][0]['sub_items']);
         $this->assertSame([
-            ['label' => '较30日', 'value' => 1],
-            ['label' => '较30日', 'value' => 1],
+            ['label' => 'Last 30 Days', 'value' => 1],
+            ['label' => 'Last 30 Days', 'value' => 1],
         ], $report['metrics'][1]['sub_items']);
         $this->assertSame([
-            ['label' => '总平台数', 'value' => 5],
+            ['label' => 'Total platforms', 'value' => 4],
         ], $report['metrics'][2]['sub_items']);
-        $this->assertSame(['站内跳转曝光', '联系方式曝光'], $report['metrics'][3]['value_labels']);
+        $this->assertSame(['Website Click Exposure', 'Contact Exposure'], $report['metrics'][3]['value_labels']);
         $this->assertSame(1, $report['metrics'][3]['value']);
         $this->assertSame(0, $report['metrics'][3]['secondary_value']);
 
         $this->assertSame($current['question']->question, $report['distillation_words'][0]['word']);
         $this->assertSame($current['question']->question, $report['search_rows'][0]['question']);
-        $this->assertSame('豆包', $report['search_rows'][0]['platform']);
+        $this->assertSame('ChatGPT', $report['search_rows'][0]['platform']);
         $this->assertSame('星河智能科技有限公司', $report['search_rows'][0]['target']);
         $this->assertSame(now()->toDateString(), $report['search_rows'][0]['date']);
         $this->assertSame('星河智能科技有限公司在回答中被提及，并引用了行业资料。', $report['search_rows'][0]['answer']);
-        $this->assertSame('https://www.doubao.com/chat/', $report['search_rows'][0]['platform_url']);
+        $this->assertSame('https://chatgpt.com/', $report['search_rows'][0]['platform_url']);
         $this->assertSame($officialShareUrl, $report['search_rows'][0]['official_url']);
         $this->assertSame(
             route('admin.snapshot-voucher.show', ['id' => (int) $current['result']->id]),
@@ -226,7 +225,7 @@ class MonitoringReportDataServiceTest extends TestCase
             'question' => '学术易动态品牌诊断问题',
             'keyword' => '科研论文服务',
             'competitor' => '其他学术平台',
-            'platform' => 'deepseek',
+            'platform' => 'grok',
             'sourceTitle' => '学术易动态来源',
             'articleTitle' => '学术易动态文章',
         ]);
@@ -244,11 +243,11 @@ class MonitoringReportDataServiceTest extends TestCase
         $this->assertSame('从科研选题到投稿预审的论文辅导平台有哪些？', $rows[4]['question']);
         $this->assertSame('学术易动态品牌诊断问题', $rows[5]['question']);
         $this->assertSame('学术易', $rows[0]['target']);
-        $this->assertSame('文心一言', $rows[0]['platform']);
+        $this->assertSame('ChatGPT', $rows[0]['platform']);
         $this->assertSame($rows[5]['question'], $rows[6]['question']);
         $this->assertSame('PC', $rows[5]['terminal']);
-        $this->assertSame('移动', $rows[6]['terminal']);
-        $this->assertSame('https://chat.baidu.com/', $rows[0]['platform_url']);
+        $this->assertSame('Mobile', $rows[6]['terminal']);
+        $this->assertSame('https://chatgpt.com/', $rows[0]['platform_url']);
         $this->assertSame(
             route('admin.snapshot-voucher.show', ['id' => -1]),
             $rows[0]['snapshot_url']
@@ -260,12 +259,12 @@ class MonitoringReportDataServiceTest extends TestCase
         $this->assertSame(6, $report['summary']['search_report_count']['actual']);
 
         $allFilter = collect($report['platform_filters'])->firstWhere('platform_key', 'all');
-        $wenxinPcFilter = collect($report['platform_filters'])->first(
-            fn (array $filter): bool => $filter['platform_key'] === 'wenxin' && $filter['terminal'] === 'PC'
+        $chatgptPcFilter = collect($report['platform_filters'])->first(
+            fn (array $filter): bool => $filter['platform_key'] === 'chatgpt' && $filter['terminal'] === 'PC'
         );
 
         $this->assertSame(7, $allFilter['total']);
-        $this->assertSame(5, $wenxinPcFilter['total']);
+        $this->assertSame(5, $chatgptPcFilter['total']);
     }
 
     public function test_industry_report_builds_competition_platform_and_sentiment_data_for_current_site_only(): void
@@ -288,7 +287,7 @@ class MonitoringReportDataServiceTest extends TestCase
             'question' => 'AI 搜索优化服务商怎么选？',
             'keyword' => 'AI 搜索优化',
             'competitor' => '蓝海智能科技有限公司',
-            'platform' => 'doubao',
+            'platform' => 'chatgpt',
             'sourceTitle' => '星河行业分析',
             'articleTitle' => '星河智能品牌曝光分析',
         ]);
@@ -297,7 +296,7 @@ class MonitoringReportDataServiceTest extends TestCase
             'question' => '其他行业问题',
             'keyword' => '其他关键词',
             'competitor' => '不应出现的竞品',
-            'platform' => 'qianwen',
+            'platform' => 'gemini',
             'sourceTitle' => '其他行业来源',
             'articleTitle' => '其他行业文章',
         ]);
@@ -312,18 +311,18 @@ class MonitoringReportDataServiceTest extends TestCase
 
         $this->assertSame('星河智能科技有限公司', $report['brand_profile']['company_name']);
         $this->assertSame('蓝海智能科技有限公司', $report['competitors'][0]['brand_name']);
-        $this->assertSame('豆包', $report['platforms'][0]['platform']);
+        $this->assertSame('ChatGPT', $report['platforms'][0]['platform']);
         $this->assertSame(100.0, $report['platforms'][0]['top_rank_rates']['top2']);
-        $this->assertSame(['doubao', 'deepseek', 'yuanbao', 'wenxin', 'qianwen'], array_column($report['platforms'], 'platform_key'));
+        $this->assertSame(['chatgpt', 'grok', 'gemini', 'claude'], array_column($report['platforms'], 'platform_key'));
         $this->assertSame(0, $report['platforms'][1]['analysis_count']);
         $this->assertSame(0.0, $report['platforms'][1]['top_rank_rates']['top1']);
         $this->assertSame(100.0, $report['sentiment']['overall']['positive_rate']);
-        $this->assertSame(['doubao', 'deepseek', 'yuanbao', 'wenxin', 'qianwen'], array_column($report['sentiment']['platforms'], 'platform_key'));
+        $this->assertSame(['chatgpt', 'grok', 'gemini', 'claude'], array_column($report['sentiment']['platforms'], 'platform_key'));
         $this->assertSame(0.0, $report['sentiment']['platforms'][1]['positive_rate']);
         $this->assertArrayHasKey('platform_rates', $report['competitors'][0]);
-        $this->assertSame(100.0, $report['competitors'][0]['platform_rates']['doubao']);
-        $this->assertSame(0.0, $report['competitors'][0]['platform_rates']['deepseek']);
-        $this->assertSame('豆包', $report['sentiment']['platforms'][0]['platform']);
+        $this->assertSame(100.0, $report['competitors'][0]['platform_rates']['chatgpt']);
+        $this->assertSame(0.0, $report['competitors'][0]['platform_rates']['grok']);
+        $this->assertSame('ChatGPT', $report['sentiment']['platforms'][0]['platform']);
 
         $flatJson = json_encode($report, JSON_UNESCAPED_UNICODE);
         $this->assertStringNotContainsString('不应出现的竞品', $flatJson);
@@ -341,7 +340,7 @@ class MonitoringReportDataServiceTest extends TestCase
             'question' => '删除测试品牌适合做 AI 搜索优化吗？',
             'keyword' => 'AI 搜索优化',
             'competitor' => '删除测试竞品',
-            'platform' => 'doubao',
+            'platform' => 'chatgpt',
             'sourceTitle' => '删除测试来源',
             'articleTitle' => '删除测试文章',
         ]);
@@ -405,7 +404,7 @@ class MonitoringReportDataServiceTest extends TestCase
             'question' => '电竞服务怎么选？',
             'keyword' => "电竞服务�",
             'competitor' => "综合电竞服务品�",
-            'platform' => 'doubao',
+            'platform' => 'chatgpt',
             'sourceTitle' => "引用资料�标题",
             'articleTitle' => "行业文章�标题",
         ]);
@@ -461,7 +460,7 @@ class MonitoringReportDataServiceTest extends TestCase
             'owner_admin_id' => (int) $admin->id,
             'admin_id' => (int) $admin->id,
             'brand_name' => 'Search Report Brand',
-            'platforms' => ['doubao', 'deepseek', 'tencent_yuanbao'],
+            'platforms' => ['chatgpt', 'grok', 'doubao'],
             'status' => 'completed',
             'total_questions' => 1,
             'completed_questions' => 1,
@@ -481,7 +480,7 @@ class MonitoringReportDataServiceTest extends TestCase
             'status' => 'completed',
         ]);
 
-        foreach (['doubao', 'deepseek', 'tencent_yuanbao'] as $platform) {
+        foreach (['chatgpt', 'grok', 'doubao'] as $platform) {
             BrandDiagnosisResult::query()->create([
                 'site_id' => (int) $site->id,
                 'owner_admin_id' => (int) $admin->id,
@@ -500,29 +499,29 @@ class MonitoringReportDataServiceTest extends TestCase
 
         $report = app(MonitoringReportDataService::class)->enterpriseReport($admin, $site);
 
-        $this->assertCount(11, $report['platform_filters']);
+        $this->assertCount(9, $report['platform_filters']);
         $this->assertSame([
             'key' => 'all',
             'platform_key' => 'all',
-            'name' => '全部',
-            'terminal' => '全部',
-            'total' => 6,
+            'name' => 'All',
+            'terminal' => 'All',
+            'total' => 4,
         ], $report['platform_filters'][0]);
 
         $totals = collect($report['platform_filters'])->mapWithKeys(
             fn (array $filter): array => [$filter['platform_key'].'|'.$filter['terminal'] => $filter['total']]
         );
 
-        $this->assertSame(1, $totals['doubao|PC']);
-        $this->assertSame(1, $totals['deepseek|PC']);
-        $this->assertSame(1, $totals['yuanbao|PC']);
-        $this->assertSame(1, $totals['doubao|移动']);
-        $this->assertSame(1, $totals['deepseek|移动']);
-        $this->assertSame(1, $totals['yuanbao|移动']);
-        $this->assertSame(0, $totals['qianwen|PC']);
-        $this->assertSame(0, $totals['qianwen|移动']);
-        $this->assertSame(0, $totals['wenxin|PC']);
-        $this->assertSame(0, $totals['wenxin|移动']);
+        $this->assertSame(1, $totals['chatgpt|PC']);
+        $this->assertSame(1, $totals['grok|PC']);
+        $this->assertArrayNotHasKey('doubao|PC', $totals->all());
+        $this->assertSame(1, $totals['chatgpt|Mobile']);
+        $this->assertSame(1, $totals['grok|Mobile']);
+        $this->assertArrayNotHasKey('doubao|Mobile', $totals->all());
+        $this->assertSame(0, $totals['gemini|PC']);
+        $this->assertSame(0, $totals['gemini|Mobile']);
+        $this->assertSame(0, $totals['claude|PC']);
+        $this->assertSame(0, $totals['claude|Mobile']);
     }
 
     public function test_enterprise_search_report_uses_result_checked_time_and_hides_snapshot_when_target_brand_is_not_mentioned(): void
@@ -538,7 +537,7 @@ class MonitoringReportDataServiceTest extends TestCase
             'owner_admin_id' => (int) $admin->id,
             'admin_id' => (int) $admin->id,
             'brand_name' => 'Search Report Brand',
-            'platforms' => ['deepseek'],
+            'platforms' => ['grok'],
             'status' => 'completed',
             'total_questions' => 1,
             'completed_questions' => 1,
@@ -563,7 +562,7 @@ class MonitoringReportDataServiceTest extends TestCase
             'owner_admin_id' => (int) $admin->id,
             'run_id' => (int) $diagnosisRun->id,
             'question_id' => (int) $diagnosisQuestion->id,
-            'platform' => 'deepseek',
+            'platform' => 'grok',
             'answer' => 'Search result does not mention the target brand.',
             'brand_mentioned' => false,
             'mention_count' => 0,
@@ -582,25 +581,25 @@ class MonitoringReportDataServiceTest extends TestCase
         $this->assertSame($checkedAt->format('Y-m-d H:i:s'), $report['search_rows'][0]['time']);
     }
 
-    public function test_enterprise_search_report_uses_chat_baidu_for_wenxin_platform_link(): void
+    public function test_enterprise_search_report_uses_chatgpt_platform_link(): void
     {
-        [$admin, $site] = $this->createAdminWithSite('monitoring_wenxin_platform_url', 'site_user', 'wenxin platform site');
+        [$admin, $site] = $this->createAdminWithSite('monitoring_chatgpt_platform_url', 'site_user', 'chatgpt platform site');
 
         app(CurrentSite::class)->set($site);
 
         $this->seedSearchData($admin, $site, [
-            'company' => 'Wenxin Platform Brand',
+            'company' => 'ChatGPT Platform Brand',
             'question' => 'Which AI search platform should be used?',
             'keyword' => 'AI search',
             'competitor' => 'Other Brand',
-            'platform' => 'wenxin',
-            'sourceTitle' => 'Wenxin Source',
-            'articleTitle' => 'Wenxin Article',
+            'platform' => 'chatgpt',
+            'sourceTitle' => 'ChatGPT Source',
+            'articleTitle' => 'ChatGPT Article',
         ]);
 
         $report = app(MonitoringReportDataService::class)->enterpriseReport($admin, $site);
 
-        $this->assertSame('https://chat.baidu.com/', $report['search_rows'][0]['platform_url']);
+        $this->assertSame('https://chatgpt.com/', $report['search_rows'][0]['platform_url']);
     }
 
     public function test_enterprise_report_lists_all_default_platforms_even_when_not_collected(): void
@@ -634,7 +633,7 @@ class MonitoringReportDataServiceTest extends TestCase
             'site_id' => (int) $site->id,
             'owner_admin_id' => (int) $admin->id,
             'keyword_library_id' => (int) $library->id,
-            'platforms' => ['doubao', 'qianwen', 'deepseek'],
+            'platforms' => ['chatgpt', 'gemini', 'grok'],
             'status' => 'completed',
             'total_checks' => 3,
             'completed_checks' => 3,
@@ -647,7 +646,7 @@ class MonitoringReportDataServiceTest extends TestCase
             'keyword_library_id' => (int) $library->id,
             'keyword_id' => (int) $keyword->id,
             'question_variant_id' => (int) $question->id,
-            'platform' => 'doubao',
+            'platform' => 'chatgpt',
             'question' => (string) $question->question,
             'answer' => '回答提到星河智能科技有限公司',
             'keyword_hit' => true,
@@ -662,7 +661,7 @@ class MonitoringReportDataServiceTest extends TestCase
             'keyword_library_id' => (int) $library->id,
             'keyword_id' => (int) $keyword->id,
             'question_variant_id' => (int) $question->id,
-            'platform' => 'qianwen',
+            'platform' => 'gemini',
             'question' => (string) $question->question,
             'answer' => '',
             'keyword_hit' => false,
@@ -676,11 +675,10 @@ class MonitoringReportDataServiceTest extends TestCase
 
         $this->assertSame(1, $report['summary']['model_collection_total']['actual']);
         $this->assertSame([
-            ['name' => '豆包', 'value' => 1],
-            ['name' => '千问', 'value' => 0],
-            ['name' => 'DeepSeek', 'value' => 0],
-            ['name' => '元宝', 'value' => 0],
-            ['name' => '文心一言', 'value' => 0],
+            ['name' => 'ChatGPT', 'value' => 1],
+            ['name' => 'Grok', 'value' => 0],
+            ['name' => 'Gemini', 'value' => 0],
+            ['name' => 'Claude', 'value' => 0],
         ], $report['model_collection']);
     }
 

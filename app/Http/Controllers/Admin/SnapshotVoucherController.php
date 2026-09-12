@@ -166,7 +166,13 @@ class SnapshotVoucherController extends Controller
 
     private function platformIcon(string $platform): string
     {
-        return match ($this->normalizePlatformKey($platform)) {
+        $platform = $this->normalizePlatformKey($platform);
+
+        if (BrandDiagnosisPlatform::isSupported($platform)) {
+            return BrandDiagnosisPlatform::logoUrl($platform);
+        }
+
+        return match ($platform) {
             'deepseek' => asset('assets/monitoring-center/assets/ai-platforms/deepseek.png'),
             'doubao' => asset('assets/monitoring-center/assets/ai-platforms/doubao.png'),
             'yuanbao' => asset('assets/monitoring-center/assets/ai-platforms/yuanbao.png'),
@@ -178,7 +184,13 @@ class SnapshotVoucherController extends Controller
 
     private function platformLabel(string $platform): string
     {
-        return match ($this->normalizePlatformKey($platform)) {
+        $platform = $this->normalizePlatformKey($platform);
+
+        if (BrandDiagnosisPlatform::isSupported($platform)) {
+            return BrandDiagnosisPlatform::label($platform);
+        }
+
+        return match ($platform) {
             'doubao' => '豆包',
             'deepseek' => 'DeepSeek',
             'yuanbao' => '腾讯元宝',

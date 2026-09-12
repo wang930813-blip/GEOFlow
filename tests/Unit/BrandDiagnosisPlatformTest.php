@@ -32,4 +32,34 @@ class BrandDiagnosisPlatformTest extends TestCase
         $this->assertFalse(BrandDiagnosisPlatform::publicIsSupported('qianwen'));
         $this->assertFalse(BrandDiagnosisPlatform::publicIsSupported('wenxin'));
     }
+
+    public function test_international_brand_diagnosis_platform_logos_use_static_site_svg_assets(): void
+    {
+        $expected = [
+            'chatgpt' => 'ceying-geo-static/ai-platforms/chatgpt.svg',
+            'grok' => 'ceying-geo-static/ai-platforms/grok.svg',
+            'gemini' => 'ceying-geo-static/ai-platforms/gemini.svg',
+            'claude' => 'ceying-geo-static/ai-platforms/claude.svg',
+        ];
+
+        foreach ($expected as $platform => $path) {
+            $this->assertSame($path, BrandDiagnosisPlatform::logoPath($platform));
+            $this->assertSame($path, BrandDiagnosisPlatform::publicLogoPath($platform));
+            $this->assertFileExists(BrandDiagnosisPlatform::logoAbsolutePath($platform));
+            $this->assertFileExists(BrandDiagnosisPlatform::publicLogoAbsolutePath($platform));
+        }
+    }
+
+    public function test_grok_logo_asset_is_not_the_legacy_x_mark(): void
+    {
+        $svg = file_get_contents(BrandDiagnosisPlatform::logoAbsolutePath('grok'));
+        $staticSiteSourceSvg = file_get_contents(public_path('ceying-geo-static/ai-platforms/x.svg'));
+
+        $this->assertIsString($svg);
+        $this->assertStringContainsString('data-logo="grok-wordmark"', $svg);
+        $this->assertStringNotContainsString('M14.234 10.162 22.977 0', $svg);
+        $this->assertIsString($staticSiteSourceSvg);
+        $this->assertStringContainsString('data-logo="grok-wordmark"', $staticSiteSourceSvg);
+        $this->assertStringNotContainsString('M14.234 10.162 22.977 0', $staticSiteSourceSvg);
+    }
 }

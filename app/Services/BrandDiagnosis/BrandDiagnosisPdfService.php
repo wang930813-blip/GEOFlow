@@ -412,6 +412,16 @@ class BrandDiagnosisPdfService
             return false;
         }
 
+        if (strtolower(pathinfo($path, PATHINFO_EXTENSION)) === 'svg') {
+            if (! method_exists($this->pdf, 'ImageSVG')) {
+                return false;
+            }
+
+            $this->pdf->ImageSVG($path, $x, $y, $size, $size);
+
+            return true;
+        }
+
         if ($this->pngHasAlphaChannel($path) && ! $this->canTcpdfHandlePngAlpha()) {
             return false;
         }

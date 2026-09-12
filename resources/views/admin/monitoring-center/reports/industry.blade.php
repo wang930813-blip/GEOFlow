@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>行业竞争力分析报表</title>
+  <title>Industry Competitiveness Analysis Report</title>
   <script>
     (() => {
       const [navigation] = performance.getEntriesByType("navigation");
@@ -318,7 +318,11 @@
       flex: 0 0 auto;
       overflow: hidden;
       border-radius: 6px;
-      background: #fff;
+      color: #fff;
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: -.04em;
+      background: linear-gradient(135deg, #176dff, #8b5cf6);
       box-shadow: 0 4px 12px rgba(60, 86, 170, .16);
       vertical-align: -6px;
     }
@@ -573,7 +577,7 @@
     }
     .competitor_table .ref_table_header,
     .competitor_table .ref_table_row {
-      grid-template-columns: 160px minmax(360px, 1.4fr) repeat(5, minmax(120px, 1fr));
+      grid-template-columns: 160px minmax(360px, 1.4fr) repeat(4, minmax(120px, 1fr));
     }
     .ref_table_header {
       height: 30px;
@@ -2821,7 +2825,7 @@
       place-items: center;
     }
     .logo_content::before {
-      content: "AI搜索";
+      content: "AI Search";
       position: absolute;
       top: 42px;
       left: 50%;
@@ -2839,7 +2843,7 @@
       white-space: nowrap;
     }
     .logo_content::after {
-      content: "行业竞争力分析报告";
+      content: "Industry Competitiveness Analysis Report";
       position: absolute;
       top: 116px;
       left: 50%;
@@ -2958,7 +2962,7 @@
       text-shadow: none;
     }
     .aisearch_left_inner .left .text::after {
-      content: "数据展示";
+      content: "Data Display";
       margin-top: 0;
       color: #f3f8ff;
       font-size: 20px;
@@ -3431,7 +3435,7 @@
     .competitor_table .ref_table_row {
       gap: 0;
       column-gap: 0;
-      grid-template-columns: 170px minmax(380px, 1.45fr) repeat(5, minmax(150px, 1fr));
+      grid-template-columns: 170px minmax(380px, 1.45fr) repeat(4, minmax(150px, 1fr));
     }
     .competitor_table .ref_table_header {
       height: 52px;
@@ -3493,7 +3497,7 @@
       }
       .competitor_table .ref_table_header,
       .competitor_table .ref_table_row {
-        grid-template-columns: 120px minmax(240px, 1.4fr) repeat(5, minmax(100px, 1fr));
+        grid-template-columns: 120px minmax(240px, 1.4fr) repeat(4, minmax(100px, 1fr));
       }
       .competitor_table .ref_table_header {
         height: 40px;
@@ -3622,8 +3626,9 @@
       border-top-color: #fff;
     }
     .report-header .report-menu-list {
-      width: 260px;
+      width: 360px;
       min-width: 260px;
+      max-width: min(360px, calc(100vw - 32px));
       top: calc(100% + 6px);
       padding: 6px;
       border: 1px solid rgba(60, 190, 255, .46);
@@ -3641,6 +3646,8 @@
       font-size: 16px;
       font-weight: 750;
       line-height: 20px;
+      white-space: normal;
+      overflow-wrap: anywhere;
       box-shadow: none;
     }
     .report-header .report-menu-list a:hover {
@@ -3992,6 +3999,89 @@
       cursor: default;
       user-select: none;
     }
+    @media (min-width: 1361px) {
+      .report-header .report-title {
+        left: calc(50% - 125px);
+        max-width: min(760px, calc(100vw - 980px));
+        font-size: clamp(25px, 2.1vw, 38px);
+        line-height: 1.08;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .report-header .company-box {
+        width: 640px;
+        gap: 14px;
+      }
+      .report-header .company-meta {
+        width: 260px;
+        min-width: 260px;
+        flex-basis: 260px;
+        font-size: 13px;
+      }
+      .report-header .report-menu,
+      .report-header .report-menu summary,
+      .report-header .monitoring-fixed-report {
+        width: 260px;
+        min-width: 260px;
+      }
+      .report-header .report-menu-list {
+        width: 360px;
+        min-width: 260px;
+        max-width: min(360px, calc(100vw - 32px));
+      }
+      .report-header .report-menu summary {
+        height: 44px;
+        font-size: 14px;
+        line-height: 1.18;
+      }
+    }
+    @media (max-width: 1360px) and (min-width: 1101px) {
+      .report-header {
+        grid-template-columns: 300px minmax(0, 1fr) 520px;
+      }
+      .report-header .report-title {
+        position: static;
+        transform: none;
+        width: auto;
+        max-width: 100%;
+        font-size: clamp(24px, 2.4vw, 34px);
+        line-height: 1.12;
+        white-space: normal;
+      }
+      .report-header .company-box {
+        position: static;
+        width: 100%;
+        transform: none;
+        gap: 12px;
+      }
+      .report-header .company-meta {
+        width: 235px;
+        min-width: 235px;
+        flex-basis: 235px;
+        font-size: 13px;
+        white-space: normal;
+      }
+      .report-header .report-menu,
+      .report-header .report-menu summary,
+      .report-header .monitoring-fixed-report {
+        width: 220px;
+        min-width: 220px;
+      }
+      .report-header .report-menu-list {
+        width: 330px;
+        min-width: 220px;
+        max-width: min(330px, calc(100vw - 32px));
+      }
+      .report-header .report-menu summary {
+        min-height: 44px;
+        height: auto;
+        padding-top: 6px;
+        padding-bottom: 6px;
+        font-size: 13px;
+        line-height: 1.18;
+      }
+    }
     @media (max-width: 720px) {
       .monitoring-share-action {
         width: 100%;
@@ -4020,6 +4110,22 @@
     .monitoring-share-toast.show {
       display: block;
     }
+    .model-logo {
+      background: rgba(255,255,255,.96) !important;
+      color: #111827;
+      padding: 4px;
+      box-shadow: 0 0 12px rgba(38, 150, 255, .28) !important;
+    }
+    .model-logo img {
+      width: 100%;
+      height: 100%;
+      display: block;
+      border-radius: 0;
+      object-fit: contain;
+    }
+    .platform-icons .model-logo {
+      padding: 3px;
+    }
   </style>
   <link rel="stylesheet" href="assets/responsive-report.css" />
 </head>
@@ -4029,37 +4135,37 @@
       <div class="brand-strip">
         <img class="brand-logo" src="ceying-ai-logo.png" alt="AI" />
       </div>
-      <h1 class="report-title">行业竞争力分析报表</h1>
+      <h1 class="report-title">Industry Competitiveness Analysis Report</h1>
       <div class="company-box">
         <div class="company-meta">
           @php($monitoringContext = $reportData['context'] ?? [])
-          <div>{{ $monitoringContext['company_name'] ?? '未识别企业' }}</div>
-          <div>数据更新日期：{{ $monitoringContext['date'] ?? now()->format('Y-m-d') }}</div>
+          <div>{{ $monitoringContext['company_name'] ?? 'Unknown Company' }}</div>
+          <div>Data Updated: {{ $monitoringContext['date'] ?? now()->format('Y-m-d') }}</div>
           <div>新知地（成都）人工智能科技有限公司</div>
-          <div>数据更新日期：2026-06-17</div>
+          <div>Data Updated: 2026-06-17</div>
         </div>
         @if($isSharedView ?? false)
           <div class="report-menu monitoring-fixed-report" data-monitoring-fixed-report>
-            <span>行业竞争力分析报表</span>
+            <span>Industry Competitiveness Analysis Report</span>
           </div>
         @else
           <details class="report-menu">
-            <summary>行业竞争力分析报表</summary>
+            <summary>Industry Competitiveness Analysis Report</summary>
             <div class="report-menu-list">
-              <span>行业竞争力分析报表</span>
-              <a href="geo-dashboard-replica.html">企业輿情分析报表</a>
+              <span>Industry Competitiveness Analysis Report</span>
+              <a href="geo-dashboard-replica.html">Enterprise Sentiment Analysis Report</a>
             </div>
           </details>
         @endif
         @if(!empty($shareCreateUrl ?? ''))
-          <button type="button" class="monitoring-share-action" data-monitoring-share-button onclick="createMonitoringReportShare(this)">分享</button>
+          <button type="button" class="monitoring-share-action" data-monitoring-share-button onclick="createMonitoringReportShare(this)">Share</button>
         @endif
       </div>
     </header>
 
     <div class="logo_content">
       <img class="ai_logo" src="https://geo.zxaigc.com/assets/images/ai-cfbe718f.png" alt="" />
-      <img class="aisearch_logo" src="https://geo.zxaigc.com/assets/images/aisearch-text-d98afb14.png" alt="AI搜索 行业竞争力分析报告" />
+      <img class="aisearch_logo" src="https://geo.zxaigc.com/assets/images/aisearch-text-d98afb14.png" alt="AI Search Industry Competitiveness Analysis Report" />
     </div>
 
     <main>
@@ -4069,15 +4175,15 @@
 
       <div class="main_inner">
         <div class="desc">
-          报告说明：基于品牌所有历史搜索关键词的收录数据，通过 AI 深度分析，全面掌握大模型对您品牌的认知情况。报告每周一自动更新，
-          <span style="color: rgb(5, 92, 255);">最近更新时间：2026-06-15</span>
+          Report notes: based on historical AI search keyword inclusion data, this report analyzes how major AI models understand the brand. The report is updated every Monday.
+          <span style="color: rgb(5, 92, 255);">Last updated: 2026-06-15</span>
         </div>
 
 
         <section>
           <div class="competitiveness_analysis_com_title">
             <img class="title-bg" src="https://geo.zxaigc.com/assets/images/title-bg-163046e6.png" alt="" />
-            <span class="title">一.&nbsp;&nbsp;&nbsp;报告概述</span>
+            <span class="title">1.&nbsp;&nbsp;&nbsp;Report Overview</span>
           </div>
           <div id="industrySummaryRow" class="arco-row arco-row-align-start arco-row-justify-start report-summary-row" style="margin: -5px -10px;">
             <div class="arco-col arco-col-xs-24 arco-col-sm-12 arco-col-md-6" style="padding: 5px 10px;">
@@ -4087,7 +4193,7 @@
                     <img class="icon" src="assets/live-summary-icons/icon-1.png" alt="" />
                   </div>
                 </div>
-                <div class="right"><div class="label">蒸馏词数量(个)</div><div class="value">229</div></div>
+                <div class="right"><div class="label">Distilled Search Terms</div><div class="value">229</div></div>
               </div>
             </div>
             <div class="arco-col arco-col-xs-24 arco-col-sm-12 arco-col-md-6" style="padding: 5px 10px;">
@@ -4097,7 +4203,7 @@
                     <img class="icon" src="assets/live-summary-icons/icon-2.png" alt="" />
                   </div>
                 </div>
-                <div class="right"><div class="label">AI搜索竞争力分析数量(次)</div><div class="value">392</div></div>
+                <div class="right"><div class="label">AI Search Competitiveness Analyses</div><div class="value">392</div></div>
               </div>
             </div>
             <div class="arco-col arco-col-xs-24 arco-col-sm-12 arco-col-md-6" style="padding: 5px 10px;">
@@ -4108,14 +4214,13 @@
                   </div>
                 </div>
                 <div class="right">
-                  <div class="label">覆盖AI平台</div>
-                  <div class="value">5</div>
+                  <div class="label">Covered AI Platforms</div>
+                  <div class="value">4</div>
                   <div class="platform-icons">
-                    <span class="model-logo"><img src="assets/ai-platforms/doubao.png" alt="豆包"></span>
-                    <span class="model-logo"><img src="assets/ai-platforms/deepseek.png" alt="DeepSeek"></span>
-                    <span class="model-logo"><img src="assets/ai-platforms/yuanbao.png" alt="腾讯元宝"></span>
-                    <span class="model-logo"><img src="assets/ai-platforms/wenxin.png" alt="文心一言"></span>
-                    <span class="model-logo"><img src="assets/ai-platforms/qianwen.png" alt="千问"></span>
+                    <span class="model-logo"><img src="{{ asset('ceying-geo-static/ai-platforms/chatgpt.svg') }}" alt="ChatGPT"></span>
+                    <span class="model-logo"><img src="{{ asset('ceying-geo-static/ai-platforms/grok.svg') }}" alt="Grok"></span>
+                    <span class="model-logo"><img src="{{ asset('ceying-geo-static/ai-platforms/gemini.svg') }}" alt="Gemini"></span>
+                    <span class="model-logo"><img src="{{ asset('ceying-geo-static/ai-platforms/claude.svg') }}" alt="Claude"></span>
                   </div>
                 </div>
               </div>
@@ -4127,7 +4232,7 @@
                     <img class="icon" src="assets/live-summary-icons/icon-4.png" alt="" />
                   </div>
                 </div>
-                <div class="right"><div class="label">引用信源平台数(个)</div><div class="value">9608</div></div>
+                <div class="right"><div class="label">Citation Source Platforms</div><div class="value">9608</div></div>
               </div>
             </div>
           </div>
@@ -4136,7 +4241,7 @@
         <section>
           <div class="competitiveness_analysis_com_title">
             <img class="title-bg" src="https://geo.zxaigc.com/assets/images/title-bg-163046e6.png" alt="" />
-            <span class="title">二.&nbsp;&nbsp;&nbsp;品牌画像</span>
+            <span class="title">2.&nbsp;&nbsp;&nbsp;Brand Profile</span>
           </div>
           <div id="industryBrandProfile" class="brand_intro2">
             <div class="left">
@@ -4144,15 +4249,15 @@
             </div>
             <div class="right">
               <div class="item">
-                <div class="text">公司名称：</div>
+                <div class="text">Company Name:</div>
                 <div class="content">新知地（成都）人工智能科技有限公司</div>
               </div>
               <div class="item">
-                <div class="text">品牌名称：</div>
+                <div class="text">Brand Names:</div>
                 <div class="content">新知地（成都）人工智能科技有限公司,新知地,新知地AI</div>
               </div>
               <div class="item">
-                <div class="text">核心服务：</div>
+                <div class="text">Core Services:</div>
                 <div class="content">数字化服务,软件定制开发,AI应用开发,企业智能化解决方案</div>
               </div>
             </div>
@@ -4162,10 +4267,10 @@
         <section>
           <div class="competitiveness_analysis_com_title">
             <img class="title-bg" src="https://geo.zxaigc.com/assets/images/title-bg-163046e6.png" alt="" />
-            <span class="title">三.&nbsp;&nbsp;&nbsp;AI搜索整体概况</span>
+            <span class="title">3.&nbsp;&nbsp;&nbsp;AI Search Overview</span>
           </div>
           <div id="industryOverallSection" class="aisearch_row">
-            <div class="aisearch_title">品牌前五综合占比</div>
+            <div class="aisearch_title">Overall Top 5 Brand Share</div>
             <div class="arco-row arco-row-align-start arco-row-justify-start" style="margin: -5px -10px;">
               <div class="arco-col arco-col-xs-24 arco-col-sm-12" style="padding: 5px 10px;">
                 <div class="aisearch_left aisearch_left_line">
@@ -4174,13 +4279,13 @@
                       <img src="https://geo.zxaigc.com/assets/images/round-8f2394a9.png" alt="" />
                       <div class="text">61.64%</div>
                       <div class="donut-meta">
-                        <span><i style="--dot:#73df94"></i>品牌前五 61.64%</span>
-                        <span><i style="--dot:#65bdff"></i>其他 38.36%</span>
+                        <span><i style="--dot:#73df94"></i>Top 5 61.64%</span>
+                        <span><i style="--dot:#65bdff"></i>Others 38.36%</span>
                       </div>
                     </div>
                     <div class="right_card">
-                      <div class="card card2"><div class="card_top" style="font-size: 28px;">61.64%</div><div class="card_bottom" style="font-size: 14px;">品牌前五占比</div></div>
-                      <div class="card card2"><div class="card_top" style="font-size: 28px;">242</div><div class="card_bottom" style="font-size: 14px;">品牌前五次数</div></div>
+                      <div class="card card2"><div class="card_top" style="font-size: 28px;">61.64%</div><div class="card_bottom" style="font-size: 14px;">Top 5 Share</div></div>
+                      <div class="card card2"><div class="card_top" style="font-size: 28px;">242</div><div class="card_bottom" style="font-size: 14px;">Top 5 Count</div></div>
                     </div>
                   </div>
                 </div>
@@ -4201,25 +4306,24 @@
         <section>
           <div class="competitiveness_analysis_com_title">
             <img class="title-bg" src="https://geo.zxaigc.com/assets/images/title-bg-163046e6.png" alt="" />
-            <span class="title">四.&nbsp;&nbsp;&nbsp;AI搜索平台分析</span>
+            <span class="title">4.&nbsp;&nbsp;&nbsp;AI Search Model Analysis</span>
           </div>
           <div class="data_analysis">
             <div id="industryPlatformTable" class="ref_table platform_table">
               <div class="ref_table_header">
-                <div>对比维度</div><div>搜索推荐分析次数</div><div>品牌词TOP1占比</div><div>品牌词TOP2占比</div><div>品牌词TOP3占比</div><div>品牌词TOP4占比</div><div>品牌词TOP5占比</div><div>正向舆情占比</div><div>信源站点数</div>
+                <div>Model</div><div>Recommendation Analyses</div><div>Brand TOP1 Share</div><div>Brand TOP2 Share</div><div>Brand TOP3 Share</div><div>Brand TOP4 Share</div><div>Brand TOP5 Share</div><div>Positive Sentiment</div><div>Source Sites</div>
               </div>
-              <div class="ref_table_row"><div><span class="model-name"><span class="model-logo"><img src="assets/ai-platforms/doubao.png" alt="豆包"></span>豆包</span></div><div>124</div><div>31.58%</div><div>2.63%</div><div>2.63%</div><div>21.05%</div><div>7.89%</div><div>100%</div><div>4852</div></div>
-              <div class="ref_table_row"><div><span class="model-name"><span class="model-logo"><img src="assets/ai-platforms/deepseek.png" alt="DeepSeek"></span>DeepSeek</span></div><div>52</div><div>100%</div><div>0%</div><div>0%</div><div>0%</div><div>0%</div><div>100%</div><div>730</div></div>
-              <div class="ref_table_row"><div><span class="model-name"><span class="model-logo"><img src="assets/ai-platforms/yuanbao.png" alt="腾讯元宝"></span>腾讯元宝</span></div><div>108</div><div>7.5%</div><div>2.5%</div><div>2.5%</div><div>0%</div><div>27.5%</div><div>75%</div><div>1642</div></div>
-              <div class="ref_table_row"><div><span class="model-name"><span class="model-logo"><img src="assets/ai-platforms/wenxin.png" alt="文心一言"></span>文心一言</span></div><div>64</div><div>11.54%</div><div>0%</div><div>11.54%</div><div>15.38%</div><div>15.38%</div><div>96.15%</div><div>1688</div></div>
-              <div class="ref_table_row"><div><span class="model-name"><span class="model-logo"><img src="assets/ai-platforms/qianwen.png" alt="千问"></span>千问</span></div><div>44</div><div>18.18%</div><div>42.42%</div><div>6.06%</div><div>12.12%</div><div>0%</div><div>96.97%</div><div>696</div></div>
+              <div class="ref_table_row"><div><span class="model-name"><span class="model-logo"><img src="{{ asset('ceying-geo-static/ai-platforms/chatgpt.svg') }}" alt="ChatGPT"></span>ChatGPT</span></div><div>124</div><div>31.58%</div><div>2.63%</div><div>2.63%</div><div>21.05%</div><div>7.89%</div><div>100%</div><div>4852</div></div>
+              <div class="ref_table_row"><div><span class="model-name"><span class="model-logo"><img src="{{ asset('ceying-geo-static/ai-platforms/grok.svg') }}" alt="Grok"></span>Grok</span></div><div>52</div><div>100%</div><div>0%</div><div>0%</div><div>0%</div><div>0%</div><div>100%</div><div>730</div></div>
+              <div class="ref_table_row"><div><span class="model-name"><span class="model-logo"><img src="{{ asset('ceying-geo-static/ai-platforms/gemini.svg') }}" alt="Gemini"></span>Gemini</span></div><div>64</div><div>11.54%</div><div>0%</div><div>11.54%</div><div>15.38%</div><div>15.38%</div><div>96.15%</div><div>1688</div></div>
+              <div class="ref_table_row"><div><span class="model-name"><span class="model-logo"><img src="{{ asset('ceying-geo-static/ai-platforms/claude.svg') }}" alt="Claude"></span>Claude</span></div><div>44</div><div>18.18%</div><div>42.42%</div><div>6.06%</div><div>12.12%</div><div>0%</div><div>96.97%</div><div>696</div></div>
             </div>
           </div>
           <div id="industryPlatformCharts" class="analysis_chart platform-charts">
             <div class="chart_grid">
               <div class="chart">
-                <div class="title">品牌推荐分析次数指数</div>
-                <svg class="radar-svg" viewBox="0 0 430 307" role="img" aria-label="品牌推荐分析次数指数雷达图">
+                <div class="title">Brand Recommendation Analysis Index</div>
+                <svg class="radar-svg" viewBox="0 0 430 307" role="img" aria-label="Brand recommendation analysis index radar chart">
                   <g transform="translate(215 166)" fill="none">
                     <polygon points="0,-92 87.5,-28.4 54.1,74.4 -54.1,74.4 -87.5,-28.4" stroke="#e4e6f3"/>
                     <polygon points="0,-72 68.5,-22.3 42.3,58.2 -42.3,58.2 -68.5,-22.3" stroke="#e4e6f3"/>
@@ -4237,16 +4341,15 @@
                     <circle cx="-46" cy="63.3" r="4" fill="#7778f5"/>
                     <circle cx="-36.7" cy="-11.9" r="4" fill="#7778f5"/>
                   </g>
-                  <text class="axis-label" x="215" y="54" text-anchor="middle">豆包</text>
-                  <text class="axis-label" x="330" y="139" text-anchor="middle">千问</text>
-                  <text class="axis-label" x="286" y="263" text-anchor="middle">文心一言</text>
-                  <text class="axis-label" x="144" y="263" text-anchor="middle">腾讯元宝</text>
-                  <text class="axis-label" x="92" y="139" text-anchor="middle">DeepSeek</text>
+                  <text class="axis-label" x="215" y="54" text-anchor="middle">ChatGPT</text>
+                  <text class="axis-label" x="330" y="139" text-anchor="middle">Grok</text>
+                  <text class="axis-label" x="286" y="263" text-anchor="middle">Gemini</text>
+                  <text class="axis-label" x="144" y="263" text-anchor="middle">Claude</text>
                 </svg>
               </div>
               <div class="chart">
-                <div class="title">品牌在各大模型的首位推荐率</div>
-                <svg class="bar-svg" viewBox="0 0 430 307" role="img" aria-label="品牌在各大模型的首位推荐率柱状图">
+                <div class="title">Top Recommendation Rate by Model</div>
+                <svg class="bar-svg" viewBox="0 0 430 307" role="img" aria-label="Top recommendation rate by model bar chart">
                   <line x1="46" y1="245" x2="410" y2="245" stroke="#e5e5e5"/>
                   <line x1="46" y1="55" x2="46" y2="245" stroke="#e5e5e5"/>
                   <text class="axis-label" x="34" y="249" text-anchor="end">0%</text>
@@ -4260,27 +4363,24 @@
                   <rect class="bar-fill" x="225" y="230" width="34" height="15"/>
                   <rect class="bar-fill" x="305" y="223" width="34" height="22"/>
                   <rect class="bar-fill" x="375" y="210" width="34" height="35"/>
-                  <text class="axis-label" x="82" y="266" text-anchor="middle">豆包</text>
-                  <text class="axis-label" x="162" y="266" text-anchor="middle">DeepSeek</text>
-                  <text class="axis-label" x="242" y="266" text-anchor="middle">腾讯元宝</text>
-                  <text class="axis-label" x="322" y="266" text-anchor="middle">文心一言</text>
-                  <text class="axis-label" x="392" y="266" text-anchor="middle">千问</text>
+                  <text class="axis-label" x="82" y="266" text-anchor="middle">ChatGPT</text>
+                  <text class="axis-label" x="162" y="266" text-anchor="middle">Grok</text>
+                  <text class="axis-label" x="242" y="266" text-anchor="middle">Gemini</text>
+                  <text class="axis-label" x="322" y="266" text-anchor="middle">Claude</text>
                 </svg>
               </div>
               <div class="chart">
-                <div class="title">品牌各平台信源占比</div>
+                <div class="title">Source Share by Model</div>
                 <div class="donut-chart" style="--segments:#7da0f2 0 50.5%, #b8d1fb 50.5% 68.1%, #95bff4 68.1% 85.2%, #4d7fff 85.2% 92.8%, #2d65f3 92.8% 100%;"></div>
-                <span class="source-label l1">豆包 4852</span>
-                <span class="source-label l2">DeepSeek 730</span>
-                <span class="source-label l3">腾讯元宝 1642</span>
-                <span class="source-label l4">文心一言 1688</span>
-                <span class="source-label l5">千问 696</span>
+                <span class="source-label l1">ChatGPT 4852</span>
+                <span class="source-label l2">Grok 730</span>
+                <span class="source-label l4">Gemini 1688</span>
+                <span class="source-label l5">Claude 696</span>
                 <div class="chart-legend">
-                  <span><i class="legend-dot" style="--dot:#7da0f2"></i>豆包</span>
-                  <span><i class="legend-dot" style="--dot:#b8d1fb"></i>DeepSeek</span>
-                  <span><i class="legend-dot" style="--dot:#95bff4"></i>腾讯元宝</span>
-                  <span><i class="legend-dot" style="--dot:#4d7fff"></i>文心一言</span>
-                  <span><i class="legend-dot" style="--dot:#2d65f3"></i>千问</span>
+                  <span><i class="legend-dot" style="--dot:#7da0f2"></i>ChatGPT</span>
+                  <span><i class="legend-dot" style="--dot:#b8d1fb"></i>Grok</span>
+                  <span><i class="legend-dot" style="--dot:#4d7fff"></i>Gemini</span>
+                  <span><i class="legend-dot" style="--dot:#2d65f3"></i>Claude</span>
                 </div>
               </div>
             </div>
@@ -4290,22 +4390,20 @@
         <section>
           <div class="competitiveness_analysis_com_title">
             <img class="title-bg" src="https://geo.zxaigc.com/assets/images/title-bg-163046e6.png" alt="" />
-            <span class="title">五.&nbsp;&nbsp;&nbsp;竞品数据分析</span>
+            <span class="title">5.&nbsp;&nbsp;&nbsp;Competitor Data Analysis</span>
           </div>
           <div class="data_analysis competitor_area">
-            <div class="text">同行竞品大模型能见度分析</div>
+            <div class="text">Peer Competitor AI Model Visibility Analysis</div>
             <div id="industryCompetitorTable" class="ref_table competitor_table">
-              <div class="ref_table_header"><div>类型</div><div>公司名称</div><div><span class="model-name"><span class="model-logo"><img src="assets/ai-platforms/deepseek.png" alt="DeepSeek"></span>DeepSeek</span></div><div><span class="model-name"><span class="model-logo"><img src="assets/ai-platforms/doubao.png" alt="豆包"></span>豆包</span></div><div><span class="model-name"><span class="model-logo"><img src="assets/ai-platforms/yuanbao.png" alt="腾讯元宝"></span>腾讯元宝</span></div><div><span class="model-name"><span class="model-logo"><img src="assets/ai-platforms/wenxin.png" alt="文心一言"></span>文心一言</span></div><div><span class="model-name"><span class="model-logo"><img src="assets/ai-platforms/qianwen.png" alt="千问"></span>千问</span></div></div>
-              <div class="ref_table_row"><div><span class="tag">推荐竞品</span></div><div class="name_cell">新知地（成都）人工智能科技有限公司</div><div>0%</div><div>0%</div><div class="heat-50">10%</div><div class="heat-65">19.23%</div><div>0%</div></div>
-              <div class="ref_table_row"><div><span class="tag">推荐竞品</span></div><div class="name_cell">成都新智地科技有限公司</div><div>0%</div><div>0%</div><div>0%</div><div class="heat-65">19.23%</div><div class="heat-60">12.12%</div></div>
-              <div class="ref_table_row"><div><span class="tag">推荐竞品</span></div><div class="name_cell">成都智地人工智能科技有限公司</div><div>0%</div><div>0%</div><div>0%</div><div>0%</div><div class="heat-65">24.24%</div></div>
-              <div class="ref_table_row"><div><span class="tag">推荐竞品</span></div><div class="name_cell">成都新知数智科技有限公司</div><div>0%</div><div>0%</div><div>0%</div><div>0%</div><div class="heat-65">21.21%</div></div>
-              <div class="ref_table_row"><div><span class="tag">推荐竞品</span></div><div class="name_cell">成都知地智能科技有限公司</div><div class="heat-45">2.63%</div><div>0%</div><div class="heat-50">5%</div><div class="heat-60">11.54%</div><div>0%</div></div>
-              <div class="ref_table_row"><div><span class="tag">推荐竞品</span></div><div class="name_cell">四川新知地数字科技有限公司</div><div class="heat-50">5.26%</div><div class="heat-60">11.11%</div><div class="heat-50">7.5%</div><div>0%</div><div>0%</div></div>
-              <div class="ref_table_row"><div><span class="tag">推荐竞品</span></div><div class="name_cell">成都智境人工智能有限公司</div><div>0%</div><div>0%</div><div class="heat-50">10%</div><div class="heat-50">7.69%</div><div>0%</div></div>
-              <div class="ref_table_row"><div><span class="tag">推荐竞品</span></div><div class="name_cell">成都知行智算科技有限公司</div><div>0%</div><div>0%</div><div>0%</div><div class="heat-65">23.08%</div><div>0%</div></div>
-              <div class="ref_table_row"><div><span class="tag">推荐竞品</span></div><div class="name_cell">成都新地智能科技有限公司</div><div>0%</div><div>0%</div><div class="heat-60">12.5%</div><div>0%</div><div>0%</div></div>
-              <div class="ref_table_row"><div><span class="tag">推荐竞品</span></div><div class="name_cell">四川知地云智能科技有限公司</div><div>0%</div><div>0%</div><div class="heat-50">10%</div><div class="heat-45">3.85%</div><div>0%</div></div>
+              <div class="ref_table_header"><div>Type</div><div>Company Name</div><div><span class="model-name"><span class="model-logo"><img src="{{ asset('ceying-geo-static/ai-platforms/chatgpt.svg') }}" alt="ChatGPT"></span>ChatGPT</span></div><div><span class="model-name"><span class="model-logo"><img src="{{ asset('ceying-geo-static/ai-platforms/grok.svg') }}" alt="Grok"></span>Grok</span></div><div><span class="model-name"><span class="model-logo"><img src="{{ asset('ceying-geo-static/ai-platforms/gemini.svg') }}" alt="Gemini"></span>Gemini</span></div><div><span class="model-name"><span class="model-logo"><img src="{{ asset('ceying-geo-static/ai-platforms/claude.svg') }}" alt="Claude"></span>Claude</span></div></div>
+              <div class="ref_table_row"><div><span class="tag">Competitor</span></div><div class="name_cell">Xinzhidi AI Technology Co., Ltd.</div><div>0%</div><div>0%</div><div class="heat-50">10%</div><div class="heat-65">19.23%</div></div>
+              <div class="ref_table_row"><div><span class="tag">Competitor</span></div><div class="name_cell">Chengdu Xinzhi Technology Co., Ltd.</div><div>0%</div><div>0%</div><div>0%</div><div class="heat-65">19.23%</div></div>
+              <div class="ref_table_row"><div><span class="tag">Competitor</span></div><div class="name_cell">Chengdu Zhidi AI Technology Co., Ltd.</div><div>0%</div><div>0%</div><div>0%</div><div class="heat-65">24.24%</div></div>
+              <div class="ref_table_row"><div><span class="tag">Competitor</span></div><div class="name_cell">Chengdu Xinzhishuzhi Technology Co., Ltd.</div><div>0%</div><div>0%</div><div>0%</div><div class="heat-65">21.21%</div></div>
+              <div class="ref_table_row"><div><span class="tag">Competitor</span></div><div class="name_cell">Chengdu Zhidi Intelligence Technology Co., Ltd.</div><div class="heat-45">2.63%</div><div>0%</div><div class="heat-50">5%</div><div class="heat-60">11.54%</div></div>
+              <div class="ref_table_row"><div><span class="tag">Competitor</span></div><div class="name_cell">Sichuan Xinzhidi Digital Technology Co., Ltd.</div><div class="heat-50">5.26%</div><div class="heat-60">11.11%</div><div class="heat-50">7.5%</div><div>0%</div></div>
+              <div class="ref_table_row"><div><span class="tag">Competitor</span></div><div class="name_cell">Chengdu Zhijing AI Co., Ltd.</div><div>0%</div><div>0%</div><div class="heat-50">10%</div><div class="heat-50">7.69%</div></div>
+              <div class="ref_table_row"><div><span class="tag">Competitor</span></div><div class="name_cell">Chengdu Zhixing Computing Technology Co., Ltd.</div><div>0%</div><div>0%</div><div>0%</div><div class="heat-65">23.08%</div></div>
             </div>
           </div>
         </section>
@@ -4313,26 +4411,25 @@
         <section>
           <div class="competitiveness_analysis_com_title">
             <img class="title-bg" src="https://geo.zxaigc.com/assets/images/title-bg-163046e6.png" alt="" />
-            <span class="title">六.&nbsp;&nbsp;&nbsp;AI 搜索舆情概况</span>
+            <span class="title">6.&nbsp;&nbsp;&nbsp;AI Search Sentiment Overview</span>
           </div>
           <div class="analysis_chart">
             <div id="industrySentimentGrid" class="sentiment_grid">
               <div class="score_chart sentiment-overview-card">
-                <div class="sentiment-donut"><div class="center"><div><b>92%</b><span>情感正向率</span></div></div></div>
+                <div class="sentiment-donut"><div class="center"><div><b>92%</b><span>Positive Sentiment</span></div></div></div>
                 <div class="chart-legend">
-                  <span><i class="legend-dot" style="--dot:#6669ff"></i>92% 正面</span>
-                  <span><i class="legend-dot" style="--dot:#ff9245"></i>8% 中性</span>
-                  <span><i class="legend-dot" style="--dot:#e94f4c"></i>0% 负面</span>
+                  <span><i class="legend-dot" style="--dot:#6669ff"></i>92% Positive</span>
+                  <span><i class="legend-dot" style="--dot:#ff9245"></i>8% Neutral</span>
+                  <span><i class="legend-dot" style="--dot:#e94f4c"></i>0% Negative</span>
                 </div>
               </div>
               <div class="chart2">
-                <div class="title2">各平台舆情占比</div>
+                <div class="title2">Sentiment Share by Model</div>
                 <div class="public-opinion-share-chart">
-                  <div class="public-opinion-share-item"><div class="top_content"><div class="left"><span class="model-logo"><img src="assets/ai-platforms/doubao.png" alt="豆包"></span>豆包</div><div class="right">正面100%</div></div><div class="bottom_content"><div class="front" style="width:100%"></div><div class="neutral" style="width:0%"></div><div class="back" style="width:0%"></div></div></div>
-                  <div class="public-opinion-share-item"><div class="top_content"><div class="left"><span class="model-logo"><img src="assets/ai-platforms/deepseek.png" alt="DeepSeek"></span>DeepSeek</div><div class="right">正面100%</div></div><div class="bottom_content"><div class="front" style="width:100%"></div><div class="neutral" style="width:0%"></div><div class="back" style="width:0%"></div></div></div>
-                  <div class="public-opinion-share-item"><div class="top_content"><div class="left"><span class="model-logo"><img src="assets/ai-platforms/qianwen.png" alt="千问"></span>千问</div><div class="right">正面97%</div></div><div class="bottom_content"><div class="front" style="width:97%"></div><div class="neutral" style="width:3%"></div><div class="back" style="width:0%"></div></div></div>
-                  <div class="public-opinion-share-item"><div class="top_content"><div class="left"><span class="model-logo"><img src="assets/ai-platforms/wenxin.png" alt="文心一言"></span>文心一言</div><div class="right">正面96%</div></div><div class="bottom_content"><div class="front" style="width:96%"></div><div class="neutral" style="width:4%"></div><div class="back" style="width:0%"></div></div></div>
-                  <div class="public-opinion-share-item"><div class="top_content"><div class="left"><span class="model-logo"><img src="assets/ai-platforms/yuanbao.png" alt="腾讯元宝"></span>腾讯元宝</div><div class="right">正面75%</div></div><div class="bottom_content"><div class="front" style="width:75%"></div><div class="neutral" style="width:25%"></div><div class="back" style="width:0%"></div></div></div>
+                  <div class="public-opinion-share-item"><div class="top_content"><div class="left"><span class="model-logo"><img src="{{ asset('ceying-geo-static/ai-platforms/chatgpt.svg') }}" alt="ChatGPT"></span>ChatGPT</div><div class="right">Positive 100%</div></div><div class="bottom_content"><div class="front" style="width:100%"></div><div class="neutral" style="width:0%"></div><div class="back" style="width:0%"></div></div></div>
+                  <div class="public-opinion-share-item"><div class="top_content"><div class="left"><span class="model-logo"><img src="{{ asset('ceying-geo-static/ai-platforms/grok.svg') }}" alt="Grok"></span>Grok</div><div class="right">Positive 100%</div></div><div class="bottom_content"><div class="front" style="width:100%"></div><div class="neutral" style="width:0%"></div><div class="back" style="width:0%"></div></div></div>
+                  <div class="public-opinion-share-item"><div class="top_content"><div class="left"><span class="model-logo"><img src="{{ asset('ceying-geo-static/ai-platforms/gemini.svg') }}" alt="Gemini"></span>Gemini</div><div class="right">Positive 97%</div></div><div class="bottom_content"><div class="front" style="width:97%"></div><div class="neutral" style="width:3%"></div><div class="back" style="width:0%"></div></div></div>
+                  <div class="public-opinion-share-item"><div class="top_content"><div class="left"><span class="model-logo"><img src="{{ asset('ceying-geo-static/ai-platforms/claude.svg') }}" alt="Claude"></span>Claude</div><div class="right">Positive 96%</div></div><div class="bottom_content"><div class="front" style="width:96%"></div><div class="neutral" style="width:4%"></div><div class="back" style="width:0%"></div></div></div>
                 </div>
               </div>
             </div>
@@ -4352,20 +4449,17 @@
 
     const industryReportData = window.__MONITORING_REPORT__ || {};
     const industryDefaultPlatforms = [
-      { key: 'deepseek', name: 'DeepSeek' },
-      { key: 'doubao', name: '豆包' },
-      { key: 'yuanbao', name: '腾讯元宝' },
-      { key: 'wenxin', name: '文心一言' },
-      { key: 'qianwen', name: '千问' },
+      { key: 'chatgpt', name: 'ChatGPT', icon: 'CG' },
+      { key: 'grok', name: 'Grok', icon: 'GK' },
+      { key: 'gemini', name: 'Gemini', icon: 'GE' },
+      { key: 'claude', name: 'Claude', icon: 'CL' },
     ];
-    const industryPlatformLogos = {
-      deepseek: 'assets/ai-platforms/deepseek.png',
-      doubao: 'assets/ai-platforms/doubao.png',
-      yuanbao: 'assets/ai-platforms/yuanbao.png',
-      wenxin: 'assets/ai-platforms/wenxin.png',
-      qianwen: 'assets/ai-platforms/qianwen.png',
-      kimi: 'assets/ai-platforms/kimi.png',
-    };
+    const industryPlatformLogos = {!! json_encode([
+      'chatgpt' => asset('ceying-geo-static/ai-platforms/chatgpt.svg'),
+      'grok' => asset('ceying-geo-static/ai-platforms/grok.svg'),
+      'gemini' => asset('ceying-geo-static/ai-platforms/gemini.svg'),
+      'claude' => asset('ceying-geo-static/ai-platforms/claude.svg'),
+    ], JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) !!};
 
     function escapeIndustryHtml(value) {
       return String(value ?? '')
@@ -4396,10 +4490,12 @@
 
     function normalizeIndustryPlatformKey(key) {
       const normalized = String(key || '').toLowerCase().trim();
-      if (normalized === 'tencent_yuanbao') return 'yuanbao';
-      if (normalized === 'ernie') return 'wenxin';
-      if (normalized === 'tongyi') return 'qianwen';
       return normalized;
+    }
+
+    function industryPlatformIcon(key, name) {
+      const fallback = industryDefaultPlatforms.find((platform) => platform.key === key);
+      return fallback?.icon || String(name || key || '').slice(0, 2).toUpperCase();
     }
 
     function getIndustryPlatforms() {
@@ -4411,6 +4507,7 @@
         return {
           platform_key: key,
           platform: row.platform || fallback?.name || key,
+          logo: row.logo || industryPlatformLogos[key] || '',
           analysis_count: industryNumber(row.analysis_count),
           top_rank_rates: row.top_rank_rates || {},
           positive_sentiment_rate: industryNumber(row.positive_sentiment_rate),
@@ -4423,6 +4520,7 @@
           normalizedRows.push({
             platform_key: platform.key,
             platform: platform.name,
+            logo: industryPlatformLogos[platform.key] || '',
             analysis_count: 0,
             top_rank_rates: {},
             positive_sentiment_rate: 0,
@@ -4437,9 +4535,12 @@
     function industryModelName(platform) {
       const key = normalizeIndustryPlatformKey(platform.platform_key || platform.key || platform.platform);
       const name = platform.platform || industryDefaultPlatforms.find((item) => item.key === key)?.name || key;
-      const logo = industryPlatformLogos[key] || `assets/ai-platforms/${key}.png`;
+      const logo = platform.logo || industryPlatformLogos[key] || '';
+      const icon = logo
+        ? `<img src="${escapeIndustryHtml(logo)}" alt="${escapeIndustryHtml(name)}">`
+        : escapeIndustryHtml(industryPlatformIcon(key, name));
 
-      return `<span class="model-name"><span class="model-logo"><img src="${escapeIndustryHtml(logo)}" alt="${escapeIndustryHtml(name)}"></span>${escapeIndustryHtml(name)}</span>`;
+      return `<span class="model-name"><span class="model-logo">${icon}</span>${escapeIndustryHtml(name)}</span>`;
     }
 
     function renderIndustrySummary() {
@@ -4456,7 +4557,11 @@
           ? `<div class="platform-icons">${platforms.map((platform) => {
               const key = normalizeIndustryPlatformKey(platform.platform_key);
               const name = platform.platform || key;
-              return `<span class="model-logo"><img src="${escapeIndustryHtml(industryPlatformLogos[key] || `assets/ai-platforms/${key}.png`)}" alt="${escapeIndustryHtml(name)}"></span>`;
+              const logo = industryPlatformLogos[key] || '';
+              const icon = logo
+                ? `<img src="${escapeIndustryHtml(logo)}" alt="${escapeIndustryHtml(name)}">`
+                : escapeIndustryHtml(industryPlatformIcon(key, name));
+              return `<span class="model-logo">${icon}</span>`;
             }).join('')}</div>`
           : '';
 
@@ -4496,9 +4601,9 @@
           <img class="photo" src="${escapeIndustryHtml(photo)}" alt="" />
         </div>
         <div class="right">
-          <div class="item"><div class="text">公司名称：</div><div class="content">${escapeIndustryHtml(companyName)}</div></div>
-          <div class="item"><div class="text">品牌名称：</div><div class="content">${escapeIndustryHtml(brandNames)}</div></div>
-          <div class="item"><div class="text">核心服务：</div><div class="content">${escapeIndustryHtml(services)}</div></div>
+          <div class="item"><div class="text">Company Name:</div><div class="content">${escapeIndustryHtml(companyName)}</div></div>
+          <div class="item"><div class="text">Brand Names:</div><div class="content">${escapeIndustryHtml(brandNames)}</div></div>
+          <div class="item"><div class="text">Core Services:</div><div class="content">${escapeIndustryHtml(services)}</div></div>
         </div>
       `;
     }
@@ -4522,7 +4627,7 @@
       ];
 
       target.innerHTML = `
-        <div class="aisearch_title">品牌前五综合占比</div>
+        <div class="aisearch_title">Overall Top 5 Brand Share</div>
         <div class="arco-row arco-row-align-start arco-row-justify-start" style="margin: -5px -10px;">
           <div class="arco-col arco-col-xs-24 arco-col-sm-12" style="padding: 5px 10px;">
             <div class="aisearch_left aisearch_left_line">
@@ -4531,13 +4636,13 @@
                   <img src="https://geo.zxaigc.com/assets/images/round-8f2394a9.png" alt="" />
                   <div class="text">${formatIndustryPercent(topRate)}</div>
                   <div class="donut-meta">
-                    <span><i style="--dot:#73df94"></i>品牌前五 ${formatIndustryPercent(topRate)}</span>
-                    <span><i style="--dot:#65bdff"></i>其他 ${formatIndustryPercent(otherRate)}</span>
+                    <span><i style="--dot:#73df94"></i>Top 5 ${formatIndustryPercent(topRate)}</span>
+                    <span><i style="--dot:#65bdff"></i>Others ${formatIndustryPercent(otherRate)}</span>
                   </div>
                 </div>
                 <div class="right_card">
-                  <div class="card card2"><div class="card_top" style="font-size: 28px;">${formatIndustryPercent(topRate)}</div><div class="card_bottom" style="font-size: 14px;">品牌前五占比</div></div>
-                  <div class="card card2"><div class="card_top" style="font-size: 28px;">${formatIndustryInteger(topCount)}</div><div class="card_bottom" style="font-size: 14px;">品牌前五次数</div></div>
+                  <div class="card card2"><div class="card_top" style="font-size: 28px;">${formatIndustryPercent(topRate)}</div><div class="card_bottom" style="font-size: 14px;">Top 5 Share</div></div>
+                  <div class="card card2"><div class="card_top" style="font-size: 28px;">${formatIndustryInteger(topCount)}</div><div class="card_bottom" style="font-size: 14px;">Top 5 Count</div></div>
                 </div>
               </div>
             </div>
@@ -4608,7 +4713,7 @@
       if (table) {
         table.innerHTML = `
           <div class="ref_table_header">
-            <div>对比维度</div><div>搜索推荐分析次数</div><div>品牌词TOP1占比</div><div>品牌词TOP2占比</div><div>品牌词TOP3占比</div><div>品牌词TOP4占比</div><div>品牌词TOP5占比</div><div>正向舆情占比</div><div>信源站点数</div>
+            <div>Model</div><div>Recommendation Analyses</div><div>Brand TOP1 Share</div><div>Brand TOP2 Share</div><div>Brand TOP3 Share</div><div>Brand TOP4 Share</div><div>Brand TOP5 Share</div><div>Positive Sentiment</div><div>Source Sites</div>
           </div>
           ${platforms.map((platform) => {
             const rates = platform.top_rank_rates || {};
@@ -4634,15 +4739,15 @@
         charts.innerHTML = `
           <div class="chart_grid">
             <div class="chart">
-              <div class="title">品牌推荐分析次数指数</div>
-              ${renderIndustryBarSvg(platforms, '品牌推荐分析次数指数', (row) => row.analysis_count)}
+              <div class="title">Brand Recommendation Analysis Index</div>
+              ${renderIndustryBarSvg(platforms, 'Brand recommendation analysis index', (row) => row.analysis_count)}
             </div>
             <div class="chart">
-              <div class="title">品牌在各大模型的首位推荐率</div>
-              ${renderIndustryBarSvg(platforms, '品牌在各大模型的首位推荐率', (row) => row.top_rank_rates?.top1 || 0, { maxValue: 100, percent: true })}
+              <div class="title">Top Recommendation Rate by Model</div>
+              ${renderIndustryBarSvg(platforms, 'Top recommendation rate by model', (row) => row.top_rank_rates?.top1 || 0, { maxValue: 100, percent: true })}
             </div>
             <div class="chart">
-              <div class="title">品牌各平台信源占比</div>
+              <div class="title">Source Share by Model</div>
               <div class="donut-chart" style="--segments:${industryDonutSegments(topSourceRows, (row) => row.source_count)};"></div>
               ${topSourceRows.map((platform, index) => `<span class="source-label l${index + 1}">${escapeIndustryHtml(platform.platform)} ${formatIndustryInteger(platform.source_count)}</span>`).join('')}
               <div class="chart-legend">
@@ -4671,7 +4776,7 @@
       const competitors = Array.isArray(industryReportData.competitors) ? industryReportData.competitors : [];
       const header = `
         <div class="ref_table_header">
-          <div>类型</div><div>公司名称</div>
+          <div>Type</div><div>Company Name</div>
           ${platforms.map((platform) => `<div>${industryModelName(platform)}</div>`).join('')}
         </div>
       `;
@@ -4680,7 +4785,7 @@
             const rates = competitor.platform_rates || {};
             return `
               <div class="ref_table_row">
-                <div><span class="tag">推荐竞品</span></div>
+                <div><span class="tag">Competitor</span></div>
                 <div class="name_cell">${escapeIndustryHtml(competitor.brand_name || '-')}</div>
                 ${platforms.map((platform) => {
                   const key = normalizeIndustryPlatformKey(platform.platform_key);
@@ -4693,7 +4798,7 @@
               </div>
             `;
           }).join('')
-        : `<div class="ref_table_row"><div><span class="tag">暂无</span></div><div class="name_cell">暂无竞品数据</div>${platforms.map(() => '<div>0%</div>').join('')}</div>`;
+        : `<div class="ref_table_row"><div><span class="tag">N/A</span></div><div class="name_cell">No competitor data</div>${platforms.map(() => '<div>0%</div>').join('')}</div>`;
 
       table.innerHTML = header + rows;
     }
@@ -4722,16 +4827,16 @@
       target.innerHTML = `
         <div class="score_chart sentiment-overview-card">
           <div class="sentiment-donut" style="background: conic-gradient(#6669ff 0 ${positive}%, #ff9245 ${neutralStart}% ${negativeStart}%, #e94f4c ${negativeStart}% 100%);">
-            <div class="center"><div><b>${formatIndustryPercent(positive)}</b><span>情感正向率</span></div></div>
+            <div class="center"><div><b>${formatIndustryPercent(positive)}</b><span>Positive Sentiment</span></div></div>
           </div>
           <div class="chart-legend">
-            <span><i class="legend-dot" style="--dot:#6669ff"></i>${formatIndustryPercent(positive)} 正面</span>
-            <span><i class="legend-dot" style="--dot:#ff9245"></i>${formatIndustryPercent(neutral)} 中性</span>
-            <span><i class="legend-dot" style="--dot:#e94f4c"></i>${formatIndustryPercent(negative)} 负面</span>
+            <span><i class="legend-dot" style="--dot:#6669ff"></i>${formatIndustryPercent(positive)} Positive</span>
+            <span><i class="legend-dot" style="--dot:#ff9245"></i>${formatIndustryPercent(neutral)} Neutral</span>
+            <span><i class="legend-dot" style="--dot:#e94f4c"></i>${formatIndustryPercent(negative)} Negative</span>
           </div>
         </div>
         <div class="chart2">
-          <div class="title2">各平台舆情占比</div>
+          <div class="title2">Sentiment Share by Model</div>
           <div class="public-opinion-share-chart">
             ${platforms.map((platform) => {
               const key = normalizeIndustryPlatformKey(platform.platform_key || platform.key || platform.platform);
@@ -4744,7 +4849,7 @@
               const rowNegative = industryClampPercent(platform.negative_rate);
               return `
                 <div class="public-opinion-share-item">
-                  <div class="top_content"><div class="left">${industryModelName(row)}</div><div class="right">正面${formatIndustryPercent(rowPositive)}</div></div>
+                  <div class="top_content"><div class="left">${industryModelName(row)}</div><div class="right">Positive ${formatIndustryPercent(rowPositive)}</div></div>
                   <div class="bottom_content">
                     <div class="front" style="width:${rowPositive}%"></div>
                     <div class="neutral" style="width:${rowNeutral}%"></div>
@@ -4761,10 +4866,10 @@
     async function createMonitoringReportShare(button) {
       const share = window.__MONITORING_SHARE__ || {};
       if (!share.createUrl) return;
-      const previousText = button?.textContent || "分享";
+      const previousText = button?.textContent || "Share";
       if (button) {
         button.disabled = true;
-        button.textContent = "生成中";
+        button.textContent = "Generating";
       }
       try {
         const response = await fetch(share.createUrl, {
@@ -4780,10 +4885,10 @@
         const data = await response.json();
         if (!data.url) throw new Error("missing url");
         await copyMonitoringShareUrl(data.url);
-        showMonitoringShareToast("分享链接已复制");
-        if (button) button.textContent = "已复制";
+        showMonitoringShareToast("Share link copied");
+        if (button) button.textContent = "Copied";
       } catch (error) {
-        showMonitoringShareToast("分享失败，请稍后重试");
+        showMonitoringShareToast("Share failed. Please try again later.");
         if (button) button.textContent = previousText;
       } finally {
         if (button) {
@@ -4830,7 +4935,7 @@
 
       const dateLabel = document.querySelector('.desc span');
       if (dateLabel && industryReportData.context?.date) {
-        dateLabel.textContent = `最近更新时间：${industryReportData.context.date}`;
+        dateLabel.textContent = `Last updated: ${industryReportData.context.date}`;
       }
 
       renderIndustrySummary();

@@ -140,9 +140,10 @@ final class BrandDiagnosisPlatform
         $platform = strtolower(trim($platform));
 
         $file = match ($platform) {
-            self::CHATGPT => 'chatgpt.png',
-            self::GROK => 'grok.png',
-            self::GEMINI => 'gemini.png',
+            self::CHATGPT => 'chatgpt.svg',
+            self::GROK => 'grok.svg',
+            self::GEMINI => 'gemini.svg',
+            self::CLAUDE => 'claude.svg',
             self::DEEPSEEK => 'deepseek.png',
             self::QIANWEN => 'qianwen.png',
             self::WENXIN => 'wenxin.png',
@@ -150,14 +151,21 @@ final class BrandDiagnosisPlatform
             default => '',
         };
 
-        return $file !== '' ? 'assets/monitoring-center/assets/ai-platforms/'.$file : '';
+        if ($file === '') {
+            return '';
+        }
+
+        return in_array($platform, self::publicKeys(), true)
+            ? 'ceying-geo-static/ai-platforms/'.$file
+            : 'assets/monitoring-center/assets/ai-platforms/'.$file;
     }
 
     public static function publicLogoPath(string $platform): string
     {
         $platform = self::publicNormalize($platform);
+        $default = self::logoPath($platform);
 
-        return trim((string) config('brand_diagnosis.public_platforms.'.$platform.'.logo_path', ''));
+        return trim((string) config('brand_diagnosis.public_platforms.'.$platform.'.logo_path', $default)) ?: $default;
     }
 
     public static function logoUrl(string $platform): string

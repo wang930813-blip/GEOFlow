@@ -86,8 +86,8 @@ class MonitoringReportRenderer
         );
 
         $title = str_contains($html, 'competitiveness_analysis_report_web')
-            ? '行业竞争力分析报表 - 监测中心'
-            : '企业舆情分析报表 - 监测中心';
+            ? 'Industry Competitiveness Analysis Report - Monitoring Center'
+            : 'Enterprise Sentiment Analysis Report - Monitoring Center';
 
         $html = preg_replace('/<title>.*?<\/title>/su', '<title>'.$title.'</title>', $html, 1) ?? $html;
 

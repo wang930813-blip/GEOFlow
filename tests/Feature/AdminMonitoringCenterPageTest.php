@@ -30,8 +30,8 @@ class AdminMonitoringCenterPageTest extends TestCase
         $enterprise = $renderer->render('enterprise', [], false);
         $industry = $renderer->render('industry', [], false);
 
-        $this->assertStringContainsString('<title>企业舆情分析报表 - 监测中心</title>', $enterprise);
-        $this->assertStringContainsString('<title>行业竞争力分析报表 - 监测中心</title>', $industry);
+        $this->assertStringContainsString('<title>Enterprise Sentiment Analysis Report - Monitoring Center</title>', $enterprise);
+        $this->assertStringContainsString('<title>Industry Competitiveness Analysis Report - Monitoring Center</title>', $industry);
     }
 
     public function test_monitoring_report_logo_url_uses_content_hash_for_cache_busting(): void
@@ -95,7 +95,7 @@ class AdminMonitoringCenterPageTest extends TestCase
     {
         $renderer = app(MonitoringReportRenderer::class);
 
-        foreach (['enterprise' => '企业舆情分析报表', 'industry' => '行业竞争力分析报表'] as $report => $label) {
+        foreach (['enterprise' => 'Enterprise Sentiment Analysis Report', 'industry' => 'Industry Competitiveness Analysis Report'] as $report => $label) {
             $html = $renderer->render($report, [], false, [
                 'enterprise_url' => '/monitoring-report/share/example-token',
                 'industry_url' => '/monitoring-report/share/example-token',
@@ -122,13 +122,16 @@ class AdminMonitoringCenterPageTest extends TestCase
         $response
             ->assertOk()
             ->assertSee('<!doctype html>', false)
-            ->assertSee('企业舆情分析报表')
-            ->assertSee('行业竞争力分析报表')
+            ->assertSee('Enterprise Sentiment Analysis Report')
+            ->assertSee('Industry Competitiveness Analysis Report')
             ->assertSee('href="'.route('admin.monitoring-center.index', ['report' => 'industry']).'"', false)
             ->assertSee('data-monitoring-share-button', false)
             ->assertSee(route('admin.monitoring-center.share'), false)
             ->assertSee('/assets/monitoring-center/assets/backgrounds/enterprise-space-bg.png', false)
-            ->assertSee('/assets/monitoring-center/assets/ai-platforms/deepseek.png', false)
+            ->assertSee('ChatGPT')
+            ->assertDontSee('/assets/monitoring-center/assets/ai-platforms/yuanbao.png', false)
+            ->assertDontSee('Tencent Yuanbao')
+            ->assertDontSee('/assets/monitoring-center/assets/ai-platforms/deepseek.png', false)
             ->assertDontSee('"assets/ai-platforms/deepseek.png"', false)
             ->assertDontSee('鐩戞祴涓', false)
             ->assertDontSee('admin-topbar', false);
@@ -143,11 +146,13 @@ class AdminMonitoringCenterPageTest extends TestCase
 
         $response
             ->assertOk()
-            ->assertSee('行业竞争力分析报表')
+            ->assertSee('Industry Competitiveness Analysis Report')
             ->assertSee('href="'.route('admin.monitoring-center.index', ['report' => 'enterprise']).'"', false)
             ->assertSee('data-monitoring-share-button', false)
             ->assertSee(route('admin.monitoring-center.share'), false)
             ->assertSee('/assets/monitoring-center/ceying-ai-logo1.png', false)
+            ->assertDontSee('/assets/monitoring-center/assets/ai-platforms/yuanbao.png', false)
+            ->assertDontSee('Tencent Yuanbao')
             ->assertDontSee('data-monitoring-dynamic-summary', false)
             ->assertDontSee('admin-topbar', false);
     }
@@ -205,7 +210,7 @@ class AdminMonitoringCenterPageTest extends TestCase
             'owner_admin_id' => (int) $admin->id,
             'admin_id' => (int) $admin->id,
             'brand_name' => 'Acme Brand',
-            'platforms' => ['doubao', 'wenxin'],
+            'platforms' => ['chatgpt', 'grok'],
             'status' => 'completed',
             'total_questions' => 2,
             'completed_questions' => 2,
@@ -229,14 +234,14 @@ class AdminMonitoringCenterPageTest extends TestCase
             'owner_admin_id' => (int) $admin->id,
             'run_id' => (int) $run->id,
             'question_id' => (int) $matchedQuestion->id,
-            'platform' => 'doubao',
+            'platform' => 'chatgpt',
             'answer' => 'Acme Brand appears in this answer.',
             'brand_mentioned' => true,
             'mention_count' => 1,
             'mention_rank' => 1,
             'sentiment' => 'positive',
             'status' => 'success',
-            'official_share_url' => 'https://www.doubao.com/thread/acme-share',
+            'official_share_url' => 'https://chatgpt.com/share/acme-share',
             'checked_at' => now(),
         ]);
         BrandDiagnosisBrandMention::query()->create([
@@ -245,7 +250,7 @@ class AdminMonitoringCenterPageTest extends TestCase
             'run_id' => (int) $run->id,
             'question_id' => (int) $matchedQuestion->id,
             'result_id' => (int) $matchedResult->id,
-            'platform' => 'doubao',
+            'platform' => 'chatgpt',
             'brand_name' => 'Acme Brand',
             'mention_count' => 1,
             'mention_rank' => 1,
@@ -268,7 +273,7 @@ class AdminMonitoringCenterPageTest extends TestCase
             'owner_admin_id' => (int) $admin->id,
             'run_id' => (int) $run->id,
             'question_id' => (int) $unmatchedQuestion->id,
-            'platform' => 'wenxin',
+            'platform' => 'grok',
             'answer' => 'This answer does not include the target brand.',
             'brand_mentioned' => false,
             'mention_count' => 0,
@@ -285,7 +290,7 @@ class AdminMonitoringCenterPageTest extends TestCase
             ->getContent();
 
         $this->assertMatchesRegularExpression(
-            '#"id":'.$matchedResult->id.'.*?"question":"How is Acme Brand ranked\\?".*?"target":"Acme Brand".*?"official_url":"https://www.doubao.com/thread/acme-share".*?"snapshot_url":"'.preg_quote(route('admin.snapshot-voucher.show', ['id' => (int) $matchedResult->id]), '#').'"#s',
+            '#"id":'.$matchedResult->id.'.*?"question":"How is Acme Brand ranked\\?".*?"target":"Acme Brand".*?"official_url":"https://chatgpt.com/share/acme-share".*?"snapshot_url":"'.preg_quote(route('admin.snapshot-voucher.show', ['id' => (int) $matchedResult->id]), '#').'"#s',
             $html
         );
         $this->assertMatchesRegularExpression(
@@ -306,7 +311,7 @@ class AdminMonitoringCenterPageTest extends TestCase
             'owner_admin_id' => (int) $admin->id,
             'admin_id' => (int) $admin->id,
             'brand_name' => 'Full Rows Brand',
-            'platforms' => ['doubao'],
+            'platforms' => ['chatgpt'],
             'status' => 'completed',
             'total_questions' => 81,
             'completed_questions' => 81,
@@ -332,7 +337,7 @@ class AdminMonitoringCenterPageTest extends TestCase
                 'owner_admin_id' => (int) $admin->id,
                 'run_id' => (int) $run->id,
                 'question_id' => (int) $question->id,
-                'platform' => 'doubao',
+                'platform' => 'chatgpt',
                 'answer' => 'Full Rows Brand answer '.$index,
                 'brand_mentioned' => true,
                 'mention_count' => 1,
@@ -362,10 +367,10 @@ class AdminMonitoringCenterPageTest extends TestCase
 
         $filters = collect(data_get($payload, 'platform_filters', []));
         $this->assertSame(162, (int) data_get($filters->first(), 'total'));
-        $doubaoFilters = $filters->where('platform_key', 'doubao')->where('total', 81)->values();
-        $this->assertCount(2, $doubaoFilters);
-        $this->assertSame(1, $doubaoFilters->where('terminal', 'PC')->count());
-        $this->assertSame(1, $doubaoFilters->reject(fn (array $row): bool => (string) $row['terminal'] === 'PC')->count());
+        $chatgptFilters = $filters->where('platform_key', 'chatgpt')->where('total', 81)->values();
+        $this->assertCount(2, $chatgptFilters);
+        $this->assertSame(1, $chatgptFilters->where('terminal', 'PC')->count());
+        $this->assertSame(1, $chatgptFilters->reject(fn (array $row): bool => (string) $row['terminal'] === 'PC')->count());
     }
 
     public function test_monitoring_center_virtual_switch_only_keeps_search_report_static(): void
@@ -404,18 +409,17 @@ class AdminMonitoringCenterPageTest extends TestCase
         $this->assertStringContainsString('if (!useVirtualSearchReportData && Array.isArray(dynamicReport.platform_filters)', $html);
         $this->assertStringContainsString('if (!useVirtualSearchReportData && Array.isArray(dynamicReport.search_rows))', $html);
         $this->assertStringContainsString('staticPlatformUrl(row.platform)', $html);
-        $this->assertStringContainsString('https://www.doubao.com/chat/', $html);
-        $this->assertStringContainsString('["全部", "全部", 25]', $html);
-        $this->assertStringContainsString('["DeepSeek", "PC", 3]', $html);
-        $this->assertStringContainsString('["DeepSeek", "移动", 2]', $html);
-        $this->assertStringContainsString('["豆包", "PC", 3]', $html);
-        $this->assertStringContainsString('["豆包", "移动", 2]', $html);
-        $this->assertStringContainsString('["腾讯元宝", "PC", 3]', $html);
-        $this->assertStringContainsString('["腾讯元宝", "移动", 2]', $html);
-        $this->assertStringContainsString('["文心一言", "PC", 5]', $html);
-        $this->assertStringContainsString('["文心一言", "移动", 0]', $html);
-        $this->assertStringContainsString('["千问", "PC", 3]', $html);
-        $this->assertStringContainsString('["千问", "移动", 2]', $html);
+        $this->assertStringContainsString('https://chatgpt.com/', $html);
+        $this->assertStringContainsString('["All", "All", 25]', $html);
+        $this->assertStringContainsString('["ChatGPT", "PC", 8]', $html);
+        $this->assertStringContainsString('["ChatGPT", "Mobile", 2]', $html);
+        $this->assertStringContainsString('["Grok", "PC", 3]', $html);
+        $this->assertStringContainsString('["Grok", "Mobile", 2]', $html);
+        $this->assertStringContainsString('["Gemini", "PC", 3]', $html);
+        $this->assertStringContainsString('["Gemini", "Mobile", 2]', $html);
+        $this->assertStringContainsString('["Claude", "PC", 3]', $html);
+        $this->assertStringContainsString('["Claude", "Mobile", 2]', $html);
+        $this->assertStringNotContainsString('Yuanbao', $html);
         $this->assertStringContainsString('2026年国内科研选题辅导机构哪些好', $html);
         $this->assertStringContainsString('2026年国内SCI/SSCI论文辅导机构有哪些？', $html);
         $this->assertStringContainsString('SCI/SSCI全流程能力辅导平台推荐', $html);
@@ -770,7 +774,7 @@ class AdminMonitoringCenterPageTest extends TestCase
             ],
             'platforms' => [
                 [
-                    'platform_key' => 'doubao',
+                    'platform_key' => 'chatgpt',
                     'platform' => "Broken\xB1Platform",
                     'analysis_count' => 1,
                     'top_rank_rates' => ['top1' => 100],
