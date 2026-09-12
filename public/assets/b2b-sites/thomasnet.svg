@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="120" viewBox="0 0 320 120" role="img" aria-label="Thomasnet">
+  <rect width="320" height="120" rx="18" fill="#eff6ff"/>
+  <rect x="28" y="32" width="56" height="56" rx="14" fill="#2563eb"/>
+  <path d="M44 48h24v10h-7v25H51V58h-7V48Z" fill="#fff"/>
+  <text x="102" y="70" fill="#0f172a" font-family="Arial, Helvetica, sans-serif" font-size="34" font-weight="800">Thomasnet</text>
+</svg>

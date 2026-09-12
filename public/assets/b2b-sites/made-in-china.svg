@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="120" viewBox="0 0 320 120" role="img" aria-label="Made-in-China">
+  <rect width="320" height="120" rx="18" fill="#fef2f2"/>
+  <circle cx="56" cy="60" r="29" fill="#dc2626"/>
+  <path d="m56 37 7 14 16 2-12 11 3 16-14-8-14 8 3-16-12-11 16-2 7-14Z" fill="#fff"/>
+  <text x="102" y="56" fill="#111827" font-family="Arial, Helvetica, sans-serif" font-size="27" font-weight="800">Made-in</text>
+  <text x="102" y="83" fill="#dc2626" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="800">China</text>
+</svg>

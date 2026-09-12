@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="120" viewBox="0 0 320 120" role="img" aria-label="Europages">
+  <rect width="320" height="120" rx="18" fill="#fefce8"/>
+  <circle cx="56" cy="60" r="29" fill="#facc15"/>
+  <path d="M40 61c9-15 24-20 39-15-10 4-17 11-22 22 11-4 20-4 27 0-16 15-36 10-44-7Z" fill="#1f2937"/>
+  <text x="102" y="70" fill="#111827" font-family="Arial, Helvetica, sans-serif" font-size="34" font-weight="800">Europages</text>
+</svg>

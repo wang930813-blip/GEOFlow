@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="120" viewBox="0 0 320 120" role="img" aria-label="Alibaba.com">
+  <rect width="320" height="120" rx="18" fill="#fff7ed"/>
+  <circle cx="52" cy="60" r="28" fill="#ff6a00"/>
+  <path d="M39 63c10-18 31-17 39 0-8-8-26-8-39 0Z" fill="#fff"/>
+  <text x="94" y="57" fill="#111827" font-family="Arial, Helvetica, sans-serif" font-size="32" font-weight="800">Alibaba</text>
+  <text x="94" y="84" fill="#ff6a00" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="700">.com</text>
+</svg>

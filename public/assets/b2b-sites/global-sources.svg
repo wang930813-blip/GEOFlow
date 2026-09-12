@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="120" viewBox="0 0 320 120" role="img" aria-label="Global Sources">
+  <rect width="320" height="120" rx="18" fill="#eff6ff"/>
+  <circle cx="56" cy="60" r="30" fill="#0284c7"/>
+  <path d="M39 62c8-15 27-22 41-12-17-2-29 7-31 25-6-3-9-7-10-13Z" fill="#fff"/>
+  <path d="M72 65c-8 15-27 22-41 12 17 2 29-7 31-25 6 3 9 7 10 13Z" fill="#bae6fd"/>
+  <text x="102" y="56" fill="#111827" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="800">Global</text>
+  <text x="102" y="83" fill="#0284c7" font-family="Arial, Helvetica, sans-serif" font-size="27" font-weight="800">Sources</text>
+</svg>

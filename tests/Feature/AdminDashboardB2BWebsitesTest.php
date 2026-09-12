@@ -46,14 +46,31 @@ class AdminDashboardB2BWebsitesTest extends TestCase
     {
         [$admin, $site] = $this->createAdminWithSite('b2b_dashboard_logo_admin');
 
-        $response = $this->actingAs($admin, 'admin')
+        $html = $this->actingAs($admin, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
-            ->get(route('admin.b2b-websites.index'));
-
-        $response
+            ->get(route('admin.b2b-websites.index'))
             ->assertOk()
-            ->assertSee('https://www.google.com/s2/favicons?domain=alibaba.com&amp;sz=128', false)
-            ->assertDontSee('>AL<', false);
+            ->assertSee(asset('assets/b2b-sites/alibaba.svg'), false)
+            ->assertSee(asset('assets/b2b-sites/thomasnet.svg'), false)
+            ->getContent();
+
+        $this->assertStringNotContainsString('https://www.google.com/s2/favicons', $html);
+        $this->assertStringNotContainsString('>AL<', $html);
+
+        foreach ([
+            'alibaba.svg',
+            'thomasnet.svg',
+            'kompass.svg',
+            'directindustry.svg',
+            'europages.svg',
+            'globalspec.svg',
+            'wlw-industrystock.svg',
+            'made-in-china.svg',
+            'amazon-business.svg',
+            'global-sources.svg',
+        ] as $logo) {
+            $this->assertFileExists(public_path('assets/b2b-sites/'.$logo));
+        }
     }
 
     public function test_admin_can_open_b2b_website_for_current_site_and_account(): void
