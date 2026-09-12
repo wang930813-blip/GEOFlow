@@ -35,9 +35,9 @@ class ProductCaseReportSummaryService
             ->count();
 
         return array_values(array_filter([
-            ['label' => 'AI 平台', 'value' => $platformCount],
-            ['label' => '搜索报表', 'value' => $searchReportCount],
-            ['label' => '问题词', 'value' => $distillationWordCount],
+            ['label' => 'AI Platforms', 'value' => $platformCount],
+            ['label' => 'Search Reports', 'value' => $searchReportCount],
+            ['label' => 'Question Terms', 'value' => $distillationWordCount],
         ], static fn (array $metric): bool => (int) $metric['value'] > 0));
     }
 
@@ -87,10 +87,10 @@ class ProductCaseReportSummaryService
     private function metrics(array $summary): array
     {
         return [
-            ['label' => 'AI 平台覆盖', 'value' => (int) data_get($summary, 'platform_count.display', 0)],
-            ['label' => '搜索报表数量', 'value' => (int) data_get($summary, 'search_report_count.display', 0)],
-            ['label' => 'AI 搜索词数量', 'value' => (int) data_get($summary, 'distillation_word_count.display', 0)],
-            ['label' => '引用来源数量', 'value' => (int) data_get($summary, 'source_count.display', 0)],
+            ['label' => 'AI Platform Coverage', 'value' => (int) data_get($summary, 'platform_count.display', 0)],
+            ['label' => 'Search Report Count', 'value' => (int) data_get($summary, 'search_report_count.display', 0)],
+            ['label' => 'AI Search Terms', 'value' => (int) data_get($summary, 'distillation_word_count.display', 0)],
+            ['label' => 'Citation Sources', 'value' => (int) data_get($summary, 'source_count.display', 0)],
         ];
     }
 
@@ -106,10 +106,10 @@ class ProductCaseReportSummaryService
                 'distillation_word_count' => 0,
                 'source_count' => 0,
                 'metrics' => [
-                    ['label' => 'AI 平台覆盖', 'value' => 0],
-                    ['label' => '搜索报表数量', 'value' => 0],
-                    ['label' => 'AI 搜索词数量', 'value' => 0],
-                    ['label' => '引用来源数量', 'value' => 0],
+                    ['label' => 'AI Platform Coverage', 'value' => 0],
+                    ['label' => 'Search Report Count', 'value' => 0],
+                    ['label' => 'AI Search Terms', 'value' => 0],
+                    ['label' => 'Citation Sources', 'value' => 0],
                 ],
             ],
             'platforms' => [],

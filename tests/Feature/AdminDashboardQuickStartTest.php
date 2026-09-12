@@ -39,9 +39,11 @@ class AdminDashboardQuickStartTest extends TestCase
             ->assertSee(__('admin.dashboard.navigation.body_prompt_label'))
             ->assertSee(__('admin.dashboard.navigation.special_prompt_label'))
             ->assertSee(__('admin.dashboard.navigation.admin_users_title'))
-            ->assertSee('官媒发布')
-            ->assertSee('投稿订单')
+            ->assertSee('自媒体发布')
+            ->assertSee('B2B 发布')
             ->assertSee('站点积分')
+            ->assertDontSee('官媒发布')
+            ->assertDontSee('投稿订单')
             ->assertDontSee(__('admin.dashboard.skill_resources.title'))
             ->assertDontSee(__('admin.dashboard.skill_resources.template_title'))
             ->assertDontSee(__('admin.dashboard.skill_resources.design_title'))
@@ -82,9 +84,11 @@ class AdminDashboardQuickStartTest extends TestCase
             ->assertSee(route('admin.ai-prompts'), false)
             ->assertSee(route('admin.ai-special-prompts'), false)
             ->assertSee(route('admin.admin-users.index'), false)
-            ->assertSee(route('admin.media-distribution.resources.index'), false)
-            ->assertSee(route('admin.media-distribution.submissions.index'), false)
+            ->assertSee(route('admin.crebee-accounts.index'), false)
+            ->assertSee(route('admin.b2b-websites.index'), false)
             ->assertSee(route('admin.media-distribution.credits.index'), false)
+            ->assertDontSee(route('admin.media-distribution.resources.index'), false)
+            ->assertDontSee(route('admin.media-distribution.submissions.index'), false)
             ->assertDontSee(route('admin.distribution.index'), false)
             ->assertDontSee(route('admin.distribution.create'), false)
             ->assertDontSee(route('admin.distribution.jobs'), false)
@@ -98,6 +102,30 @@ class AdminDashboardQuickStartTest extends TestCase
         $this->assertSame(1, substr_count($html, route('admin.keyword-libraries.index')));
         $this->assertSame(1, substr_count($html, route('admin.image-libraries.index')));
         $this->assertSame(1, substr_count($html, route('admin.authors.index')));
+    }
+
+    public function test_dashboard_navigation_copy_respects_english_locale(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'dashboard_english_locale_admin',
+            'password' => 'secret-123',
+            'email' => 'dashboard-english-locale@example.com',
+            'display_name' => 'Dashboard English Locale Admin',
+            'role' => 'super_admin',
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['locale' => 'en'])
+            ->get(route('admin.dashboard'))
+            ->assertOk()
+            ->assertSee('Home Navigation')
+            ->assertSee('Configure Materials')
+            ->assertSee('Self-Media Publishing')
+            ->assertSee('B2B Publishing')
+            ->assertSee('Site Credits')
+            ->assertDontSee('首页导航')
+            ->assertDontSee('配置素材库');
     }
 
     public function test_dashboard_quick_start_and_footer_use_configurable_admin_display_copy(): void

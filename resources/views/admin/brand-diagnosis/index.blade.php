@@ -116,9 +116,9 @@
                     @enderror
                     <p class="mt-2 text-xs text-gray-500">选择模型后，可生成品牌提及率、提及次数、排名和引用来源报告。</p>
                 </div>
-                <div class="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:w-[520px]">
+                <div class="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:w-[640px]">
                     @foreach ($models as $model)
-                        <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                        <div class="flex h-full flex-col justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-orange-200 hover:bg-orange-50/40" data-brand-diagnosis-platform-card>
                             <div class="flex items-center gap-2">
                                 @if (! empty($model['logo']))
                                     <span class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white shadow-sm">
@@ -128,11 +128,11 @@
                                     <span class="{{ $model['color'] }} inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white">{{ $model['initial'] }}</span>
                                 @endif
                                 <div class="min-w-0">
-                                    <div class="truncate text-sm font-semibold text-gray-900">{{ $model['name'] }}</div>
-                                    <div class="text-xs text-gray-500">{{ $model['desc'] }}</div>
+                                    <div class="whitespace-nowrap text-sm font-semibold text-gray-900" data-brand-diagnosis-platform-name>{{ $model['name'] }}</div>
                                 </div>
                             </div>
-                            <div class="mt-3 space-y-2 text-xs text-gray-700">
+                            <p class="min-h-8 line-clamp-2 text-xs leading-4 text-gray-500">{{ $model['desc'] }}</p>
+                            <div class="space-y-2 text-xs text-gray-700">
                                 <div class="flex min-h-6 items-center gap-2 text-gray-600">
                                     <span class="inline-flex h-2 w-2 rounded-full bg-orange-500"></span>
                                     网页

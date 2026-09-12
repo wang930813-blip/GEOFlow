@@ -37,8 +37,12 @@ class AdminMediaDistributionTest extends TestCase
         $this->actingAs($admin, 'admin')
             ->get(route('admin.dashboard'))
             ->assertOk()
-            ->assertSee(route('admin.media-distribution.resources.index'), false)
-            ->assertSee('官媒发布')
+            ->assertSee(route('admin.crebee-accounts.index'), false)
+            ->assertSee(route('admin.b2b-websites.index'), false)
+            ->assertSee('自媒体发布')
+            ->assertSee('B2B 发布')
+            ->assertDontSee(route('admin.media-distribution.resources.index'), false)
+            ->assertDontSee('官媒发布')
             ->assertDontSee(route('admin.distribution.index'), false);
     }
 

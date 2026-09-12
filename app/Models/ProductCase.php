@@ -20,92 +20,167 @@ class ProductCase extends Model
      * @var list<string>
      */
     public const INDUSTRY_OPTIONS = [
-        '服装',
-        '化工',
-        '玩具',
-        '精细化学品',
-        '食品、饮料',
-        '机械及行业设备',
-        '电子元器件',
-        '礼品、工艺品、饰品',
-        '通信产品',
-        '其他',
-        '二手设备',
-        '五金、工具',
-        '交通运输',
-        '仪器仪表',
-        '传媒、广电',
-        '农业',
-        '冶金矿产',
-        '办公、文教',
-        '包装',
-        '医药、保养',
-        '医药健康',
-        '印刷',
-        '商务服务',
-        '安全、防护',
-        '家居用品',
-        '家用电器',
-        '建筑、建材',
-        '教育培训',
-        '数码、电脑',
-        '服装内衣',
-        '服饰',
-        '橡塑',
-        '汽摩及配件',
-        '照明工业',
-        '环保',
-        '电工电气',
-        '纸业',
-        '纺织、皮革',
-        '能源',
-        '航天航空',
-        '运动、休闲',
-        '鞋包配饰',
+        'Apparel',
+        'Chemicals',
+        'Toys',
+        'Fine Chemicals',
+        'Food & Beverage',
+        'Machinery & Industrial Equipment',
+        'Electronic Components',
+        'Gifts, Crafts & Accessories',
+        'Telecommunications',
+        'Other',
+        'Used Equipment',
+        'Hardware & Tools',
+        'Transportation',
+        'Instruments & Meters',
+        'Media & Broadcasting',
+        'Agriculture',
+        'Metallurgy & Minerals',
+        'Office & Stationery',
+        'Packaging',
+        'Pharmaceuticals & Health Products',
+        'Healthcare',
+        'Printing',
+        'Business Services',
+        'Safety & Security',
+        'Home & Living',
+        'Home Appliances',
+        'Building Materials',
+        'Education & Training',
+        'Digital & Computers',
+        'Underwear & Intimate Apparel',
+        'Fashion Accessories',
+        'Rubber & Plastics',
+        'Automotive & Parts',
+        'Lighting',
+        'Environmental Protection',
+        'Electrical Equipment',
+        'Paper & Pulp',
+        'Textile & Leather',
+        'Energy',
+        'Aerospace',
+        'Sports & Recreation',
+        'Footwear & Bags',
     ];
 
     /**
      * @var list<string>
      */
     public const REGION_OPTIONS = [
-        '上海市',
-        '苏州市',
-        '深圳市',
-        '成都市',
-        '无锡市',
-        '新乡市',
-        '淄博市',
-        '杭州市',
-        '泉州市',
-        '温州市',
-        '福州市',
-        '烟台市',
-        '长春市',
-        '北京市',
-        '郑州市',
-        '兰州市',
-        '东莞市',
-        '南京市',
-        '贵阳市',
-        '青岛市',
-        '中山市',
-        '广州市',
-        '大连市',
-        '常州市',
-        '武汉市',
-        '宁波市',
-        '厦门市',
-        '绵阳市',
-        '南昌市',
-        '济宁市',
-        '佛山市',
-        '临沂市',
-        '威海市',
-        '哈尔滨市',
-        '金华市',
-        '台州市',
-        '合肥市',
-        '其他市',
+        'Global',
+        'Asia-Pacific',
+        'Europe & Americas',
+        'North America',
+        'Europe',
+        'Latin America',
+        'Middle East',
+        'Africa',
+        'Oceania',
+        'Southeast Asia',
+        'East Asia',
+        'South Asia',
+        'Central Asia',
+        'Western Europe',
+        'Eastern Europe',
+        'Northern Europe',
+        'Southern Europe',
+        'United States & Canada',
+        'Greater China',
+        'Japan & Korea',
+        'GCC Countries',
+    ];
+
+    /**
+     * @var array<string,string>
+     */
+    public const LEGACY_INDUSTRY_LABELS = [
+        '服装' => 'Apparel',
+        '化工' => 'Chemicals',
+        '玩具' => 'Toys',
+        '精细化学品' => 'Fine Chemicals',
+        '食品、饮料' => 'Food & Beverage',
+        '机械及行业设备' => 'Machinery & Industrial Equipment',
+        '电子元器件' => 'Electronic Components',
+        '礼品、工艺品、饰品' => 'Gifts, Crafts & Accessories',
+        '通信产品' => 'Telecommunications',
+        '其他' => 'Other',
+        '二手设备' => 'Used Equipment',
+        '五金、工具' => 'Hardware & Tools',
+        '交通运输' => 'Transportation',
+        '仪器仪表' => 'Instruments & Meters',
+        '传媒、广电' => 'Media & Broadcasting',
+        '农业' => 'Agriculture',
+        '冶金矿产' => 'Metallurgy & Minerals',
+        '办公、文教' => 'Office & Stationery',
+        '包装' => 'Packaging',
+        '医药、保养' => 'Pharmaceuticals & Health Products',
+        '医药健康' => 'Healthcare',
+        '印刷' => 'Printing',
+        '商务服务' => 'Business Services',
+        '安全、防护' => 'Safety & Security',
+        '家居用品' => 'Home & Living',
+        '家用电器' => 'Home Appliances',
+        '建筑、建材' => 'Building Materials',
+        '教育培训' => 'Education & Training',
+        '数码、电脑' => 'Digital & Computers',
+        '服装内衣' => 'Underwear & Intimate Apparel',
+        '服饰' => 'Fashion Accessories',
+        '橡塑' => 'Rubber & Plastics',
+        '汽摩及配件' => 'Automotive & Parts',
+        '照明工业' => 'Lighting',
+        '环保' => 'Environmental Protection',
+        '电工电气' => 'Electrical Equipment',
+        '纸业' => 'Paper & Pulp',
+        '纺织、皮革' => 'Textile & Leather',
+        '能源' => 'Energy',
+        '航天航空' => 'Aerospace',
+        '运动、休闲' => 'Sports & Recreation',
+        '鞋包配饰' => 'Footwear & Bags',
+    ];
+
+    /**
+     * @var array<string,string>
+     */
+    public const LEGACY_REGION_LABELS = [
+        '上海市' => 'Asia-Pacific',
+        '苏州市' => 'Asia-Pacific',
+        '深圳市' => 'Asia-Pacific',
+        '成都市' => 'Asia-Pacific',
+        '无锡市' => 'Asia-Pacific',
+        '新乡市' => 'Asia-Pacific',
+        '淄博市' => 'Asia-Pacific',
+        '杭州市' => 'Asia-Pacific',
+        '泉州市' => 'Asia-Pacific',
+        '温州市' => 'Asia-Pacific',
+        '福州市' => 'Asia-Pacific',
+        '烟台市' => 'Asia-Pacific',
+        '长春市' => 'Asia-Pacific',
+        '北京市' => 'Asia-Pacific',
+        '郑州市' => 'Asia-Pacific',
+        '兰州市' => 'Asia-Pacific',
+        '东莞市' => 'Asia-Pacific',
+        '南京市' => 'Asia-Pacific',
+        '贵阳市' => 'Asia-Pacific',
+        '青岛市' => 'Asia-Pacific',
+        '中山市' => 'Asia-Pacific',
+        '广州市' => 'Asia-Pacific',
+        '大连市' => 'Asia-Pacific',
+        '常州市' => 'Asia-Pacific',
+        '武汉市' => 'Asia-Pacific',
+        '宁波市' => 'Asia-Pacific',
+        '厦门市' => 'Asia-Pacific',
+        '绵阳市' => 'Asia-Pacific',
+        '南昌市' => 'Asia-Pacific',
+        '济宁市' => 'Asia-Pacific',
+        '佛山市' => 'Asia-Pacific',
+        '临沂市' => 'Asia-Pacific',
+        '威海市' => 'Asia-Pacific',
+        '哈尔滨市' => 'Asia-Pacific',
+        '金华市' => 'Asia-Pacific',
+        '台州市' => 'Asia-Pacific',
+        '合肥市' => 'Asia-Pacific',
+        '其他市' => 'Global',
     ];
 
     protected $attributes = [
@@ -224,7 +299,7 @@ class ProductCase extends Model
      */
     public static function industryOptions(string $currentValue = ''): array
     {
-        return self::withCurrentOption(self::INDUSTRY_OPTIONS, $currentValue);
+        return self::withCurrentOption(self::INDUSTRY_OPTIONS, self::normalizeIndustryLabel($currentValue));
     }
 
     /**
@@ -232,7 +307,47 @@ class ProductCase extends Model
      */
     public static function regionOptions(string $currentValue = ''): array
     {
-        return self::withCurrentOption(self::REGION_OPTIONS, $currentValue);
+        return self::withCurrentOption(self::REGION_OPTIONS, self::normalizeRegionLabel($currentValue));
+    }
+
+    public static function normalizeIndustryLabel(string $value): string
+    {
+        $value = trim($value);
+
+        return self::LEGACY_INDUSTRY_LABELS[$value] ?? $value;
+    }
+
+    public static function normalizeRegionLabel(string $value): string
+    {
+        $value = trim($value);
+
+        return self::LEGACY_REGION_LABELS[$value] ?? $value;
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function industryStorageValues(string $label): array
+    {
+        return self::storageValuesForLabel(self::LEGACY_INDUSTRY_LABELS, self::normalizeIndustryLabel($label));
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function regionStorageValues(string $label): array
+    {
+        return self::storageValuesForLabel(self::LEGACY_REGION_LABELS, self::normalizeRegionLabel($label));
+    }
+
+    public function displayIndustry(): string
+    {
+        return self::normalizeIndustryLabel((string) $this->industry);
+    }
+
+    public function displayRegion(): string
+    {
+        return self::normalizeRegionLabel((string) $this->region);
     }
 
     /**
@@ -248,5 +363,26 @@ class ProductCase extends Model
         }
 
         return $options;
+    }
+
+    /**
+     * @param  array<string,string>  $legacyLabels
+     * @return list<string>
+     */
+    private static function storageValuesForLabel(array $legacyLabels, string $label): array
+    {
+        $label = trim($label);
+        if ($label === '') {
+            return [];
+        }
+
+        $values = [$label];
+        foreach ($legacyLabels as $legacy => $normalized) {
+            if ($normalized === $label) {
+                $values[] = $legacy;
+            }
+        }
+
+        return array_values(array_unique($values));
     }
 }

@@ -16,8 +16,8 @@ class ProductCaseController extends Controller
         $caseRoutes = $this->routeNames($request);
         $filters = [
             'keyword' => trim((string) $request->query('keyword', '')),
-            'industry' => trim((string) $request->query('industry', '')),
-            'region' => trim((string) $request->query('region', '')),
+            'industry' => ProductCase::normalizeIndustryLabel((string) $request->query('industry', '')),
+            'region' => ProductCase::normalizeRegionLabel((string) $request->query('region', '')),
         ];
 
         $query = ProductCase::query()
@@ -46,8 +46,8 @@ class ProductCaseController extends Controller
             'caseRoutes' => $caseRoutes,
             'filterOptions' => $this->filterOptions(),
             'filters' => $filters,
-            'pageTitle' => '产品案例',
-            'pageDescription' => '查看 GEO 与 AI 搜索优化产品案例，了解品牌诊断、AI 搜索收录和内容增长的落地效果。',
+            'pageTitle' => 'Product Cases',
+            'pageDescription' => 'Explore GEO and AI search optimization case studies, including brand diagnostics, AI answer visibility, and content growth outcomes.',
         ]);
     }
 
@@ -86,11 +86,11 @@ class ProductCaseController extends Controller
         }
 
         if ($filters['industry'] !== '') {
-            $query->where('industry', $filters['industry']);
+            $query->whereIn('industry', ProductCase::industryStorageValues($filters['industry']));
         }
 
         if ($filters['region'] !== '') {
-            $query->where('region', $filters['region']);
+            $query->whereIn('region', ProductCase::regionStorageValues($filters['region']));
         }
 
     }

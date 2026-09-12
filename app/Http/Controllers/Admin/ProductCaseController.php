@@ -41,7 +41,7 @@ class ProductCaseController extends Controller
             ->withQueryString();
 
         return view('admin.product-cases.index', [
-            'pageTitle' => '产品案例管理',
+            'pageTitle' => 'Product Case Management',
             'activeMenu' => 'product_cases_manage',
             'adminSiteName' => AdminWeb::siteName(),
             'cases' => $cases,
@@ -55,7 +55,7 @@ class ProductCaseController extends Controller
         $this->authorizedAdmin();
 
         return view('admin.product-cases.create', [
-            'pageTitle' => '新增产品案例',
+            'pageTitle' => 'New Product Case',
             'activeMenu' => 'product_cases_manage',
             'adminSiteName' => AdminWeb::siteName(),
             'case' => new ProductCase,
@@ -64,7 +64,7 @@ class ProductCaseController extends Controller
             'industryOptions' => $this->industryOptions(),
             'regionOptions' => $this->regionOptions(),
             'statusLabels' => $this->statusLabels(),
-            'submitLabel' => '创建案例',
+            'submitLabel' => 'Create Case',
         ]);
     }
 
@@ -80,7 +80,7 @@ class ProductCaseController extends Controller
 
         return redirect()
             ->route('admin.product-cases.index')
-            ->with('message', '产品案例已创建：'.$case->title);
+            ->with('message', 'Product case created: '.$case->title);
     }
 
     public function edit(ProductCase $productCase): View
@@ -88,7 +88,7 @@ class ProductCaseController extends Controller
         $this->authorizedAdmin();
 
         return view('admin.product-cases.edit', [
-            'pageTitle' => '编辑产品案例',
+            'pageTitle' => 'Edit Product Case',
             'activeMenu' => 'product_cases_manage',
             'adminSiteName' => AdminWeb::siteName(),
             'case' => $productCase,
@@ -97,7 +97,7 @@ class ProductCaseController extends Controller
             'industryOptions' => $this->industryOptions($productCase),
             'regionOptions' => $this->regionOptions($productCase),
             'statusLabels' => $this->statusLabels(),
-            'submitLabel' => '保存修改',
+            'submitLabel' => 'Save Changes',
         ]);
     }
 
@@ -111,7 +111,7 @@ class ProductCaseController extends Controller
 
         return redirect()
             ->route('admin.product-cases.index')
-            ->with('message', '产品案例已更新');
+            ->with('message', 'Product case updated');
     }
 
     public function toggleStatus(ProductCase $productCase): RedirectResponse
@@ -131,7 +131,7 @@ class ProductCaseController extends Controller
 
         return redirect()
             ->route('admin.product-cases.index')
-            ->with('message', $nextStatus === ProductCase::STATUS_PUBLISHED ? '产品案例已发布' : '产品案例已隐藏');
+            ->with('message', $nextStatus === ProductCase::STATUS_PUBLISHED ? 'Product case published' : 'Product case hidden');
     }
 
     public function destroy(ProductCase $productCase): RedirectResponse
@@ -141,7 +141,7 @@ class ProductCaseController extends Controller
 
         return redirect()
             ->route('admin.product-cases.index')
-            ->with('message', '产品案例已删除');
+            ->with('message', 'Product case deleted');
     }
 
     /**
@@ -172,9 +172,9 @@ class ProductCaseController extends Controller
             'sort_order' => ['nullable', 'integer', 'min:-999999', 'max:999999'],
             'published_at' => ['nullable', 'date'],
         ], [
-            'title.required' => '请填写案例标题',
-            'slug.regex' => '案例别名只能包含英文、数字、中横线和下划线',
-            'status.in' => '案例状态不正确',
+            'title.required' => 'Please enter a case title.',
+            'slug.regex' => 'The case slug may only contain letters, numbers, hyphens, and underscores.',
+            'status.in' => 'The selected case status is invalid.',
         ]);
 
         $site = null;
@@ -222,6 +222,9 @@ class ProductCaseController extends Controller
         ] as $stringKey) {
             $attributes[$stringKey] = (string) ($attributes[$stringKey] ?? '');
         }
+
+        $attributes['industry'] = ProductCase::normalizeIndustryLabel((string) $attributes['industry']);
+        $attributes['region'] = ProductCase::normalizeRegionLabel((string) $attributes['region']);
 
         $attributes['slug'] = $slug;
         $attributes['site_id'] = $siteId > 0 ? $siteId : null;
@@ -279,9 +282,9 @@ class ProductCaseController extends Controller
     private function statusLabels(): array
     {
         return [
-            ProductCase::STATUS_DRAFT => '草稿',
-            ProductCase::STATUS_PUBLISHED => '已发布',
-            ProductCase::STATUS_HIDDEN => '已隐藏',
+            ProductCase::STATUS_DRAFT => 'Draft',
+            ProductCase::STATUS_PUBLISHED => 'Published',
+            ProductCase::STATUS_HIDDEN => 'Hidden',
         ];
     }
 

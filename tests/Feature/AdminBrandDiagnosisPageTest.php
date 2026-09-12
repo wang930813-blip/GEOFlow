@@ -152,6 +152,31 @@ class AdminBrandDiagnosisPageTest extends TestCase
         }
     }
 
+    public function test_brand_diagnosis_model_cards_show_full_names_without_cramped_descriptions(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'brand_model_card_layout_admin',
+            'password' => 'secret-123',
+            'email' => 'brand-model-card-layout-admin@example.com',
+            'display_name' => 'Brand Model Card Layout Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        $html = $this->actingAs($admin, 'admin')
+            ->get(route('admin.brand-diagnosis.index'))
+            ->assertOk()
+            ->assertSee('ChatGPT')
+            ->assertSee('Claude')
+            ->getContent();
+
+        $this->assertSame(4, substr_count($html, 'data-brand-diagnosis-platform-card'));
+        $this->assertSame(4, substr_count($html, 'data-brand-diagnosis-platform-name'));
+        $this->assertStringContainsString('whitespace-nowrap text-sm font-semibold text-gray-900', $html);
+        $this->assertStringNotContainsString('truncate text-sm font-semibold text-gray-900', $html);
+        $this->assertStringContainsString('line-clamp-2 text-xs leading-4 text-gray-500', $html);
+    }
+
     public function test_brand_diagnosis_questions_are_editable_before_confirming_diagnosis(): void
     {
         [$admin, $site] = $this->createAdminWithSite('brand_question_confirm_page_admin');

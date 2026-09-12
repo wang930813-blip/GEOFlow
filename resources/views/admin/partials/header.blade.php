@@ -6,7 +6,9 @@
     $isDirectAdmin = $currentAdmin && method_exists($currentAdmin, 'isDirectAdmin') && $currentAdmin->isDirectAdmin();
     $isSiteUser = $currentAdmin && method_exists($currentAdmin, 'isSiteUser') && $currentAdmin->isSiteUser();
     $canManageAiConfig = $isSuperAdmin || $isAgentAdmin;
-    $adminRoleLabel = $isSuperAdmin ? '管理' : ($isAgentAdmin ? '代理' : '会员');
+    $adminRoleLabel = $isSuperAdmin
+        ? __('admin.header.roles.admin')
+        : ($isAgentAdmin ? __('admin.header.roles.agent') : __('admin.header.roles.member'));
     $adminRoleKey = $isSuperAdmin ? 'super_admin' : ($isAgentAdmin ? 'agent_admin' : 'member');
     $adminRoleBadgeClass = $isSuperAdmin
         ? 'bg-indigo-50 text-indigo-700 ring-indigo-100'
@@ -33,55 +35,55 @@
             'type' => 'link',
             'key' => 'dashboard',
             'route' => 'admin.dashboard',
-            'name' => '首页',
+            'name' => __('admin.nav.dashboard'),
             'visible' => true,
         ],
         [
             'type' => 'link',
             'key' => 'product_cases',
             'route' => 'admin.product-case-library.index',
-            'name' => '产品案例',
+            'name' => __('admin.nav.product_cases'),
             'visible' => true,
         ],
         [
             'type' => 'group',
             'key' => 'geo_analysis',
-            'name' => '全域数析',
+            'name' => __('admin.nav.geo_analytics'),
             'visible' => true,
             'items' => [
-                ['key' => 'geo_reports', 'route' => 'admin.geo-reports.index', 'name' => 'GEO 报表', 'visible' => true],
-                ['key' => 'brand_diagnosis', 'route' => 'admin.brand-diagnosis.index', 'name' => '品牌诊断/报告', 'visible' => true],
-                ['key' => 'brand_diagnosis_open_api', 'route' => 'admin.brand-diagnosis.open-api.index', 'name' => 'OpenAPI 诊断记录', 'visible' => $isSuperAdmin],
-                ['key' => 'monitoring_center', 'route' => 'admin.monitoring-center.index', 'name' => '监测中心', 'visible' => ! $isAgentAdmin],
+                ['key' => 'geo_reports', 'route' => 'admin.geo-reports.index', 'name' => __('admin.nav.geo_reports'), 'visible' => true],
+                ['key' => 'brand_diagnosis', 'route' => 'admin.brand-diagnosis.index', 'name' => __('admin.nav.brand_diagnosis'), 'visible' => true],
+                ['key' => 'brand_diagnosis_open_api', 'route' => 'admin.brand-diagnosis.open-api.index', 'name' => __('admin.nav.openapi_records'), 'visible' => $isSuperAdmin],
+                ['key' => 'monitoring_center', 'route' => 'admin.monitoring-center.index', 'name' => __('admin.nav.monitoring_center'), 'visible' => ! $isAgentAdmin],
             ],
         ],
         [
             'type' => 'link',
             'key' => 'analytics',
             'route' => 'admin.analytics',
-            'name' => '数据分析',
+            'name' => __('admin.nav.analytics'),
             'visible' => true,
         ],
         [
             'type' => 'group',
             'key' => 'article_publish',
-            'name' => '文章发布',
+            'name' => __('admin.nav.publishing'),
             'visible' => true,
             'items' => [
-                ['key' => 'crebee_accounts', 'route' => 'admin.crebee-accounts.index', 'name' => '自媒体发布', 'visible' => true],
-                ['key' => 'b2b_websites', 'route' => 'admin.b2b-websites.index', 'name' => 'B2B 行业网站', 'visible' => true],
+                ['key' => 'crebee_accounts', 'route' => 'admin.crebee-accounts.index', 'name' => __('admin.nav.self_media_publishing'), 'visible' => true],
+                ['key' => 'b2b_websites', 'route' => 'admin.b2b-websites.index', 'name' => __('admin.nav.b2b_publishing'), 'visible' => true],
             ],
         ],
         [
             'type' => 'group',
             'key' => 'geo_materials',
-            'name' => 'GEO 素材',
+            'name' => __('admin.nav.geo_assets'),
             'visible' => true,
             'items' => [
-                ['key' => 'tasks', 'route' => 'admin.tasks.index', 'name' => '任务管理', 'visible' => true],
-                ['key' => 'materials', 'route' => 'admin.materials.index', 'name' => '素材管理', 'visible' => true],
-                ['key' => 'articles', 'route' => 'admin.articles.index', 'name' => '文章管理', 'visible' => true],
-                ['key' => 'video_generations', 'route' => 'admin.video-generations.index', 'name' => '生成视频', 'visible' => true],
+                ['key' => 'tasks', 'route' => 'admin.tasks.index', 'name' => __('admin.nav.tasks'), 'visible' => true],
+                ['key' => 'materials', 'route' => 'admin.materials.index', 'name' => __('admin.nav.assets'), 'visible' => true],
+                ['key' => 'articles', 'route' => 'admin.articles.index', 'name' => __('admin.nav.articles'), 'visible' => true],
+                ['key' => 'video_generations', 'route' => 'admin.video-generations.index', 'name' => __('admin.nav.video_generation'), 'visible' => true],
             ],
         ],
     ];
@@ -101,47 +103,47 @@
         ->values();
 
     $accountMenu = collect([
-        ['key' => 'password', 'route' => 'admin.security-settings.password.edit', 'name' => '修改密码', 'icon' => 'key-round', 'visible' => true],
-        ['key' => 'profile', 'route' => 'admin.profile.index', 'name' => '个人中心', 'icon' => 'user-circle', 'visible' => true],
+        ['key' => 'password', 'route' => 'admin.security-settings.password.edit', 'name' => __('admin.nav.change_password'), 'icon' => 'key-round', 'visible' => true],
+        ['key' => 'profile', 'route' => 'admin.profile.index', 'name' => __('admin.nav.profile'), 'icon' => 'user-circle', 'visible' => true],
         ['key' => 'ai_config', 'route' => 'admin.ai.configurator', 'name' => __('admin.nav.ai_config'), 'icon' => 'bot', 'visible' => $canManageAiConfig],
         ['key' => 'site_settings', 'route' => 'admin.site-settings.index', 'name' => __('admin.nav.system_settings'), 'icon' => 'settings', 'visible' => ! $isAgentAdmin],
-        ['key' => 'product_cases_manage', 'route' => 'admin.product-cases.index', 'name' => '产品案例管理', 'icon' => 'briefcase-business', 'visible' => $isSuperAdmin],
-        ['key' => 'manual_publish_stats', 'route' => 'admin.manual-publish-stats.index', 'name' => '发布数据台账', 'icon' => 'bar-chart-3', 'visible' => true],
-        ['key' => 'sites', 'route' => 'admin.sites.manage.index', 'name' => '站点管理', 'icon' => 'globe-2', 'visible' => $isSuperAdmin || $isAgentAdmin],
-        ['key' => 'platform_plans', 'route' => 'admin.platform-plans.index', 'name' => '平台规格', 'icon' => 'package', 'visible' => $isSuperAdmin],
-        ['key' => 'plan_subscriptions', 'route' => 'admin.plan-subscriptions.index', 'name' => '客户开通', 'icon' => 'badge-check', 'visible' => $isSuperAdmin],
-        ['key' => 'plan_usages', 'route' => 'admin.plan-usages.index', 'name' => '规格使用情况', 'icon' => 'bar-chart-3', 'visible' => true],
+        ['key' => 'product_cases_manage', 'route' => 'admin.product-cases.index', 'name' => __('admin.nav.product_case_management'), 'icon' => 'briefcase-business', 'visible' => $isSuperAdmin],
+        ['key' => 'manual_publish_stats', 'route' => 'admin.manual-publish-stats.index', 'name' => __('admin.nav.publishing_ledger'), 'icon' => 'bar-chart-3', 'visible' => true],
+        ['key' => 'sites', 'route' => 'admin.sites.manage.index', 'name' => __('admin.nav.site_management'), 'icon' => 'globe-2', 'visible' => $isSuperAdmin || $isAgentAdmin],
+        ['key' => 'platform_plans', 'route' => 'admin.platform-plans.index', 'name' => __('admin.nav.plans'), 'icon' => 'package', 'visible' => $isSuperAdmin],
+        ['key' => 'plan_subscriptions', 'route' => 'admin.plan-subscriptions.index', 'name' => __('admin.nav.subscriptions'), 'icon' => 'badge-check', 'visible' => $isSuperAdmin],
+        ['key' => 'plan_usages', 'route' => 'admin.plan-usages.index', 'name' => __('admin.nav.plan_usage'), 'icon' => 'bar-chart-3', 'visible' => true],
         ['key' => 'mcp_server', 'route' => 'admin.mcp-server.index', 'name' => 'MCP Server', 'icon' => 'server-cog', 'visible' => true],
         ['key' => 'admin_users', 'route' => 'admin.admin-users.index', 'name' => __('admin.nav.admin_management'), 'icon' => 'users', 'visible' => $isSuperAdmin],
-        ['key' => 'agent_users', 'route' => 'admin.agent-users.index', 'name' => '代理用户管理', 'icon' => 'user-plus', 'visible' => $isAgentAdmin],
+        ['key' => 'agent_users', 'route' => 'admin.agent-users.index', 'name' => __('admin.nav.agent_users'), 'icon' => 'user-plus', 'visible' => $isAgentAdmin],
         ['key' => 'activity_logs', 'route' => 'admin.admin-activity-logs', 'name' => __('admin.nav.activity_logs'), 'icon' => 'clipboard-list', 'visible' => $isSuperAdmin],
     ])->filter(static fn (array $item): bool => (bool) ($item['visible'] ?? true))->values();
 
-    $profileMenuItem = ['key' => 'profile', 'route' => 'admin.profile.index', 'name' => '个人中心', 'icon' => 'user-circle', 'visible' => true];
+    $profileMenuItem = ['key' => 'profile', 'route' => 'admin.profile.index', 'name' => __('admin.nav.profile'), 'icon' => 'user-circle', 'visible' => true];
     $accountMenuSections = collect([
         [
             'key' => 'operations',
-            'name' => '运营配置',
+            'name' => __('admin.nav.operations'),
             'visible' => true,
             'items' => [
                 ['key' => 'ai_config', 'route' => 'admin.ai.configurator', 'name' => __('admin.nav.ai_config'), 'icon' => 'bot', 'visible' => $canManageAiConfig],
                 ['key' => 'site_settings', 'route' => 'admin.site-settings.index', 'name' => __('admin.nav.system_settings'), 'icon' => 'settings', 'visible' => ! $isAgentAdmin],
-                ['key' => 'product_cases_manage', 'route' => 'admin.product-cases.index', 'name' => '产品案例管理', 'icon' => 'briefcase-business', 'visible' => $isSuperAdmin],
-                ['key' => 'manual_publish_stats', 'route' => 'admin.manual-publish-stats.index', 'name' => '发布数据台账', 'icon' => 'bar-chart-3', 'visible' => true],
+                ['key' => 'product_cases_manage', 'route' => 'admin.product-cases.index', 'name' => __('admin.nav.product_case_management'), 'icon' => 'briefcase-business', 'visible' => $isSuperAdmin],
+                ['key' => 'manual_publish_stats', 'route' => 'admin.manual-publish-stats.index', 'name' => __('admin.nav.publishing_ledger'), 'icon' => 'bar-chart-3', 'visible' => true],
                 ['key' => 'activity_logs', 'route' => 'admin.admin-activity-logs', 'name' => __('admin.nav.activity_logs'), 'icon' => 'clipboard-list', 'visible' => $isSuperAdmin],
             ],
         ],
         [
             'key' => 'accounts',
-            'name' => '账号与权益',
+            'name' => __('admin.nav.accounts_plans'),
             'visible' => true,
             'items' => [
-                ['key' => 'sites', 'route' => 'admin.sites.manage.index', 'name' => '站点管理', 'icon' => 'globe-2', 'visible' => $isSuperAdmin || $isAgentAdmin],
+                ['key' => 'sites', 'route' => 'admin.sites.manage.index', 'name' => __('admin.nav.site_management'), 'icon' => 'globe-2', 'visible' => $isSuperAdmin || $isAgentAdmin],
                 ['key' => 'admin_users', 'route' => 'admin.admin-users.index', 'name' => __('admin.nav.admin_management'), 'icon' => 'users', 'visible' => $isSuperAdmin],
-                ['key' => 'agent_users', 'route' => 'admin.agent-users.index', 'name' => '代理用户管理', 'icon' => 'user-plus', 'visible' => $isAgentAdmin],
-                ['key' => 'plan_subscriptions', 'route' => 'admin.plan-subscriptions.index', 'name' => '客户开通', 'icon' => 'badge-check', 'visible' => $isSuperAdmin],
-                ['key' => 'platform_plans', 'route' => 'admin.platform-plans.index', 'name' => '平台规格', 'icon' => 'package', 'visible' => $isSuperAdmin],
-                ['key' => 'plan_usages', 'route' => 'admin.plan-usages.index', 'name' => '规格使用情况', 'icon' => 'bar-chart-3', 'visible' => true],
+                ['key' => 'agent_users', 'route' => 'admin.agent-users.index', 'name' => __('admin.nav.agent_users'), 'icon' => 'user-plus', 'visible' => $isAgentAdmin],
+                ['key' => 'plan_subscriptions', 'route' => 'admin.plan-subscriptions.index', 'name' => __('admin.nav.subscriptions'), 'icon' => 'badge-check', 'visible' => $isSuperAdmin],
+                ['key' => 'platform_plans', 'route' => 'admin.platform-plans.index', 'name' => __('admin.nav.plans'), 'icon' => 'package', 'visible' => $isSuperAdmin],
+                ['key' => 'plan_usages', 'route' => 'admin.plan-usages.index', 'name' => __('admin.nav.plan_usage'), 'icon' => 'bar-chart-3', 'visible' => true],
                 ['key' => 'mcp_server', 'route' => 'admin.mcp-server.index', 'name' => 'MCP Server', 'icon' => 'server-cog', 'visible' => true],
             ],
         ],
@@ -439,7 +441,7 @@
                 @endif
 
                 <div class="relative">
-                    <button onclick="toggleUserMenu()" class="flex h-9 items-center gap-2 rounded-md border border-white/10 px-2 text-sm transition-colors duration-200 hover:bg-white/10" type="button" aria-label="账号菜单">
+                    <button onclick="toggleUserMenu()" class="flex h-9 items-center gap-2 rounded-md border border-white/10 px-2 text-sm transition-colors duration-200 hover:bg-white/10" type="button" aria-label="{{ __('admin.nav.account_menu') }}">
                         <div class="admin-user-avatar w-8 h-8 rounded-md flex items-center justify-center">
                             <i data-lucide="user" class="w-4 h-4"></i>
                         </div>
@@ -458,7 +460,7 @@
                             <div class="border-b border-gray-100 px-4 py-3" data-site-switcher-menu>
                                 <label class="mb-1.5 flex items-center gap-2 text-xs font-medium text-gray-500">
                                     <i data-lucide="globe-2" class="h-3.5 w-3.5"></i>
-                                    <span>当前站点</span>
+                                    <span>{{ __('admin.nav.current_site') }}</span>
                                 </label>
                                 <form method="POST" action="{{ route('admin.sites.switch') }}">
                                     @csrf
@@ -489,7 +491,7 @@
                             <a href="{{ route('admin.security-settings.password.edit') }}"
                                class="@if($resolvedActive === 'password') admin-menu-item-active @endif flex items-center gap-2 rounded-md px-2 py-2 text-sm font-medium text-gray-800 hover:bg-gray-100">
                                 <i data-lucide="key-round" class="h-4 w-4 shrink-0"></i>
-                                <span class="truncate">修改密码</span>
+                                <span class="truncate">{{ __('admin.nav.change_password') }}</span>
                             </a>
                         </div>
                         <div class="border-t border-gray-100"></div>
@@ -546,7 +548,7 @@
                 @endforeach
             </div>
             <div class="border-t border-slate-200 pt-3">
-                <div class="px-3 pb-1 text-xs font-semibold text-slate-500">账号菜单</div>
+                <div class="px-3 pb-1 text-xs font-semibold text-slate-500">{{ __('admin.nav.account_menu') }}</div>
                 <div class="space-y-1">
                     @foreach ($accountMenu as $item)
                         <a href="{{ route($item['route']) }}"

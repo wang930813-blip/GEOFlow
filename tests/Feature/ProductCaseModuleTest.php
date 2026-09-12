@@ -127,8 +127,11 @@ class ProductCaseModuleTest extends TestCase
             ->assertSee('Legacy Custom Industry Case')
             ->assertSee('type="radio"', false)
             ->assertSee('peer-checked:border-orange-500', false)
-            ->assertSee('value="食品、饮料"', false)
-            ->assertSee('value="北京市"', false)
+            ->assertSee('value="Food &amp; Beverage"', false)
+            ->assertSee('value="Asia-Pacific"', false)
+            ->assertSee('Education &amp; Training', false)
+            ->assertDontSee('教育培训')
+            ->assertDontSee('上海市')
             ->assertDontSee('value="geo"', false)
             ->assertDontSee('value="Custom Region"', false)
             ->assertDontSee('onchange="this.form.submit()"', false)
@@ -140,13 +143,15 @@ class ProductCaseModuleTest extends TestCase
             ->assertDontSee('Brand Diagnosis');
 
         $this->get(route('product-cases.index', [
-            'industry' => '教育培训',
-            'region' => '上海市',
+            'industry' => 'Education & Training',
+            'region' => 'Asia-Pacific',
         ]))
             ->assertOk()
             ->assertSee('Education Brand Case')
-            ->assertSee('教育培训')
-            ->assertSee('上海市')
+            ->assertSee('Education &amp; Training', false)
+            ->assertSee('Asia-Pacific')
+            ->assertDontSee('教育培训')
+            ->assertDontSee('上海市')
             ->assertDontSee('Service Brand Case')
             ->assertDontSee('Platform')
             ->assertDontSee('AI Search Inclusion');
@@ -208,7 +213,7 @@ class ProductCaseModuleTest extends TestCase
         $this->actingAs($superAdmin, 'admin')
             ->get(route('admin.product-cases.index'))
             ->assertOk()
-            ->assertSee('产品案例管理')
+            ->assertSee('Product Case Management')
             ->assertSee('data-product-cases-admin-table', false)
             ->assertSee('w-full', false)
             ->assertSee('table-fixed', false)
@@ -299,15 +304,16 @@ class ProductCaseModuleTest extends TestCase
             ->assertOk()
             ->assertSee('name="industry"', false)
             ->assertSee('name="region"', false)
-            ->assertSee('食品、饮料')
-            ->assertSee('成都市')
+            ->assertSee('Food &amp; Beverage', false)
+            ->assertSee('Asia-Pacific')
+            ->assertDontSee('成都市')
             ->assertDontSee('name="business_mode"', false)
             ->assertDontSee('name="module_tags"', false);
 
         $this->actingAs($superAdmin, 'admin')
             ->post(route('admin.product-cases.store'), $this->casePayload($site, $owner, [
-                'industry' => '食品、饮料',
-                'region' => '成都市',
+                'industry' => 'Food & Beverage',
+                'region' => 'Asia-Pacific',
                 'business_mode' => 'Direct',
                 'module_tags' => 'Brand Diagnosis',
             ]))
@@ -316,8 +322,8 @@ class ProductCaseModuleTest extends TestCase
 
         $case = ProductCase::query()->firstOrFail();
 
-        $this->assertSame('食品、饮料', $case->industry);
-        $this->assertSame('成都市', $case->region);
+        $this->assertSame('Food & Beverage', $case->industry);
+        $this->assertSame('Asia-Pacific', $case->region);
         $this->assertSame('', $case->business_mode);
         $this->assertNull($case->module_tags);
     }
@@ -350,8 +356,8 @@ class ProductCaseModuleTest extends TestCase
         $this->get(route('product-cases.show', ['slug' => 'monitoring-summary-case']))
             ->assertOk()
             ->assertSee('Manual case content should stay primary.')
-            ->assertSee('GEO 成效总览')
-            ->assertSee('AI 平台覆盖');
+            ->assertSee('GEO Performance Overview')
+            ->assertSee('AI Platform Coverage');
     }
 
     public function test_case_detail_hides_bound_site_name_and_renders_numeric_customer_level_as_stars(): void
@@ -377,7 +383,7 @@ class ProductCaseModuleTest extends TestCase
             ->assertSee('Public Brand')
             ->assertDontSee($site->name)
             ->assertSee('aria-label="4 of 5 stars"', false)
-            ->assertSee('未设置');
+            ->assertSee('Not Set');
     }
 
     public function test_case_detail_includes_industry_competition_report_blocks(): void
@@ -412,7 +418,7 @@ class ProductCaseModuleTest extends TestCase
             'owner_admin_id' => $owner->id,
             'admin_id' => $owner->id,
             'brand_name' => 'Case Brand',
-            'platforms' => ['doubao', 'qianwen'],
+            'platforms' => ['chatgpt', 'grok'],
             'status' => 'completed',
             'total_questions' => 2,
             'completed_questions' => 2,
@@ -436,7 +442,7 @@ class ProductCaseModuleTest extends TestCase
             'owner_admin_id' => $owner->id,
             'run_id' => $run->id,
             'question_id' => $question->id,
-            'platform' => 'doubao',
+            'platform' => 'chatgpt',
             'answer' => 'Case Brand and Competitor Alpha are mentioned.',
             'brand_mentioned' => true,
             'mention_count' => 1,
@@ -451,7 +457,7 @@ class ProductCaseModuleTest extends TestCase
             'owner_admin_id' => $owner->id,
             'run_id' => $run->id,
             'question_id' => $question->id,
-            'platform' => 'qianwen',
+            'platform' => 'grok',
             'answer' => 'Competitor Beta is mentioned.',
             'brand_mentioned' => false,
             'mention_count' => 0,
@@ -467,7 +473,7 @@ class ProductCaseModuleTest extends TestCase
             'run_id' => $run->id,
             'question_id' => $question->id,
             'result_id' => $doubaoResult->id,
-            'platform' => 'doubao',
+            'platform' => 'chatgpt',
             'brand_name' => 'Case Brand',
             'mention_count' => 1,
             'mention_rank' => 1,
@@ -482,7 +488,7 @@ class ProductCaseModuleTest extends TestCase
             'run_id' => $run->id,
             'question_id' => $question->id,
             'result_id' => $doubaoResult->id,
-            'platform' => 'doubao',
+            'platform' => 'chatgpt',
             'brand_name' => 'Competitor Alpha',
             'mention_count' => 3,
             'mention_rank' => 2,
@@ -497,7 +503,7 @@ class ProductCaseModuleTest extends TestCase
             'run_id' => $run->id,
             'question_id' => $question->id,
             'result_id' => $qianwenResult->id,
-            'platform' => 'qianwen',
+            'platform' => 'grok',
             'brand_name' => 'Competitor Beta',
             'mention_count' => 1,
             'mention_rank' => 1,
@@ -508,10 +514,10 @@ class ProductCaseModuleTest extends TestCase
 
         $this->get(route('product-cases.show', ['slug' => 'industry-competition-case']))
             ->assertOk()
-            ->assertSee('行业竞争力')
-            ->assertSee('品牌画像')
-            ->assertSee('竞品表现')
-            ->assertSee('情感倾向')
+            ->assertSee('Industry Competitiveness')
+            ->assertSee('Brand Profile')
+            ->assertSee('Competitor Performance')
+            ->assertSee('Sentiment')
             ->assertSee('Competitor Alpha')
             ->assertSee('Competitor Beta')
             ->assertSee('TOP5');
@@ -550,7 +556,7 @@ class ProductCaseModuleTest extends TestCase
             'owner_admin_id' => $caseOwner->id,
             'admin_id' => $caseOwner->id,
             'brand_name' => 'Cross Site Brand',
-            'platforms' => ['doubao'],
+            'platforms' => ['chatgpt'],
             'status' => 'completed',
             'total_questions' => 1,
             'completed_questions' => 1,
@@ -574,7 +580,7 @@ class ProductCaseModuleTest extends TestCase
             'owner_admin_id' => $caseOwner->id,
             'run_id' => $run->id,
             'question_id' => $question->id,
-            'platform' => 'doubao',
+            'platform' => 'chatgpt',
             'answer' => 'Cross Site Brand and Cross Site Competitor are both mentioned.',
             'brand_mentioned' => true,
             'mention_count' => 1,
@@ -590,7 +596,7 @@ class ProductCaseModuleTest extends TestCase
             'run_id' => $run->id,
             'question_id' => $question->id,
             'result_id' => $result->id,
-            'platform' => 'doubao',
+            'platform' => 'chatgpt',
             'brand_name' => 'Cross Site Brand',
             'mention_count' => 1,
             'mention_rank' => 1,
@@ -605,7 +611,7 @@ class ProductCaseModuleTest extends TestCase
             'run_id' => $run->id,
             'question_id' => $question->id,
             'result_id' => $result->id,
-            'platform' => 'doubao',
+            'platform' => 'chatgpt',
             'brand_name' => 'Cross Site Competitor',
             'mention_count' => 2,
             'mention_rank' => 2,
@@ -622,7 +628,7 @@ class ProductCaseModuleTest extends TestCase
             ->assertSee('Cross site search question')
             ->assertSee('Cross Site Brand')
             ->assertSee('Cross Site Competitor')
-            ->assertDontSee('暂无搜索报表数据。');
+            ->assertDontSee('No search report data yet.');
     }
 
     public function test_product_case_public_nav_is_visible_to_logged_in_users_and_management_only_to_super_admin(): void
@@ -731,8 +737,8 @@ class ProductCaseModuleTest extends TestCase
             'company_name' => 'Case Company',
             'logo_url' => 'https://example.test/logo.png',
             'cover_url' => 'https://example.test/cover.png',
-            'industry' => '商务服务',
-            'region' => '北京市',
+            'industry' => 'Business Services',
+            'region' => 'North America',
             'business_mode' => 'Direct',
             'module_tags' => 'Brand Diagnosis,AI Search Monitoring',
             'summary' => 'This is a manually maintained product case summary.',

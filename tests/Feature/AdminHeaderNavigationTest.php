@@ -59,6 +59,33 @@ class AdminHeaderNavigationTest extends TestCase
         $this->assertStringContainsString('AI GEO Optimizer', $html);
     }
 
+    public function test_header_navigation_and_user_menu_respect_english_locale(): void
+    {
+        $admin = $this->createAdmin('header_english_locale_admin', 'super_admin');
+
+        $html = $this->actingAs($admin, 'admin')
+            ->withSession(['locale' => 'en'])
+            ->get(route('admin.dashboard'))
+            ->assertOk()
+            ->getContent();
+
+        $primaryNav = $this->section($html, 'data-admin-primary-nav');
+        $userMenu = $this->section($html, 'data-admin-user-menu');
+
+        $this->assertStringContainsString('Product Cases', $primaryNav);
+        $this->assertStringContainsString('GEO Analytics', $primaryNav);
+        $this->assertStringContainsString('Self-Media Publishing', $primaryNav);
+        $this->assertStringContainsString('B2B Publishing', $primaryNav);
+        $this->assertStringContainsString('GEO Assets', $primaryNav);
+        $this->assertStringContainsString('Admin', $html);
+        $this->assertStringContainsString('Account Menu', $html);
+        $this->assertStringContainsString('Change Password', $userMenu);
+        $this->assertStringContainsString('Product Case Management', $userMenu);
+        $this->assertStringNotContainsString('全域数析', $primaryNav);
+        $this->assertStringNotContainsString('自媒体发布', $primaryNav);
+        $this->assertStringNotContainsString('账号菜单', $html);
+    }
+
     public function test_header_user_menu_is_filtered_for_agent_admin(): void
     {
         $admin = $this->createAdmin('header_agent_admin', 'agent_admin');
@@ -249,8 +276,8 @@ class AdminHeaderNavigationTest extends TestCase
         $this->actingAs($admin, 'admin')
             ->get(route('admin.monitoring-center.index'))
             ->assertOk()
-            ->assertSee('企业舆情分析报表')
-            ->assertSee('行业竞争力分析报表');
+            ->assertSee('Enterprise Sentiment Analysis Report')
+            ->assertSee('Industry Competitiveness Analysis Report');
     }
 
     public function test_api_token_page_is_not_in_navigation_even_if_route_still_exists(): void

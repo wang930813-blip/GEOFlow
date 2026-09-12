@@ -84,29 +84,29 @@
 
         $multiSiteCards = [
             [
-                'title' => '官媒发布',
-                'desc' => '同步媒体资源、设置销售价并把文章投稿到网站媒体或第三方自媒体。',
-                'href' => route('admin.media-distribution.resources.index'),
-                'icon' => 'newspaper',
+                'title' => __('admin.nav.self_media_publishing'),
+                'desc' => __('admin.dashboard.navigation.self_media_publishing_desc'),
+                'href' => route('admin.crebee-accounts.index'),
+                'icon' => 'share-2',
                 'tone' => 'text-blue-600 bg-blue-50',
             ],
             [
-                'title' => '投稿订单',
-                'desc' => '查看媒体投稿进度、同步第三方订单状态和发布链接。',
-                'href' => route('admin.media-distribution.submissions.index'),
-                'icon' => 'send',
+                'title' => __('admin.nav.b2b_publishing'),
+                'desc' => __('admin.dashboard.navigation.b2b_publishing_desc'),
+                'href' => route('admin.b2b-websites.index'),
+                'icon' => 'globe-2',
                 'tone' => 'text-emerald-600 bg-emerald-50',
             ],
             [
-                'title' => '站点积分',
-                'desc' => '查看站点积分余额、冻结金额和投稿消耗流水。',
+                'title' => __('admin.dashboard.navigation.site_credits_title'),
+                'desc' => __('admin.dashboard.navigation.site_credits_desc'),
                 'href' => route('admin.media-distribution.credits.index'),
                 'icon' => 'coins',
                 'tone' => 'text-orange-600 bg-orange-50',
             ],
             $isSuperAdminDashboard ? [
-                'title' => '接口配置',
-                'desc' => '配置开放平台 API Key 和接口地址，仅超级管理员可操作。',
+                'title' => __('admin.dashboard.navigation.api_settings_title'),
+                'desc' => __('admin.dashboard.navigation.api_settings_desc'),
                 'href' => route('admin.media-distribution.settings.index'),
                 'icon' => 'settings',
                 'tone' => 'text-rose-600 bg-rose-50',
@@ -205,16 +205,16 @@
                         <div class="flex items-start gap-4">
                             <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-sm font-semibold text-white">3</div>
                             <div class="min-w-0 flex-1">
-                                <h3 class="text-base font-semibold text-gray-900">发布文章/视频</h3>
-                                <p class="mt-2 text-sm leading-6 text-gray-500">内容生成后，从文章或视频列表进入发布入口，选择已绑定的平台完成发布。</p>
+                                <h3 class="text-base font-semibold text-gray-900">{{ __('admin.dashboard.quick_start.publish_title') }}</h3>
+                                <p class="mt-2 text-sm leading-6 text-gray-500">{{ __('admin.dashboard.quick_start.publish_desc') }}</p>
                                 <div class="mt-4 flex flex-wrap gap-2">
                                     <a href="{{ route('admin.articles.index') }}" class="inline-flex items-center rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700">
                                         <i data-lucide="file-text" class="mr-1.5 h-4 w-4"></i>
-                                        文章列表
+                                        {{ __('admin.dashboard.quick_start.article_list') }}
                                     </a>
                                     <a href="{{ route('admin.video-generations.index') }}" class="inline-flex items-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
                                         <i data-lucide="video" class="mr-1.5 h-4 w-4"></i>
-                                        视频列表
+                                        {{ __('admin.dashboard.quick_start.video_list') }}
                                     </a>
                                 </div>
                             </div>
