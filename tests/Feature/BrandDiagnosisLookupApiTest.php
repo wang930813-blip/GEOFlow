@@ -42,6 +42,51 @@ class BrandDiagnosisLookupApiTest extends TestCase
             ->assertJsonPath('error.code', 'invalid_api_key');
     }
 
+    public function test_lookup_api_is_not_request_rate_limited_for_public_key_calls(): void
+    {
+        Config::set('brand_diagnosis.lookup_api.rate_limit', 1);
+
+        BrandDiagnosisRun::query()->create([
+            'site_id' => null,
+            'brand_name' => 'Public Key Brand',
+            'platforms' => ['doubao'],
+            'status' => 'completed',
+            'brand_profile' => 'Public Key Brand provides GEO analytics services.',
+            'brand_profile_status' => 'success',
+        ]);
+
+        $url = '/api/v1/brand-diagnoses/search?brand_word=Public%20Key%20Brand&include=profile';
+
+        $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.10'])
+            ->withHeader('X-Api-Key', 'test-lookup-key')
+            ->getJson($url)
+            ->assertOk();
+
+        $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.10'])
+            ->withHeader('X-Api-Key', 'test-lookup-key')
+            ->getJson($url)
+            ->assertOk();
+        $lookup = BrandDiagnosisLookupJob::query()->create([
+            'lookup_id' => 'bdl_public_key_status_test',
+            'brand_word' => 'Public Key Brand',
+            'canonical_key' => 'public key brand',
+            'includes' => ['profile', 'questions'],
+            'status' => 'processing',
+            'started_at' => now(),
+            'expires_at' => now()->addMinutes(10),
+        ]);
+
+        $this->withHeader('X-Api-Key', 'test-lookup-key')
+            ->getJson('/api/v1/brand-diagnoses/search/status/'.$lookup->lookup_id)
+            ->assertStatus(202)
+            ->assertJsonPath('data.status', 'processing');
+
+        $this->withHeader('X-Api-Key', 'test-lookup-key')
+            ->getJson('/api/v1/brand-diagnoses/search/status/'.$lookup->lookup_id)
+            ->assertStatus(202)
+            ->assertJsonPath('data.status', 'processing');
+    }
+
     public function test_lookup_api_rejects_unknown_include_before_querying(): void
     {
         $this->withHeader('X-Api-Key', 'test-lookup-key')

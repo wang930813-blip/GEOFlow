@@ -15,7 +15,6 @@ return [
         'enabled' => filter_var(env('BRAND_DIAGNOSIS_LOOKUP_API_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
         'api_key' => trim((string) env('BRAND_DIAGNOSIS_LOOKUP_API_KEY', '')),
         'cache_ttl' => max(0, (int) env('BRAND_DIAGNOSIS_LOOKUP_CACHE_TTL', 21600)),
-        'rate_limit' => max(1, (int) env('BRAND_DIAGNOSIS_LOOKUP_RATE_LIMIT', 10)),
         'candidate_limit' => max(20, (int) env('BRAND_DIAGNOSIS_LOOKUP_CANDIDATE_LIMIT', 100)),
         'async_job_timeout' => max(180, (int) env('BRAND_DIAGNOSIS_LOOKUP_ASYNC_JOB_TIMEOUT', 300)),
         'async_result_ttl' => max(300, (int) env('BRAND_DIAGNOSIS_LOOKUP_ASYNC_RESULT_TTL', 1800)),
