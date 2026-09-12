@@ -20,18 +20,18 @@ X-Api-Key: <BRAND_DIAGNOSIS_LOOKUP_API_KEY>
 
 ## 请求示例
 
-查询品牌介绍、AI 问题、品牌表现和竞品数据：
+查询品牌介绍、AI 问题、品牌表现、平均提及排名和竞品数据：
 
 ```http
-GET /api/v1/brand-diagnoses/search?brand_word=策影GEO&include=profile,questions,performance,competitors
+GET /api/v1/brand-diagnoses/search?brand_word=策影GEO&include=profile,questions,performance,rankings,competitors
 Accept: application/json
 X-Api-Key: <lookup-key>
 ```
 
-按指定模型查询品牌表现：
+按指定模型查询品牌表现、平均提及排名或竞品数据：
 
 ```http
-GET /api/v1/brand-diagnoses/search?brand_word=策影GEO&include=performance&model=doubao
+GET /api/v1/brand-diagnoses/search?brand_word=策影GEO&include=performance,rankings,competitors&model=doubao
 Accept: application/json
 X-Api-Key: <lookup-key>
 ```
@@ -62,7 +62,7 @@ Accept: application/json
 X-Api-Key: <lookup-key>
 ```
 
-`brand_word` 必填，会自动去除首尾空格，最长 120 个字符。`include` 可选，为英文逗号分隔的模块名；不传或传空值时返回全部模块，重复模块会自动去重。`model` 可选，仅影响 `performance` 模块；不传或传 `all` 时返回全模型汇总和各模型拆分。
+`brand_word` 必填，会自动去除首尾空格，最长 120 个字符。`include` 可选，为英文逗号分隔的模块名；不传或传空值时返回全部模块，重复模块会自动去重。`model` 可选，影响 `performance`、`rankings` 和 `competitors` 模块；不传或传 `all` 时返回全平台汇总和各模型拆分。
 
 ## 请求字段释义
 
@@ -70,7 +70,7 @@ X-Api-Key: <lookup-key>
 | --- | --- | --- | --- |
 | `brand_word` | string | 是 | 要检索的品牌词。会去除首尾空格，最长 120 个字符。 |
 | `include` | string | 否 | 需要返回的模块，多个模块用英文逗号分隔。不传或为空表示返回全部模块。 |
-| `model` | string | 否 | 品牌表现筛选模型。仅在请求包含 `performance` 时生效；不传或传 `all` 表示全部平台汇总。可选值为 `all`、`doubao`、`deepseek`、`qianwen`、`wenxin`。 |
+| `model` | string | 否 | 模型筛选参数。请求包含 `performance`、`rankings` 或 `competitors` 时生效；不传或传 `all` 表示全部平台汇总。可选值为 `all`、`doubao`、`deepseek`、`qianwen`、`wenxin`。 |
 
 ### `include` 可选值
 
@@ -79,10 +79,11 @@ X-Api-Key: <lookup-key>
 | `profile` | 品牌介绍及品牌介绍使用的网页来源 |
 | `questions` | AI 问题池 |
 | `performance` | 品牌表现得分、提及率、平均排名等指标 |
+| `rankings` | 平均提及排名、提及率排行、提及次数排行，支持全平台汇总和模型拆分 |
 | `model_results` | 各问题对应的模型回答和提及指标 |
 | `sources` | AI 回答中引用的信源 |
 | `snapshots` | 脱敏后的 AI 对话快照 |
-| `competitors` | 竞品提及聚合数据 |
+| `competitors` | 竞品提及聚合数据，支持全平台汇总和模型拆分 |
 | `platform_analysis` | AI 搜索平台分析，对应平台维度的推荐分析次数、TOP 排名占比、正向舆情占比和信源站点数，固定按豆包、DeepSeek、千问、文心一言四个平台输出 |
 | `competitor_visibility` | 同行竞品大模型能见度分析，对应竞品在豆包、DeepSeek、千问、文心一言四个平台下的出现占比矩阵 |
 
@@ -121,7 +122,7 @@ X-Api-Key: <lookup-key>
     "request_id": "...",
     "timestamp": "...",
     "included": ["profile", "questions"],
-    "omitted": ["performance", "model_results", "sources", "snapshots", "competitors", "platform_analysis", "competitor_visibility"]
+    "omitted": ["performance", "rankings", "model_results", "sources", "snapshots", "competitors", "platform_analysis", "competitor_visibility"]
   }
 }
 ```
@@ -185,18 +186,64 @@ X-Api-Key: <lookup-key>
         }
       ]
     },
+    "rankings": {
+      "model": "all",
+      "model_label": "全部平台",
+      "mention_rate": [
+        {
+          "brand": "竞品甲",
+          "aliases": ["竞品甲"],
+          "title": "竞品甲",
+          "rate": 80,
+          "count": 12,
+          "rank": "2",
+          "display_rank": 1,
+          "is_target_brand": false
+        }
+      ],
+      "mention_count": [],
+      "average_rank": [],
+      "by_model": [
+        {
+          "model": "doubao",
+          "model_label": "豆包",
+          "mention_rate": [],
+          "mention_count": [],
+          "average_rank": []
+        }
+      ]
+    },
     "model_results": [],
     "ai_sources": [],
     "conversation_snapshots": [],
-    "competitors": [
-      {
-        "brand_name": "竞品甲",
-        "mention_count": 12,
-        "best_rank": 2,
-        "source_count": 5,
-        "sentiment": "positive"
-      }
-    ],
+    "competitors": {
+      "model": "all",
+      "model_label": "全部平台",
+      "rows": [
+        {
+          "brand_name": "竞品甲",
+          "mention_count": 12,
+          "best_rank": 2,
+          "source_count": 5,
+          "sentiment": "positive"
+        }
+      ],
+      "by_model": [
+        {
+          "model": "doubao",
+          "model_label": "豆包",
+          "rows": [
+            {
+              "brand_name": "竞品甲",
+              "mention_count": 8,
+              "best_rank": 2,
+              "source_count": 3,
+              "sentiment": "positive"
+            }
+          ]
+        }
+      ]
+    },
     "ai_search_platform_analysis": [
       {
         "platform_key": "doubao",
@@ -247,6 +294,7 @@ X-Api-Key: <lookup-key>
       "profile": "included",
       "questions": "included",
       "performance": "included",
+      "rankings": "included",
       "model_results": "not_available",
       "sources": "omitted",
       "snapshots": "omitted",
@@ -259,7 +307,7 @@ X-Api-Key: <lookup-key>
   "meta": {
     "request_id": "...",
     "timestamp": "...",
-    "included": ["profile", "questions", "performance", "competitors"],
+    "included": ["profile", "questions", "performance", "rankings", "competitors"],
     "omitted": ["model_results", "sources", "snapshots", "platform_analysis", "competitor_visibility"]
   }
 }
@@ -291,10 +339,11 @@ X-Api-Key: <lookup-key>
 | `brand_profile` | object/null | 请求包含 `profile` 时返回品牌介绍。 |
 | `questions` | array/null | 请求包含 `questions` 时返回 AI 问题数组。 |
 | `brand_performance` | object/null | 请求包含 `performance` 时返回品牌表现；生成预览时为 `null`。 |
+| `rankings` | object/null | 请求包含 `rankings` 时返回提及率、提及次数和平均提及排名榜单；生成预览时为 `null`。 |
 | `model_results` | array/null | 请求包含 `model_results` 时返回模型结果数组。 |
 | `ai_sources` | array/null | 请求包含 `sources` 时返回 AI 信源数组。 |
 | `conversation_snapshots` | array/null | 请求包含 `snapshots` 时返回对话快照数组。 |
-| `competitors` | array/null | 请求包含 `competitors` 时返回竞品提及聚合数组。 |
+| `competitors` | object/null | 请求包含 `competitors` 时返回竞品提及聚合对象，包含当前口径聚合和按模型拆分。 |
 | `ai_search_platform_analysis` | array/null | 请求包含 `platform_analysis` 时返回 AI 搜索平台分析数组。 |
 | `competitor_visibility` | object/null | 请求包含 `competitor_visibility` 时返回同行竞品大模型能见度矩阵。 |
 | `module_status` | object | 各模块的状态，可能为 `included`、`omitted`、`not_run`、`not_available` 或 `failed`。 |
@@ -356,6 +405,35 @@ X-Api-Key: <lookup-key>
 
 `by_model[]` 字段与 `brand_performance` 的指标字段一致，额外包含 `model` 和 `model_label`。
 
+### `rankings` 字段
+
+`rankings` 用于返回品牌与竞品在 AI 回答中的排行数据，统计口径支持全平台汇总和按模型筛选。未传 `model` 或传 `model=all` 时，顶层字段为全平台汇总，`by_model` 返回豆包、DeepSeek、千问、文心一言四个平台拆分；传入具体模型时，顶层字段和 `by_model` 都只返回该模型口径。
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `model` | string | 当前统计口径。`all` 表示全平台汇总；传入 `model` 参数时为对应模型键。 |
+| `model_label` | string | 当前统计口径的展示名称。 |
+| `mention_rate` | array | 提及率排行列表，按品牌出现在成功回答中的占比排序。 |
+| `mention_count` | array | 提及次数排行列表，按品牌提及次数排序。 |
+| `average_rank` | array | 平均提及排名列表，按平均排名正序排序；目标品牌未进入前 10 时会追加在列表末尾。 |
+| `by_model` | array | 各模型拆分数据。未传 `model` 时返回四个平台；传入 `model` 时只返回该模型。 |
+
+### `rankings.mention_rate[]` / `rankings.mention_count[]` / `rankings.average_rank[]` 字段
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `brand` | string | 品牌或竞品标准名称。 |
+| `aliases` | array | 该品牌在提及记录中出现过的别名。 |
+| `title` | string | 适合直接展示的名称，可能包含标准名称和别名。 |
+| `rate` | integer | 出现过该品牌的成功回答数占成功回答总数的百分比。 |
+| `count` | integer | 该品牌的提及次数合计。 |
+| `rank` | string | 平均提及排名，格式化为字符串；`0` 表示没有有效排名。 |
+| `rank_value` | number | 平均提及排名原始数值，仅 `average_rank[]` 返回。 |
+| `display_rank` | integer/string | 展示排名；目标品牌没有有效排名时可能为 `99+`。 |
+| `is_target_brand` | boolean | 是否为本次查询的目标品牌。 |
+
+`rankings.by_model[]` 字段包含 `model`、`model_label`、`mention_rate`、`mention_count`、`average_rank`，其中三个榜单的行结构与顶层一致。
+
 ### `model_results[]` 字段
 
 | 字段 | 类型 | 说明 |
@@ -396,17 +474,36 @@ X-Api-Key: <lookup-key>
 | `status` | string | 生成快照时的模型结果状态。 |
 | `checked_at` | string | 快照或模型检查时间。 |
 
-### `competitors[]` 字段
+### `competitors` 字段
 
-竞品按品牌名称聚合去重，目标品牌自身不会出现在该数组中。排序规则为提及次数倒序、最佳排名正序、引用来源数倒序。
+`competitors` 返回竞品提及聚合数据，目标品牌自身不会出现在竞品行中。未传 `model` 或传 `model=all` 时，顶层 `rows` 为全平台汇总，`by_model` 返回各模型拆分；传入具体模型时，顶层 `rows` 和 `by_model` 都只返回该模型口径。
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `model` | string | 当前统计口径。`all` 表示全平台汇总；传入 `model` 参数时为对应模型键。 |
+| `model_label` | string | 当前统计口径的展示名称。 |
+| `rows` | array | 当前统计口径下的竞品聚合行。 |
+| `by_model` | array | 各模型拆分数据。未传 `model` 时返回四个平台；传入 `model` 时只返回该模型。 |
+
+### `competitors.rows[]` 字段
+
+竞品按品牌名称聚合去重。排序规则为提及次数倒序、最佳排名正序、引用来源数倒序。
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | `brand_name` | string | 竞品名称。 |
-| `mention_count` | integer | 该竞品在所有模型回答中的提及次数合计。 |
-| `best_rank` | integer | 该竞品的最佳提及排名；`0` 表示没有可用排名。 |
-| `source_count` | integer | 该竞品关联的引用来源数合计。 |
+| `mention_count` | integer | 该竞品在当前统计口径下的提及次数合计。 |
+| `best_rank` | integer | 该竞品在当前统计口径下的最佳提及排名；`0` 表示没有可用排名。 |
+| `source_count` | integer | 该竞品在当前统计口径下关联的引用来源数合计。 |
 | `sentiment` | string | 按提及次数加权后的整体情感倾向：`positive`、`neutral` 或 `negative`。 |
+
+### `competitors.by_model[]` 字段
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `model` | string | 模型键：`doubao`、`deepseek`、`qianwen` 或 `wenxin`。 |
+| `model_label` | string | 模型展示名称。 |
+| `rows` | array | 该模型下的竞品聚合行，结构与 `competitors.rows[]` 一致。 |
 
 ### `ai_search_platform_analysis[]` 字段
 

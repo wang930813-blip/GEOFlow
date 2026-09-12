@@ -18,6 +18,7 @@ final class BrandDiagnosisLookupService
         'profile',
         'questions',
         'performance',
+        'rankings',
         'model_results',
         'sources',
         'snapshots',
@@ -258,12 +259,14 @@ final class BrandDiagnosisLookupService
     private function eagerLoad($query, array $includes): void
     {
         $needsRunResults = in_array('performance', $includes, true)
+            || in_array('rankings', $includes, true)
             || in_array('platform_analysis', $includes, true)
             || in_array('competitor_visibility', $includes, true);
         $needsRunSources = in_array('sources', $includes, true)
             || in_array('snapshots', $includes, true)
             || in_array('platform_analysis', $includes, true);
         $needsBrandMentions = in_array('competitors', $includes, true)
+            || in_array('rankings', $includes, true)
             || in_array('performance', $includes, true)
             || in_array('platform_analysis', $includes, true)
             || in_array('competitor_visibility', $includes, true);
@@ -306,7 +309,7 @@ final class BrandDiagnosisLookupService
                 $relation->withoutGlobalScopes(['current_site', 'admin_owner'])
                     ->select([
                         'id', 'run_id', 'question_id', 'result_id', 'platform', 'brand_name',
-                        'mention_count', 'mention_rank', 'sentiment', 'source_count', 'is_target_brand',
+                        'mention_count', 'mention_rank', 'sentiment', 'source_count', 'is_target_brand', 'meta',
                     ])
                     ->orderByDesc('mention_count')
                     ->orderBy('id');
