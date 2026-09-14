@@ -1,4 +1,4 @@
-:HL["./_next/static/chunks/3w3nn_mxkolpi.css","style"]
+:HL["./_next/static/chunks/39eyxc4lm3q_s.css","style"]
 :HL["./brand/ceying-geo-logo-en.png","image"]
 :HL["./contact/wechat-qrcode.png","image"]
-0:{"tree":{"name":"","param":null,"prefetchHints":4176,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":4256,"slots":null}}},"staleTime":300,"buildId":"HM3kuHnNag4Ex_WO-tKmT"}
+0:{"tree":{"name":"","param":null,"prefetchHints":4176,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":4256,"slots":null}}},"staleTime":300,"buildId":"R_EhNi3lxc9do2aSkI5Wc"}
