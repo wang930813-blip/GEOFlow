@@ -48,6 +48,7 @@ use App\Http\Controllers\Admin\SecuritySettingsController;
 use App\Http\Controllers\Admin\SiteContextController;
 use App\Http\Controllers\Admin\SiteManagementController;
 use App\Http\Controllers\Admin\SiteSettingsController;
+use App\Http\Controllers\Admin\SiteThemePreviewController;
 use App\Http\Controllers\Admin\SnapshotVoucherController;
 use App\Http\Controllers\Admin\TaskController;
 use App\Http\Controllers\Admin\TitleLibraryController;
@@ -404,6 +405,9 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::post('admin-display', [SiteSettingsController::class, 'updateAdminDisplay'])->name('admin-display');
             Route::post('registration', [SiteSettingsController::class, 'updateRegistration'])->name('registration');
             Route::post('theme', [SiteSettingsController::class, 'updateTheme'])->name('theme');
+            Route::get('themes/{theme}/preview', [SiteThemePreviewController::class, 'show'])
+                ->name('themes.preview')
+                ->where('theme', '[A-Za-z0-9_-]+');
             Route::post('article-detail-ads', [SiteSettingsController::class, 'updateArticleDetailAds'])->name('ads');
             Route::get('sensitive-words', [SecuritySettingsController::class, 'index'])->name('sensitive-words');
             Route::post('sensitive-words', [SecuritySettingsController::class, 'storeSensitiveWords'])->name('sensitive-words.store');

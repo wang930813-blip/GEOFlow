@@ -5,7 +5,7 @@ namespace App\Support\Site;
 class SiteThemeCatalog
 {
     /**
-     * @return array<int, array{id:string,name:string,version:string,description:string}>
+     * @return array<int, array{id:string,name:string,version:string,description:string,templates:list<string>,preview_routes:list<string>,mode:string,base_theme_id:string,asset_css_exists:bool,asset_js_exists:bool,source:string}>
      */
     public function all(): array
     {
@@ -37,23 +37,31 @@ class SiteThemeCatalog
             $manifestPath = $themeDir.DIRECTORY_SEPARATOR.'manifest.json';
             if (is_file($manifestPath)) {
                 $manifestRaw = file_get_contents($manifestPath);
-                if (! is_string($manifestRaw) || $manifestRaw === '') {
+                $manifest = is_string($manifestRaw) && $manifestRaw !== ''
+                    ? json_decode($manifestRaw, true)
+                    : null;
+
+                if (is_array($manifest)) {
+                    $templates = $this->normalizeTemplates($this->stringList($manifest['templates'] ?? ($manifest['blade_templates'] ?? [])));
+                    $templates = array_values(array_unique(array_merge($templates, $this->bladeTemplates($themeDir))));
+                    $previewRoutes = $this->stringList($manifest['preview_routes'] ?? ($manifest['preview'] ?? []));
+
+                    $themes[] = [
+                        'id' => (string) $entry,
+                        'name' => (string) ($manifest['name'] ?? $this->humanName($entry)),
+                        'version' => (string) ($manifest['version'] ?? ''),
+                        'description' => (string) ($manifest['description'] ?? ''),
+                        'templates' => $templates,
+                        'preview_routes' => $previewRoutes,
+                        'mode' => (string) ($manifest['mode'] ?? 'theme'),
+                        'base_theme_id' => (string) ($manifest['base_theme_id'] ?? ''),
+                        'asset_css_exists' => is_file(public_path('themes/'.$entry.'/theme.css')),
+                        'asset_js_exists' => is_file(public_path('themes/'.$entry.'/theme.js')),
+                        'source' => 'local',
+                    ];
+
                     continue;
                 }
-
-                $manifest = json_decode($manifestRaw, true);
-                if (! is_array($manifest)) {
-                    continue;
-                }
-
-                $themes[] = [
-                    'id' => (string) $entry,
-                    'name' => (string) ($manifest['name'] ?? $entry),
-                    'version' => (string) ($manifest['version'] ?? ''),
-                    'description' => (string) ($manifest['description'] ?? ''),
-                ];
-
-                continue;
             }
 
             if (! is_file($themeDir.DIRECTORY_SEPARATOR.'home.blade.php')) {
@@ -62,9 +70,16 @@ class SiteThemeCatalog
 
             $themes[] = [
                 'id' => (string) $entry,
-                'name' => ucfirst(str_replace(['-', '_'], ' ', $entry)),
+                'name' => $this->humanName($entry),
                 'version' => '',
                 'description' => '',
+                'templates' => $this->bladeTemplates($themeDir),
+                'preview_routes' => ['/'],
+                'mode' => 'theme',
+                'base_theme_id' => '',
+                'asset_css_exists' => is_file(public_path('themes/'.$entry.'/theme.css')),
+                'asset_js_exists' => is_file(public_path('themes/'.$entry.'/theme.js')),
+                'source' => 'local',
             ];
         }
 
@@ -79,5 +94,86 @@ class SiteThemeCatalog
     public function ids(): array
     {
         return array_map(static fn (array $theme): string => (string) $theme['id'], $this->all());
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function stringList(mixed $value): array
+    {
+        if (is_string($value)) {
+            $value = [$value];
+        }
+
+        if (! is_array($value)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($value as $item) {
+            $item = trim((string) $item);
+            if ($item !== '' && ! in_array($item, $out, true)) {
+                $out[] = $item;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function bladeTemplates(string $themeDir): array
+    {
+        $templates = [];
+        $files = glob($themeDir.DIRECTORY_SEPARATOR.'*.blade.php');
+        if (! is_array($files)) {
+            return [];
+        }
+
+        foreach ($files as $file) {
+            $name = basename((string) $file, '.blade.php');
+            if ($name !== '' && ! in_array($name, $templates, true)) {
+                $templates[] = $name;
+            }
+        }
+
+        sort($templates);
+
+        return array_values($templates);
+    }
+
+    /**
+     * @param  list<string>  $templates
+     * @return list<string>
+     */
+    private function normalizeTemplates(array $templates): array
+    {
+        $out = [];
+        foreach ($templates as $template) {
+            $template = trim(str_replace('\\', '/', $template));
+            if ($template === '') {
+                continue;
+            }
+
+            $template = basename($template);
+            if (str_ends_with($template, '.blade.php')) {
+                $template = substr($template, 0, -10);
+            }
+
+            if ($template !== '' && ! in_array($template, $out, true)) {
+                $out[] = $template;
+            }
+        }
+
+        return $out;
+    }
+
+    private function humanName(string $themeId): string
+    {
+        return str($themeId)
+            ->replace(['-', '_'], ' ')
+            ->title()
+            ->toString();
     }
 }

@@ -150,6 +150,7 @@ class HomeController extends Controller
             'siteDescription' => $siteDescription,
             'siteKeywords' => $siteKeywords,
             'homepageCarouselSlides' => $homepageCarouselSlides,
+            'isDefaultHome' => $search === '' && ! $category && ! $categoryMissing && $page === 1,
             'viewTitle' => $viewTitle,
             'pageTitle' => $pageTitle,
             'pageDescription' => $pageDescription,

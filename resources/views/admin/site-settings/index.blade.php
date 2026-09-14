@@ -416,7 +416,7 @@
                         </label>
 
                         @foreach ($availableThemes as $themeOption)
-                            <label class="flex items-start gap-4 rounded-2xl border border-gray-200 bg-white p-4">
+                            <label class="flex items-start gap-4 rounded-2xl border border-gray-200 bg-white p-4 transition hover:border-blue-200 hover:bg-blue-50/30">
                                 <input type="radio" name="active_theme" value="{{ $themeOption['id'] }}" class="mt-1 text-blue-600 focus:ring-blue-500" @checked($settings['active_theme'] === $themeOption['id'])>
                                 <div class="min-w-0 flex-1">
                                     <div class="flex flex-wrap items-center gap-2">
@@ -432,10 +432,18 @@
                                         {{ $themeOption['description'] !== '' ? $themeOption['description'] : __('admin.site_settings.theme.no_description') }}
                                     </div>
                                     <div class="mt-3 flex flex-wrap gap-2">
-                                        <span class="inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-500">{{ __('admin.site_settings.theme.preview_home') }}</span>
-                                        <span class="inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-500">{{ __('admin.site_settings.theme.preview_category') }}</span>
-                                        <span class="inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-500">{{ __('admin.site_settings.theme.preview_article') }}</span>
-                                        <span class="inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-500">{{ __('admin.site_settings.theme.preview_archive') }}</span>
+                                        @foreach(array_slice((array) ($themeOption['templates'] ?? []), 0, 6) as $templateName)
+                                            <span class="inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-500">{{ $templateName }}</span>
+                                        @endforeach
+                                        @if(empty($themeOption['asset_css_exists']) || empty($themeOption['asset_js_exists']))
+                                            <span class="inline-flex items-center rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700">{{ __('admin.site_settings.theme.asset_missing') }}</span>
+                                        @endif
+                                    </div>
+                                    <div class="mt-4">
+                                        <a href="{{ route('admin.site-settings.themes.preview', ['theme' => $themeOption['id']]) }}" target="_blank" rel="noopener" class="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-50">
+                                            <i data-lucide="external-link" class="h-3.5 w-3.5"></i>
+                                            {{ __('admin.site_settings.theme.preview_home') }}
+                                        </a>
                                     </div>
                                 </div>
                             </label>

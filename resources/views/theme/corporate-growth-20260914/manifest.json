@@ -1,0 +1,10 @@
+{
+  "id": "corporate-growth-20260914",
+  "name": "Corporate Growth Website",
+  "version": "1.0.0",
+  "description": "A corporate official website theme with service sections, metrics, cases, FAQ, CTA, and a news area.",
+  "templates": ["layout", "home", "category", "article", "news", "about", "contact"],
+  "preview_routes": ["/", "/news", "/about", "/contact", "/category/{slug}", "/article/{slug}"],
+  "mode": "theme",
+  "base_theme_id": "tech-insight-20260819"
+}

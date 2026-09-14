@@ -1873,6 +1873,7 @@ return [
             'active_badge' => '当前启用',
             'version_badge' => 'v:version',
             'no_description' => '暂无模板说明',
+            'asset_missing' => '资源缺失',
             'invalid_selection' => '所选模板不存在或已失效',
             'message' => [
                 'default_enabled' => '已切回默认前台模板',

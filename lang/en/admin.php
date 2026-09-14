@@ -1873,6 +1873,7 @@ return [
             'active_badge' => 'Active',
             'version_badge' => 'v:version',
             'no_description' => 'No description provided',
+            'asset_missing' => 'Asset missing',
             'invalid_selection' => 'The selected template does not exist or is no longer available',
             'message' => [
                 'default_enabled' => 'Switched back to the default frontend template',

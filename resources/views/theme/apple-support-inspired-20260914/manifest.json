@@ -1,0 +1,10 @@
+{
+  "id": "apple-support-inspired-20260914",
+  "name": "Apple Support Inspired",
+  "version": "1.0.0",
+  "description": "A clean official support-style website theme with soft cards, search-first hierarchy, knowledge sections, and contact blocks.",
+  "templates": ["layout", "home", "category", "article", "news", "about", "contact"],
+  "preview_routes": ["/", "/news", "/about", "/contact", "/category/{slug}", "/article/{slug}"],
+  "mode": "theme",
+  "base_theme_id": "corporate-growth-20260914"
+}
