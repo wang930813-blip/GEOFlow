@@ -12,6 +12,7 @@ use App\Services\BrandDiagnosis\BrandDiagnosisQuestionLabeler;
 use App\Services\BrandDiagnosis\BrandDiagnosisRunService;
 use App\Services\BrandDiagnosis\BrandDiagnosisSnapshotPayload;
 use App\Services\BrandDiagnosis\BrandEntityResolver;
+use App\Services\ProductCases\ProductCaseDemoDataService;
 use App\Support\AdminWeb;
 use App\Support\CurrentSite;
 use App\Support\Site\ArticleHtmlPresenter;
@@ -293,7 +294,7 @@ class BrandDiagnosisController extends Controller
      */
     private function reportRecords(): array
     {
-        return $this->diagnosisRunBaseQuery()
+        return $this->listedDiagnosisRunBaseQuery()
             ->select($this->diagnosisRunSummaryColumns())
             ->where('status', 'completed')
             ->orderByDesc('created_at')
@@ -309,8 +310,17 @@ class BrandDiagnosisController extends Controller
      */
     private function diagnosisRunQuery(): Builder
     {
-        return $this->diagnosisRunBaseQuery()
+        return $this->listedDiagnosisRunBaseQuery()
             ->with($this->diagnosisRunRelations());
+    }
+
+    /**
+     * @return Builder<BrandDiagnosisRun>
+     */
+    private function listedDiagnosisRunBaseQuery(): Builder
+    {
+        return $this->diagnosisRunBaseQuery()
+            ->where('billing_mode', '<>', ProductCaseDemoDataService::BILLING_MODE);
     }
 
     /**

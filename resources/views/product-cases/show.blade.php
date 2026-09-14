@@ -39,15 +39,9 @@
         $brandProfile = (array) data_get($report, 'brand_profile', []);
         $overall = (array) data_get($report, 'overall', []);
         $competitors = (array) data_get($report, 'competitors', []);
-        $sentimentOverall = (array) data_get($report, 'sentiment.overall', []);
         $maxCompetitorMentionCount = max(1, (int) collect($competitors)->max(fn ($competitor): int => (int) data_get($competitor, 'mention_count', 0)));
         $hasIndustryReport = ! empty($competitors)
-            || (float) data_get($overall, 'top5_rate', 0) > 0
-            || (float) data_get($sentimentOverall, 'positive_rate', 0) > 0
-            || (float) data_get($sentimentOverall, 'neutral_rate', 0) > 0
-            || (float) data_get($sentimentOverall, 'negative_rate', 0) > 0;
-        $caseIndustryLabel = $case->displayIndustry();
-        $caseRegionLabel = $case->displayRegion();
+            || (float) data_get($overall, 'top5_rate', 0) > 0;
     @endphp
     <script type="application/ld+json">
 {!! json_encode([
@@ -86,7 +80,7 @@
                 <div class="grid gap-8 lg:grid-cols-[1fr_380px] lg:items-end">
                     <div>
                         <div class="flex flex-wrap gap-2">
-                            @foreach(array_filter([$caseIndustryLabel, $caseRegionLabel, $case->business_mode]) as $item)
+                            @foreach(array_filter([$case->industry, $case->region]) as $item)
                                 <span class="rounded-md bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">{{ $item }}</span>
                             @endforeach
                         </div>
@@ -175,10 +169,6 @@
                             <span>{{ __('admin.product_cases.public.region') }}</span>
                             <span class="font-medium text-slate-900">{{ $caseRegionLabel ?: __('admin.product_cases.public.not_set') }}</span>
                         </div>
-                        <div class="flex justify-between gap-3">
-                            <span>{{ __('admin.product_cases.public.mode') }}</span>
-                            <span class="font-medium text-slate-900">{{ $case->business_mode ?: __('admin.product_cases.public.not_set') }}</span>
-                        </div>
                     </div>
                 </section>
 
@@ -198,15 +188,15 @@
         </section>
 
         <section class="mx-auto max-w-7xl px-4 pb-12 sm:px-6 lg:px-8">
-            <div class="grid gap-6 lg:grid-cols-2">
-                <section class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+            <div class="grid items-stretch gap-6 lg:grid-cols-2">
+                <section class="flex min-h-[34rem] flex-col rounded-lg border border-slate-200 bg-white p-6 shadow-sm lg:min-h-[46rem]">
                     <div class="flex items-center justify-between gap-4">
                         <div>
                             <p class="text-sm font-semibold uppercase tracking-wide text-orange-600">{{ __('admin.product_cases.public.ai_platforms') }}</p>
                             <h2 class="mt-2 text-xl font-semibold text-slate-950">{{ __('admin.product_cases.public.ai_platform_performance') }}</h2>
                         </div>
                     </div>
-                    <div class="mt-5 space-y-3">
+                    <div class="mt-5 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
                         @forelse((array) data_get($report, 'platforms', []) as $platform)
                             @php
                                 $topRate = (float) data_get($platform, 'top_rank_rates.top1', 0);
@@ -234,33 +224,60 @@
                     </div>
                 </section>
 
-                <section class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+                <section class="flex min-h-[34rem] flex-col rounded-lg border border-slate-200 bg-white p-6 shadow-sm lg:min-h-[46rem]">
                     <div>
                         <p class="text-sm font-semibold uppercase tracking-wide text-orange-600">{{ __('admin.product_cases.public.search_report') }}</p>
                         <h2 class="mt-2 text-xl font-semibold text-slate-950">{{ __('admin.product_cases.public.search_report_summary') }}</h2>
                     </div>
-                    <div class="mt-5 overflow-x-auto">
+                    @php
+                        $searchPagination = (array) data_get($report, 'search_pagination', []);
+                        $searchCurrentPage = max(1, (int) data_get($searchPagination, 'current_page', 1));
+                        $searchLastPage = max(1, (int) data_get($searchPagination, 'last_page', 1));
+                    @endphp
+                    <div class="mt-5 flex min-h-0 flex-1 flex-col">
                         @if(!empty(data_get($report, 'search_rows', [])))
-                            <table class="min-w-full divide-y divide-slate-200 text-sm">
-                                <thead class="bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
-                                    <tr>
-                                        <th class="px-3 py-3 text-left">{{ __('admin.product_cases.public.question') }}</th>
-                                        <th class="px-3 py-3 text-left">{{ __('admin.product_cases.public.platform') }}</th>
-                                        <th class="px-3 py-3 text-left">{{ __('admin.product_cases.public.conversion_target') }}</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y divide-slate-200">
-                                    @foreach((array) data_get($report, 'search_rows', []) as $row)
+                            <div class="min-h-0 flex-1 overflow-y-auto overflow-x-auto">
+                                <table class="min-w-full table-fixed divide-y divide-slate-200 text-sm">
+                                    <thead class="sticky top-0 z-10 bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
                                         <tr>
-                                            <td class="max-w-80 px-3 py-3 text-slate-700">{{ data_get($row, 'question', '-') }}</td>
-                                            <td class="whitespace-nowrap px-3 py-3 text-slate-600">{{ data_get($row, 'platform', '-') }}</td>
-                                            <td class="whitespace-nowrap px-3 py-3 text-slate-600">{{ data_get($row, 'target', '-') }}</td>
+                                            <th class="w-[58%] px-3 py-3 text-left">问题</th>
+                                            <th class="w-[20%] px-3 py-3 text-left">平台</th>
+                                            <th class="w-[22%] px-3 py-3 text-left">转化目标</th>
                                         </tr>
-                                    @endforeach
-                                </tbody>
-                            </table>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-200">
+                                        @foreach((array) data_get($report, 'search_rows', []) as $row)
+                                            <tr>
+                                                <td class="truncate px-3 py-3 text-slate-700" title="{{ data_get($row, 'question', '-') }}">{{ data_get($row, 'question', '-') }}</td>
+                                                <td class="truncate px-3 py-3 text-slate-600" title="{{ data_get($row, 'platform', '-') }}">{{ data_get($row, 'platform', '-') }}</td>
+                                                <td class="truncate px-3 py-3 text-slate-600" title="{{ data_get($row, 'target', '-') }}">{{ data_get($row, 'target', '-') }}</td>
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
                         @else
-                            <p class="rounded-md bg-slate-50 px-4 py-3 text-sm text-slate-500">{{ __('admin.product_cases.public.no_search_data') }}</p>
+                            <div class="flex flex-1 items-start">
+                                <p class="w-full rounded-md bg-slate-50 px-4 py-3 text-sm text-slate-500">暂无搜索报表数据。</p>
+                            </div>
+                        @endif
+
+                        @if($searchLastPage > 1)
+                            <nav data-search-pagination class="mt-4 flex shrink-0 items-center justify-between gap-3 border-t border-slate-100 pt-4" aria-label="搜索报表分页">
+                                <span class="text-xs text-slate-500">
+                                    {{ (int) data_get($searchPagination, 'from', 0) }}-{{ (int) data_get($searchPagination, 'to', 0) }}
+                                    / {{ (int) data_get($searchPagination, 'total', 0) }}
+                                </span>
+                                <div class="flex items-center gap-2">
+                                    @if((bool) data_get($searchPagination, 'has_previous', false))
+                                        <a href="{{ route($caseRoutes['show'], ['slug' => $case->slug, 'search_page' => $searchCurrentPage - 1]) }}" class="inline-flex h-8 items-center rounded-md border border-slate-200 px-2.5 text-xs font-medium text-slate-600 transition hover:border-orange-300 hover:text-orange-700">上一页</a>
+                                    @endif
+                                    <span class="text-xs font-medium text-slate-700">{{ $searchCurrentPage }} / {{ $searchLastPage }}</span>
+                                    @if((bool) data_get($searchPagination, 'has_next', false))
+                                        <a href="{{ route($caseRoutes['show'], ['slug' => $case->slug, 'search_page' => $searchCurrentPage + 1]) }}" class="inline-flex h-8 items-center rounded-md border border-slate-200 px-2.5 text-xs font-medium text-slate-600 transition hover:border-orange-300 hover:text-orange-700">下一页</a>
+                                    @endif
+                                </div>
+                            </nav>
                         @endif
                     </div>
                 </section>
@@ -270,13 +287,14 @@
         @if($hasIndustryReport)
             <section class="mx-auto max-w-7xl px-4 pb-14 sm:px-6 lg:px-8">
                 <div class="mb-6">
-                    <p class="text-sm font-semibold uppercase tracking-wide text-orange-600">{{ __('admin.product_cases.public.industry_report') }}</p>
-                    <h2 class="mt-2 text-2xl font-semibold text-slate-950">{{ __('admin.product_cases.public.industry_competitiveness') }}</h2>
-                    <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{{ __('admin.product_cases.public.industry_desc') }}</p>
+                    <p class="text-sm font-semibold uppercase tracking-wide text-orange-600">Industry Report</p>
+                    <h2 class="mt-2 text-2xl font-semibold text-slate-950">行业竞争力</h2>
+                    <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-600">基于品牌诊断结果整理品牌画像、@if(!empty($competitors))竞品提及、@endif排名曝光，作为案例效果的补充证明。</p>
                 </div>
 
-                <div class="grid gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(300px,.75fr)]">
-                    <section class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+                <div class="{{ !empty($competitors) ? 'grid gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(300px,.75fr)]' : '' }}">
+                    @if(!empty($competitors))
+                        <section class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
                         <div class="flex items-center justify-between gap-4">
                             <div>
                                 <p class="text-sm font-semibold uppercase tracking-wide text-orange-600">{{ __('admin.product_cases.public.competitors') }}</p>
@@ -326,7 +344,8 @@
                                 <p class="rounded-md bg-slate-50 px-4 py-3 text-sm text-slate-500">{{ __('admin.product_cases.public.no_competitor_data') }}</p>
                             @endforelse
                         </div>
-                    </section>
+                        </section>
+                    @endif
 
                     <div class="space-y-6">
                         <section class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
@@ -375,28 +394,6 @@
                                 @endfor
                             </div>
                         </section>
-
-                        <section class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-                            <p class="text-sm font-semibold uppercase tracking-wide text-orange-600">{{ __('admin.product_cases.public.sentiment') }}</p>
-                            <h3 class="mt-2 text-xl font-semibold text-slate-950">{{ __('admin.product_cases.public.sentiment') }}</h3>
-                            <div class="mt-5 space-y-3">
-                                @foreach([
-                                    ['label' => __('admin.product_cases.public.positive'), 'rate' => (float) data_get($sentimentOverall, 'positive_rate', 0), 'color' => 'bg-emerald-500'],
-                                    ['label' => __('admin.product_cases.public.neutral'), 'rate' => (float) data_get($sentimentOverall, 'neutral_rate', 0), 'color' => 'bg-sky-500'],
-                                    ['label' => __('admin.product_cases.public.negative'), 'rate' => (float) data_get($sentimentOverall, 'negative_rate', 0), 'color' => 'bg-rose-500'],
-                                ] as $sentiment)
-                                    <div>
-                                        <div class="flex items-center justify-between text-sm">
-                                            <span class="text-slate-600">{{ $sentiment['label'] }}</span>
-                                            <span class="font-medium text-slate-950">{{ $sentiment['rate'] }}%</span>
-                                        </div>
-                                        <div class="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
-                                            <div class="h-full rounded-full {{ $sentiment['color'] }}" style="width: {{ min(100, max(0, $sentiment['rate'])) }}%"></div>
-                                        </div>
-                                    </div>
-                                @endforeach
-                            </div>
-                        </section>
                     </div>
                 </div>
             </section>
@@ -404,9 +401,8 @@
     </main>
 
     <footer class="border-t border-slate-200 bg-white">
-        <div class="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-6 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
-            <span>{{ config('geoflow.site_name', config('app.name')) }}</span>
-            <a href="{{ route($caseRoutes['index']) }}" class="font-medium text-slate-600 hover:text-slate-950">{{ __('admin.product_cases.public.view_more') }}</a>
+        <div class="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-6 text-right text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-end sm:px-6 lg:px-8">
+            <a href="{{ route($caseRoutes['index']) }}" class="font-medium text-slate-600 hover:text-slate-950">查看更多案例</a>
         </div>
     </footer>
 

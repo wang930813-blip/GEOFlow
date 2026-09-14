@@ -91,6 +91,38 @@ class AdminBrandDiagnosisPageTest extends TestCase
             ->assertSee('is-active font-medium', false);
     }
 
+    public function test_brand_diagnosis_list_hides_product_case_seed_runs_by_default(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('brand_diagnosis_seed_filter_admin');
+
+        foreach ([
+            ['brand_name' => 'Visible Diagnosis Brand', 'billing_mode' => 'daily_free'],
+            ['brand_name' => 'Imported Product Case Brand', 'billing_mode' => 'product_case_seed'],
+        ] as $attributes) {
+            BrandDiagnosisRun::query()->create([
+                'site_id' => (int) $site->id,
+                'owner_admin_id' => (int) $admin->id,
+                'admin_id' => (int) $admin->id,
+                'brand_name' => $attributes['brand_name'],
+                'platforms' => ['doubao'],
+                'status' => 'completed',
+                'total_questions' => 0,
+                'completed_questions' => 0,
+                'failed_questions' => 0,
+                'billing_mode' => $attributes['billing_mode'],
+                'usage_date' => now()->toDateString(),
+                'completed_at' => now(),
+            ]);
+        }
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.brand-diagnosis.index'))
+            ->assertOk()
+            ->assertSee('Visible Diagnosis Brand')
+            ->assertDontSee('Imported Product Case Brand');
+    }
+
     /**
      * @Name: test_brand_diagnosis_page_remains_available_before_open_api_column_migration
      *

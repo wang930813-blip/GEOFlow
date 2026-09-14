@@ -5,22 +5,20 @@ namespace App\Http\Controllers;
 use App\Models\ProductCase;
 use App\Services\ProductCases\ProductCaseReportSummaryService;
 use App\Support\Site\ArticleHtmlPresenter;
-use App\Support\AdminWeb;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\View\View;
 
 class ProductCaseController extends Controller
 {
     public function index(Request $request, ProductCaseReportSummaryService $reports): View
     {
-        $this->applyLocale($request);
-
         $caseRoutes = $this->routeNames($request);
         $filters = [
             'keyword' => trim((string) $request->query('keyword', '')),
-            'industry' => ProductCase::normalizeIndustryLabel((string) $request->query('industry', '')),
-            'region' => ProductCase::normalizeRegionLabel((string) $request->query('region', '')),
+            'industry' => trim((string) $request->query('industry', '')),
+            'region' => trim((string) $request->query('region', '')),
         ];
 
         $query = ProductCase::query()
@@ -29,19 +27,51 @@ class ProductCaseController extends Controller
 
         $this->applyFilters($query, $filters);
 
-        $cases = $query
+        $rankedCases = $query
             ->orderByDesc('sort_order')
             ->orderByDesc('published_at')
             ->orderByDesc('id')
-            ->paginate(12)
-            ->withQueryString();
+            ->get()
+            ->map(function (ProductCase $case) use ($reports): array {
+                $report = $reports->detail($case);
 
-        $caseMetrics = [];
-        foreach ($cases as $case) {
-            if ($case instanceof ProductCase) {
-                $caseMetrics[(int) $case->id] = $reports->cardMetrics($case);
-            }
-        }
+                return [
+                    'case' => $case,
+                    'report' => $report,
+                    'score' => $reports->performanceScoreFromReport($report),
+                    'sort_order' => (int) $case->sort_order,
+                    'published_at' => (int) ($case->published_at?->getTimestamp() ?? 0),
+                    'id' => (int) $case->id,
+                ];
+            })
+            ->sort(function (array $left, array $right): int {
+                foreach (['score', 'sort_order', 'published_at', 'id'] as $key) {
+                    $comparison = ((int) $right[$key]) <=> ((int) $left[$key]);
+                    if ($comparison !== 0) {
+                        return $comparison;
+                    }
+                }
+
+                return 0;
+            })
+            ->values();
+
+        $page = max(1, (int) $request->query('page', 1));
+        $perPage = 12;
+        $pageItems = $rankedCases->forPage($page, $perPage)->values();
+        $cases = new LengthAwarePaginator(
+            $pageItems->pluck('case')->values(),
+            $rankedCases->count(),
+            $perPage,
+            $page,
+            ['path' => $request->url(), 'query' => $request->query()]
+        );
+
+        $caseMetrics = $pageItems
+            ->mapWithKeys(fn (array $item): array => [
+                (int) $item['case']->id => $reports->cardMetricsFromReport((array) $item['report']),
+            ])
+            ->all();
 
         return view('product-cases.index', [
             'cases' => $cases,
@@ -49,15 +79,13 @@ class ProductCaseController extends Controller
             'caseRoutes' => $caseRoutes,
             'filterOptions' => $this->filterOptions(),
             'filters' => $filters,
-            'pageTitle' => __('admin.product_cases.public.title'),
-            'pageDescription' => __('admin.product_cases.public.description'),
+            'pageTitle' => '产品案例',
+            'pageDescription' => '查看 GEO 与 AI 搜索优化产品案例，了解品牌诊断、AI 搜索收录和内容增长的落地效果。',
         ]);
     }
 
     public function show(Request $request, string $slug, ProductCaseReportSummaryService $reports): View
     {
-        $this->applyLocale($request);
-
         $case = ProductCase::query()
             ->published()
             ->with(['site:id,name,owner_admin_id', 'owner:id,username,display_name'])
@@ -66,10 +94,12 @@ class ProductCaseController extends Controller
 
         $case->increment('view_count');
 
+        $searchPage = max(1, (int) $request->query('search_page', 1));
+
         return view('product-cases.show', [
             'case' => $case,
             'contentHtml' => ArticleHtmlPresenter::markdownToHtml((string) $case->content),
-            'report' => $reports->detail($case),
+            'report' => $reports->detail($case, $searchPage),
             'caseRoutes' => $this->routeNames($request),
             'pageTitle' => $case->title,
             'pageDescription' => trim((string) $case->summary) !== '' ? (string) $case->summary : (string) $case->company_name,
@@ -91,11 +121,12 @@ class ProductCaseController extends Controller
         }
 
         if ($filters['industry'] !== '') {
-            $query->whereIn('industry', ProductCase::industryStorageValues($filters['industry']));
+            $query->where('industry', $filters['industry']);
         }
 
         if ($filters['region'] !== '') {
-            $query->whereIn('region', ProductCase::regionStorageValues($filters['region']));
+            $like = '%'.str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], mb_strtolower($filters['region'], 'UTF-8')).'%';
+            $query->whereRaw('LOWER(region) LIKE ?', [$like]);
         }
 
     }
@@ -131,17 +162,5 @@ class ProductCaseController extends Controller
             'show' => 'product-cases.show',
             'home' => 'site.home',
         ];
-    }
-
-    private function applyLocale(Request $request): void
-    {
-        $locale = (string) $request->session()->get('locale', '');
-        if (! AdminWeb::isSupportedLocale($locale)) {
-            $locale = trim((string) config('geoflow.public_locale', 'zh_CN'));
-        }
-
-        if (AdminWeb::isSupportedLocale($locale)) {
-            app()->setLocale($locale);
-        }
     }
 }
