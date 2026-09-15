@@ -1,0 +1,17 @@
+{
+    "id": "template01",
+    "name": "Template 01 官网模板",
+    "version": "1.0.0",
+    "description": "深色科技感企业官网首页模板，适合展示品牌介绍、服务能力、项目案例、合作流程、资讯内容与联系方式。",
+    "framework": "laravel",
+    "geoflow_contract": "site-theme-view-resolver",
+    "mode": "full_theme",
+    "requires_admin_activation": true,
+    "templates": [
+        "layout",
+        "home"
+    ],
+    "preview_routes": [
+        "/"
+    ]
+}

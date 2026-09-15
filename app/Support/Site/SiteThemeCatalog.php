@@ -5,6 +5,17 @@ namespace App\Support\Site;
 class SiteThemeCatalog
 {
     /**
+     * 这批旧官网模板暂时保留代码和静态资源，但不再暴露给后台用户选择。
+     */
+    private const HIDDEN_SELECTION_THEME_IDS = [
+        'api-hot-recommendation-20260914',
+        'apihot-recommend-20260623',
+        'apple-support-inspired-20260914',
+        'apple_support_clone',
+        'corporate-growth-20260914',
+    ];
+
+    /**
      * @return array<int, array{id:string,name:string,version:string,description:string,templates:list<string>,preview_routes:list<string>,mode:string,base_theme_id:string,asset_css_exists:bool,asset_js_exists:bool,source:string}>
      */
     public function all(): array
@@ -26,6 +37,10 @@ class SiteThemeCatalog
             }
 
             if (! preg_match('/^[a-zA-Z0-9_-]+$/', $entry)) {
+                continue;
+            }
+
+            if ($this->hiddenFromSelection($entry)) {
                 continue;
             }
 
@@ -175,5 +190,14 @@ class SiteThemeCatalog
             ->replace(['-', '_'], ' ')
             ->title()
             ->toString();
+    }
+
+    private function hiddenFromSelection(string $themeId): bool
+    {
+        if (in_array($themeId, self::HIDDEN_SELECTION_THEME_IDS, true)) {
+            return true;
+        }
+
+        return preg_match('/^geoflow-template-(0[1-9]|1[0-9]|20)-/', $themeId) === 1;
     }
 }

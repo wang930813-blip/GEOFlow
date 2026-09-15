@@ -528,6 +528,41 @@ class AdminSiteSettingsPageTest extends TestCase
         $this->assertTrue($slides[0]['enabled']);
     }
 
+    public function test_legacy_official_website_themes_are_hidden_from_admin_selection(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+
+        $admin = Admin::query()->create([
+            'username' => 'site_theme_visibility_admin',
+            'password' => 'secret-123',
+            'email' => 'site-theme-visibility-admin@example.com',
+            'display_name' => 'Site Theme Visibility Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        $response = $this->actingAs($admin, 'admin')
+            ->get(route('admin.site-settings.index'));
+
+        $response
+            ->assertOk()
+            ->assertDontSee('value="api-hot-recommendation-20260914"', false)
+            ->assertDontSee('value="apihot-recommend-20260623"', false)
+            ->assertDontSee('value="apple-support-inspired-20260914"', false)
+            ->assertDontSee('value="apple_support_clone"', false)
+            ->assertDontSee('value="corporate-growth-20260914"', false)
+            ->assertDontSee('value="geoflow-template-01-ink-editorial"', false)
+            ->assertDontSee('value="geoflow-template-20-research-journal"', false)
+            ->assertSee('value="geoflow-template-21-enterprise-signature"', false)
+            ->assertSee('value="tech-insight-20260819"', false);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.site-settings.theme'), [
+                'active_theme' => 'geoflow-template-20-research-journal',
+            ])
+            ->assertSessionHasErrors();
+    }
+
     private function createAdminWithSite(string $username, string $role = 'admin'): array
     {
         $admin = Admin::query()->create([
