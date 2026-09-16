@@ -355,6 +355,49 @@ class ProductCaseModuleTest extends TestCase
         $this->assertNull($case->module_tags);
     }
 
+    public function test_special_service_industry_options_are_available_on_public_filters_and_admin_form(): void
+    {
+        [$superAdmin] = $this->createAdminWithSite('super_case_special_industry', 'super_admin');
+        [$owner, $site] = $this->createAdminWithSite('case_special_industry_customer', 'direct_admin');
+
+        $this->get(route('product-cases.index'))
+            ->assertOk()
+            ->assertSee('value="律师服务 / 企业法律顾问"', false)
+            ->assertSee('value="婚纱摄影 / 婚礼影像"', false)
+            ->assertDontSee('value="律师/律所"', false);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.product-cases.create'))
+            ->assertOk()
+            ->assertSee('律师服务 / 企业法律顾问')
+            ->assertSee('婚纱摄影 / 婚礼影像')
+            ->assertDontSee('律师/律所');
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.product-cases.store'), $this->casePayload($site, $owner, [
+                'title' => 'Law Firm Product Case',
+                'industry' => '律师服务 / 企业法律顾问',
+            ]))
+            ->assertRedirect(route('admin.product-cases.index'))
+            ->assertSessionHasNoErrors();
+
+        $case = ProductCase::query()->where('title', 'Law Firm Product Case')->firstOrFail();
+
+        $this->assertSame('律师服务 / 企业法律顾问', $case->industry);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.product-cases.store'), $this->casePayload($site, $owner, [
+                'title' => 'Wedding Photography Product Case',
+                'industry' => '婚纱摄影 / 婚礼影像',
+            ]))
+            ->assertRedirect(route('admin.product-cases.index'))
+            ->assertSessionHasNoErrors();
+
+        $case = ProductCase::query()->where('title', 'Wedding Photography Product Case')->firstOrFail();
+
+        $this->assertSame('婚纱摄影 / 婚礼影像', $case->industry);
+    }
+
     public function test_non_super_admin_cannot_manage_product_cases(): void
     {
         [$admin] = $this->createAdminWithSite('normal_case_manager', 'direct_admin');
@@ -385,6 +428,113 @@ class ProductCaseModuleTest extends TestCase
             ->assertSee('Manual case content should stay primary.')
             ->assertSee('GEO 成效总览')
             ->assertSee('AI 平台覆盖');
+    }
+
+    public function test_manual_site_case_uses_monitoring_center_brand_data_when_case_label_differs(): void
+    {
+        [$owner, $site] = $this->createAdminWithSite('manual_monitoring_case_owner', 'direct_admin');
+
+        KeywordLibrary::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'name' => 'Monitoring Center Library',
+            'company_name' => 'Monitoring Center Brand',
+            'domain_keyword' => 'monitoring center',
+            'industry' => 'Technology Service',
+            'brand_description' => 'The real brand configured in the monitoring center.',
+            'status' => 'active',
+        ]);
+
+        $case = ProductCase::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'title' => 'Manual Case Label',
+            'slug' => 'manual-monitoring-case',
+            'company_name' => 'Manual Case Label',
+            'summary' => 'The case label is maintained separately from monitoring data.',
+            'content' => 'Manual case content.',
+            'status' => ProductCase::STATUS_PUBLISHED,
+            'published_at' => now()->subDay(),
+        ]);
+
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'admin_id' => $owner->id,
+            'brand_name' => 'Monitoring Center Brand',
+            'brand_profile' => 'Monitoring Center brand profile.',
+            'platforms' => ['doubao'],
+            'status' => 'completed',
+            'total_questions' => 1,
+            'completed_questions' => 1,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+            'started_at' => now()->subHour(),
+            'completed_at' => now()->subMinutes(10),
+        ]);
+
+        $question = BrandDiagnosisQuestion::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'run_id' => $run->id,
+            'question' => 'Which monitoring center brand is recommended?',
+            'question_type' => 'recommendation',
+            'sort_order' => 1,
+            'status' => 'completed',
+        ]);
+
+        $result = BrandDiagnosisResult::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'run_id' => $run->id,
+            'question_id' => $question->id,
+            'platform' => 'doubao',
+            'answer' => 'Monitoring Center Brand is recommended.',
+            'brand_mentioned' => true,
+            'mention_count' => 1,
+            'mention_rank' => 1,
+            'sentiment' => 'positive',
+            'status' => 'success',
+            'checked_at' => now()->subMinutes(5),
+        ]);
+
+        BrandDiagnosisBrandMention::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'run_id' => $run->id,
+            'question_id' => $question->id,
+            'result_id' => $result->id,
+            'platform' => 'doubao',
+            'brand_name' => 'Monitoring Center Brand',
+            'mention_count' => 1,
+            'mention_rank' => 1,
+            'sentiment' => 'positive',
+            'source_count' => 1,
+            'is_target_brand' => true,
+        ]);
+
+        BrandDiagnosisSource::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'run_id' => $run->id,
+            'question_id' => $question->id,
+            'result_id' => $result->id,
+            'platform' => 'doubao',
+            'title' => 'Monitoring Center Source',
+            'url' => 'https://example.test/monitoring-center-source',
+            'domain' => 'example.test',
+            'source_type' => 'url_citation',
+        ]);
+
+        $report = app(ProductCaseReportSummaryService::class)->detail($case);
+
+        $this->assertSame(1, data_get($report, 'summary.search_report_count'));
+        $this->assertSame('Monitoring Center Brand', data_get($report, 'brand_profile.company_name'));
+        $this->assertSame(
+            'Which monitoring center brand is recommended?',
+            data_get($report, 'search_rows.0.question')
+        );
+        $this->assertNotEmpty(data_get($report, 'platforms'));
     }
 
     public function test_case_detail_uses_beautified_geo_metrics_and_hides_mode_and_sentiment_blocks(): void

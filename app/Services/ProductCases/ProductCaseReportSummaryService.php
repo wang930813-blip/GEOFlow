@@ -7,7 +7,9 @@ use App\Models\BrandDiagnosisQuestion;
 use App\Models\BrandDiagnosisResult;
 use App\Models\BrandDiagnosisRun;
 use App\Models\BrandDiagnosisSource;
+use App\Models\KeywordLibrary;
 use App\Models\ProductCase;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
 class ProductCaseReportSummaryService
@@ -80,7 +82,10 @@ class ProductCaseReportSummaryService
         $sourceCount = $this->sourceCount($sources);
         $targetMentions = $mentions->where('is_target_brand', true);
         if ($targetMentions->isEmpty()) {
-            $targetMentions = $this->fallbackTargetMentions($results, $case);
+            $targetMentions = $this->fallbackTargetMentions(
+                $results,
+                trim((string) ($data['run']->brand_name ?: $case->company_name))
+            );
         }
 
         $summary = [
@@ -91,7 +96,11 @@ class ProductCaseReportSummaryService
         ];
         $displaySummary = $this->displaySummary($case, $summary, $results, $questions, $sources, $targetMentions);
         $searchPagination = $this->paginateSearchRows(
-            collect($this->searchRows($results, $questions, $case)),
+            collect($this->searchRows(
+                $results,
+                $questions,
+                trim((string) ($data['run']->brand_name ?: $case->company_name ?: $case->title))
+            )),
             $searchPage
         );
 
@@ -130,15 +139,51 @@ class ProductCaseReportSummaryService
             return null;
         }
 
-        $run = BrandDiagnosisRun::query()
-            ->withoutGlobalScopes(['current_site', 'admin_owner'])
-            ->where('site_id', $siteId)
-            ->where('owner_admin_id', $ownerAdminId)
-            ->where('brand_name', $brandName)
-            ->where('status', 'completed')
-            ->orderByDesc('completed_at')
-            ->orderByDesc('id')
+        /*
+         * Imported product-case data is intentionally isolated with its own
+         * billing mode. Keep that path keyed by the case brand, but do not
+         * require a manually maintained case label to equal the monitoring
+         * center's actual brand name.
+         */
+        $run = $this->completedRunQuery($siteId, $ownerAdminId)
+            ->whereRaw('LOWER(TRIM(brand_name)) = LOWER(TRIM(?))', [$brandName])
+            ->where('billing_mode', ProductCaseDemoDataService::BILLING_MODE)
             ->first();
+
+        if (! $run instanceof BrandDiagnosisRun) {
+            $monitoringBrandNames = $this->monitoringBrandNames($siteId, $ownerAdminId);
+
+            if ($monitoringBrandNames !== []) {
+                $run = $this->completedRunQuery($siteId, $ownerAdminId)
+                    ->where(function (Builder $query) use ($monitoringBrandNames): void {
+                        foreach ($monitoringBrandNames as $index => $monitoringBrandName) {
+                            $method = $index === 0 ? 'whereRaw' : 'orWhereRaw';
+                            $query->{$method}(
+                                'LOWER(TRIM(brand_name)) = LOWER(TRIM(?))',
+                                [$monitoringBrandName]
+                            );
+                        }
+                    })
+                    ->where(function (Builder $query): void {
+                        $query
+                            ->whereNull('billing_mode')
+                            ->orWhere('billing_mode', '<>', ProductCaseDemoDataService::BILLING_MODE);
+                    })
+                    ->first();
+            }
+        }
+
+        if (! $run instanceof BrandDiagnosisRun) {
+            $run = $this->completedRunQuery($siteId, $ownerAdminId)
+                ->whereRaw('LOWER(TRIM(brand_name)) = LOWER(TRIM(?))', [$brandName])
+                ->where(function (Builder $query): void {
+                    $query
+                        ->whereNull('billing_mode')
+                        ->orWhere('billing_mode', '<>', ProductCaseDemoDataService::BILLING_MODE);
+                })
+                ->first();
+        }
+
         if (! $run instanceof BrandDiagnosisRun) {
             return null;
         }
@@ -167,6 +212,38 @@ class ProductCaseReportSummaryService
             ->get();
 
         return compact('run', 'questions', 'results', 'sources', 'mentions');
+    }
+
+    private function completedRunQuery(int $siteId, int $ownerAdminId): Builder
+    {
+        return BrandDiagnosisRun::query()
+            ->withoutGlobalScopes(['current_site', 'admin_owner'])
+            ->where('site_id', $siteId)
+            ->where('owner_admin_id', $ownerAdminId)
+            ->where('status', 'completed')
+            ->orderByDesc('completed_at')
+            ->orderByDesc('id');
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function monitoringBrandNames(int $siteId, int $ownerAdminId): array
+    {
+        return KeywordLibrary::query()
+            ->withoutGlobalScopes(['current_site', 'admin_owner'])
+            ->where('site_id', $siteId)
+            ->where('owner_admin_id', $ownerAdminId)
+            ->whereNotNull('company_name')
+            ->where('company_name', '<>', '')
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->pluck('company_name')
+            ->map(fn (mixed $name): string => trim((string) $name))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
     }
 
     /**
@@ -232,11 +309,11 @@ class ProductCaseReportSummaryService
      * @param  Collection<int,BrandDiagnosisQuestion>  $questions
      * @return list<array<string,mixed>>
      */
-    private function searchRows(Collection $results, Collection $questions, ProductCase $case): array
+    private function searchRows(Collection $results, Collection $questions, string $targetBrandName): array
     {
         $questionsById = $questions->keyBy('id');
 
-        return $results->map(function (BrandDiagnosisResult $result) use ($questionsById, $case): array {
+        return $results->map(function (BrandDiagnosisResult $result) use ($questionsById, $targetBrandName): array {
             $question = $questionsById->get((int) $result->question_id);
 
             return [
@@ -245,7 +322,7 @@ class ProductCaseReportSummaryService
                     : '品牌诊断问题',
                 'platform' => $this->platformLabel((string) $result->platform),
                 'platform_key' => $this->normalizePlatform((string) $result->platform),
-                'target' => (string) ($case->company_name ?: $case->title),
+                'target' => $targetBrandName,
                 'answer' => (string) ($result->answer ?? ''),
             ];
         })->values()->all();
@@ -267,7 +344,7 @@ class ProductCaseReportSummaryService
      */
     private function brandProfile(BrandDiagnosisRun $run, ProductCase $case): array
     {
-        $companyName = trim((string) ($case->company_name ?: $run->brand_name ?: $case->title));
+        $companyName = trim((string) ($run->brand_name ?: $case->company_name ?: $case->title));
         $services = collect([
             $case->industry,
             $case->region !== '' ? $case->region.'服务' : '',
@@ -406,7 +483,7 @@ class ProductCaseReportSummaryService
      * @param  Collection<int,BrandDiagnosisResult>  $results
      * @return Collection<int,array<string,mixed>>
      */
-    private function fallbackTargetMentions(Collection $results, ProductCase $case): Collection
+    private function fallbackTargetMentions(Collection $results, string $brandName): Collection
     {
         return $results
             ->filter(fn (BrandDiagnosisResult $result): bool => (bool) $result->brand_mentioned)
@@ -415,7 +492,7 @@ class ProductCaseReportSummaryService
                 'mention_count' => (int) $result->mention_count,
                 'mention_rank' => (int) $result->mention_rank,
                 'sentiment' => (string) $result->sentiment,
-                'brand_name' => (string) $case->company_name,
+                'brand_name' => $brandName,
                 'is_target_brand' => true,
             ])
             ->values();
