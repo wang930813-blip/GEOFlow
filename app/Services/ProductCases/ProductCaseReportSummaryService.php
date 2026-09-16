@@ -2,15 +2,18 @@
 
 namespace App\Services\ProductCases;
 
+use App\Models\Admin;
 use App\Models\BrandDiagnosisBrandMention;
 use App\Models\BrandDiagnosisQuestion;
 use App\Models\BrandDiagnosisResult;
 use App\Models\BrandDiagnosisRun;
 use App\Models\BrandDiagnosisSource;
-use App\Models\KeywordLibrary;
 use App\Models\ProductCase;
+use App\Models\Site;
+use App\Services\MonitoringCenter\MonitoringReportDataService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use Throwable;
 
 class ProductCaseReportSummaryService
 {
@@ -28,6 +31,8 @@ class ProductCaseReportSummaryService
         'wenxin',
         'yuanbao',
     ];
+
+    public function __construct(private readonly MonitoringReportDataService $monitoringReports) {}
 
     /**
      * @return list<array{label:string,value:int}>
@@ -64,7 +69,21 @@ class ProductCaseReportSummaryService
      */
     public function detail(ProductCase $case, int $searchPage = 1): array
     {
-        $data = $this->loadDiagnosisData($case);
+        $seedRun = $this->seedRun($case);
+
+        if ($seedRun instanceof BrandDiagnosisRun) {
+            return $this->detailFromDiagnosisRun($case, $seedRun, $searchPage);
+        }
+
+        return $this->detailFromMonitoringReports($case, $searchPage);
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function detailFromDiagnosisRun(ProductCase $case, BrandDiagnosisRun $run, int $searchPage = 1): array
+    {
+        $data = $this->diagnosisDataForRun($run);
         if ($data === null) {
             return $this->empty();
         }
@@ -122,6 +141,55 @@ class ProductCaseReportSummaryService
     }
 
     /**
+     * @return array<string,mixed>
+     */
+    private function detailFromMonitoringReports(ProductCase $case, int $searchPage = 1): array
+    {
+        $site = $this->reportSite($case);
+        $owner = $this->reportOwner($case, $site);
+
+        if (! $site instanceof Site || ! $owner instanceof Admin) {
+            return $this->empty();
+        }
+
+        try {
+            $enterprise = $this->monitoringReports->enterpriseReport($owner, $site);
+            $industry = $this->monitoringReports->industryReport($owner, $site);
+        } catch (Throwable) {
+            return $this->empty();
+        }
+
+        $summary = (array) ($enterprise['summary'] ?? []);
+        $displaySummary = [
+            'platform_count' => (int) data_get($summary, 'platform_count.display', 0),
+            'search_report_count' => (int) data_get($summary, 'search_report_count.display', 0),
+            'distillation_word_count' => (int) data_get($summary, 'distillation_word_count.display', 0),
+            'source_count' => (int) data_get($summary, 'source_count.display', 0),
+        ];
+        $performanceScore = $this->performanceScoreFromSummary($displaySummary);
+        $searchPagination = $this->paginateSearchRows(
+            collect((array) ($enterprise['search_rows'] ?? [])),
+            $searchPage
+        );
+
+        return [
+            'summary' => $displaySummary + [
+                'display' => $displaySummary + ['performance_score' => $performanceScore],
+                'performance_score' => $performanceScore,
+                'metrics' => $this->metricsFromMonitoringSummary($summary),
+            ],
+            'platforms' => (array) ($industry['platforms'] ?? []),
+            'search_rows' => $searchPagination['items'],
+            'search_pagination' => $searchPagination['meta'],
+            'trend' => (array) ($enterprise['trend'] ?? []),
+            'brand_profile' => (array) ($industry['brand_profile'] ?? []),
+            'overall' => (array) ($industry['overall'] ?? []),
+            'competitors' => (array) ($industry['competitors'] ?? []),
+            'sentiment' => (array) ($industry['sentiment'] ?? []),
+        ];
+    }
+
+    /**
      * @return array{
      *     run:BrandDiagnosisRun,
      *     questions:Collection<int,BrandDiagnosisQuestion>,
@@ -130,60 +198,8 @@ class ProductCaseReportSummaryService
      *     mentions:Collection<int,BrandDiagnosisBrandMention>
      * }|null
      */
-    private function loadDiagnosisData(ProductCase $case): ?array
+    private function diagnosisDataForRun(BrandDiagnosisRun $run): ?array
     {
-        $siteId = (int) $case->site_id;
-        $ownerAdminId = (int) $case->owner_admin_id;
-        $brandName = trim((string) $case->company_name);
-        if ($siteId <= 0 || $ownerAdminId <= 0 || $brandName === '') {
-            return null;
-        }
-
-        /*
-         * Imported product-case data is intentionally isolated with its own
-         * billing mode. Keep that path keyed by the case brand, but do not
-         * require a manually maintained case label to equal the monitoring
-         * center's actual brand name.
-         */
-        $run = $this->completedRunQuery($siteId, $ownerAdminId)
-            ->whereRaw('LOWER(TRIM(brand_name)) = LOWER(TRIM(?))', [$brandName])
-            ->where('billing_mode', ProductCaseDemoDataService::BILLING_MODE)
-            ->first();
-
-        if (! $run instanceof BrandDiagnosisRun) {
-            $monitoringBrandNames = $this->monitoringBrandNames($siteId, $ownerAdminId);
-
-            if ($monitoringBrandNames !== []) {
-                $run = $this->completedRunQuery($siteId, $ownerAdminId)
-                    ->where(function (Builder $query) use ($monitoringBrandNames): void {
-                        foreach ($monitoringBrandNames as $index => $monitoringBrandName) {
-                            $method = $index === 0 ? 'whereRaw' : 'orWhereRaw';
-                            $query->{$method}(
-                                'LOWER(TRIM(brand_name)) = LOWER(TRIM(?))',
-                                [$monitoringBrandName]
-                            );
-                        }
-                    })
-                    ->where(function (Builder $query): void {
-                        $query
-                            ->whereNull('billing_mode')
-                            ->orWhere('billing_mode', '<>', ProductCaseDemoDataService::BILLING_MODE);
-                    })
-                    ->first();
-            }
-        }
-
-        if (! $run instanceof BrandDiagnosisRun) {
-            $run = $this->completedRunQuery($siteId, $ownerAdminId)
-                ->whereRaw('LOWER(TRIM(brand_name)) = LOWER(TRIM(?))', [$brandName])
-                ->where(function (Builder $query): void {
-                    $query
-                        ->whereNull('billing_mode')
-                        ->orWhere('billing_mode', '<>', ProductCaseDemoDataService::BILLING_MODE);
-                })
-                ->first();
-        }
-
         if (! $run instanceof BrandDiagnosisRun) {
             return null;
         }
@@ -214,6 +230,23 @@ class ProductCaseReportSummaryService
         return compact('run', 'questions', 'results', 'sources', 'mentions');
     }
 
+    private function seedRun(ProductCase $case): ?BrandDiagnosisRun
+    {
+        $siteId = (int) $case->site_id;
+        $ownerAdminId = (int) $case->owner_admin_id;
+        $brandName = trim((string) $case->company_name);
+        if ($siteId <= 0 || $ownerAdminId <= 0 || $brandName === '') {
+            return null;
+        }
+
+        $run = $this->completedRunQuery($siteId, $ownerAdminId)
+            ->whereRaw('LOWER(TRIM(brand_name)) = LOWER(TRIM(?))', [$brandName])
+            ->where('billing_mode', ProductCaseDemoDataService::BILLING_MODE)
+            ->first();
+
+        return $run instanceof BrandDiagnosisRun ? $run : null;
+    }
+
     private function completedRunQuery(int $siteId, int $ownerAdminId): Builder
     {
         return BrandDiagnosisRun::query()
@@ -225,25 +258,30 @@ class ProductCaseReportSummaryService
             ->orderByDesc('id');
     }
 
-    /**
-     * @return list<string>
-     */
-    private function monitoringBrandNames(int $siteId, int $ownerAdminId): array
+    private function reportSite(ProductCase $case): ?Site
     {
-        return KeywordLibrary::query()
-            ->withoutGlobalScopes(['current_site', 'admin_owner'])
-            ->where('site_id', $siteId)
-            ->where('owner_admin_id', $ownerAdminId)
-            ->whereNotNull('company_name')
-            ->where('company_name', '<>', '')
-            ->orderByDesc('updated_at')
-            ->orderByDesc('id')
-            ->pluck('company_name')
-            ->map(fn (mixed $name): string => trim((string) $name))
-            ->filter()
-            ->unique()
-            ->values()
-            ->all();
+        if ($case->relationLoaded('site') && $case->site instanceof Site) {
+            return $case->site;
+        }
+
+        $siteId = (int) $case->site_id;
+
+        return $siteId > 0 ? Site::query()->whereKey($siteId)->first() : null;
+    }
+
+    private function reportOwner(ProductCase $case, ?Site $site): ?Admin
+    {
+        if ($site instanceof Site && (int) $site->owner_admin_id > 0) {
+            return Admin::query()->whereKey((int) $site->owner_admin_id)->first();
+        }
+
+        if ($case->relationLoaded('owner') && $case->owner instanceof Admin) {
+            return $case->owner;
+        }
+
+        $ownerAdminId = (int) $case->owner_admin_id;
+
+        return $ownerAdminId > 0 ? Admin::query()->whereKey($ownerAdminId)->first() : null;
     }
 
     /**
@@ -532,6 +570,33 @@ class ProductCaseReportSummaryService
             ['label' => 'AI 搜索词数量', 'value' => (int) ($summary['distillation_word_count'] ?? 0)],
             ['label' => '引用来源数量', 'value' => (int) ($summary['source_count'] ?? 0)],
         ];
+    }
+
+    /**
+     * @param  array<string,mixed>  $summary
+     * @return list<array{label:string,value:int}>
+     */
+    private function metricsFromMonitoringSummary(array $summary): array
+    {
+        return [
+            ['label' => 'AI 平台覆盖', 'value' => (int) data_get($summary, 'platform_count.display', 0)],
+            ['label' => '搜索报表数量', 'value' => (int) data_get($summary, 'search_report_count.display', 0)],
+            ['label' => 'AI 搜索词数量', 'value' => (int) data_get($summary, 'distillation_word_count.display', 0)],
+            ['label' => '引用来源数量', 'value' => (int) data_get($summary, 'source_count.display', 0)],
+        ];
+    }
+
+    /**
+     * @param  array{platform_count:int,search_report_count:int,distillation_word_count:int,source_count:int}  $summary
+     */
+    private function performanceScoreFromSummary(array $summary): int
+    {
+        $score = ((int) $summary['platform_count'] * 20)
+            + ((int) $summary['search_report_count'] * 2)
+            + (int) $summary['distillation_word_count']
+            + (int) round(((int) $summary['source_count']) * 1.5);
+
+        return $score > 0 ? (int) min(999, max(100, $score)) : 0;
     }
 
     /**

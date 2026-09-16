@@ -8,9 +8,12 @@ use App\Models\BrandDiagnosisQuestion;
 use App\Models\BrandDiagnosisResult;
 use App\Models\BrandDiagnosisRun;
 use App\Models\BrandDiagnosisSource;
+use App\Models\Keyword;
 use App\Models\KeywordLibrary;
+use App\Models\KeywordQuestionVariant;
 use App\Models\ProductCase;
 use App\Models\Site;
+use App\Services\ProductCases\ProductCaseDemoDataService;
 use App\Services\ProductCases\ProductCaseReportSummaryService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -434,7 +437,7 @@ class ProductCaseModuleTest extends TestCase
     {
         [$owner, $site] = $this->createAdminWithSite('manual_monitoring_case_owner', 'direct_admin');
 
-        KeywordLibrary::query()->create([
+        $library = KeywordLibrary::query()->create([
             'site_id' => $site->id,
             'owner_admin_id' => $owner->id,
             'name' => 'Monitoring Center Library',
@@ -444,6 +447,20 @@ class ProductCaseModuleTest extends TestCase
             'brand_description' => 'The real brand configured in the monitoring center.',
             'status' => 'active',
         ]);
+        $keyword = Keyword::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'library_id' => $library->id,
+            'keyword' => 'monitoring center keyword',
+        ]);
+        foreach (['Question A', 'Question B', 'Question C'] as $variantQuestion) {
+            KeywordQuestionVariant::query()->create([
+                'site_id' => $site->id,
+                'owner_admin_id' => $owner->id,
+                'keyword_id' => $keyword->id,
+                'question' => $variantQuestion,
+            ]);
+        }
 
         $case = ProductCase::query()->create([
             'site_id' => $site->id,
@@ -528,8 +545,13 @@ class ProductCaseModuleTest extends TestCase
 
         $report = app(ProductCaseReportSummaryService::class)->detail($case);
 
-        $this->assertSame(1, data_get($report, 'summary.search_report_count'));
+        $this->assertSame(10, data_get($report, 'summary.search_report_count'));
+        $this->assertSame(20, data_get($report, 'summary.distillation_word_count'));
         $this->assertSame('Monitoring Center Brand', data_get($report, 'brand_profile.company_name'));
+        $this->assertSame(
+            'The real brand configured in the monitoring center.',
+            data_get($report, 'brand_profile.description')
+        );
         $this->assertSame(
             'Which monitoring center brand is recommended?',
             data_get($report, 'search_rows.0.question')
@@ -847,9 +869,20 @@ class ProductCaseModuleTest extends TestCase
             ->assertSee('TOP5');
     }
 
-    public function test_case_report_summary_is_scoped_to_the_case_brand_without_monitoring_center_data(): void
+    public function test_manual_site_case_uses_bound_site_monitoring_reports(): void
     {
         [$owner, $site] = $this->createAdminWithSite('case_scoped_summary_owner', 'direct_admin');
+
+        KeywordLibrary::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'name' => 'Scoped Monitoring Library',
+            'company_name' => 'Scoped Monitoring Brand',
+            'domain_keyword' => 'Scoped Service',
+            'industry' => 'Scoped Industry',
+            'brand_description' => 'Scoped monitoring report profile.',
+            'status' => 'active',
+        ]);
 
         $caseA = ProductCase::query()->create([
             'site_id' => $site->id,
@@ -998,9 +1031,9 @@ class ProductCaseModuleTest extends TestCase
 
         $report = app(ProductCaseReportSummaryService::class)->detail($caseA);
 
-        $this->assertSame('Scoped Brand A', data_get($report, 'brand_profile.company_name'));
-        $this->assertSame(1, data_get($report, 'summary.search_report_count'));
-        $this->assertSame('Scoped Brand A question', data_get($report, 'search_rows.0.question'));
+        $this->assertSame('Scoped Monitoring Brand', data_get($report, 'brand_profile.company_name'));
+        $this->assertSame(10, data_get($report, 'summary.search_report_count'));
+        $this->assertSame('Scoped Brand B question', data_get($report, 'search_rows.0.question'));
         $this->assertSame(['Scoped Competitor A'], collect(data_get($report, 'competitors', []))->pluck('brand_name')->all());
     }
 
@@ -1232,6 +1265,7 @@ class ProductCaseModuleTest extends TestCase
             'status' => 'completed',
             'total_questions' => $questionCount,
             'completed_questions' => $questionCount,
+            'billing_mode' => ProductCaseDemoDataService::BILLING_MODE,
             'usage_date' => now()->toDateString(),
             'started_at' => now()->subHour(),
             'completed_at' => now()->subMinutes(10),
