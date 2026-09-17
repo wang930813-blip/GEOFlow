@@ -99,7 +99,7 @@
             <div class="container">
                 <div class="section-heading split-heading split-heading-ink reveal">
                     <div><p class="eyebrow"><span class="eyebrow-dot"></span>News</p><h2 id="home-news-title"><span data-text-animate>了解近期动态</span></h2></div>
-                    <a class="text-link" href="{{ route('site.news') }}">查看全部资讯 <span aria-hidden="true">↗</span></a>
+                    <a class="text-link" href="{{ \App\Support\Site\SitePageUrl::to('news') }}">查看全部资讯 <span aria-hidden="true">↗</span></a>
                 </div>
                 <div class="article-grid" data-state="{{ $latestArticles->isEmpty() ? 'empty' : 'success' }}">
                     @forelse($latestArticles as $article)
@@ -119,7 +119,7 @@
                     @foreach(array_filter([$template01['contact']['email'], $template01['contact']['phone'], $template01['contact']['address']], static fn ($item) => ! str_starts_with((string) $item, '暂无')) as $contactLine)
                         <span class="empty-state"><span class="status-dot"></span>{{ $contactLine }}</span>
                     @endforeach
-                    <span class="magnetic-wrap"><a class="button button-light" data-magnetic href="{{ route('site.contact') }}">查看联系信息 <span aria-hidden="true">↗</span></a></span>
+                    <span class="magnetic-wrap"><a class="button button-light" data-magnetic href="{{ \App\Support\Site\SitePageUrl::to('contact') }}">查看联系信息 <span aria-hidden="true">↗</span></a></span>
                 </div>
             </div>
         </section>

@@ -6,6 +6,7 @@ use App\Models\Admin;
 use App\Models\Article;
 use App\Models\Author;
 use App\Models\Category;
+use App\Models\Site;
 use App\Models\SiteSetting;
 use App\Support\Site\SiteSettingsBag;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -32,16 +33,142 @@ class GeoguanwangThemeIntegrationTest extends TestCase
             ->assertSee('value="template01"', false)
             ->assertSee('中性企业官网模板 001');
 
-        $this->actingAs($admin, 'admin')
+        $previewResponse = $this->actingAs($admin, 'admin')
             ->get(route('admin.site-settings.themes.preview', ['theme' => 'template01']))
             ->assertOk()
             ->assertSee('themes/template01/theme.css', false)
             ->assertSee('themes/template01/theme.js', false)
-            ->assertSee('让信息更清晰，让沟通更直接')
-            ->assertSee('/about', false)
-            ->assertSee('/products', false)
-            ->assertSee('/news', false)
-            ->assertSee('/contact', false);
+            ->assertSee('让信息更清晰，让沟通更直接');
+
+        foreach (['about', 'products', 'news', 'contact'] as $page) {
+            $previewResponse->assertSee(route('admin.site-settings.themes.preview', [
+                'theme' => 'template01',
+                'preview_page' => $page,
+            ]));
+        }
+    }
+
+    public function test_template01_preview_keeps_theme_and_selected_site_across_all_pages(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'template01_preview_admin',
+            'password' => 'secret-123',
+            'email' => 'template01-preview-admin@example.com',
+            'display_name' => 'Template 01 Preview Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $site = Site::query()->create([
+            'owner_admin_id' => $admin->id,
+            'name' => 'Template 01 Preview Site',
+            'status' => 'active',
+        ]);
+        $site->members()->attach($admin->id, ['role' => 'owner']);
+
+        foreach ([
+            'site_name' => '预览专属品牌',
+            'site_description' => '这段资料只属于后台当前选择的站点。',
+            'site_products' => json_encode([[
+                'name' => '预览产品服务',
+                'summary' => '用于验证产品页面能够在主题预览中正常打开。',
+                'details' => '',
+                'image_url' => '',
+                'link_url' => '',
+                'enabled' => true,
+            ]], JSON_UNESCAPED_UNICODE),
+        ] as $key => $value) {
+            SiteSetting::query()->create([
+                'site_id' => $site->id,
+                'owner_admin_id' => $admin->id,
+                'setting_key' => $key,
+                'setting_value' => $value,
+            ]);
+        }
+
+        $category = Category::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $admin->id,
+            'name' => '预览资讯',
+            'slug' => 'preview-news',
+        ]);
+        $author = Author::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $admin->id,
+            'name' => '预览编辑',
+        ]);
+        $article = Article::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $admin->id,
+            'title' => '预览主题文章',
+            'slug' => 'preview-theme-article',
+            'excerpt' => '验证文章详情页继续使用预览主题。',
+            'content' => '预览主题文章正文。',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+            'is_featured' => true,
+            'is_hot' => true,
+            'published_at' => now(),
+        ]);
+
+        $previewRoute = static fn (string $page, array $query = []): string => route(
+            'admin.site-settings.themes.preview',
+            ['theme' => 'template01', 'preview_page' => $page, ...$query]
+        );
+
+        $homeResponse = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => $site->id])
+            ->get($previewRoute('home'));
+
+        $homeResponse
+            ->assertOk()
+            ->assertSee('themes/template01/theme.css', false)
+            ->assertSee('预览专属品牌')
+            ->assertSee($previewRoute('about'))
+            ->assertSee($previewRoute('products'))
+            ->assertSee($previewRoute('news'))
+            ->assertSee($previewRoute('contact'));
+
+        foreach ([
+            'about' => '从真实资料开始',
+            'products' => '预览产品服务',
+            'news' => '资讯与动态',
+            'contact' => '通过公开渠道与我们联系',
+        ] as $page => $expectedText) {
+            $this->actingAs($admin, 'admin')
+                ->withSession(['current_site_id' => $site->id])
+                ->get($previewRoute($page))
+                ->assertOk()
+                ->assertSee('themes/template01/theme.css', false)
+                ->assertSee('预览专属品牌')
+                ->assertSee($expectedText);
+        }
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => $site->id])
+            ->get($previewRoute('news'))
+            ->assertSee($previewRoute('news', ['source' => 'featured']))
+            ->assertSee($previewRoute('article', ['slug' => $article->slug]));
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => $site->id])
+            ->get($previewRoute('article', ['slug' => $article->slug]))
+            ->assertOk()
+            ->assertSee('themes/template01/theme.css', false)
+            ->assertSee('预览主题文章正文');
+
+        $this->assertDatabaseMissing('site_settings', [
+            'site_id' => $site->id,
+            'setting_key' => 'active_theme',
+        ]);
+    }
+
+    public function test_products_public_page_has_a_safe_default_view_when_active_theme_has_no_products_template(): void
+    {
+        $this->get(route('site.products'))
+            ->assertOk()
+            ->assertSee('产品服务');
     }
 
     public function test_template01_theme_uses_shared_site_data_across_public_pages(): void

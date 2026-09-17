@@ -47,8 +47,8 @@ final class Template01Data
                     'eyebrow' => '欢迎访问',
                     'title' => '让信息更清晰，让沟通更直接',
                     'description' => $siteDescription !== '' ? $siteDescription : $brandTagline,
-                    'primary_action' => ['label' => '查看产品服务', 'url' => route('site.products')],
-                    'secondary_action' => ['label' => '联系我们', 'url' => route('site.contact')],
+                    'primary_action' => ['label' => '查看产品服务', 'url' => SitePageUrl::to('products')],
+                    'secondary_action' => ['label' => '联系我们', 'url' => SitePageUrl::to('contact')],
                 ],
                 'introduction' => [
                     'title' => '关于品牌',

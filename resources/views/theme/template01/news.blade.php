@@ -26,7 +26,7 @@
                     <nav class="news-filters" aria-label="资讯筛选">
                         @foreach(['latest' => '最新', 'featured' => '精选', 'hot' => '热门'] as $filterSource => $filterLabel)
                             <a
-                                href="{{ $filterSource === 'latest' ? route('site.news') : route('site.news', ['source' => $filterSource]) }}"
+                                href="{{ \App\Support\Site\SitePageUrl::to('news', $filterSource === 'latest' ? [] : ['source' => $filterSource]) }}"
                                 @class(['is-active' => ($newsSource ?? 'latest') === $filterSource])
                                 @if(($newsSource ?? 'latest') === $filterSource) aria-current="page" @endif
                             >{{ $filterLabel }}</a>

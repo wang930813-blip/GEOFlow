@@ -56,7 +56,7 @@
         </section>
 
         <section class="section section-cta products-contact" aria-labelledby="products-contact-title">
-            <div class="container cta-inner reveal"><div><p class="eyebrow"><span class="eyebrow-dot"></span>下一步</p><h2 id="products-contact-title">需要进一步了解<br><em>具体内容</em></h2></div><div class="cta-side"><p data-content="contact.summary">{{ $template01['contact']['summary'] }}</p><span class="magnetic-wrap"><a class="button button-light" data-magnetic href="{{ route('site.contact') }}">查看联系信息 <span aria-hidden="true">↗</span></a></span></div></div>
+            <div class="container cta-inner reveal"><div><p class="eyebrow"><span class="eyebrow-dot"></span>下一步</p><h2 id="products-contact-title">需要进一步了解<br><em>具体内容</em></h2></div><div class="cta-side"><p data-content="contact.summary">{{ $template01['contact']['summary'] }}</p><span class="magnetic-wrap"><a class="button button-light" data-magnetic href="{{ \App\Support\Site\SitePageUrl::to('contact') }}">查看联系信息 <span aria-hidden="true">↗</span></a></span></div></div>
         </section>
     </main>
 

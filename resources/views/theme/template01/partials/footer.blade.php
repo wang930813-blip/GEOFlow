@@ -4,7 +4,7 @@
             @php
                 $brandLogo = trim((string) ($template01['site']['logo'] ?? ''));
             @endphp
-            <a class="brand" href="{{ route('site.home') }}">
+            <a class="brand" href="{{ \App\Support\Site\SitePageUrl::to('home') }}">
                 @if($brandLogo !== '')
                     <img src="{{ $brandLogo }}" alt="{{ $template01['site']['brand_name'] }}" class="brand-logo">
                 @else
@@ -17,14 +17,14 @@
         <div class="footer-links">
             <div>
                 <span class="footer-label">站点导航</span>
-                <a href="{{ route('site.home') }}">首页</a>
-                <a href="{{ route('site.about') }}">关于我们</a>
+                <a href="{{ \App\Support\Site\SitePageUrl::to('home') }}">首页</a>
+                <a href="{{ \App\Support\Site\SitePageUrl::to('about') }}">关于我们</a>
             </div>
             <div>
                 <span class="footer-label">业务与动态</span>
-                <a href="{{ route('site.products') }}">产品服务</a>
-                <a href="{{ route('site.news') }}">资讯中心</a>
-                <a href="{{ route('site.contact') }}">联系我们</a>
+                <a href="{{ \App\Support\Site\SitePageUrl::to('products') }}">产品服务</a>
+                <a href="{{ \App\Support\Site\SitePageUrl::to('news') }}">资讯中心</a>
+                <a href="{{ \App\Support\Site\SitePageUrl::to('contact') }}">联系我们</a>
             </div>
             <div>
                 <span class="footer-label">品牌说明</span>

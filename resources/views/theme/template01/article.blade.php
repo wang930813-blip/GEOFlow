@@ -27,7 +27,7 @@
         <article class="article-detail" data-state="success">
             <header class="article-hero section-dark" id="top" data-hero>
                 <div class="container article-hero-inner">
-                    <a class="text-link text-link-light" href="{{ route('site.news') }}">返回资讯中心</a>
+                    <a class="text-link text-link-light" href="{{ \App\Support\Site\SitePageUrl::to('news') }}">返回资讯中心</a>
                     <div class="article-meta"><span data-article-category>{{ $article->category?->name ?? '资讯' }}</span>@if($article->published_at)<time data-article-date datetime="{{ $article->published_at->toIso8601String() }}">{{ $article->published_at->format('Y-m-d') }}</time>@endif</div>
                     <h1 data-article-title>{{ $article->title }}</h1>
                     <p class="page-lead" data-article-summary>{{ $pageDescription ?? $excerptPlain ?? '' }}</p>

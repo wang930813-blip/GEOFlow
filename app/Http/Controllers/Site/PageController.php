@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Article;
 use App\Models\Category;
 use App\Support\Site\ArticleHtmlPresenter;
+use App\Support\Site\SitePageUrl;
 use App\Support\Site\SiteSettingsBag;
 use App\Support\Site\SiteThemeViewResolver;
 use Illuminate\Http\Request;
@@ -58,8 +59,15 @@ class PageController extends Controller
             ->orderByDesc('published_at')
             ->orderByDesc('id')
             ->paginate($perPage);
+        $paginationQuery = [];
+        if (SitePageUrl::isPreview()) {
+            $paginationQuery['preview_page'] = 'news';
+        }
         if ($source !== 'latest') {
-            $articles->appends(['source' => $source]);
+            $paginationQuery['source'] = $source;
+        }
+        if ($paginationQuery !== []) {
+            $articles->appends($paginationQuery);
         }
 
         $hotArticles = collect();

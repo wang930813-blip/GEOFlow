@@ -37,7 +37,7 @@
         <section class="section section-ink page-next" aria-labelledby="about-next-title">
             <div class="container page-next-inner reveal">
                 <div><p class="eyebrow"><span class="eyebrow-dot"></span>继续了解</p><h2 id="about-next-title">查看产品与服务内容</h2></div>
-                <span class="magnetic-wrap"><a class="button button-light" data-magnetic href="{{ route('site.products') }}">产品服务 <span aria-hidden="true">↗</span></a></span>
+                <span class="magnetic-wrap"><a class="button button-light" data-magnetic href="{{ \App\Support\Site\SitePageUrl::to('products') }}">产品服务 <span aria-hidden="true">↗</span></a></span>
             </div>
         </section>
     </main>

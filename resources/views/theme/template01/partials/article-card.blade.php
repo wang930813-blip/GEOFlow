@@ -4,7 +4,7 @@
 @endphp
 
 <article class="article-card">
-    <a class="article-card-link" href="{{ route('site.article', ['slug' => $article->slug]) }}" aria-label="阅读资讯：{{ $article->title }}">
+    <a class="article-card-link" href="{{ \App\Support\Site\SitePageUrl::to('article', ['slug' => $article->slug]) }}" aria-label="阅读资讯：{{ $article->title }}">
         <div class="article-image {{ $coverImage === '' ? 'article-image-placeholder' : '' }}">
             @if($coverImage !== '')
                 <img src="{{ $coverImage }}" alt="{{ $article->title }}" loading="lazy">
