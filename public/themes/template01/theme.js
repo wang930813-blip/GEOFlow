@@ -1,6 +1,14 @@
+import { initNews } from "./news.js";
+
 const root = document.documentElement;
 const body = document.body;
 root.classList.add("js");
+
+const currentEntry = window.location.pathname.split("/").filter(Boolean).at(-1) || "index.html";
+const navigationEntry = currentEntry === "article.html" ? "news.html" : currentEntry;
+document.querySelectorAll("[data-nav]").forEach((link) => {
+  if (link.dataset.nav === navigationEntry) link.setAttribute("aria-current", "page");
+});
 
 const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)");
 const isReducedMotion = () => Boolean(prefersReducedMotion?.matches);
@@ -304,5 +312,8 @@ if (preloader) {
   document.addEventListener("keydown", (event) => { if (event.key === "Escape") finishLoading(); }, { once: true });
 }
 
-const year = document.querySelector("[data-current-year]");
-if (year) year.textContent = String(new Date().getFullYear());
+document.querySelectorAll("[data-current-year]").forEach((year) => {
+  year.textContent = String(new Date().getFullYear());
+});
+
+initNews();

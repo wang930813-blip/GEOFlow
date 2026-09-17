@@ -64,6 +64,7 @@ class SiteSettingsController extends Controller
             'canEditDomainSettings' => $this->canEditDomainSettings(),
             'availableThemes' => $this->siteThemeCatalog->all(),
             'homeCarouselSlides' => $this->parseHomeCarouselSlides((string) ($settings['home_carousel_slides'] ?? '[]')),
+            'siteProducts' => $this->parseSiteProducts((string) ($settings['site_products'] ?? '[]')),
             'articleDetailAds' => $this->parseArticleDetailAds((string) ($settings['article_detail_ads'] ?? '[]')),
             'contactPayments' => $this->parseContactPayments((string) ($settings['contact_payments'] ?? '[]')),
         ]);
@@ -95,6 +96,13 @@ class SiteSettingsController extends Controller
             'home_carousel_slides.*.title' => ['nullable', 'string', 'max:120'],
             'home_carousel_slides.*.link_url' => ['nullable', 'string', 'max:500'],
             'home_carousel_slides.*.enabled' => ['nullable'],
+            'site_products' => ['nullable', 'array', 'max:12'],
+            'site_products.*.name' => ['nullable', 'string', 'max:120'],
+            'site_products.*.summary' => ['nullable', 'string', 'max:500'],
+            'site_products.*.details' => ['nullable', 'string', 'max:2000'],
+            'site_products.*.image_url' => ['nullable', 'string', 'max:500'],
+            'site_products.*.link_url' => ['nullable', 'string', 'max:500'],
+            'site_products.*.enabled' => ['nullable'],
             'contact_info' => ['nullable', 'string', 'max:1000'],
             'company_address' => ['nullable', 'string', 'max:500'],
             'site_remark' => ['nullable', 'string', 'max:2000'],
@@ -170,6 +178,7 @@ class SiteSettingsController extends Controller
             'featured_limit' => (string) ((int) ($payload['featured_limit'] ?? 6)),
             'per_page' => (string) ((int) ($payload['per_page'] ?? 12)),
             'home_carousel_slides' => (string) json_encode($this->normalizeHomeCarouselSlides($payload['home_carousel_slides'] ?? []), JSON_UNESCAPED_UNICODE),
+            'site_products' => (string) json_encode($this->normalizeSiteProducts($payload['site_products'] ?? []), JSON_UNESCAPED_UNICODE),
             'contact_info' => trim((string) ($payload['contact_info'] ?? '')),
             'company_address' => trim((string) ($payload['company_address'] ?? '')),
             'site_remark' => trim((string) ($payload['site_remark'] ?? '')),
@@ -352,6 +361,7 @@ class SiteSettingsController extends Controller
      *   admin_base_path:string,
      *   active_theme:string,
      *   home_carousel_slides:string,
+     *   site_products:string,
      *   article_detail_ads:string,
      *   contact_info:string,
      *   company_address:string,
@@ -377,6 +387,7 @@ class SiteSettingsController extends Controller
             'admin_base_path' => AdminWeb::basePath(),
             'active_theme' => (string) config('geoflow.default_theme', ''),
             'home_carousel_slides' => '[]',
+            'site_products' => '[]',
             'article_detail_ads' => '[]',
             'contact_info' => '',
             'company_address' => '',
@@ -413,6 +424,7 @@ class SiteSettingsController extends Controller
             'admin_base_path' => AdminWeb::basePath(),
             'active_theme' => (string) ($stored['active_theme'] !== '' ? $stored['active_theme'] : config('geoflow.default_theme', '')),
             'home_carousel_slides' => (string) $stored['home_carousel_slides'],
+            'site_products' => (string) $stored['site_products'],
             'article_detail_ads' => (string) $stored['article_detail_ads'],
             'contact_info' => (string) $stored['contact_info'],
             'company_address' => (string) $stored['company_address'],
@@ -540,6 +552,82 @@ class SiteSettingsController extends Controller
         }
 
         return $slides;
+    }
+
+    /**
+     * @return array<int, array{name:string,summary:string,details:string,image_url:string,link_url:string,enabled:bool}>
+     */
+    private function parseSiteProducts(string $raw): array
+    {
+        $decoded = json_decode($raw, true);
+        if (! is_array($decoded)) {
+            return [];
+        }
+
+        $products = [];
+        foreach ($decoded as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+
+            $products[] = [
+                'name' => trim((string) ($item['name'] ?? '')),
+                'summary' => trim((string) ($item['summary'] ?? '')),
+                'details' => trim((string) ($item['details'] ?? '')),
+                'image_url' => trim((string) ($item['image_url'] ?? '')),
+                'link_url' => trim((string) ($item['link_url'] ?? '')),
+                'enabled' => ! empty($item['enabled']),
+            ];
+
+            if (count($products) >= 12) {
+                break;
+            }
+        }
+
+        return $products;
+    }
+
+    /**
+     * @return array<int, array{name:string,summary:string,details:string,image_url:string,link_url:string,enabled:bool}>
+     */
+    private function normalizeSiteProducts(mixed $postedProducts): array
+    {
+        if (! is_array($postedProducts)) {
+            return [];
+        }
+
+        $products = [];
+        foreach ($postedProducts as $postedProduct) {
+            if (! is_array($postedProduct)) {
+                continue;
+            }
+
+            $name = trim((string) ($postedProduct['name'] ?? ''));
+            $summary = trim((string) ($postedProduct['summary'] ?? ''));
+            $details = trim((string) ($postedProduct['details'] ?? ''));
+            $imageUrl = $this->normalizePublicImageUrl((string) ($postedProduct['image_url'] ?? ''));
+            $linkUrl = $this->normalizeCtaTargetUrl((string) ($postedProduct['link_url'] ?? ''));
+            $enabled = ! empty($postedProduct['enabled']);
+
+            if ($name === '') {
+                continue;
+            }
+
+            $products[] = [
+                'name' => $name,
+                'summary' => $summary,
+                'details' => $details,
+                'image_url' => $imageUrl,
+                'link_url' => $linkUrl,
+                'enabled' => $enabled,
+            ];
+
+            if (count($products) >= 12) {
+                break;
+            }
+        }
+
+        return $products;
     }
 
     /**

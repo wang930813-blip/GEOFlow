@@ -1,17 +1,32 @@
 {
     "id": "template01",
-    "name": "Template 01 官网模板",
-    "version": "1.0.0",
-    "description": "深色科技感企业官网首页模板，适合展示品牌介绍、服务能力、项目案例、合作流程、资讯内容与联系方式。",
+    "name": "中性企业官网模板 001",
+    "version": "1.1.0",
+    "description": "采用深色科技视觉、非对称版式和克制动效的企业官网模板，包含首页、关于、产品服务、资讯、文章详情与联系页面。",
     "framework": "laravel",
     "geoflow_contract": "site-theme-view-resolver",
+    "data_contract": "common_site_data",
+    "data_contract_version": "1.0.0",
     "mode": "full_theme",
     "requires_admin_activation": true,
     "templates": [
         "layout",
-        "home"
+        "home",
+        "about",
+        "products",
+        "news",
+        "article",
+        "contact"
     ],
     "preview_routes": [
-        "/"
+        "/",
+        "/about",
+        "/products",
+        "/news",
+        "/contact"
+    ],
+    "capabilities": [
+        "common_site_data",
+        "dynamic_articles"
     ]
 }

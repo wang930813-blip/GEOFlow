@@ -227,6 +227,77 @@
 
                     <div class="border-t border-gray-200 pt-6">
                         <div class="mb-4">
+                            <h4 class="text-lg font-medium text-gray-900">{{ __('admin.site_settings.section_products') }}</h4>
+                            <p class="mt-1 text-sm text-gray-600">{{ __('admin.site_settings.products_desc') }}</p>
+                        </div>
+                        @php
+                            $productRows = $siteProducts ?? [];
+                            for ($productIndex = count($productRows); $productIndex < 6; $productIndex++) {
+                                $productRows[] = [
+                                    'name' => '',
+                                    'summary' => '',
+                                    'details' => '',
+                                    'image_url' => '',
+                                    'link_url' => '',
+                                    'enabled' => false,
+                                ];
+                            }
+                        @endphp
+                        <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                            @foreach(array_slice($productRows, 0, 12) as $productIndex => $product)
+                                <div class="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                                    <div class="mb-3 flex items-center justify-between gap-3">
+                                        <div class="text-sm font-semibold text-gray-900">{{ __('admin.site_settings.product_item', ['index' => $productIndex + 1]) }}</div>
+                                        <label class="inline-flex items-center gap-2 text-sm text-gray-600">
+                                            <input type="checkbox" name="site_products[{{ $productIndex }}][enabled]" value="1" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500" @checked(!empty($product['enabled']))>
+                                            {{ __('admin.site_settings.field_home_carousel_enabled') }}
+                                        </label>
+                                    </div>
+                                    <div class="space-y-3">
+                                        <div>
+                                            <label class="block text-xs font-medium text-gray-600 mb-1">{{ __('admin.site_settings.field_product_name') }}</label>
+                                            <input type="text" name="site_products[{{ $productIndex }}][name]"
+                                                   value="{{ $product['name'] ?? '' }}"
+                                                   class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                                   placeholder="{{ __('admin.site_settings.placeholder_product_name') }}">
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs font-medium text-gray-600 mb-1">{{ __('admin.site_settings.field_product_summary') }}</label>
+                                            <input type="text" name="site_products[{{ $productIndex }}][summary]"
+                                                   value="{{ $product['summary'] ?? '' }}"
+                                                   class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                                   placeholder="{{ __('admin.site_settings.placeholder_product_summary') }}">
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs font-medium text-gray-600 mb-1">{{ __('admin.site_settings.field_product_details') }}</label>
+                                            <textarea name="site_products[{{ $productIndex }}][details]" rows="3"
+                                                      class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                                      placeholder="{{ __('admin.site_settings.placeholder_product_details') }}">{{ $product['details'] ?? '' }}</textarea>
+                                        </div>
+                                        <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                            <div>
+                                                <label class="block text-xs font-medium text-gray-600 mb-1">{{ __('admin.site_settings.field_product_image') }}</label>
+                                                <input type="text" name="site_products[{{ $productIndex }}][image_url]"
+                                                       value="{{ $product['image_url'] ?? '' }}"
+                                                       class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                                       placeholder="{{ __('admin.site_settings.placeholder_product_image') }}">
+                                            </div>
+                                            <div>
+                                                <label class="block text-xs font-medium text-gray-600 mb-1">{{ __('admin.site_settings.field_product_link') }}</label>
+                                                <input type="text" name="site_products[{{ $productIndex }}][link_url]"
+                                                       value="{{ $product['link_url'] ?? '' }}"
+                                                       class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                                       placeholder="{{ __('admin.site_settings.placeholder_product_link') }}">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            @endforeach
+                        </div>
+                    </div>
+
+                    <div class="border-t border-gray-200 pt-6">
+                        <div class="mb-4">
                             <h4 class="text-lg font-medium text-gray-900">{{ __('admin.site_settings.section_contact') }}</h4>
                             <p class="mt-1 text-sm text-gray-600">{{ __('admin.site_settings.contact_desc') }}</p>
                         </div>

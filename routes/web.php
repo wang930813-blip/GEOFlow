@@ -60,6 +60,7 @@ use App\Http\Controllers\MediaSubmissionPreviewController;
 use App\Http\Controllers\MonitoringReportShareController;
 use App\Http\Controllers\ProductCaseController;
 use App\Http\Controllers\Site\ArchiveController;
+use App\Http\Controllers\Site\ArticleFeedController;
 use App\Http\Controllers\Site\ArticleController as SiteArticleController;
 use App\Http\Controllers\Site\CategoryController as SiteCategoryController;
 use App\Http\Controllers\Site\HomeController;
@@ -89,7 +90,12 @@ Route::middleware(['site.domain', 'site.locale', 'site.view_log'])->group(functi
     Route::get('/', [HomeController::class, 'index'])->name('site.home');
     Route::get('/news', [PageController::class, 'news'])->name('site.news');
     Route::get('/about', [PageController::class, 'about'])->name('site.about');
+    Route::get('/products', [PageController::class, 'products'])->name('site.products');
     Route::get('/contact', [PageController::class, 'contact'])->name('site.contact');
+    Route::get('/api/articles', [ArticleFeedController::class, 'index'])->name('site.api.articles.index');
+    Route::get('/api/articles/{slug}', [ArticleFeedController::class, 'show'])
+        ->name('site.api.articles.show')
+        ->where('slug', '[a-z0-9]+(?:-[a-z0-9]+)*');
     Route::get('/archive', [ArchiveController::class, 'index'])->name('site.archive');
     Route::get('/archive/{year}/{month}', [ArchiveController::class, 'month'])
         ->name('site.archive.month')

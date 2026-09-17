@@ -79,6 +79,32 @@ class PageController extends Controller
         ]);
     }
 
+    public function products(): View
+    {
+        $context = $this->siteContext();
+
+        $categories = Category::query()
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->withCount([
+                'articles as published_count' => function ($q): void {
+                    $q->published();
+                },
+            ])
+            ->get();
+
+        return SiteThemeViewResolver::first('products', [
+            ...$context,
+            'activeNav' => 'products',
+            'categories' => $categories,
+            'pageTitle' => '产品服务 - '.$context['siteTitle'],
+            'pageDescription' => $context['siteDescription'] !== ''
+                ? '产品服务 - '.$context['siteDescription']
+                : $context['siteTitle'].'产品服务内容',
+            'canonicalUrl' => route('site.products'),
+        ]);
+    }
+
     public function contact(): View
     {
         $context = $this->siteContext();

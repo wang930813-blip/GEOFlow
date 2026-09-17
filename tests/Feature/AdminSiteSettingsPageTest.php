@@ -32,6 +32,7 @@ class AdminSiteSettingsPageTest extends TestCase
             ->assertOk()
             ->assertSee(__('admin.site_settings.field_admin_base_path'))
             ->assertSee(__('admin.site_settings.section_home_carousel'))
+            ->assertSee(__('admin.site_settings.section_products'))
             ->assertSee(__('admin.site_settings.module_sensitive_words'))
             ->assertSee('value="'.AdminWeb::basePath().'"', false);
     }
@@ -526,6 +527,70 @@ class AdminSiteSettingsPageTest extends TestCase
         $this->assertSame('Home Banner', $slides[0]['title']);
         $this->assertSame('/article/demo', $slides[0]['link_url']);
         $this->assertTrue($slides[0]['enabled']);
+    }
+
+    public function test_site_settings_save_product_configuration_items(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+
+        $admin = Admin::query()->create([
+            'username' => 'site_products_admin',
+            'password' => 'secret-123',
+            'email' => 'site-products-admin@example.com',
+            'display_name' => 'Site Products Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.site-settings.update'), [
+                'site_name' => 'Frontend Site',
+                'site_subtitle' => '',
+                'site_description' => '',
+                'site_keywords' => '',
+                'copyright_info' => '',
+                'site_logo' => '',
+                'site_favicon' => '',
+                'analytics_code' => '',
+                'seo_title_template' => '{title} - {site_name}',
+                'seo_description_template' => '{description}',
+                'featured_limit' => 6,
+                'per_page' => 12,
+                'admin_base_path' => AdminWeb::basePath(),
+                'site_products' => [
+                    [
+                        'name' => 'AI 搜索顾问服务',
+                        'summary' => '提升品牌在 AI 搜索中的可见性。',
+                        'details' => '从官网结构、内容事实和资讯更新三个方向优化。',
+                        'image_url' => '/storage/products/ai-search.jpg',
+                        'link_url' => 'products/ai-search',
+                        'enabled' => '1',
+                    ],
+                    [
+                        'name' => '',
+                        'summary' => '名称为空的行不会保存。',
+                        'details' => '',
+                        'image_url' => 'javascript:alert(1)',
+                        'link_url' => '',
+                        'enabled' => '1',
+                    ],
+                ],
+            ])
+            ->assertRedirect(route('admin.site-settings.index'));
+
+        $raw = (string) SiteSetting::query()
+            ->where('setting_key', 'site_products')
+            ->value('setting_value');
+        $products = json_decode($raw, true);
+
+        $this->assertIsArray($products);
+        $this->assertCount(1, $products);
+        $this->assertSame('AI 搜索顾问服务', $products[0]['name']);
+        $this->assertSame('提升品牌在 AI 搜索中的可见性。', $products[0]['summary']);
+        $this->assertSame('从官网结构、内容事实和资讯更新三个方向优化。', $products[0]['details']);
+        $this->assertSame('/storage/products/ai-search.jpg', $products[0]['image_url']);
+        $this->assertSame('/products/ai-search', $products[0]['link_url']);
+        $this->assertTrue($products[0]['enabled']);
     }
 
     public function test_legacy_official_website_themes_are_hidden_from_admin_selection(): void
