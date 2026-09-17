@@ -123,7 +123,7 @@ class GeoguanwangThemeIntegrationTest extends TestCase
             ->assertOk()
             ->assertSee('themes/template01/theme.css', false)
             ->assertSee('资讯与动态')
-            ->assertSee('data-news-list', false);
+            ->assertDontSee('data-news-list', false);
 
         $this->get(route('site.contact'))
             ->assertOk()
@@ -184,6 +184,72 @@ class GeoguanwangThemeIntegrationTest extends TestCase
             ->assertSee('400-000-0000')
             ->assertSee('上海市浦东新区示例路 100 号')
             ->assertDontSee('暂无公开营业时间。');
+    }
+
+    public function test_template01_article_sections_are_rendered_by_blade_without_dynamic_feed_hooks(): void
+    {
+        $this->putSiteSetting('active_theme', 'template01');
+        SiteSettingsBag::forget();
+
+        $category = Category::query()->create([
+            'name' => 'News',
+            'slug' => 'news',
+            'description' => 'News category.',
+        ]);
+        $author = Author::query()->create([
+            'name' => 'Editor',
+        ]);
+        $article = Article::query()->create([
+            'title' => 'Blade Only Article',
+            'slug' => 'blade-only-article',
+            'excerpt' => 'Rendered by the Blade template.',
+            'content' => 'The article body is already present in the server rendered HTML.',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+            'is_featured' => true,
+            'is_hot' => true,
+            'published_at' => now(),
+        ]);
+        Article::query()->create([
+            'title' => 'Latest Only Article',
+            'slug' => 'latest-only-article',
+            'excerpt' => 'Only visible in the latest list.',
+            'content' => 'This article is not featured.',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+            'is_featured' => false,
+            'is_hot' => false,
+            'published_at' => now()->subDay(),
+        ]);
+
+        $this->get(route('site.home'))
+            ->assertOk()
+            ->assertSee('Blade Only Article')
+            ->assertDontSee('data-news-list', false)
+            ->assertDontSee('data-news-source', false);
+
+        $this->get(route('site.news'))
+            ->assertOk()
+            ->assertSee('Blade Only Article')
+            ->assertSee('Latest Only Article')
+            ->assertDontSee('data-news-list', false)
+            ->assertDontSee('data-news-source', false)
+            ->assertDontSee('data-news-filter', false);
+
+        $this->get(route('site.news', ['source' => 'featured']))
+            ->assertOk()
+            ->assertSee('Blade Only Article')
+            ->assertDontSee('Latest Only Article')
+            ->assertDontSee('data-news-list', false);
+
+        $this->get(route('site.article', ['slug' => $article->slug]))
+            ->assertOk()
+            ->assertSee('The article body is already present in the server rendered HTML.')
+            ->assertDontSee('data-article-detail', false);
     }
 
     public function test_template01_public_article_json_contract_matches_latest_001(): void

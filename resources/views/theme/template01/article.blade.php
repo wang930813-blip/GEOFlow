@@ -24,7 +24,7 @@
     @include('theme.template01.partials.header', ['template01' => $template01, 'activeNav' => 'news'])
 
     <main id="main-content">
-        <article class="article-detail" data-article-detail data-state="success">
+        <article class="article-detail" data-state="success">
             <header class="article-hero section-dark" id="top" data-hero>
                 <div class="container article-hero-inner">
                     <a class="text-link text-link-light" href="{{ route('site.news') }}">返回资讯中心</a>

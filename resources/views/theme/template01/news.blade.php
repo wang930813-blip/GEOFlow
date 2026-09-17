@@ -23,16 +23,38 @@
             <div class="container">
                 <div class="catalog-heading reveal">
                     <div><p class="eyebrow eyebrow-dark"><span class="eyebrow-dot"></span>内容列表</p><h2 id="news-list-title">浏览资讯内容</h2></div>
-                    <div class="news-filters" aria-label="资讯筛选"><button type="button" data-news-filter="latest" aria-pressed="true">最新</button><button type="button" data-news-filter="featured" aria-pressed="false">精选</button><button type="button" data-news-filter="hot" aria-pressed="false">热门</button></div>
+                    <nav class="news-filters" aria-label="资讯筛选">
+                        @foreach(['latest' => '最新', 'featured' => '精选', 'hot' => '热门'] as $filterSource => $filterLabel)
+                            <a
+                                href="{{ $filterSource === 'latest' ? route('site.news') : route('site.news', ['source' => $filterSource]) }}"
+                                @class(['is-active' => ($newsSource ?? 'latest') === $filterSource])
+                                @if(($newsSource ?? 'latest') === $filterSource) aria-current="page" @endif
+                            >{{ $filterLabel }}</a>
+                        @endforeach
+                    </nav>
                 </div>
-                <div class="article-grid article-grid-catalog" data-news-list data-news-source="latest" data-news-source-from-query="true" data-news-limit="6" data-state="{{ $newsArticles->isEmpty() ? 'empty' : 'success' }}" aria-live="polite" aria-busy="false">
+                <div class="article-grid article-grid-catalog" data-state="{{ $newsArticles->isEmpty() ? 'empty' : 'success' }}">
                     @forelse($newsArticles as $article)
                         @include('theme.template01.partials.article-card', ['article' => $article])
                     @empty
                         <div class="news-state" data-state="empty"><strong>暂无资讯内容。</strong></div>
                     @endforelse
                 </div>
-                <div class="news-pagination" aria-label="资讯分页"><button class="icon-button" type="button" data-news-previous disabled aria-label="上一页" title="上一页">←</button><span data-news-page-label>第 1 页</span><button class="icon-button" type="button" data-news-next disabled aria-label="下一页" title="下一页">→</button></div>
+                @if($articles->hasPages())
+                    <nav class="news-pagination" aria-label="资讯分页">
+                        @if($articles->onFirstPage())
+                            <span class="icon-button is-disabled" aria-disabled="true" aria-label="上一页" title="上一页">←</span>
+                        @else
+                            <a class="icon-button" href="{{ $articles->previousPageUrl() }}" aria-label="上一页" title="上一页">←</a>
+                        @endif
+                        <span>第 {{ $articles->currentPage() }} 页</span>
+                        @if($articles->hasMorePages())
+                            <a class="icon-button" href="{{ $articles->nextPageUrl() }}" aria-label="下一页" title="下一页">→</a>
+                        @else
+                            <span class="icon-button is-disabled" aria-disabled="true" aria-label="下一页" title="下一页">→</span>
+                        @endif
+                    </nav>
+                @endif
             </div>
         </section>
     </main>

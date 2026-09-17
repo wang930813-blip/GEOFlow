@@ -101,7 +101,7 @@
                     <div><p class="eyebrow"><span class="eyebrow-dot"></span>News</p><h2 id="home-news-title"><span data-text-animate>了解近期动态</span></h2></div>
                     <a class="text-link" href="{{ route('site.news') }}">查看全部资讯 <span aria-hidden="true">↗</span></a>
                 </div>
-                <div class="article-grid" data-news-list data-news-source="latest" data-news-limit="3" data-state="{{ $latestArticles->isEmpty() ? 'empty' : 'success' }}" aria-live="polite" aria-busy="false">
+                <div class="article-grid" data-state="{{ $latestArticles->isEmpty() ? 'empty' : 'success' }}">
                     @forelse($latestArticles as $article)
                         @include('theme.template01.partials.article-card', ['article' => $article])
                     @empty

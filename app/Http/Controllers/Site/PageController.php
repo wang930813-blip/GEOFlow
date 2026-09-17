@@ -8,16 +8,21 @@ use App\Models\Category;
 use App\Support\Site\ArticleHtmlPresenter;
 use App\Support\Site\SiteSettingsBag;
 use App\Support\Site\SiteThemeViewResolver;
+use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 
 class PageController extends Controller
 {
-    public function news(): View
+    public function news(Request $request): View
     {
         $context = $this->siteContext();
         $perPage = max(1, min(200, (int) ($context['map']['per_page'] ?? config('geoflow.items_per_page', 12))));
+        $source = (string) $request->query('source', 'latest');
+        if (! in_array($source, ['latest', 'featured', 'hot'], true)) {
+            $source = 'latest';
+        }
 
         $categories = Category::query()
             ->orderBy('sort_order')
@@ -31,11 +36,31 @@ class PageController extends Controller
 
         $articles = Article::query()
             ->with(['category', 'author'])
-            ->published()
+            ->published();
+
+        if ($source === 'featured') {
+            if (Schema::hasColumn('articles', 'is_featured')) {
+                $articles->where('is_featured', true);
+            } else {
+                $articles->whereRaw('1 = 0');
+            }
+        }
+
+        if ($source === 'hot') {
+            if (Schema::hasColumn('articles', 'is_hot')) {
+                $articles->where('is_hot', true);
+            } else {
+                $articles->whereRaw('1 = 0');
+            }
+        }
+
+        $articles = $articles
             ->orderByDesc('published_at')
             ->orderByDesc('id')
-            ->paginate($perPage)
-            ->withQueryString();
+            ->paginate($perPage);
+        if ($source !== 'latest') {
+            $articles->appends(['source' => $source]);
+        }
 
         $hotArticles = collect();
         if (Schema::hasColumn('articles', 'is_hot')) {
@@ -55,6 +80,7 @@ class PageController extends Controller
             'categories' => $categories,
             'articles' => $articles,
             'hotArticles' => $hotArticles,
+            'newsSource' => $source,
             'cardSummaries' => $this->articleSummaries(collect($articles->items())->merge($hotArticles)),
             'pageTitle' => '资讯 - '.$context['siteTitle'],
             'pageDescription' => $context['siteDescription'] !== ''

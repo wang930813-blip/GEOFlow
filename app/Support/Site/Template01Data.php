@@ -63,7 +63,7 @@ final class Template01Data
             'products_services' => [
                 'title' => '产品服务',
                 'summary' => $serviceItems->isNotEmpty()
-                    ? '围绕已配置的产品与服务内容展示当前站点的业务入口。'
+                    ? ''
                     : '',
                 'items' => $serviceItems,
             ],
