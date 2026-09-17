@@ -8,6 +8,7 @@ class SiteThemeCatalog
      * 这批旧官网模板暂时保留代码和静态资源，但不再暴露给后台用户选择。
      */
     private const HIDDEN_SELECTION_THEME_IDS = [
+        'default',
         'api-hot-recommendation-20260914',
         'apihot-recommend-20260623',
         'apple-support-inspired-20260914',
@@ -16,7 +17,7 @@ class SiteThemeCatalog
     ];
 
     /**
-     * @return array<int, array{id:string,name:string,version:string,description:string,templates:list<string>,preview_routes:list<string>,mode:string,base_theme_id:string,asset_css_exists:bool,asset_js_exists:bool,source:string}>
+     * @return array<int, array{id:string,name:string,version:string,description:string,templates:list<string>,preview_routes:list<string>,mode:string,base_theme_id:string,asset_css_exists:bool,asset_js_exists:bool,preview_enabled:bool,source:string}>
      */
     public function all(): array
     {
@@ -72,6 +73,7 @@ class SiteThemeCatalog
                         'base_theme_id' => (string) ($manifest['base_theme_id'] ?? ''),
                         'asset_css_exists' => is_file(public_path('themes/'.$entry.'/theme.css')),
                         'asset_js_exists' => is_file(public_path('themes/'.$entry.'/theme.js')),
+                        'preview_enabled' => $this->previewEnabled($entry),
                         'source' => 'local',
                     ];
 
@@ -94,6 +96,7 @@ class SiteThemeCatalog
                 'base_theme_id' => '',
                 'asset_css_exists' => is_file(public_path('themes/'.$entry.'/theme.css')),
                 'asset_js_exists' => is_file(public_path('themes/'.$entry.'/theme.js')),
+                'preview_enabled' => $this->previewEnabled($entry),
                 'source' => 'local',
             ];
         }
@@ -190,6 +193,11 @@ class SiteThemeCatalog
             ->replace(['-', '_'], ' ')
             ->title()
             ->toString();
+    }
+
+    private function previewEnabled(string $themeId): bool
+    {
+        return preg_match('/^template[0-9]+$/i', $themeId) === 1;
     }
 
     private function hiddenFromSelection(string $themeId): bool

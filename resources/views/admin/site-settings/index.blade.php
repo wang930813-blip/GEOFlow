@@ -510,12 +510,14 @@
                                             <span class="inline-flex items-center rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700">{{ __('admin.site_settings.theme.asset_missing') }}</span>
                                         @endif
                                     </div>
-                                    <div class="mt-4">
-                                        <a href="{{ route('admin.site-settings.themes.preview', ['theme' => $themeOption['id']]) }}" target="_blank" rel="noopener" class="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-50">
-                                            <i data-lucide="external-link" class="h-3.5 w-3.5"></i>
-                                            {{ __('admin.site_settings.theme.preview_home') }}
-                                        </a>
-                                    </div>
+                                    @if(!empty($themeOption['preview_enabled']))
+                                        <div class="mt-4">
+                                            <a href="{{ route('admin.site-settings.themes.preview', ['theme' => $themeOption['id']]) }}" target="_blank" rel="noopener" class="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-50">
+                                                <i data-lucide="external-link" class="h-3.5 w-3.5"></i>
+                                                {{ __('admin.site_settings.theme.preview_home') }}
+                                            </a>
+                                        </div>
+                                    @endif
                                 </div>
                             </label>
                         @endforeach

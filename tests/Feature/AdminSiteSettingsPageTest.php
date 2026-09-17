@@ -618,8 +618,14 @@ class AdminSiteSettingsPageTest extends TestCase
             ->assertDontSee('value="corporate-growth-20260914"', false)
             ->assertDontSee('value="geoflow-template-01-ink-editorial"', false)
             ->assertDontSee('value="geoflow-template-20-research-journal"', false)
+            ->assertDontSee('value="default"', false)
             ->assertSee('value="geoflow-template-21-enterprise-signature"', false)
-            ->assertSee('value="tech-insight-20260819"', false);
+            ->assertSee('value="tech-insight-20260819"', false)
+            ->assertSee('value="toutiao-news-20260426"', false)
+            ->assertSee(route('admin.site-settings.themes.preview', ['theme' => 'template01']))
+            ->assertDontSee(route('admin.site-settings.themes.preview', ['theme' => 'tech-insight-20260819']))
+            ->assertDontSee(route('admin.site-settings.themes.preview', ['theme' => 'toutiao-news-20260426']))
+            ->assertDontSee(route('admin.site-settings.themes.preview', ['theme' => 'geoflow-template-21-enterprise-signature']));
 
         $this->actingAs($admin, 'admin')
             ->post(route('admin.site-settings.theme'), [
