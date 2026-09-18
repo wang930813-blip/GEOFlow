@@ -48,6 +48,115 @@ class GeoguanwangThemeIntegrationTest extends TestCase
         }
     }
 
+    public function test_template04_theme_is_available_and_previewable(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'template04_theme_admin',
+            'password' => 'secret-123',
+            'email' => 'template04-theme-admin@example.com',
+            'display_name' => 'Template 04 Theme Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.site-settings.index'))
+            ->assertOk()
+            ->assertSee('value="template04"', false)
+            ->assertSee('官网模板 004');
+
+        $this->actingAs($admin, 'admin')
+            ->get(route('admin.site-settings.themes.preview', ['theme' => 'template04']))
+            ->assertOk()
+            ->assertSee('themes/template04/theme.css', false)
+            ->assertSee('themes/template04/theme.js', false)
+            ->assertSee('template04-theme');
+    }
+
+    public function test_template04_renders_shared_data_and_server_rendered_articles(): void
+    {
+        $this->putSiteSetting('active_theme', 'template04');
+        $this->putSiteSetting('site_name', '策影 GEO 004');
+        $this->putSiteSetting('site_logo', 'https://cdn.example.test/template04-logo.png');
+        $this->putSiteSetting('site_subtitle', 'AI 内容生成与发布平台');
+        $this->putSiteSetting('site_description', '围绕品牌官网、AI 搜索可见性和内容资产建立清晰的信息体系。');
+        $this->putSiteSetting('site_remark', '让品牌信息更容易被理解。');
+        $this->putSiteSetting('contact_info', "hello@example.test\n400-000-0000");
+        $this->putSiteSetting('company_address', '上海市浦东新区示例路 100 号');
+        $this->putSiteSetting('site_products', json_encode([[
+            'name' => 'AI 搜索顾问服务',
+            'summary' => '围绕品牌官网、AI 搜索可见性和内容资产做系统规划。',
+            'details' => '提供官网结构梳理、内容表达优化和 AI 可读性建议。',
+            'image_url' => '/storage/products/ai-search-consulting.jpg',
+            'link_url' => '/products/ai-search-consulting',
+            'enabled' => true,
+        ]], JSON_UNESCAPED_UNICODE));
+        SiteSettingsBag::forget();
+
+        $category = Category::query()->create([
+            'name' => '品牌增长',
+            'slug' => 'brand-growth',
+        ]);
+        $author = Author::query()->create(['name' => 'GEO 编辑部']);
+        $article = Article::query()->create([
+            'title' => '服务端渲染的资讯文章',
+            'slug' => 'server-rendered-news',
+            'excerpt' => '这篇文章由 Laravel 控制器查询后交给 Blade。',
+            'content' => '资讯正文直接输出在服务端 HTML 中。',
+            'category_id' => $category->id,
+            'author_id' => $author->id,
+            'status' => 'published',
+            'review_status' => 'approved',
+            'published_at' => now(),
+        ]);
+
+        $this->get(route('site.home'))
+            ->assertOk()
+            ->assertSee('themes/template04/theme.css', false)
+            ->assertSee('themes/template04/theme.js', false)
+            ->assertSee('src="https://cdn.example.test/template04-logo.png"', false)
+            ->assertSee('策影 GEO 004')
+            ->assertSee('AI 搜索顾问服务')
+            ->assertSee('服务端渲染的资讯文章')
+            ->assertDontSee('fetch(', false);
+
+        $this->get(route('site.about'))
+            ->assertOk()
+            ->assertSee('themes/template04/theme.css', false)
+            ->assertSee('关于我们')
+            ->assertSee('围绕品牌官网、AI 搜索可见性和内容资产建立清晰的信息体系。');
+
+        $this->get(route('site.products'))
+            ->assertOk()
+            ->assertSee('AI 搜索顾问服务')
+            ->assertSee('围绕品牌官网、AI 搜索可见性和内容资产做系统规划。')
+            ->assertSee('/storage/products/ai-search-consulting.jpg', false);
+
+        $this->putSiteSetting('site_products', '[]');
+        SiteSettingsBag::forget();
+
+        $this->get(route('site.products'))
+            ->assertOk()
+            ->assertSee('暂无产品与服务内容。')
+            ->assertDontSee('品牌增长');
+
+        $this->get(route('site.news'))
+            ->assertOk()
+            ->assertSee('服务端渲染的资讯文章')
+            ->assertDontSee('fetch(', false);
+
+        $this->get(route('site.article', ['slug' => $article->slug]))
+            ->assertOk()
+            ->assertSee('资讯正文直接输出在服务端 HTML 中。')
+            ->assertDontSee('fetch(', false);
+
+        $this->get(route('site.contact'))
+            ->assertOk()
+            ->assertSee('hello@example.test')
+            ->assertSee('上海市浦东新区示例路 100 号')
+            ->assertSee('让品牌信息更容易被理解。');
+    }
+
     public function test_template01_preview_keeps_theme_and_selected_site_across_all_pages(): void
     {
         $admin = Admin::query()->create([
