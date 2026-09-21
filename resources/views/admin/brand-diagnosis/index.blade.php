@@ -362,22 +362,59 @@
                                     </section>
                                 @endif
 
+                        @php
+                            $canConfirmDiagnosis = in_array($record['raw_status'] ?? '', ['questions_ready', 'awaiting_confirmation', 'completed', 'failed'], true) && count($recordQuestions) > 0;
+                            $confirmPlatforms = (string) old('confirm_run_id') === (string) $record['id']
+                                ? array_map('strval', (array) old('confirm_platforms', []))
+                                : [];
+                        @endphp
                         <form method="POST" action="{{ route('admin.brand-diagnosis.confirm', ['run' => $record['id']]) }}" class="mt-5 rounded-lg border border-slate-200 bg-white p-4" data-confirm-diagnosis-form>
                             @csrf
+                            <input type="hidden" name="confirm_run_id" value="{{ $record['id'] }}">
                             <div class="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                 <div>
                                     <div class="text-sm font-semibold text-gray-900">AI问题</div>
-                                    <div class="mt-1 text-xs text-gray-500">可修改问题后再确认诊断，确认后将开始调用所选模型并计入一次诊断。</div>
+                                    <div class="mt-1 text-xs text-gray-500">可修改问题，并重新选择本次诊断模型；确认后将按本次选择启动诊断并计入一次诊断。</div>
                                 </div>
-                                @if (in_array($record['raw_status'] ?? '', ['questions_ready', 'awaiting_confirmation', 'completed', 'failed'], true) && count($recordQuestions) > 0)
+                                @if ($canConfirmDiagnosis)
                                     <button type="submit" class="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md bg-orange-600 px-4 text-sm font-semibold text-white hover:bg-orange-700 disabled:cursor-not-allowed disabled:bg-orange-300" data-confirm-diagnosis-submit>
                                         <i data-lucide="play" class="h-4 w-4"></i>
                                         确认诊断
                                     </button>
                                 @endif
                             </div>
+                            @if ($errors->has('confirm_platforms'))
+                                <div class="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-600">{{ $errors->first('confirm_platforms') }}</div>
+                            @endif
                             @if ($errors->has('questions'))
                                 <div class="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-600">{{ $errors->first('questions') }}</div>
+                            @endif
+                            @if ($canConfirmDiagnosis)
+                                <fieldset class="mb-4 rounded-lg border border-orange-200 bg-orange-50/50 p-3">
+                                    <legend class="px-1 text-xs font-semibold text-orange-800">本次诊断模型（需重新选择）</legend>
+                                    <p class="mt-1 text-xs leading-5 text-orange-700">这里的选择仅作用于本次确认，不会自动沿用当前记录已使用的模型。</p>
+                                    <div class="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4">
+                                        @foreach ($models as $model)
+                                            @if ($model['available'])
+                                                <label class="flex cursor-pointer items-center gap-2 rounded-md border border-orange-100 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition hover:border-orange-300 hover:bg-orange-50">
+                                                    <input
+                                                        type="checkbox"
+                                                        name="confirm_platforms[]"
+                                                        value="{{ $model['key'] }}"
+                                                        @checked(in_array($model['key'], $confirmPlatforms, true))
+                                                        class="rounded border-slate-300 text-orange-600 focus:ring-orange-500"
+                                                    >
+                                                    @if (! empty($model['logo']))
+                                                        <img src="{{ $model['logo'] }}" alt="{{ $model['name'] }} logo" class="h-5 w-5 rounded-full object-contain">
+                                                    @else
+                                                        <span class="{{ $model['color'] }} inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold text-white">{{ $model['initial'] }}</span>
+                                                    @endif
+                                                    <span>{{ $model['name'] }}</span>
+                                                </label>
+                                            @endif
+                                        @endforeach
+                                    </div>
+                                </fieldset>
                             @endif
                             <div class="grid gap-3 lg:grid-cols-2">
                                 @forelse ($recordQuestions as $question)

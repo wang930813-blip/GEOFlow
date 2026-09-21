@@ -217,6 +217,8 @@ class AdminBrandDiagnosisPageTest extends TestCase
             ->assertSee('data-confirm-diagnosis-form', false)
             ->assertSee('data-confirm-diagnosis-submit', false)
             ->assertSee('确认诊断')
+            ->assertSee('name="confirm_platforms[]"', false)
+            ->assertSee('本次诊断模型（需重新选择）')
             ->assertSee('品牌介绍')
             ->assertSee('策影GEO 是面向企业 AI 搜索曝光分析的品牌诊断工具。')
             ->assertSee('豆包')

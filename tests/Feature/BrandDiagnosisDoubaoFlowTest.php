@@ -856,6 +856,7 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         $response = $this->actingAs($admin, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
             ->post(route('admin.brand-diagnosis.confirm', ['run' => $run->id]), [
+                'confirm_platforms' => ['deepseek', 'qianwen'],
                 'questions' => [
                     (int) $questionOne->id => '企业AI搜索优化服务怎么选？',
                     (int) $questionTwo->id => 'GEO品牌诊断工具有哪些？',
@@ -866,6 +867,7 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
 
         $run->refresh();
         $this->assertSame('running', $run->status);
+        $this->assertSame(['deepseek', 'qianwen'], $run->platforms);
         $this->assertSame('plan_quota', $run->billing_mode);
         $this->assertSame(now()->toDateString(), $run->usage_date?->toDateString());
         $this->assertSame('企业AI搜索优化服务怎么选？', $questionOne->refresh()->question);
@@ -879,6 +881,57 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         Queue::assertPushedOn('geoflow', ProcessBrandDiagnosisJob::class, function (ProcessBrandDiagnosisJob $job) use ($run): bool {
             return $job->runId === (int) $run->id;
         });
+    }
+
+    public function test_confirming_without_selecting_platform_is_rejected_without_usage_or_job(): void
+    {
+        Queue::fake();
+        [$admin, $site] = $this->createAdminWithSite('brand_diagnosis_confirm_platform_required_admin');
+        $this->openTestingPlanForSite($site, $admin, [
+            PlatformPlan::RESOURCE_BRAND_DIAGNOSES => [
+                'quota_value' => 2,
+                'quota_period' => 'cycle',
+                'unit' => 'times',
+            ],
+        ]);
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => '策影GEO',
+            'platforms' => ['doubao'],
+            'status' => 'questions_ready',
+            'total_questions' => 1,
+            'completed_questions' => 0,
+            'failed_questions' => 0,
+            'billing_mode' => 'pending_confirmation',
+            'usage_date' => null,
+        ]);
+        $question = $run->questions()->create([
+            'site_id' => (int) $site->id,
+            'question' => 'AI搜索优化服务怎么选？',
+            'question_type' => '选择',
+            'sort_order' => 1,
+            'status' => 'pending',
+        ]);
+
+        $response = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.brand-diagnosis.confirm', ['run' => $run->id]), [
+                'questions' => [
+                    (int) $question->id => 'AI搜索优化服务怎么选？',
+                ],
+            ]);
+
+        $response->assertSessionHasErrors('confirm_platforms');
+        $run->refresh();
+        $this->assertSame('questions_ready', $run->status);
+        $this->assertSame(['doubao'], $run->platforms);
+        $this->assertSame(0, AdminResourceUsage::query()
+            ->where('admin_id', (int) $admin->id)
+            ->where('site_id', (int) $site->id)
+            ->where('resource_key', PlatformPlan::RESOURCE_BRAND_DIAGNOSES)
+            ->count());
+        Queue::assertNothingPushed();
     }
 
     public function test_brand_diagnosis_plan_quota_is_independent_per_agent_site_user(): void
@@ -950,6 +1003,7 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         $this->actingAs($userOne, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
             ->post(route('admin.brand-diagnosis.confirm', ['run' => (int) $runOne->id]), [
+                'confirm_platforms' => ['doubao'],
                 'questions' => [
                     (int) $runOne->questions()->value('id') => '用户一品牌怎么做 AI 搜索优化？',
                 ],
@@ -959,6 +1013,7 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         $this->actingAs($userTwo, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
             ->post(route('admin.brand-diagnosis.confirm', ['run' => (int) $runTwo->id]), [
+                'confirm_platforms' => ['doubao'],
                 'questions' => [
                     (int) $runTwo->questions()->value('id') => '用户二品牌怎么做 AI 搜索优化？',
                 ],
@@ -1012,6 +1067,7 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         $this->actingAs($admin, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
             ->post(route('admin.brand-diagnosis.confirm', ['run' => $run->id]), [
+                'confirm_platforms' => ['qianwen'],
                 'questions' => [
                     (int) $question->id => '企业AI搜索优化服务商怎么比较？',
                 ],
@@ -1025,7 +1081,7 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         $newRun = BrandDiagnosisRun::query()->whereKeyNot((int) $run->id)->firstOrFail();
         $this->assertSame('running', $newRun->status);
         $this->assertSame('策影GEO', $newRun->brand_name);
-        $this->assertSame(['doubao', 'deepseek'], $newRun->platforms);
+        $this->assertSame(['qianwen'], $newRun->platforms);
         $this->assertSame('admin_unlimited', $newRun->billing_mode);
         $this->assertTrue((bool) $newRun->limit_bypassed);
         $this->assertSame('企业AI搜索优化服务商怎么比较？', $newRun->questions()->value('question'));
@@ -1062,6 +1118,7 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         $response = $this->actingAs($admin, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
             ->post(route('admin.brand-diagnosis.confirm', ['run' => $run->id]), [
+                'confirm_platforms' => ['doubao'],
                 'questions' => [
                     (int) $question->id => 'AI搜索优化服务怎么选？',
                 ],
@@ -1422,6 +1479,7 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         $response = $this->actingAs($admin, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
             ->post(route('admin.brand-diagnosis.confirm', ['run' => $draftRun->id]), [
+                'confirm_platforms' => ['doubao'],
                 'questions' => [
                     (int) $question->id => 'AI搜索优化服务怎么选？',
                 ],
@@ -1479,6 +1537,7 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         $this->actingAs($admin, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
             ->post(route('admin.brand-diagnosis.confirm', ['run' => $latest->id]), [
+                'confirm_platforms' => ['deepseek'],
                 'questions' => [
                     (int) $question->id => 'AI搜索优化服务怎么选？',
                 ],

@@ -148,9 +148,14 @@ class BrandDiagnosisController extends Controller
     public function confirm(int $run, Request $request): RedirectResponse
     {
         $payload = $request->validate([
+            'confirm_platforms' => ['required', 'array', 'min:1'],
+            'confirm_platforms.*' => ['string', BrandDiagnosisPlatform::validationRule()],
             'questions' => ['required', 'array', 'min:1'],
             'questions.*' => ['nullable', 'string', 'max:240'],
         ], [
+            'confirm_platforms.required' => '请至少选择一个本次诊断模型',
+            'confirm_platforms.min' => '请至少选择一个本次诊断模型',
+            'confirm_platforms.*.in' => '当前版本支持豆包、DeepSeek、千问和文心一言诊断',
             'questions.required' => '请确认至少一个 AI 问题',
             'questions.min' => '请确认至少一个 AI 问题',
             'questions.*.max' => 'AI 问题不能超过 240 个字符',
@@ -169,7 +174,8 @@ class BrandDiagnosisController extends Controller
             $this->runService->confirm(
                 $admin,
                 $diagnosisRun,
-                (array) $payload['questions']
+                (array) $payload['questions'],
+                (array) $payload['confirm_platforms'],
             );
         } catch (BrandDiagnosisLimitExceededException $exception) {
             return back()->withErrors(['questions' => $exception->getMessage()])->withInput();

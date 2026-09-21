@@ -171,10 +171,11 @@ class BrandDiagnosisRunService
 
     /**
      * @param  array<int|string,string>  $questions
+     * @param  list<string>|null  $platforms
      */
-    public function confirm(Admin $admin, BrandDiagnosisRun $sourceRun, array $questions): BrandDiagnosisRun
+    public function confirm(Admin $admin, BrandDiagnosisRun $sourceRun, array $questions, ?array $platforms = null): BrandDiagnosisRun
     {
-        $run = DB::transaction(function () use ($admin, $sourceRun, $questions): BrandDiagnosisRun {
+        $run = DB::transaction(function () use ($admin, $sourceRun, $questions, $platforms): BrandDiagnosisRun {
             $lockedRun = BrandDiagnosisRun::query()
                 ->withoutGlobalScope('current_site')
                 ->with(['questions' => fn ($query) => $query->orderBy('sort_order')->lockForUpdate()])
@@ -199,11 +200,14 @@ class BrandDiagnosisRunService
                 throw new RuntimeException('请至少保留一个 AI 问题。');
             }
 
+            // 管理后台确认时使用用户本次重新选择的模型；MCP 旧协议未传模型时才保留原模型列表。
+            $selectedPlatforms = $this->normalizePlatforms($platforms ?? (array) $lockedRun->platforms);
             $decision = $this->usagePolicy->reserve($admin, (int) $lockedRun->site_id);
 
             if (in_array($status, ['questions_ready', 'awaiting_confirmation'], true)) {
                 $this->updateQuestionsForRun($lockedRun, $normalizedQuestions);
                 $lockedRun->update([
+                    'platforms' => $selectedPlatforms,
                     'status' => 'running',
                     'total_questions' => $normalizedQuestions->count(),
                     'completed_questions' => 0,
@@ -237,7 +241,7 @@ class BrandDiagnosisRunService
                 'brand_profile_model' => (string) ($lockedRun->brand_profile_model ?? ''),
                 'brand_profile_status' => (string) ($lockedRun->brand_profile_status ?? ''),
                 'brand_profile_meta' => is_array($lockedRun->brand_profile_meta) ? $lockedRun->brand_profile_meta : null,
-                'platforms' => (array) $lockedRun->platforms,
+                'platforms' => $selectedPlatforms,
                 'status' => 'running',
                 'total_questions' => $normalizedQuestions->count(),
                 'completed_questions' => 0,
