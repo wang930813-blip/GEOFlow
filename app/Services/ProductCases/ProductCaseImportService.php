@@ -8,6 +8,7 @@ use App\Models\ImageLibrary;
 use App\Models\ProductCase;
 use App\Models\Site;
 use App\Services\GeoFlow\ExternalImageHostClient;
+use Closure;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -52,53 +53,124 @@ class ProductCaseImportService
         $site = $this->resolveDefaultSite($admin, $siteId);
         $rows = $this->reader->read($sourcePath);
 
-        $stats = [
-            'source' => $sourcePath,
-            'admin_id' => (int) $admin->id,
-            'site_id' => (int) $site->id,
-            'total' => count($rows),
-            'created' => 0,
-            'updated' => 0,
-            'images_uploaded' => 0,
-            'images_reused' => 0,
-            'diagnosis_runs' => 0,
-            'failed' => 0,
-            'errors' => [],
-            'dry_run' => $dryRun,
-        ];
+        $stats = $this->emptyStats($sourcePath, $admin, $site, count($rows), $dryRun);
 
         if ($dryRun) {
             return $stats;
         }
 
-        $imageLibrary = $this->imageLibrary($admin, $site);
+        return $this->importRows(
+            rows: $rows,
+            sourcePath: $sourcePath,
+            ownerAdmin: $admin,
+            site: $site,
+            actorAdmin: $admin,
+            refreshImages: $refreshImages
+        );
+    }
+
+    /**
+     * 按指定站点和管理员上下文导入已解析的案例行。
+     *
+     * 页面异步导入与命令行导入共用同一条逐行业务链路，确保案例、封面图和诊断演示数据的行为一致。
+     *
+     * @param  list<array<string,mixed>>  $rows
+     * @param  Closure(array<string,mixed>):void|null  $onRowProcessed
+     * @return array<string,mixed>
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-09-21 17:45:53
+     * @UpdateTime: 2026-09-21 18:56:14
+     *
+     * @Throws RuntimeException 导入上下文为空或案例处理失败
+     */
+    public function importRows(
+        array $rows,
+        string $sourcePath,
+        Admin $ownerAdmin,
+        Site $site,
+        ?Admin $actorAdmin = null,
+        bool $refreshImages = false,
+        ?Closure $onRowProcessed = null,
+        bool $preventCrossSiteOverwrite = false
+    ): array {
+        $sourcePath = trim($sourcePath);
+        if ($sourcePath === '') {
+            throw new RuntimeException('案例库文件路径不能为空');
+        }
+
+        $stats = $this->emptyStats($sourcePath, $ownerAdmin, $site, count($rows), false);
+        $actorAdminId = (int) ($actorAdmin?->id ?: $ownerAdmin->id);
+        $imageLibrary = $this->imageLibrary($ownerAdmin, $site);
+
         foreach ($rows as $row) {
+            $rowResult = [
+                'row_number' => (int) ($row['row_number'] ?? 0),
+                'brand_name' => trim((string) ($row['brand_name'] ?? '')),
+                'title' => trim((string) ($row['title'] ?? '')),
+                'status' => 'succeeded',
+                'product_case_id' => null,
+                'action' => '',
+                'images_uploaded' => 0,
+                'images_reused' => 0,
+                'diagnosis_run_id' => null,
+                'error' => '',
+            ];
+
             try {
                 $slug = $this->caseSlug((string) $row['brand_name']);
+                if ($preventCrossSiteOverwrite) {
+                    $existingCase = ProductCase::query()
+                        ->withTrashed()
+                        ->where('slug', $slug)
+                        ->first();
+
+                    if ($existingCase instanceof ProductCase
+                        && (int) ($existingCase->site_id ?? 0) !== (int) $site->id
+                    ) {
+                        throw new RuntimeException('同品牌案例已归属于其他站点，当前站点不能覆盖');
+                    }
+                }
+
                 $imageResult = $this->coverImage(
                     $row,
                     $slug,
                     $imageLibrary,
-                    $admin,
+                    $ownerAdmin,
                     $site,
                     $refreshImages
                 );
                 if ($imageResult['uploaded']) {
                     $stats['images_uploaded']++;
+                    $rowResult['images_uploaded'] = 1;
                 } elseif ($imageResult['reused']) {
                     $stats['images_reused']++;
+                    $rowResult['images_reused'] = 1;
                 }
 
-                $caseWasExisting = ProductCase::query()
-                    ->withTrashed()
-                    ->where('slug', $slug)
-                    ->exists();
-
-                $case = DB::transaction(function () use ($row, $slug, $imageResult, $admin, $site): ProductCase {
+                [$case, $run, $caseWasExisting] = DB::transaction(function () use (
+                    $row,
+                    $slug,
+                    $imageResult,
+                    $ownerAdmin,
+                    $site,
+                    $actorAdminId,
+                    $sourcePath,
+                    $preventCrossSiteOverwrite
+                ): array {
                     $case = ProductCase::query()
                         ->withTrashed()
                         ->where('slug', $slug)
+                        ->lockForUpdate()
                         ->first();
+                    $caseWasExisting = $case instanceof ProductCase;
+
+                    if ($preventCrossSiteOverwrite
+                        && $case instanceof ProductCase
+                        && (int) ($case->site_id ?? 0) !== (int) $site->id
+                    ) {
+                        throw new RuntimeException('同品牌案例已归属于其他站点，当前站点不能覆盖');
+                    }
 
                     if (! $case instanceof ProductCase) {
                         $case = new ProductCase;
@@ -109,7 +181,7 @@ class ProductCaseImportService
                     $publishedAt = $case->published_at ?: now();
                     $case->fill([
                         'site_id' => (int) $site->id,
-                        'owner_admin_id' => (int) $admin->id,
+                        'owner_admin_id' => (int) $ownerAdmin->id,
                         'title' => trim((string) $row['title']),
                         'slug' => $slug,
                         'company_name' => trim((string) $row['brand_name']),
@@ -126,24 +198,55 @@ class ProductCaseImportService
                         'status' => ProductCase::STATUS_PUBLISHED,
                         'sort_order' => max(1, 1000 - (int) $row['row_number']),
                         'published_at' => $publishedAt,
-                        'created_by_admin_id' => (int) $admin->id,
-                        'updated_by_admin_id' => (int) $admin->id,
+                        'created_by_admin_id' => $actorAdminId,
+                        'updated_by_admin_id' => $actorAdminId,
                     ]);
                     $case->save();
 
-                    return $case;
+                    return [$case, $this->demoData->seed($case, $row, $sourcePath), $caseWasExisting];
                 });
 
-                $this->demoData->seed($case, $row, $sourcePath);
                 $stats[$caseWasExisting ? 'updated' : 'created']++;
                 $stats['diagnosis_runs']++;
+                $rowResult['product_case_id'] = (int) $case->id;
+                $rowResult['action'] = $caseWasExisting ? 'updated' : 'created';
+                $rowResult['diagnosis_run_id'] = (int) $run->id;
             } catch (Throwable $exception) {
                 $stats['failed']++;
+                $rowResult['status'] = 'failed';
+                $rowResult['error'] = $exception->getMessage();
                 $stats['errors'][] = '第 '.(int) $row['row_number'].' 行（'.(string) $row['brand_name'].'）导入失败：'.$exception->getMessage();
+            }
+
+            if ($onRowProcessed instanceof Closure) {
+                $onRowProcessed($rowResult);
             }
         }
 
         return $stats;
+    }
+
+    /**
+     * 创建统一的导入统计结构。
+     *
+     * @return array<string,mixed>
+     */
+    private function emptyStats(string $sourcePath, Admin $admin, Site $site, int $total, bool $dryRun): array
+    {
+        return [
+            'source' => $sourcePath,
+            'admin_id' => (int) $admin->id,
+            'site_id' => (int) $site->id,
+            'total' => $total,
+            'created' => 0,
+            'updated' => 0,
+            'images_uploaded' => 0,
+            'images_reused' => 0,
+            'diagnosis_runs' => 0,
+            'failed' => 0,
+            'errors' => [],
+            'dry_run' => $dryRun,
+        ];
     }
 
     private function resolveSourcePath(string $sourcePath): string

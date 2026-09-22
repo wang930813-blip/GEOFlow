@@ -92,7 +92,7 @@ services:
   queue:
     <<: *app-common
     container_name: geoflow-arm-queue
-    command: ["php", "artisan", "queue:work", "redis", "--queue=geoflow,distribution,default", "--sleep=1", "--tries=3", "--timeout=${QUEUE_WORKER_TIMEOUT:-1200}"]
+    command: ["php", "artisan", "queue:work", "redis", "--queue=geoflow,distribution,default", "--sleep=1", "--tries=3", "--timeout=${QUEUE_WORKER_TIMEOUT:-1260}"]
     depends_on:
       init:
         condition: service_completed_successfully

@@ -8,6 +8,14 @@ use ZipArchive;
 
 class ProductCaseSpreadsheetReader
 {
+    private const MAX_ARCHIVE_ENTRIES = 2000;
+
+    private const MAX_UNCOMPRESSED_BYTES = 209715200;
+
+    private const MAX_ROWS = 10000;
+
+    private const MAX_IMAGE_BYTES = 10485760;
+
     /**
      * @return list<array{
      *     row_number:int,
@@ -35,6 +43,7 @@ class ProductCaseSpreadsheetReader
         }
 
         try {
+            $this->validateArchive($zip);
             $sharedStrings = $this->sharedStrings($zip);
             $sheetRows = $this->sheetRows($zip, $sharedStrings);
             $images = $this->drawingImages($zip);
@@ -44,6 +53,9 @@ class ProductCaseSpreadsheetReader
 
         if ($sheetRows === []) {
             throw new RuntimeException('案例库文件没有可读取的工作表数据');
+        }
+        if (count($sheetRows) > self::MAX_ROWS + 1) {
+            throw new RuntimeException('案例库文件行数超过限制，单次最多导入 '.self::MAX_ROWS.' 行');
         }
 
         $header = $sheetRows[0]['cells'];
@@ -267,6 +279,9 @@ class ProductCaseSpreadsheetReader
             if (! is_string($binary) || $binary === '') {
                 continue;
             }
+            if (strlen($binary) > self::MAX_IMAGE_BYTES) {
+                throw new RuntimeException('案例库图片过大，单张图片不能超过 10MB');
+            }
 
             $extension = strtolower(pathinfo($target, PATHINFO_EXTENSION));
             $images[$row] = [
@@ -324,6 +339,53 @@ class ProductCaseSpreadsheetReader
         return implode('/', $parts);
     }
 
+    /**
+     * 校验 XLSX 压缩包条目，允许合法目录项但拒绝绝对路径和路径穿越。
+     *
+     * @param  ZipArchive  $zip
+     * @return void
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-09-21 19:48:31
+     * @UpdateTime: 2026-09-21 19:48:31
+     *
+     * @Throws RuntimeException 压缩包包含异常条目或解压内容超过限制
+     */
+    private function validateArchive(ZipArchive $zip): void
+    {
+        if ($zip->numFiles <= 0 || $zip->numFiles > self::MAX_ARCHIVE_ENTRIES) {
+            throw new RuntimeException('案例库文件内容数量异常');
+        }
+
+        $totalSize = 0;
+        for ($index = 0; $index < $zip->numFiles; $index++) {
+            $name = $zip->getNameIndex($index);
+            if (! is_string($name) || trim($name) === '') {
+                throw new RuntimeException('案例库文件包含异常条目');
+            }
+
+            $zipPath = str_replace('\\', '/', $name);
+            $normalized = $this->normalizeZipPath($zipPath);
+            $canonicalPath = rtrim($zipPath, '/');
+            if ($canonicalPath === ''
+                || $normalized !== $canonicalPath
+                || str_starts_with($zipPath, '/')
+            ) {
+                throw new RuntimeException('案例库文件包含不安全路径');
+            }
+
+            $stat = $zip->statIndex($index);
+            if (! is_array($stat)) {
+                throw new RuntimeException('案例库文件条目信息异常');
+            }
+
+            $totalSize += (int) ($stat['size'] ?? 0);
+            if ($totalSize > self::MAX_UNCOMPRESSED_BYTES) {
+                throw new RuntimeException('案例库文件解压后内容过大');
+            }
+        }
+    }
+
     private function relationshipTargetPath(string $sourceName, string $target): string
     {
         $target = str_replace('\\', '/', trim($target));
@@ -364,7 +426,7 @@ class ProductCaseSpreadsheetReader
     private function xml(string $contents, string $label): SimpleXMLElement
     {
         $previous = libxml_use_internal_errors(true);
-        $xml = simplexml_load_string($contents);
+        $xml = simplexml_load_string($contents, SimpleXMLElement::class, LIBXML_NONET | LIBXML_COMPACT);
         libxml_clear_errors();
         libxml_use_internal_errors($previous);
 

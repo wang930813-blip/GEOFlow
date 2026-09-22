@@ -31,6 +31,8 @@ use App\Http\Controllers\Admin\KeywordLibraryController;
 use App\Http\Controllers\Admin\KnowledgeBaseController;
 use App\Http\Controllers\Admin\LegacyController;
 use App\Http\Controllers\Admin\ManualPublishStatController;
+use App\Http\Controllers\Admin\ManagementProductCaseController;
+use App\Http\Controllers\Admin\ManagementToolController;
 use App\Http\Controllers\Admin\MaterialsController;
 use App\Http\Controllers\Admin\McpServerController;
 use App\Http\Controllers\Admin\MediaDistribution\CreditController as MediaDistributionCreditController;
@@ -489,6 +491,35 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
             Route::post('{site}', [SiteManagementController::class, 'update'])->name('update');
             Route::post('{site}/toggle-status', [SiteManagementController::class, 'toggleStatus'])->name('toggle-status');
             Route::post('{site}/delete', [SiteManagementController::class, 'destroy'])->name('destroy');
+        });
+        // 管理工具：仅超级管理员可访问，可统一管理全部站点的产品案例和导入任务。
+        Route::middleware('admin.super')->prefix('management-tools')->name('management-tools.')->group(function () {
+            Route::get('/', [ManagementToolController::class, 'index'])->name('index');
+            Route::get('product-case-import', [ManagementToolController::class, 'productCaseImport'])
+                ->name('product-case-import.create');
+            Route::post('product-case-import', [ManagementToolController::class, 'storeProductCaseImport'])
+                ->name('product-case-import.store');
+            Route::get('product-case-import/{importId}', [ManagementToolController::class, 'showProductCaseImport'])
+                ->name('product-case-import.show')
+                ->whereNumber('importId');
+            Route::get('product-case-import/{importId}/status', [ManagementToolController::class, 'productCaseImportStatus'])
+                ->name('product-case-import.status')
+                ->whereNumber('importId');
+
+            Route::get('product-cases', [ManagementProductCaseController::class, 'index'])
+                ->name('product-cases.index');
+            Route::get('product-cases/{productCase}/edit', [ManagementProductCaseController::class, 'edit'])
+                ->name('product-cases.edit')
+                ->whereNumber('productCase');
+            Route::put('product-cases/{productCase}', [ManagementProductCaseController::class, 'update'])
+                ->name('product-cases.update')
+                ->whereNumber('productCase');
+            Route::post('product-cases/{productCase}/toggle-status', [ManagementProductCaseController::class, 'toggleStatus'])
+                ->name('product-cases.toggle-status')
+                ->whereNumber('productCase');
+            Route::delete('product-cases/{productCase}', [ManagementProductCaseController::class, 'destroy'])
+                ->name('product-cases.destroy')
+                ->whereNumber('productCase');
         });
         // Super admin routes
         Route::middleware('admin.super')->group(function () {

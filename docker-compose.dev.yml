@@ -97,7 +97,7 @@ services:
       - --queue=geoflow,distribution,default
       - --sleep=1
       - --tries=3
-      - --timeout=${QUEUE_WORKER_TIMEOUT:-1200}
+      - --timeout=${QUEUE_WORKER_TIMEOUT:-1260}
     environment:
       <<: *app-environment
       COMPOSER_ON_START: "false"

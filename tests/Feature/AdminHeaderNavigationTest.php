@@ -26,6 +26,7 @@ class AdminHeaderNavigationTest extends TestCase
         $userMenu = $this->section($html, 'data-admin-user-menu');
 
         $this->assertStringContainsString(route('admin.dashboard'), $primaryNav);
+        $this->assertStringContainsString(route('admin.management-tools.index'), $primaryNav);
         $this->assertStringContainsString('https://guide.example.test/start', $primaryNav);
         $this->assertStringContainsString('target="_blank"', $primaryNav);
         $this->assertStringContainsString('全域数析', $primaryNav);
@@ -48,6 +49,7 @@ class AdminHeaderNavigationTest extends TestCase
         $this->assertStringContainsString(route('admin.plan-subscriptions.index'), $userMenu);
         $this->assertStringContainsString(route('admin.admin-users.index'), $userMenu);
         $this->assertStringContainsString(route('admin.admin-activity-logs'), $userMenu);
+        $this->assertStringContainsString(route('admin.management-tools.index'), $userMenu);
         $this->assertStringNotContainsString(route('admin.api-tokens.index'), $userMenu);
         $this->assertStringNotContainsString('data-admin-module-menu', $html);
         $this->assertStringContainsString('管理', $html);
@@ -103,6 +105,7 @@ class AdminHeaderNavigationTest extends TestCase
         $this->assertStringContainsString(route('admin.geo-reports.index'), $primaryNav);
         $this->assertStringContainsString(route('admin.brand-diagnosis.index'), $primaryNav);
         $this->assertStringNotContainsString(route('admin.monitoring-center.index'), $primaryNav);
+        $this->assertStringNotContainsString(route('admin.management-tools.index'), $primaryNav);
     }
 
     public function test_header_user_menu_hides_management_items_for_direct_admin(): void
@@ -129,6 +132,7 @@ class AdminHeaderNavigationTest extends TestCase
         $this->assertStringNotContainsString(route('admin.plan-subscriptions.index'), $userMenu);
         $this->assertStringNotContainsString(route('admin.admin-activity-logs'), $userMenu);
         $this->assertStringNotContainsString(route('admin.api-tokens.index'), $userMenu);
+        $this->assertStringNotContainsString(route('admin.management-tools.index'), $userMenu);
         $this->assertStringContainsString('会员', $html);
     }
 
@@ -151,6 +155,7 @@ class AdminHeaderNavigationTest extends TestCase
         $this->assertStringContainsString('data-account-menu-group="accounts"', $userMenu);
         $this->assertStringContainsString(route('admin.plan-usages.index'), $userMenu);
         $this->assertStringNotContainsString(route('admin.api-tokens.index'), $userMenu);
+        $this->assertStringNotContainsString(route('admin.management-tools.index'), $userMenu);
         $this->assertStringNotContainsString(route('admin.platform-plans.index'), $userMenu);
         $this->assertStringNotContainsString(route('admin.plan-subscriptions.index'), $userMenu);
         $this->assertStringNotContainsString(route('admin.agent-users.index'), $userMenu);

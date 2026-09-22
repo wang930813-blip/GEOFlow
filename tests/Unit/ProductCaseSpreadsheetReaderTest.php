@@ -39,6 +39,10 @@ class ProductCaseSpreadsheetReaderTest extends TestCase
 
         $zip = new ZipArchive;
         $this->assertSame(true, $zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE));
+        $zip->addEmptyDir('xl/');
+        $zip->addEmptyDir('xl/worksheets/');
+        $zip->addEmptyDir('xl/drawings/');
+        $zip->addEmptyDir('xl/media/');
 
         $zip->addFromString('xl/sharedStrings.xml', <<<'XML'
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>

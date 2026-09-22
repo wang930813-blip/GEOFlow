@@ -18,9 +18,9 @@ class DistributionQueueConfigurationTest extends TestCase
         foreach ($composeFiles as $composeFile) {
             $contents = file_get_contents($composeFile);
             $this->assertIsString($contents);
-            $this->assertStringContainsString('--queue=geoflow,distribution,default', $contents, basename($composeFile));
+            $this->assertStringContainsString('--queue=geoflow,distribution,self-media,default', $contents, basename($composeFile));
             $this->assertStringContainsString('--tries=3', $contents, basename($composeFile));
-            $this->assertStringContainsString('--timeout=600', $contents, basename($composeFile));
+            $this->assertStringContainsString('--timeout=${QUEUE_WORKER_TIMEOUT:-1260}', $contents, basename($composeFile));
         }
     }
 
@@ -29,10 +29,10 @@ class DistributionQueueConfigurationTest extends TestCase
         $horizon = require dirname(__DIR__, 2).'/config/horizon.php';
 
         $this->assertSame(
-            ['geoflow', 'distribution'],
+            ['geoflow', 'distribution', 'self-media'],
             $horizon['defaults']['supervisor-1']['queue'] ?? null
         );
-        $this->assertSame(600, $horizon['defaults']['supervisor-1']['timeout'] ?? null);
+        $this->assertSame(1260, $horizon['defaults']['supervisor-1']['timeout'] ?? null);
     }
 
     public function test_redis_retry_after_exceeds_longest_queue_timeout(): void
