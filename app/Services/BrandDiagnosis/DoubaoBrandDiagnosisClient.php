@@ -265,13 +265,60 @@ class DoubaoBrandDiagnosisClient
             ->post($baseUrl.'/responses', $payload);
 
         if ($response->failed()) {
-            throw new RuntimeException($label.'品牌诊断请求失败：HTTP '.$response->status().' '.$response->body());
+            throw new RuntimeException($this->formatArkRequestFailure($response, $label, $platform, $model));
         }
 
         /** @var array<string,mixed> $data */
         $data = $response->json() ?: [];
 
         return $data;
+    }
+
+    /**
+     * 生成火山方舟请求失败提示，保留平台、模型、HTTP 状态和平台错误码。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-10-09 15:06:50
+     * @UpdateTime: 2026-10-09 15:06:50
+     *
+     * @Param: Response $response 火山方舟 HTTP 响应
+     * @Param: string $label 平台展示名称
+     * @Param: string $platform 平台标识
+     * @Param: string $model 当前请求模型
+     * @Return string 可直接展示的失败原因
+     */
+    private function formatArkRequestFailure(Response $response, string $label, string $platform, string $model): string
+    {
+        $errorCode = trim((string) $response->json('error.code', ''));
+        $errorMessage = $this->cleanExternalText((string) $response->json('error.message', ''));
+        $status = $response->status();
+        $modelText = $model !== '' ? $model : '未配置';
+
+        if ($errorCode === 'InvalidEndpoint.ClosedEndpoint' && $platform === BrandDiagnosisPlatform::DEEPSEEK) {
+            return $label.'品牌诊断请求失败：HTTP '.$status
+                .'，模型 '.$modelText.' 已关闭或暂不可用，请更新 BRAND_DIAGNOSIS_DEEPSEEK_MODEL 为当前可用的火山方舟模型。'
+                .' 错误码：'.$errorCode
+                .'；错误信息：'.($errorMessage !== '' ? $errorMessage : '火山方舟端点已关闭。');
+        }
+
+        $details = [];
+        if ($errorCode !== '') {
+            $details[] = '错误码：'.$errorCode;
+        }
+        if ($errorMessage !== '') {
+            $details[] = '错误信息：'.$errorMessage;
+        }
+
+        if ($details === []) {
+            $body = $this->cleanExternalText($response->body());
+            if ($body !== '') {
+                $details[] = $body;
+            }
+        }
+
+        return $label.'品牌诊断请求失败：HTTP '.$status
+            .'，模型 '.$modelText
+            .($details !== [] ? '；'.implode('；', $details) : '');
     }
 
     /**

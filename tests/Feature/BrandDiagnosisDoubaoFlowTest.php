@@ -43,7 +43,7 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         config()->set('brand_diagnosis.deepseek.enabled', true);
         config()->set('brand_diagnosis.deepseek.base_url', 'https://ark.cn-beijing.volces.com/api/v3');
         config()->set('brand_diagnosis.deepseek.api_key', '');
-        config()->set('brand_diagnosis.deepseek.model', 'deepseek-v4-flash-260425');
+        config()->set('brand_diagnosis.deepseek.model', 'deepseek-v4-1-flash-260910');
         config()->set('brand_diagnosis.deepseek.timeout', 10);
         config()->set('brand_diagnosis.qianwen.enabled', true);
         config()->set('brand_diagnosis.qianwen.base_url', 'https://ark.cn-beijing.volces.com/api/v3');
@@ -2763,12 +2763,42 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
 
             return $request->url() === 'https://ark.cn-beijing.volces.com/api/v3/responses'
                 && $request->hasHeader('Authorization', 'Bearer test-doubao-key')
-                && ($payload['model'] ?? null) === 'deepseek-v4-flash-260425';
+                && ($payload['model'] ?? null) === 'deepseek-v4-1-flash-260910';
         });
 
         $result = BrandDiagnosisResult::query()->firstOrFail();
         $this->assertSame('deepseek', $result->platform);
         $this->assertSame('success', $result->status);
+    }
+
+    public function test_deepseek_closed_ark_endpoint_error_explains_model_update(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'ark.cn-beijing.volces.com/api/v3/responses' => Http::response([
+                'error' => [
+                    'code' => 'InvalidEndpoint.ClosedEndpoint',
+                    'message' => 'The request targeted an endpoint that is currently closed or temporarily unavailable.',
+                ],
+            ], 400),
+        ]);
+
+        try {
+            app(DoubaoBrandDiagnosisClient::class)
+                ->ask('策影GEO', 'GEO优化系统哪家更全面？', 'deepseek');
+            $this->fail('Expected a closed endpoint exception.');
+        } catch (RuntimeException $exception) {
+            $message = $exception->getMessage();
+            $this->assertStringContainsString('HTTP 400', $message);
+            $this->assertStringContainsString('DeepSeek', $message);
+            $this->assertStringContainsString('deepseek-v4-1-flash-260910', $message);
+            $this->assertStringContainsString('InvalidEndpoint.ClosedEndpoint', $message);
+            $this->assertStringContainsString('请更新 BRAND_DIAGNOSIS_DEEPSEEK_MODEL', $message);
+        }
+
+        Http::assertSent(function ($request): bool {
+            return ($request->data()['model'] ?? null) === 'deepseek-v4-1-flash-260910';
+        });
     }
 
     public function test_deepseek_extracts_clean_competitor_brands_from_answer_when_brand_mentions_payload_is_empty(): void
