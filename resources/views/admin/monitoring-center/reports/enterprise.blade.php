@@ -450,7 +450,7 @@
     .collection-row {
       min-height: 42px;
       display: grid;
-      grid-template-columns: 190px minmax(180px, 1fr) 92px;
+      grid-template-columns: 250px minmax(180px, 1fr) 92px;
       align-items: center;
       gap: 18px;
       padding: 5px 10px;
@@ -486,6 +486,25 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+    }
+    .collection-name-line {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .collection-mention-rate {
+      flex: 0 0 auto;
+      padding: 2px 7px;
+      border: 1px solid rgba(74, 219, 255, .28);
+      border-radius: 999px;
+      color: #7fe8ff;
+      background: rgba(4, 57, 104, .72);
+      font-size: 11px;
+      font-weight: 750;
+      line-height: 1.35;
+      white-space: nowrap;
     }
     .collection-share {
       color: #8fb5d3;
@@ -1504,7 +1523,7 @@
       }
       .dashboard-grid { grid-template-columns: 1fr; }
       .platform-filter { grid-template-columns: repeat(4, minmax(120px, 1fr)); }
-      .collection-row { grid-template-columns: 170px minmax(160px, 1fr) 86px; }
+      .collection-row { grid-template-columns: 220px minmax(160px, 1fr) 86px; }
     }
     @media (max-width: 1100px) and (min-width: 721px) {
       .report-header { justify-items: center; }
@@ -2057,8 +2076,8 @@
     };
 
     let modelCollection = [
-      ["DeepSeek", 106758], ["豆包", 153278], ["元宝", 174100], ["文心一言", 51143],
-      ["千问", 12723]
+      ["DeepSeek", 106758, null], ["豆包", 153278, null], ["元宝", 174100, null], ["文心一言", 51143, null],
+      ["千问", 12723, null]
     ];
 
     let metrics = [
@@ -2362,7 +2381,13 @@
       if (!dynamicReport || !Object.keys(dynamicReport).length) return;
 
       if (Array.isArray(dynamicReport.model_collection)) {
-        modelCollection = dynamicReport.model_collection.map(item => [item.name, Number(item.value || 0)]);
+        modelCollection = dynamicReport.model_collection.map(item => [
+          item.name,
+          Number(item.value || 0),
+          item.mention_rate === null || item.mention_rate === undefined || item.mention_rate === ""
+            ? null
+            : Number(item.mention_rate)
+        ]);
       }
 
       if (Array.isArray(dynamicReport.metrics)) {
@@ -2472,12 +2497,21 @@
       const max = Math.max(1, ...modelCollection.map(([, value]) => value));
       const fills = ["linear-gradient(90deg,#266dff,#63dcff)", "linear-gradient(90deg,#7b56ff,#ca7cff)", "linear-gradient(90deg,#10c99d,#58e8d3)", "linear-gradient(90deg,#047cff,#43c8ff)", "linear-gradient(90deg,#7a54ff,#a16fff)"];
       document.getElementById("collectionTotal").innerHTML = countNode(total);
-      document.getElementById("modelCollectionChart").innerHTML = modelCollection.map(([name, value], index) => {
+      document.getElementById("modelCollectionChart").innerHTML = modelCollection.map(([name, value, mentionRate], index) => {
         const percent = value > 0 ? Math.max(8, Math.round(value / max * 100)) : 0;
         const share = total > 0 ? (value / total * 100).toFixed(1) : "0.0";
+        const mentionRateText = typeof mentionRate === "number" && Number.isFinite(mentionRate)
+          ? `${mentionRate}%`
+          : "—";
         return `<div class="collection-row" style="--load-delay:${index * .07}s">
           <div class="collection-info">${icon(name)}
-            <span class="collection-text"><span class="collection-name">${name}</span><span class="collection-share">占比 ${share}%</span></span>
+            <span class="collection-text">
+              <span class="collection-name-line">
+                <span class="collection-name">${name}</span>
+                <span class="collection-mention-rate">提及展现率 ${mentionRateText}</span>
+              </span>
+              <span class="collection-share">占比 ${share}%</span>
+            </span>
           </div>
           <div class="collection-track"><span class="collection-bar" style="--bar:${percent}%;--fill:${fills[index]}"></span></div>
           <div class="collection-value">${countNode(value)}</div>
