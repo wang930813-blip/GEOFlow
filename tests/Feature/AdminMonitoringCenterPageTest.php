@@ -178,6 +178,9 @@ class AdminMonitoringCenterPageTest extends TestCase
             ->assertSee('window.__MONITORING_SEARCH_REPORT_USE_VIRTUAL__ = false;', false)
             ->assertSee('/assets/monitoring-center/ceying-ai-logo1.png', false)
             ->assertSee('提及展现率', false)
+            ->assertSee('id="mention-rate-card" class="mention-rate-panel panel"', false)
+            ->assertSee('id="mentionRateChart"', false)
+            ->assertDontSee('collection-mention-rate', false)
             ->assertDontSee('data-monitoring-dynamic-summary', false)
             ->getContent();
 

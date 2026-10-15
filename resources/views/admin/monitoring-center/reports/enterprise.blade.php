@@ -416,8 +416,14 @@
     .title-icon.trend::before { content: "\e935"; }
     .title-icon.report::before { content: "\e694"; }
 
-    .model-collection {
+    .model-collection-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.85fr) minmax(320px, .85fr);
+      gap: 18px;
       margin-top: var(--content-top-gap);
+      align-items: stretch;
+    }
+    .model-collection {
       padding: 16px 18px 18px;
     }
     .collection-head {
@@ -487,25 +493,6 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    .collection-name-line {
-      min-width: 0;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-    .collection-mention-rate {
-      flex: 0 0 auto;
-      padding: 2px 7px;
-      border: 1px solid rgba(74, 219, 255, .28);
-      border-radius: 999px;
-      color: #7fe8ff;
-      background: rgba(4, 57, 104, .72);
-      font-size: 11px;
-      font-weight: 750;
-      line-height: 1.35;
-      white-space: nowrap;
-    }
     .collection-share {
       color: #8fb5d3;
       font-size: 12px;
@@ -565,6 +552,99 @@
       text-align: right;
       font-size: 18px;
       font-weight: 900;
+    }
+    .mention-rate-panel {
+      min-width: 0;
+      height: 100%;
+      padding: 16px 18px 18px;
+    }
+    .mention-rate-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .mention-rate-head .section-title {
+      margin-bottom: 0;
+    }
+    .mention-rate-note {
+      flex: 0 0 auto;
+      color: #8fb5d3;
+      font-size: 12px;
+      font-weight: 650;
+      line-height: 1.5;
+      text-align: right;
+    }
+    .mention-rate-chart {
+      display: grid;
+      gap: 9px;
+    }
+    .mention-rate-row {
+      min-height: 44px;
+      display: grid;
+      grid-template-columns: minmax(112px, 1.1fr) minmax(70px, 1fr) 54px;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      border: 1px solid rgba(39, 139, 238, .34);
+      border-radius: 6px;
+      background:
+        linear-gradient(90deg, rgba(16, 72, 142, .34), rgba(5, 26, 59, .16));
+      box-shadow: inset 0 0 18px rgba(29, 105, 210, .1);
+      animation: dataFadeIn .55s cubic-bezier(.22, 1, .36, 1) both;
+      animation-delay: var(--load-delay, 0s);
+    }
+    .mention-rate-info {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .mention-rate-info .platform-icon {
+      width: 28px;
+      height: 28px;
+      flex: 0 0 28px;
+      border-radius: 6px;
+    }
+    .mention-rate-name {
+      min-width: 0;
+      color: #f0fbff;
+      font-size: 14px;
+      font-weight: 800;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .mention-rate-track {
+      position: relative;
+      height: 10px;
+      overflow: hidden;
+      border: 1px solid rgba(111, 190, 255, .28);
+      border-radius: 999px;
+      background: rgba(18, 54, 103, .86);
+      box-shadow: inset 0 1px 0 rgba(194, 236, 255, .16);
+    }
+    .mention-rate-bar {
+      display: block;
+      width: var(--mention-rate, 0%);
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #12c9bd, #5eeaff);
+      box-shadow: 0 0 12px rgba(35, 208, 255, .38);
+      transform-origin: left center;
+      animation: collectionBar .7s ease both;
+      animation-delay: var(--load-delay, 0s);
+    }
+    .mention-rate-value {
+      color: #65e7ff;
+      text-align: right;
+      font-size: 16px;
+      font-weight: 900;
+      font-variant-numeric: tabular-nums;
+    }
+    .mention-rate-value.is-empty {
+      color: #7d9bb7;
     }
     @keyframes collectionBar {
       from {
@@ -1521,9 +1601,10 @@
         flex: 0 1 auto;
         justify-content: space-between;
       }
-      .dashboard-grid { grid-template-columns: 1fr; }
+      .dashboard-grid,
+      .model-collection-layout { grid-template-columns: 1fr; }
       .platform-filter { grid-template-columns: repeat(4, minmax(120px, 1fr)); }
-      .collection-row { grid-template-columns: 220px minmax(160px, 1fr) 86px; }
+      .collection-row { grid-template-columns: 190px minmax(160px, 1fr) 86px; }
     }
     @media (max-width: 1100px) and (min-width: 721px) {
       .report-header { justify-items: center; }
@@ -1563,7 +1644,8 @@
         width: 100%;
         min-width: 0;
       }
-      .model-collection { padding: 16px; }
+      .model-collection,
+      .mention-rate-panel { padding: 16px; }
       .collection-head {
         align-items: flex-start;
         flex-direction: column;
@@ -1577,6 +1659,16 @@
       }
       .collection-value {
         text-align: left;
+      }
+      .mention-rate-head {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+      .mention-rate-note {
+        text-align: left;
+      }
+      .mention-rate-row {
+        grid-template-columns: minmax(120px, 1fr) minmax(90px, 1fr) 58px;
       }
       .metric-grid, .platform-filter { grid-template-columns: 1fr; }
       .metric-cards,
@@ -1697,7 +1789,8 @@
       .company-box {
         gap: 10px;
       }
-      .model-collection {
+      .model-collection,
+      .mention-rate-panel {
         padding: 12px;
       }
       .collection-total strong {
@@ -1940,13 +2033,23 @@
       </div>
     </header>
 
-    <section id="model-collection" class="model-collection panel">
-      <div class="collection-head">
-        <h2 class="section-title"><span class="title-icon model" aria-hidden="true"></span>大模型收录</h2>
-        <div class="collection-total"><span>收录总量</span><strong id="collectionTotal">0</strong></div>
-      </div>
-      <div class="collection-chart" id="modelCollectionChart"></div>
-    </section>
+    <div class="model-collection-layout">
+      <section id="model-collection" class="model-collection panel">
+        <div class="collection-head">
+          <h2 class="section-title"><span class="title-icon model" aria-hidden="true"></span>大模型收录</h2>
+          <div class="collection-total"><span>收录总量</span><strong id="collectionTotal">0</strong></div>
+        </div>
+        <div class="collection-chart" id="modelCollectionChart"></div>
+      </section>
+
+      <section id="mention-rate-card" class="mention-rate-panel panel">
+        <div class="mention-rate-head">
+          <h2 class="section-title"><span class="title-icon metrics" aria-hidden="true"></span>提及展现率</h2>
+          <span class="mention-rate-note">最近一次品牌诊断</span>
+        </div>
+        <div class="mention-rate-chart" id="mentionRateChart"></div>
+      </section>
+    </div>
 
     <section class="dashboard-grid">
       <div id="metric-cards" class="metric-cards panel">
@@ -2497,24 +2600,36 @@
       const max = Math.max(1, ...modelCollection.map(([, value]) => value));
       const fills = ["linear-gradient(90deg,#266dff,#63dcff)", "linear-gradient(90deg,#7b56ff,#ca7cff)", "linear-gradient(90deg,#10c99d,#58e8d3)", "linear-gradient(90deg,#047cff,#43c8ff)", "linear-gradient(90deg,#7a54ff,#a16fff)"];
       document.getElementById("collectionTotal").innerHTML = countNode(total);
-      document.getElementById("modelCollectionChart").innerHTML = modelCollection.map(([name, value, mentionRate], index) => {
+      document.getElementById("modelCollectionChart").innerHTML = modelCollection.map(([name, value], index) => {
         const percent = value > 0 ? Math.max(8, Math.round(value / max * 100)) : 0;
         const share = total > 0 ? (value / total * 100).toFixed(1) : "0.0";
-        const mentionRateText = typeof mentionRate === "number" && Number.isFinite(mentionRate)
-          ? `${mentionRate}%`
-          : "—";
         return `<div class="collection-row" style="--load-delay:${index * .07}s">
           <div class="collection-info">${icon(name)}
             <span class="collection-text">
-              <span class="collection-name-line">
-                <span class="collection-name">${name}</span>
-                <span class="collection-mention-rate">提及展现率 ${mentionRateText}</span>
-              </span>
+              <span class="collection-name">${name}</span>
               <span class="collection-share">占比 ${share}%</span>
             </span>
           </div>
           <div class="collection-track"><span class="collection-bar" style="--bar:${percent}%;--fill:${fills[index]}"></span></div>
           <div class="collection-value">${countNode(value)}</div>
+        </div>`;
+      }).join("");
+    }
+
+    function renderMentionRate() {
+      const chart = document.getElementById("mentionRateChart");
+      if (!chart) return;
+
+      chart.innerHTML = modelCollection.map(([name, , mentionRate], index) => {
+        const hasRate = typeof mentionRate === "number" && Number.isFinite(mentionRate);
+        const rate = hasRate ? Math.min(100, Math.max(0, mentionRate)) : 0;
+        const rateText = hasRate ? `${rate}%` : "—";
+        const valueClass = hasRate ? "" : "is-empty";
+
+        return `<div class="mention-rate-row" style="--load-delay:${index * .07}s">
+          <div class="mention-rate-info">${icon(name)}<span class="mention-rate-name">${name}</span></div>
+          <div class="mention-rate-track" aria-hidden="true"><span class="mention-rate-bar" style="--mention-rate:${rate}%"></span></div>
+          <div class="mention-rate-value ${valueClass}">${rateText}</div>
         </div>`;
       }).join("");
     }
@@ -2973,6 +3088,7 @@
       if (event.target.id === "snapshot-modal") closeSnapshot();
     });
     renderModelCollection();
+    renderMentionRate();
     renderMetrics();
     renderCloud();
     renderBars();
