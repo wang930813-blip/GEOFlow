@@ -1,0 +1,1 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">@include('site.partials.seo-head')<link rel="stylesheet" href="{{ asset('themes/qcx-seos-agency-012/theme.css') }}"></head><body>@yield('body')<script src="{{ asset('themes/qcx-seos-agency-012/theme.js') }}" defer></script></body></html>

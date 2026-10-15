@@ -1,0 +1,1 @@
+<article class="article-card"><div><small>{{ $article->category->name ?? '最新动态' }} · {{ optional($article->published_at)->format('Y-m-d') }}</small><h3>{{ $article->title }}</h3><p>{{ $article->excerpt ?? $article->summary ?? '' }}</p><a href="{{ \App\Support\Site\SitePageUrl::to('article', ['slug' => $article->slug]) }}" aria-label="阅读 {{ $article->title }}"></a></div></article>

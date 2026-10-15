@@ -1,0 +1,5 @@
+<footer class="site-footer"><div class="shell"><div class="footer-grid">
+    <div><a class="brand footer-brand" href="{{ \App\Support\Site\SitePageUrl::to('home') }}"><span class="brand-mark" aria-hidden="true"></span>{{ $themeData['site']['brand_name'] }}</a><p class="footer-copy">{{ $themeData['site']['brand_tagline'] }}</p></div>
+    <div><p class="footer-title">页面</p><nav class="footer-nav" aria-label="页脚导航"><a href="{{ \App\Support\Site\SitePageUrl::to('home') }}">首页</a><a href="{{ \App\Support\Site\SitePageUrl::to('about') }}">关于我们</a><a href="{{ \App\Support\Site\SitePageUrl::to('products') }}">产品服务</a></nav></div>
+    <div><p class="footer-title">联系</p><nav class="footer-nav"><a href="{{ \App\Support\Site\SitePageUrl::to('news') }}">资讯中心</a><a href="{{ \App\Support\Site\SitePageUrl::to('contact') }}">联系方式</a></nav></div>
+</div><div class="footer-bottom"><p>{{ $themeData['site']['footer_text'] }}</p><p>© {{ now()->year }} {{ $themeData['site']['brand_name'] }}</p></div></div></footer>

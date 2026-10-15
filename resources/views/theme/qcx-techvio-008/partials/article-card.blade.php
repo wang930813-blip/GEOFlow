@@ -1,0 +1,1 @@
+<article class="article-card"><div><small>{{ $article->category->name ?? '资讯' }}</small><h3><a href="{{ \App\Support\Site\SitePageUrl::to('article',['slug'=>$article->slug]) }}">{{ $article->title }}</a></h3><p>{{ $article->summary ?? $article->excerpt ?? '' }}</p></div></article>

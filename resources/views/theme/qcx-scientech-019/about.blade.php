@@ -1,0 +1,3 @@
+@extends('theme.qcx-scientech-019.layout')
+@php($themeData=\App\Support\Site\Template01Data::fromView(get_defined_vars())) @php($activeNav='about')
+@section('content')<section class="page-hero"><div class="page-header"><p class="eyebrow">关于</p><h1>让数据能力进入真实业务场景</h1><p class="lead">从数据基础到业务解释，用清晰流程帮助团队持续获得洞察。</p></div></section><section class="detail-section"><div class="detail-media"><img src="{{ asset('themes/qcx-scientech-019/assets/about.png') }}" alt="数据服务协作插画" width="620" height="540"></div><div class="detail-copy"><p class="eyebrow">工作方式</p><h2>数据、模型和业务语言保持一致</h2><p>模板用稳定的信息层级呈现专业服务，避免演示按钮和未确认业务承诺。</p><div class="detail-list"><span>数据结构梳理</span><span>分析流程搭建</span><span>结果解释复盘</span></div></div></section>@endsection

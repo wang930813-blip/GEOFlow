@@ -1,0 +1,4 @@
+@extends('theme.qcx-patrix-studio-026.layout')
+@php($themeData = \App\Support\Site\Template01Data::fromView(get_defined_vars())) @php($pageTitle = $themeData['seo']['about']['title']) @php($pageDescription = $themeData['seo']['about']['description']) @php($canonicalUrl = \App\Support\Site\SitePageUrl::to('about'))
+@section('body')@include('theme.qcx-patrix-studio-026.partials.header', ['themeData' => $themeData, 'activeNav' => 'about'])@endsection
+@section('content')<section class="page-hero"><div class="shell"><p class="eyebrow">关于我们</p><h1>{{ $themeData['about']['title'] ?? '了解品牌与工作方式' }}</h1><p class="page-lead">{{ $themeData['about']['summary'] ?? '品牌背景将在资料确认后展示。' }}</p></div></section><article class="page-content"><div class="shell"><div class="prose">{!! $themeData['about']['content'] ?? '<p>品牌简介将在资料确认后展示。</p>' !!}</div></div></article>@endsection

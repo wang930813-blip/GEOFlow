@@ -1,0 +1,3 @@
+@extends('theme.qcx-scientech-019.layout')
+@php($themeData=\App\Support\Site\Template01Data::fromView(get_defined_vars())) @php($activeNav='products')
+@section('content')<section class="page-hero"><div class="page-header"><p class="eyebrow">服务</p><h1>数据智能服务模块</h1><p class="lead">只展示服务能力，不加入行动按钮、媒体入口或演示承诺。</p></div></section><section class="page-content"><div class="item-grid">@foreach(['数据治理','智能分析','可视化决策','模型复盘'] as $service)<article class="item-card"><span class="service-icon">{{ str_pad($loop->iteration,2,'0',STR_PAD_LEFT) }}</span><h2>{{ $service }}</h2><p>帮助团队用更清晰的数据能力支持业务判断。</p></article>@endforeach</div></section>@endsection

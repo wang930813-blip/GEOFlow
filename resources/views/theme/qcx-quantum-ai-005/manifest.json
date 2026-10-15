@@ -1,0 +1,32 @@
+{
+  "id": "qcx-quantum-ai-005",
+  "name": "Neutral AI Technology Theme 004",
+  "version": "1.0.0",
+  "description": "A dark neon GEOFlow theme with clear information hierarchy.",
+  "framework": "laravel",
+  "geoflow_contract": "site-theme-view-resolver",
+  "data_contract": "common_site_data",
+  "data_contract_version": "1.0.0",
+  "mode": "full_theme",
+  "requires_admin_activation": true,
+  "templates": [
+    "layout",
+    "home",
+    "about",
+    "products",
+    "news",
+    "article",
+    "contact"
+  ],
+  "preview_routes": [
+    "/",
+    "/about",
+    "/products",
+    "/news",
+    "/contact"
+  ],
+  "capabilities": [
+    "common_site_data",
+    "dynamic_articles"
+  ]
+}
