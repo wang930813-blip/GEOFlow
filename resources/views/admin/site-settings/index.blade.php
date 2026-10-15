@@ -60,7 +60,7 @@
                 <i data-lucide="chevron-down" class="w-5 h-5 shrink-0 text-gray-400 transition-transform duration-200 group-open:rotate-180" aria-hidden="true"></i>
             </summary>
             <div class="px-6 py-6">
-                <form method="POST" action="{{ route('admin.site-settings.update') }}" class="space-y-6">
+                <form method="POST" action="{{ route('admin.site-settings.update') }}" class="space-y-6" data-analytics-settings-form>
                     @csrf
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -434,7 +434,7 @@
                             <textarea name="analytics_code" rows="4"
                                       class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 font-mono text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
                                       @disabled(!($canEditAnalytics ?? false))
-                                      placeholder="{{ __('admin.site_settings.placeholder_analytics') }}">{{ $settings['analytics_code'] }}</textarea>
+                                      placeholder="{{ __('admin.site_settings.placeholder_analytics') }}">{{ old('analytics_code', $settings['analytics_code']) }}</textarea>
                             <p class="mt-1 text-xs text-gray-500">{{ ($canEditAnalytics ?? false) ? __('admin.site_settings.analytics_help') : __('admin.site_settings.analytics_super_admin_only') }}</p>
                         </div>
                     </div>
@@ -775,6 +775,7 @@
 @endsection
 
 @push('scripts')
+    <script src="{{ asset('js/admin-analytics-code.js') }}"></script>
     <template id="article-ad-template">
         <div class="article-ad-item rounded-2xl border border-gray-200 bg-gray-50/70 p-5" data-ad-index="__INDEX__">
             <div class="flex items-center justify-between gap-4">

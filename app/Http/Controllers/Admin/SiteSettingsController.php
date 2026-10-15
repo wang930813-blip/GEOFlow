@@ -18,6 +18,7 @@ use App\Support\SiteDomain;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 /**
@@ -76,6 +77,23 @@ class SiteSettingsController extends Controller
      */
     public function update(Request $request): RedirectResponse
     {
+        if ($request->exists('analytics_code_base64')) {
+            $transport = $request->validate([
+                'analytics_code_base64' => ['nullable', 'string'],
+            ]);
+            $analyticsCode = base64_decode((string) ($transport['analytics_code_base64'] ?? ''), true);
+
+            if ($analyticsCode === false || ! mb_check_encoding($analyticsCode, 'UTF-8')) {
+                throw ValidationException::withMessages([
+                    'analytics_code' => __('validation.regex', [
+                        'attribute' => __('admin.site_settings.field_analytics'),
+                    ]),
+                ]);
+            }
+
+            $request->merge(['analytics_code' => $analyticsCode]);
+        }
+
         $currentAdminBasePath = AdminWeb::basePath();
         $canEditDomainSettings = $this->canEditDomainSettings();
         $rules = [
