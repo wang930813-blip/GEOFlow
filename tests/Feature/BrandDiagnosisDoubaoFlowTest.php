@@ -55,6 +55,11 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         config()->set('brand_diagnosis.wenxin.api_key', 'test-wenxin-key');
         config()->set('brand_diagnosis.wenxin.model', 'wenxin-test-model');
         config()->set('brand_diagnosis.wenxin.timeout', 10);
+        config()->set('brand_diagnosis.yuanbao.enabled', true);
+        config()->set('brand_diagnosis.yuanbao.base_url', 'https://tokenhub.tencentmaas.com/v1');
+        config()->set('brand_diagnosis.yuanbao.api_key', 'test-yuanbao-key');
+        config()->set('brand_diagnosis.yuanbao.model', 'hy3');
+        config()->set('brand_diagnosis.yuanbao.timeout', 10);
     }
 
     public function test_brand_diagnosis_workflow_status_values_fit_database_column_length(): void
@@ -362,21 +367,21 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         $this->assertSame('豆包', (string) $run->brand_profile_model);
     }
 
-    public function test_admin_can_create_brand_diagnosis_run_with_four_platforms(): void
+    public function test_admin_can_create_brand_diagnosis_run_with_five_platforms(): void
     {
         Queue::fake();
-        [$admin, $site] = $this->createAdminWithSite('brand_diagnosis_four_platform_admin');
+        [$admin, $site] = $this->createAdminWithSite('brand_diagnosis_five_platform_admin');
 
         $this->actingAs($admin, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
             ->post(route('admin.brand-diagnosis.store'), [
                 'brand_name' => 'Acme AI',
-                'platforms' => ['doubao', 'deepseek', 'qianwen', 'wenxin'],
+                'platforms' => ['doubao', 'deepseek', 'qianwen', 'wenxin', 'yuanbao'],
             ])
             ->assertRedirect(route('admin.brand-diagnosis.index'));
 
         $run = BrandDiagnosisRun::query()->firstOrFail();
-        $this->assertSame(['doubao', 'deepseek', 'qianwen', 'wenxin'], $run->platforms);
+        $this->assertSame(['doubao', 'deepseek', 'qianwen', 'wenxin', 'yuanbao'], $run->platforms);
 
         Queue::assertPushedOn('geoflow', GenerateBrandDiagnosisQuestionsJob::class, function (GenerateBrandDiagnosisQuestionsJob $job) use ($run): bool {
             return $job->runId === (int) $run->id;
@@ -425,6 +430,37 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         $this->assertSame('豆包', (string) $run->brand_profile_model);
 
         Http::assertNotSent(static fn ($request): bool => str_contains($request->url(), 'qianwen.test'));
+    }
+
+    public function test_yuanbao_uses_tokenhub_chat_completions_endpoint(): void
+    {
+        config()->set('brand_diagnosis.yuanbao.base_url', 'https://tokenhub.tencentmaas.com/v1');
+
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://tokenhub.tencentmaas.com/v1/chat/completions' => Http::response(
+                $this->chatCompletionBrandMentionAnswerResponse('yuanbao-answer', 'Yuanbao answer mentions Acme AI.'),
+                200
+            ),
+        ]);
+
+        $response = app(DoubaoBrandDiagnosisClient::class)
+            ->ask('Acme AI', 'Which AI brand service is reliable?', 'yuanbao');
+
+        $this->assertSame('Yuanbao answer mentions Acme AI.', $response->answer);
+        $this->assertSame('yuanbao', $response->meta['platform'] ?? null);
+
+        Http::assertSent(function ($request): bool {
+            $payload = $request->data();
+
+            return $request->url() === 'https://tokenhub.tencentmaas.com/v1/chat/completions'
+                && $request->hasHeader('Authorization', 'Bearer test-yuanbao-key')
+                && ($payload['model'] ?? null) === 'hy3'
+                && ($payload['stream'] ?? null) === false
+                && isset($payload['messages'][0]['content'])
+                && ! isset($payload['input'])
+                && ! isset($payload['tools']);
+        });
     }
 
     public function test_question_generation_resolves_brand_profile_once_and_reuses_it_without_platform_web_search(): void

@@ -278,13 +278,19 @@ class DoubaoBrandDiagnosisClient
      * 生成火山方舟请求失败提示，保留平台、模型、HTTP 状态和平台错误码。
      *
      * @Author: cdkay
+     *
      * @CreateTime: 2026-10-09 15:06:50
+     *
      * @UpdateTime: 2026-10-09 15:06:50
      *
      * @Param: Response $response 火山方舟 HTTP 响应
+     *
      * @Param: string $label 平台展示名称
+     *
      * @Param: string $platform 平台标识
+     *
      * @Param: string $model 当前请求模型
+     *
      * @Return string 可直接展示的失败原因
      */
     private function formatArkRequestFailure(Response $response, string $label, string $platform, string $model): string
@@ -410,6 +416,9 @@ class DoubaoBrandDiagnosisClient
                 ],
             ],
         ];
+        if ($platform === BrandDiagnosisPlatform::YUANBAO) {
+            $payload['stream'] = false;
+        }
 
         if ($withWebSearch) {
             $payload = $this->withChatCompletionsWebSearchPayload($payload, $platform);
@@ -437,6 +446,7 @@ class DoubaoBrandDiagnosisClient
     private function usesChatCompletions(string $platform): bool
     {
         return in_array($this->normalizePlatform($platform), [
+            BrandDiagnosisPlatform::YUANBAO,
             BrandDiagnosisPlatform::WENXIN,
         ], true);
     }

@@ -4,13 +4,14 @@ namespace App\Console\Commands;
 
 use App\Models\BrandDiagnosisRun;
 use App\Services\BrandDiagnosis\BrandDiagnosisMentionBackfillService;
+use App\Services\BrandDiagnosis\BrandDiagnosisPlatform;
 use Illuminate\Console\Command;
 
 class BrandDiagnosisBackfillMentionsCommand extends Command
 {
     protected $signature = 'brand-diagnosis:backfill-mentions
         {run_id : 品牌诊断记录 ID}
-        {--platform= : 只回填指定平台，例如 doubao 或 deepseek}
+        {--platform= : 只回填指定平台，例如 doubao、deepseek 或 yuanbao}
         {--all : 覆盖已有品牌提及并重新回填}';
 
     protected $description = '回填品牌诊断结果中的品牌/竞品提及数据，并刷新诊断指标。';
@@ -30,8 +31,8 @@ class BrandDiagnosisBackfillMentionsCommand extends Command
 
         $platform = $this->option('platform');
         $platform = is_string($platform) && trim($platform) !== '' ? strtolower(trim($platform)) : null;
-        if ($platform !== null && ! in_array($platform, ['doubao', 'deepseek'], true)) {
-            $this->error('platform 只支持 doubao 或 deepseek。');
+        if ($platform !== null && ! BrandDiagnosisPlatform::isSupported($platform)) {
+            $this->error('platform 不是受支持的品牌诊断模型。');
 
             return self::FAILURE;
         }

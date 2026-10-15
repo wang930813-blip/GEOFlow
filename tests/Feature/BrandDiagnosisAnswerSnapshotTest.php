@@ -92,7 +92,7 @@ class BrandDiagnosisAnswerSnapshotTest extends TestCase
 
     public function test_public_and_admin_snapshots_hide_internal_brand_mentions_payload_for_all_supported_models(): void
     {
-        foreach (['doubao', 'deepseek', 'qianwen', 'wenxin'] as $platform) {
+        foreach (['doubao', 'deepseek', 'qianwen', 'wenxin', 'yuanbao'] as $platform) {
             $result = $this->createResult([
                 'platform' => $platform,
                 'answer' => '{"answer":"学术易在该问题中被模型正常推荐。","brand_mentions":[{"brand":"学术易","mention_count":1,"mention_rank":1,"sentiment":"positive","evidence":"内部提及依据"}]}',

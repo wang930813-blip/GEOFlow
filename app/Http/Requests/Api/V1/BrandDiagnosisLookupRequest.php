@@ -46,7 +46,7 @@ final class BrandDiagnosisLookupRequest extends FormRequest
         return [
             'brand_word' => ['required', 'string', 'max:120'],
             'include' => ['nullable', 'string', 'max:200'],
-            'model' => ['nullable', 'string', 'max:40', 'in:all,doubao,deepseek,qianwen,wenxin'],
+            'model' => ['nullable', 'string', 'max:40', 'in:all,doubao,deepseek,qianwen,wenxin,yuanbao'],
         ];
     }
 

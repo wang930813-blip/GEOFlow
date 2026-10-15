@@ -74,4 +74,14 @@ return [
         'connect_timeout' => (int) env('BRAND_DIAGNOSIS_WENXIN_CONNECT_TIMEOUT', 10),
         'max_keywords' => (int) env('BRAND_DIAGNOSIS_WENXIN_WEB_SEARCH_MAX_KEYWORDS', 5),
     ],
+
+    'yuanbao' => [
+        'enabled' => filter_var(env('BRAND_DIAGNOSIS_YUANBAO_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        'base_url' => rtrim((string) env('BRAND_DIAGNOSIS_YUANBAO_BASE_URL', 'https://tokenhub.tencentmaas.com/v1'), '/'),
+        'api_key' => (string) env('BRAND_DIAGNOSIS_YUANBAO_API_KEY', ''),
+        'model' => (string) env('BRAND_DIAGNOSIS_YUANBAO_MODEL', 'hy3'),
+        'timeout' => (int) env('BRAND_DIAGNOSIS_YUANBAO_TIMEOUT', 60),
+        'connect_timeout' => (int) env('BRAND_DIAGNOSIS_YUANBAO_CONNECT_TIMEOUT', 10),
+        'max_keywords' => (int) env('BRAND_DIAGNOSIS_YUANBAO_WEB_SEARCH_MAX_KEYWORDS', 5),
+    ],
 ];

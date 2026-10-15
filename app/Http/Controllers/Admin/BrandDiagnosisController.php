@@ -100,7 +100,7 @@ class BrandDiagnosisController extends Controller
             'reuse_questions' => ['nullable', 'boolean'],
         ], [
             'brand_name.required' => '请输入品牌名称',
-            'platforms.*.in' => '当前版本支持豆包、DeepSeek、千问和文心一言诊断',
+            'platforms.*.in' => '当前版本支持豆包、DeepSeek、千问、文心一言和元宝诊断',
         ]);
 
         $admin = auth('admin')->user();
@@ -155,7 +155,7 @@ class BrandDiagnosisController extends Controller
         ], [
             'confirm_platforms.required' => '请至少选择一个本次诊断模型',
             'confirm_platforms.min' => '请至少选择一个本次诊断模型',
-            'confirm_platforms.*.in' => '当前版本支持豆包、DeepSeek、千问和文心一言诊断',
+            'confirm_platforms.*.in' => '当前版本支持豆包、DeepSeek、千问、文心一言和元宝诊断',
             'questions.required' => '请确认至少一个 AI 问题',
             'questions.min' => '请确认至少一个 AI 问题',
             'questions.*.max' => 'AI 问题不能超过 240 个字符',
@@ -227,6 +227,7 @@ class BrandDiagnosisController extends Controller
             ['name' => 'DeepSeek', 'key' => 'deepseek', 'initial' => 'DS', 'color' => 'bg-indigo-600', 'logo' => BrandDiagnosisPlatform::logoUrl('deepseek'), 'desc' => '深度推理', 'deep' => true, 'available' => true],
             ['name' => '千问', 'key' => 'qianwen', 'initial' => '千', 'color' => 'bg-violet-600', 'logo' => BrandDiagnosisPlatform::logoUrl('qianwen'), 'desc' => '通义问答', 'deep' => true, 'available' => true],
             ['name' => '文心一言', 'key' => 'wenxin', 'initial' => '文', 'color' => 'bg-emerald-600', 'logo' => BrandDiagnosisPlatform::logoUrl('wenxin'), 'desc' => '千帆搜索', 'deep' => false, 'available' => true],
+            ['name' => '元宝', 'key' => 'yuanbao', 'initial' => '元', 'color' => 'bg-red-600', 'logo' => BrandDiagnosisPlatform::logoUrl('yuanbao'), 'desc' => '混元模型', 'deep' => false, 'available' => true],
         ];
     }
 

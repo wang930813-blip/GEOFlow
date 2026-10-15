@@ -30,8 +30,8 @@ Accept: application/json
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `brand_name` | string | 是 | 需要诊断的品牌词，最长 120 个字符 |
-| `models` | array<string> | 是 | 需要参与诊断的模型，可多选，最多 4 个 |
-| `models[]` | string | 是 | 支持 `doubao`、`deepseek`、`qianwen`、`wenxin` |
+| `models` | array<string> | 是 | 需要参与诊断的模型，可多选，最多 5 个 |
+| `models[]` | string | 是 | 支持 `doubao`、`deepseek`、`qianwen`、`wenxin`、`yuanbao` |
 
 支持模型：
 
@@ -41,6 +41,7 @@ Accept: application/json
 | `deepseek` | DeepSeek |
 | `qianwen` | 千问 |
 | `wenxin` | 文心一言 |
+| `yuanbao` | 元宝（混元模型） |
 
 成功响应：
 
@@ -152,7 +153,7 @@ Accept: application/json
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | `question_id` | integer | 对应 `questions[].id` |
-| `platform` | string | 模型标识：`doubao`、`deepseek`、`qianwen`、`wenxin` |
+| `platform` | string | 模型标识：`doubao`、`deepseek`、`qianwen`、`wenxin`、`yuanbao` |
 | `status` | string | 本条模型回答状态：`success` 或 `failed` |
 | `answer` | string | 模型回答正文；失败时通常为空字符串 |
 | `brand_mentioned` | boolean | 回答中是否提及目标品牌 |

@@ -70,7 +70,7 @@ class AdminBrandDiagnosisPageTest extends TestCase
             ->assertSee('文心一言')
             ->assertSee('DeepSeek')
             ->assertSee('千问')
-            ->assertDontSee('元宝')
+            ->assertSee('元宝')
             ->assertDontSee('开始诊断')
             ->assertDontSee('开始监测品牌')
             ->assertDontSee('启用诊断')
@@ -152,13 +152,13 @@ class AdminBrandDiagnosisPageTest extends TestCase
             ->assertSee('品牌诊断/报告');
     }
 
-    public function test_brand_diagnosis_page_exposes_four_selectable_platform_models(): void
+    public function test_brand_diagnosis_page_exposes_five_selectable_platform_models(): void
     {
         $admin = Admin::query()->create([
-            'username' => 'brand_four_platform_admin',
+            'username' => 'brand_five_platform_admin',
             'password' => 'secret-123',
-            'email' => 'brand-four-platform-admin@example.com',
-            'display_name' => 'Brand Four Platform Admin',
+            'email' => 'brand-five-platform-admin@example.com',
+            'display_name' => 'Brand Five Platform Admin',
             'role' => 'admin',
             'status' => 'active',
         ]);
@@ -168,9 +168,11 @@ class AdminBrandDiagnosisPageTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        foreach (['doubao', 'deepseek', 'qianwen', 'wenxin'] as $platform) {
+        foreach (['doubao', 'deepseek', 'qianwen', 'wenxin', 'yuanbao'] as $platform) {
             $this->assertStringContainsString('value="'.$platform.'" type="checkbox"', $html);
         }
+        $this->assertStringContainsString('>元宝</div>', $html);
+        $this->assertStringContainsString('混元模型', $html);
     }
 
     public function test_brand_diagnosis_questions_are_editable_before_confirming_diagnosis(): void
