@@ -31,10 +31,11 @@ final class BrandDiagnosisLookupPresenter
             'brand_profile' => $this->moduleValue('profile', $included, $run ? $this->storedProfile($run) : $this->generatedProfile($generated)),
             'questions' => $this->moduleValue('questions', $included, $run ? $this->storedQuestions($run) : $this->generatedQuestions($generated)),
             'brand_performance' => $this->moduleValue('performance', $included, $run ? $this->performance($run, $model) : null),
+            'rankings' => $this->moduleValue('rankings', $included, $run ? $this->rankings($run, $model) : null),
             'model_results' => $this->moduleValue('model_results', $included, $run ? $this->modelResults($run) : []),
             'ai_sources' => $this->moduleValue('sources', $included, $run ? $this->sources($run) : []),
             'conversation_snapshots' => $this->moduleValue('snapshots', $included, $run ? $this->snapshots($run) : []),
-            'competitors' => $this->moduleValue('competitors', $included, $run ? $this->competitors($run) : []),
+            'competitors' => $this->moduleValue('competitors', $included, $run ? $this->competitors($run, $model) : null),
             'ai_search_platform_analysis' => $this->moduleValue('platform_analysis', $included, $run ? $this->platformAnalysis($run) : []),
             'competitor_visibility' => $this->moduleValue('competitor_visibility', $included, $run ? $this->competitorVisibility($run) : ['platforms' => [], 'rows' => []]),
             'module_status' => [],
@@ -248,6 +249,17 @@ final class BrandDiagnosisLookupPresenter
             return 'included';
         }
 
+        if ($module === 'rankings') {
+            if (! $run || ! $run->relationLoaded('brandMentions')) {
+                return 'not_available';
+            }
+            if ($model !== null && $this->successfulResults($run, $model)->isEmpty()) {
+                return 'not_run';
+            }
+
+            return $this->rankingMentions($run, $model)->isNotEmpty() ? 'included' : 'not_run';
+        }
+
         if ($module === 'sources') {
             if (! $run || ! $run->relationLoaded('sources')) {
                 return 'not_available';
@@ -261,7 +273,7 @@ final class BrandDiagnosisLookupPresenter
                 return 'not_available';
             }
 
-            return $run->brandMentions->contains(fn ($mention): bool => ! (bool) $mention->is_target_brand)
+            return $this->competitorMentions($run, $model)->isNotEmpty()
                 ? 'included'
                 : 'not_run';
         }
@@ -346,6 +358,201 @@ final class BrandDiagnosisLookupPresenter
             'mention_count' => $mentionCount,
             'sentiment_rate' => $sentimentRate,
         ];
+    }
+
+    private function rankings(BrandDiagnosisRun $run, ?string $model): array
+    {
+        $model = $this->normalizeModelFilter($model);
+        $byModel = $this->modelRankingRows($run, $model);
+
+        if ($model !== null) {
+            return [
+                'model' => $model,
+                'model_label' => $this->platformLabel($model),
+                ...$this->rankingSet($run, $model),
+                'by_model' => $byModel,
+            ];
+        }
+
+        return [
+            'model' => 'all',
+            'model_label' => $this->allModelLabel(),
+            ...$this->rankingSet($run),
+            'by_model' => $byModel,
+        ];
+    }
+
+    private function modelRankingRows(BrandDiagnosisRun $run, ?string $model): array
+    {
+        $platforms = $model !== null
+            ? collect([$model])
+            : $this->platformKeys($run, $this->successfulResults($run), $this->rankingMentions($run));
+
+        return $platforms
+            ->map(fn (string $platform): array => [
+                'model' => $platform,
+                'model_label' => $this->platformLabel($platform),
+                ...$this->rankingSet($run, $platform),
+            ])
+            ->values()
+            ->all();
+    }
+
+    private function rankingSet(BrandDiagnosisRun $run, ?string $platform = null): array
+    {
+        $mentions = $this->rankingMentions($run, $platform);
+        $successResults = $this->successfulResults($run, $platform);
+        $totalConversations = max(1, $successResults->count());
+
+        $grouped = $mentions
+            ->groupBy(fn ($mention): string => $this->brandRankingGroupKey($mention))
+            ->map(function (Collection $group) use ($totalConversations): array {
+                $first = $group->first();
+                $conversationCount = $group->pluck('result_id')->unique()->count();
+                $mentionCount = (int) $group->sum('mention_count');
+                $averageRank = (float) ($group->where('mention_rank', '>', 0)->avg('mention_rank') ?: 0);
+                $aliases = $group
+                    ->flatMap(function ($mention): array {
+                        $meta = (array) ($mention->meta ?? []);
+
+                        return array_merge(
+                            [(string) $mention->brand_name],
+                            (array) ($meta['aliases'] ?? [])
+                        );
+                    })
+                    ->filter()
+                    ->map(fn (string $value): string => trim($value))
+                    ->unique(fn (string $value): string => mb_strtolower($value, 'UTF-8'))
+                    ->values()
+                    ->all();
+                $canonicalName = (string) (data_get($first, 'meta.canonical_name') ?: $first?->brand_name);
+                $title = collect($aliases)
+                    ->prepend($canonicalName)
+                    ->filter()
+                    ->unique(fn (string $value): string => mb_strtolower($value, 'UTF-8'))
+                    ->implode('、');
+
+                return [
+                    'brand' => $canonicalName,
+                    'aliases' => $aliases,
+                    'title' => $title !== '' ? $title : $canonicalName,
+                    'rate' => (int) round(($conversationCount / $totalConversations) * 100),
+                    'count' => $mentionCount,
+                    'rank_value' => $averageRank,
+                    'rank_sort' => $averageRank > 0 ? $averageRank : 999999,
+                    'rank' => $this->formatRank($averageRank),
+                    'is_target_brand' => $group->contains(fn ($mention): bool => (bool) $mention->is_target_brand),
+                ];
+            })
+            ->values();
+
+        $targetRow = $grouped->firstWhere('is_target_brand', true) ?? [
+            'brand' => (string) $run->brand_name,
+            'aliases' => [(string) $run->brand_name],
+            'title' => (string) $run->brand_name,
+            'rate' => 0,
+            'count' => 0,
+            'rank_value' => 0.0,
+            'rank_sort' => 999999,
+            'rank' => '0',
+            'is_target_brand' => true,
+        ];
+
+        return [
+            'mention_rate' => $this->rankingRows($this->topRowsWithTargetLast(
+                $this->withDisplayRanks($grouped, 'rate', true),
+                $targetRow,
+                'rate'
+            )),
+            'mention_count' => $this->rankingRows($this->topRowsWithTargetLast(
+                $this->withDisplayRanks($grouped, 'count', true),
+                $targetRow,
+                'count'
+            )),
+            'average_rank' => $this->rankingRows($this->topRowsWithTargetLast(
+                $this->withDisplayRanks($grouped, 'rank_sort', false),
+                $targetRow,
+                'rank_sort'
+            ), true),
+        ];
+    }
+
+    private function rankingMentions(BrandDiagnosisRun $run, ?string $platform = null): Collection
+    {
+        $platform = $this->normalizePlatformKey((string) $platform);
+
+        return $this->allBrandMentions($run)
+            ->filter(fn ($mention): bool => trim((string) $mention->brand_name) !== '')
+            ->filter(fn ($mention): bool => $platform === '' || $this->normalizePlatformKey((string) $mention->platform) === $platform)
+            ->values();
+    }
+
+    private function brandRankingGroupKey($mention): string
+    {
+        $meta = (array) ($mention->meta ?? []);
+        $canonicalKey = trim((string) ($meta['canonical_key'] ?? ''));
+
+        return $canonicalKey !== ''
+            ? mb_strtolower($canonicalKey, 'UTF-8')
+            : $this->normalizeCompetitorName((string) $mention->brand_name);
+    }
+
+    private function rankingRows(Collection $rows, bool $includeRankValue = false): array
+    {
+        return $rows
+            ->map(function (array $row) use ($includeRankValue): array {
+                $payload = [
+                    'brand' => (string) $row['brand'],
+                    'aliases' => (array) ($row['aliases'] ?? []),
+                    'title' => (string) ($row['title'] ?? $row['brand']),
+                    'rate' => (int) $row['rate'],
+                    'count' => (int) $row['count'],
+                    'rank' => (string) $row['rank'],
+                    'display_rank' => $row['display_rank'],
+                    'is_target_brand' => (bool) $row['is_target_brand'],
+                ];
+
+                if ($includeRankValue) {
+                    $payload['rank_value'] = (float) $row['rank_value'];
+                }
+
+                return $payload;
+            })
+            ->values()
+            ->all();
+    }
+
+    private function withDisplayRanks(Collection $rows, string $sortKey, bool $descending): Collection
+    {
+        return $rows
+            ->when($descending, fn (Collection $collection): Collection => $collection->sortByDesc($sortKey), fn (Collection $collection): Collection => $collection->sortBy($sortKey))
+            ->values()
+            ->map(function (array $row, int $index) use ($sortKey): array {
+                $value = $row[$sortKey] ?? 0;
+                $row['display_rank'] = ((bool) $row['is_target_brand'] && (! is_numeric($value) || (float) $value <= 0 || (float) $value >= 999999))
+                    ? '99+'
+                    : $index + 1;
+
+                return $row;
+            });
+    }
+
+    private function topRowsWithTargetLast(Collection $rows, array $targetRow, string $sortKey): Collection
+    {
+        $topRows = $rows
+            ->take(10)
+            ->values();
+        $rankedTargetRow = $rows->firstWhere('is_target_brand', true) ?? $targetRow;
+        if (! isset($rankedTargetRow['display_rank'])) {
+            $value = $rankedTargetRow[$sortKey] ?? 0;
+            $rankedTargetRow['display_rank'] = (! is_numeric($value) || (float) $value <= 0 || (float) $value >= 999999)
+                ? '99+'
+                : 1;
+        }
+
+        $targetAlreadyVisible = $topRows->contains(static fn (array $row): bool => (bool) ($row['is_target_brand'] ?? false));
+
+        return $targetAlreadyVisible ? $topRows : $topRows->push($rankedTargetRow);
     }
 
     private function platformAnalysis(BrandDiagnosisRun $run): array
@@ -466,7 +673,7 @@ final class BrandDiagnosisLookupPresenter
                 ->withoutGlobalScopes(['current_site', 'admin_owner'])
                 ->get([
                     'id', 'run_id', 'question_id', 'result_id', 'platform', 'brand_name',
-                    'mention_count', 'mention_rank', 'sentiment', 'source_count', 'is_target_brand',
+                    'mention_count', 'mention_rank', 'sentiment', 'source_count', 'is_target_brand', 'meta',
                 ]);
     }
 
@@ -480,10 +687,13 @@ final class BrandDiagnosisLookupPresenter
             ->values();
     }
 
-    private function competitorMentions(BrandDiagnosisRun $run): Collection
+    private function competitorMentions(BrandDiagnosisRun $run, ?string $platform = null): Collection
     {
+        $platform = $this->normalizePlatformKey((string) $platform);
+
         return $this->allBrandMentions($run)
             ->filter(fn ($mention): bool => ! (bool) $mention->is_target_brand && trim((string) $mention->brand_name) !== '')
+            ->filter(fn ($mention): bool => $platform === '' || $this->normalizePlatformKey((string) $mention->platform) === $platform)
             ->values();
     }
 
@@ -554,16 +764,65 @@ final class BrandDiagnosisLookupPresenter
         };
     }
 
+    private function normalizeModelFilter(?string $model): ?string
+    {
+        $model = $this->normalizePlatformKey((string) $model);
+
+        return $model === '' || $model === 'all' ? null : $model;
+    }
+
+    private function allModelLabel(): string
+    {
+        return '全部平台';
+    }
+
     private function formatRank(float $rank): string
     {
         return $rank <= 0 ? '0' : rtrim(rtrim(number_format($rank, 2, '.', ''), '0'), '.');
     }
 
-    private function competitors(BrandDiagnosisRun $run): array
+    private function competitors(BrandDiagnosisRun $run, ?string $model): array
     {
-        return $run->brandMentions
-            ->filter(fn ($mention): bool => ! (bool) $mention->is_target_brand && trim((string) $mention->brand_name) !== '')
-            ->groupBy(fn ($mention): string => $this->normalizeCompetitorName((string) $mention->brand_name))
+        $model = $this->normalizeModelFilter($model);
+        $byModel = $this->modelCompetitorRows($run, $model);
+
+        if ($model !== null) {
+            return [
+                'model' => $model,
+                'model_label' => $this->platformLabel($model),
+                'rows' => $this->competitorRows($run, $model),
+                'by_model' => $byModel,
+            ];
+        }
+
+        return [
+            'model' => 'all',
+            'model_label' => $this->allModelLabel(),
+            'rows' => $this->competitorRows($run),
+            'by_model' => $byModel,
+        ];
+    }
+
+    private function modelCompetitorRows(BrandDiagnosisRun $run, ?string $model): array
+    {
+        $platforms = $model !== null
+            ? collect([$model])
+            : $this->platformKeys($run, $this->successfulResults($run), $this->competitorMentions($run));
+
+        return $platforms
+            ->map(fn (string $platform): array => [
+                'model' => $platform,
+                'model_label' => $this->platformLabel($platform),
+                'rows' => $this->competitorRows($run, $platform),
+            ])
+            ->values()
+            ->all();
+    }
+
+    private function competitorRows(BrandDiagnosisRun $run, ?string $platform = null): array
+    {
+        return $this->competitorMentions($run, $platform)
+            ->groupBy(fn ($mention): string => $this->brandRankingGroupKey($mention))
             ->map(function ($mentions): array {
                 $sentimentScore = (int) $mentions->sum(function ($mention): int {
                     $weight = max(1, (int) $mention->mention_count);

@@ -70,7 +70,7 @@ class AdminBrandDiagnosisPageTest extends TestCase
             ->assertSee('文心一言')
             ->assertSee('DeepSeek')
             ->assertSee('千问')
-            ->assertDontSee('元宝')
+            ->assertSee('元宝')
             ->assertDontSee('开始诊断')
             ->assertDontSee('开始监测品牌')
             ->assertDontSee('启用诊断')
@@ -82,6 +82,38 @@ class AdminBrandDiagnosisPageTest extends TestCase
             ->assertDontSee('重新搜索')
             ->assertDontSee('_scope', false)
             ->assertSee('is-active font-medium', false);
+    }
+
+    public function test_brand_diagnosis_list_hides_product_case_seed_runs_by_default(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('brand_diagnosis_seed_filter_admin');
+
+        foreach ([
+            ['brand_name' => 'Visible Diagnosis Brand', 'billing_mode' => 'daily_free'],
+            ['brand_name' => 'Imported Product Case Brand', 'billing_mode' => 'product_case_seed'],
+        ] as $attributes) {
+            BrandDiagnosisRun::query()->create([
+                'site_id' => (int) $site->id,
+                'owner_admin_id' => (int) $admin->id,
+                'admin_id' => (int) $admin->id,
+                'brand_name' => $attributes['brand_name'],
+                'platforms' => ['doubao'],
+                'status' => 'completed',
+                'total_questions' => 0,
+                'completed_questions' => 0,
+                'failed_questions' => 0,
+                'billing_mode' => $attributes['billing_mode'],
+                'usage_date' => now()->toDateString(),
+                'completed_at' => now(),
+            ]);
+        }
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.brand-diagnosis.index'))
+            ->assertOk()
+            ->assertSee('Visible Diagnosis Brand')
+            ->assertDontSee('Imported Product Case Brand');
     }
 
     /**
@@ -120,13 +152,13 @@ class AdminBrandDiagnosisPageTest extends TestCase
             ->assertSee('品牌诊断/报告');
     }
 
-    public function test_brand_diagnosis_page_exposes_four_selectable_platform_models(): void
+    public function test_brand_diagnosis_page_exposes_five_selectable_platform_models(): void
     {
         $admin = Admin::query()->create([
-            'username' => 'brand_four_platform_admin',
+            'username' => 'brand_five_platform_admin',
             'password' => 'secret-123',
-            'email' => 'brand-four-platform-admin@example.com',
-            'display_name' => 'Brand Four Platform Admin',
+            'email' => 'brand-five-platform-admin@example.com',
+            'display_name' => 'Brand Five Platform Admin',
             'role' => 'admin',
             'status' => 'active',
         ]);
@@ -136,9 +168,11 @@ class AdminBrandDiagnosisPageTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        foreach (['doubao', 'deepseek', 'qianwen', 'wenxin'] as $platform) {
+        foreach (['doubao', 'deepseek', 'qianwen', 'wenxin', 'yuanbao'] as $platform) {
             $this->assertStringContainsString('value="'.$platform.'" type="checkbox"', $html);
         }
+        $this->assertStringContainsString('>元宝</div>', $html);
+        $this->assertStringContainsString('混元模型', $html);
     }
 
     public function test_brand_diagnosis_questions_are_editable_before_confirming_diagnosis(): void
@@ -185,6 +219,8 @@ class AdminBrandDiagnosisPageTest extends TestCase
             ->assertSee('data-confirm-diagnosis-form', false)
             ->assertSee('data-confirm-diagnosis-submit', false)
             ->assertSee('确认诊断')
+            ->assertSee('name="confirm_platforms[]"', false)
+            ->assertSee('本次诊断模型（需重新选择）')
             ->assertSee('品牌介绍')
             ->assertSee('策影GEO 是面向企业 AI 搜索曝光分析的品牌诊断工具。')
             ->assertSee('豆包')

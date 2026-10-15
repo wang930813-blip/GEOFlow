@@ -32,7 +32,7 @@ class StoreMcpBrandDiagnosisRequest extends FormRequest
      *
      * @CreateTime: 2026-07-24 12:01:13
      *
-     * @UpdateTime: 2026-07-24 12:01:13
+     * @UpdateTime: 2026-10-14 17:25:19
      *
      * @Return: bool 始终允许进入参数校验流程
      *
@@ -62,7 +62,7 @@ class StoreMcpBrandDiagnosisRequest extends FormRequest
     {
         return [
             'brand_name' => ['required', 'string', 'max:120'],
-            'models' => ['required', 'array', 'min:1', 'max:4'],
+            'models' => ['required', 'array', 'min:1', 'max:5'],
             'models.*' => ['required', 'string', 'distinct', BrandDiagnosisPlatform::validationRule()],
             'reuse_questions' => ['sometimes', 'boolean'],
         ];
@@ -89,9 +89,9 @@ class StoreMcpBrandDiagnosisRequest extends FormRequest
             'brand_name.required' => '品牌词不能为空',
             'models.required' => '请选择至少一个诊断模型',
             'models.min' => '请选择至少一个诊断模型',
-            'models.max' => '单次最多选择四个诊断模型',
+            'models.max' => '单次最多选择五个诊断模型',
             'models.*.distinct' => '诊断模型不能重复',
-            'models.*.in' => '诊断模型仅支持 doubao、deepseek、qianwen、wenxin',
+            'models.*.in' => '诊断模型仅支持 doubao、deepseek、qianwen、wenxin、yuanbao',
         ];
     }
 }

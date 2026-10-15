@@ -36,7 +36,7 @@ Route::prefix('v1')
             Route::post('brand-diagnoses', [BrandDiagnosisController::class, 'store']);
         });
 
-        Route::middleware(['throttle:brand-diagnosis-lookup', 'brand-diagnosis.lookup-api-key'])->group(function (): void {
+        Route::middleware(['brand-diagnosis.lookup-api-key'])->group(function (): void {
             Route::get('brand-diagnoses/search', [BrandDiagnosisLookupController::class, 'search']);
             Route::get('brand-diagnoses/search/status/{lookupId}', [BrandDiagnosisLookupController::class, 'status'])
                 ->where('lookupId', '[A-Za-z0-9_]+');

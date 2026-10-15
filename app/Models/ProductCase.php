@@ -20,6 +20,8 @@ class ProductCase extends Model
      * @var list<string>
      */
     public const INDUSTRY_OPTIONS = [
+        '律师服务 / 企业法律顾问',
+        '婚纱摄影 / 婚礼影像',
         '服装',
         '化工',
         '玩具',

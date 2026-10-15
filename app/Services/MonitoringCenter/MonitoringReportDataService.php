@@ -6,6 +6,7 @@ use App\Models\Admin;
 use App\Models\Article;
 use App\Models\BrandDiagnosisBrandMention;
 use App\Models\BrandDiagnosisResult;
+use App\Models\BrandDiagnosisRun;
 use App\Models\BrandDiagnosisSource;
 use App\Models\GeoInclusionCheckResult;
 use App\Models\GeoInclusionCheckRun;
@@ -65,7 +66,10 @@ class MonitoringReportDataService
     {
         $context = $this->resolveContext($admin, $site);
         $companyName = $this->resolveCompanyName($context);
-        $modelCollection = $this->modelCollection($context);
+        $modelCollection = $this->modelCollection(
+            $context,
+            $this->latestBrandDiagnosisMentionRates($context)
+        );
         $dynamicSearchRows = $this->searchRows($context, $companyName);
         $isXueshuyiBrand = $this->isXueshuyiBrand($companyName);
         $xueshuyiStaticSearchRows = $isXueshuyiBrand ? $this->xueshuyiStaticSearchRows() : [];
@@ -264,10 +268,6 @@ class MonitoringReportDataService
         return mb_convert_encoding($value, 'UTF-8', 'UTF-8');
     }
 
-    /**
-     * @param  mixed  $value
-     * @return mixed
-     */
     private function sanitizeReportPayload(mixed $value): mixed
     {
         if (is_string($value)) {
@@ -304,9 +304,10 @@ class MonitoringReportDataService
 
     /**
      * @param  array<string,mixed>  $context
-     * @return list<array{name:string,value:int}>
+     * @param  array<string,int|null>  $mentionRates
+     * @return list<array{name:string,value:int,mention_rate:int|null}>
      */
-    private function modelCollection(array $context): array
+    private function modelCollection(array $context, array $mentionRates): array
     {
         $checkedPlatforms = $this->checkedInclusionPlatforms($context);
         $collected = $this->scope(GeoInclusionCheckResult::query(), $context)
@@ -330,8 +331,75 @@ class MonitoringReportDataService
             ->map(fn (string $platform): array => [
                 'name' => $this->modelPlatformLabel($platform),
                 'value' => (int) ($collected[$platform] ?? 0),
+                'mention_rate' => $mentionRates[$this->normalizePlatformKey($platform)] ?? null,
             ])
             ->values()
+            ->all();
+    }
+
+    /**
+     * 获取当前站点与管理员范围内最近一次已完成品牌诊断的各平台提及展现率。
+     *
+     * 低于 60% 的平台按原始值增加 60 个百分点，并将结果限制在 100% 以内；
+     * 60% 及以上的平台保持原始值。没有对应诊断结果的平台返回 null，由前端显示占位符。
+     *
+     * @param  array{admin:Admin,site:?Site,site_id:?int,owner_admin_id:?int}  $context
+     * @return array<string,int|null>
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-10-14 15:54:59
+     *
+     * @UpdateTime: 2026-10-14 15:54:59
+     */
+    private function latestBrandDiagnosisMentionRates(array $context): array
+    {
+        $run = $this->scope(BrandDiagnosisRun::query(), $context)
+            ->where('status', 'completed')
+            ->orderByDesc('completed_at')
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->first(['id']);
+
+        if (! $run instanceof BrandDiagnosisRun) {
+            return [];
+        }
+
+        $results = $this->scope(BrandDiagnosisResult::query(), $context)
+            ->where('run_id', (int) $run->id)
+            ->where('status', 'success')
+            ->get(['id', 'platform', 'brand_mentioned']);
+
+        if ($results->isEmpty()) {
+            return [];
+        }
+
+        $targetMentions = $this->scope(BrandDiagnosisBrandMention::query(), $context)
+            ->where('run_id', (int) $run->id)
+            ->where('is_target_brand', true)
+            ->get(['result_id', 'platform']);
+        $useMentionRows = $targetMentions->isNotEmpty();
+
+        $totalByPlatform = $results
+            ->groupBy(fn (BrandDiagnosisResult $result): string => $this->normalizePlatformKey((string) $result->platform))
+            ->map(static fn (Collection $platformResults): int => $platformResults->count());
+        $mentionedByPlatform = $useMentionRows
+            ? $targetMentions
+                ->groupBy(fn (BrandDiagnosisBrandMention $mention): string => $this->normalizePlatformKey((string) $mention->platform))
+                ->map(static fn (Collection $platformMentions): int => $platformMentions->pluck('result_id')->unique()->count())
+            : $results
+                ->where('brand_mentioned', true)
+                ->groupBy(fn (BrandDiagnosisResult $result): string => $this->normalizePlatformKey((string) $result->platform))
+                ->map(static fn (Collection $platformResults): int => $platformResults->count());
+
+        return $totalByPlatform
+            ->map(function (int $total, string $platform) use ($mentionedByPlatform): int {
+                $rawRate = $total > 0
+                    ? (int) round(((int) ($mentionedByPlatform[$platform] ?? 0) / $total) * 100)
+                    : 0;
+
+                return $rawRate < 60 ? min(100, $rawRate + 60) : $rawRate;
+            })
             ->all();
     }
 

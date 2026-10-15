@@ -78,11 +78,11 @@ class MonitoringReportDataServiceTest extends TestCase
         $this->assertSame(1, $report['summary']['search_report_count']['actual']);
         $this->assertSame(1, $report['summary']['model_collection_total']['actual']);
         $this->assertSame([
-            ['name' => '豆包', 'value' => 1],
-            ['name' => '千问', 'value' => 0],
-            ['name' => 'DeepSeek', 'value' => 0],
-            ['name' => '元宝', 'value' => 0],
-            ['name' => '文心一言', 'value' => 0],
+            ['name' => '豆包', 'value' => 1, 'mention_rate' => 100],
+            ['name' => '千问', 'value' => 0, 'mention_rate' => null],
+            ['name' => 'DeepSeek', 'value' => 0, 'mention_rate' => null],
+            ['name' => '元宝', 'value' => 0, 'mention_rate' => null],
+            ['name' => '文心一言', 'value' => 0, 'mention_rate' => null],
         ], $report['model_collection']);
         $this->assertSame([
             ['label' => '今日新增', 'value' => 1],
@@ -120,6 +120,154 @@ class MonitoringReportDataServiceTest extends TestCase
         $this->assertStringNotContainsString('其他公司问题不应出现', $flatJson);
         $this->assertStringNotContainsString('其他竞品', $flatJson);
         $this->assertStringNotContainsString('其他文章', $flatJson);
+    }
+
+    public function test_model_collection_adds_latest_diagnosis_mention_display_rate_by_platform(): void
+    {
+        [$admin, $site] = $this->createAdminWithSite('monitoring_model_mention_rate_user', 'site_user', '品牌诊断平台站点');
+
+        app(CurrentSite::class)->set($site);
+
+        $library = KeywordLibrary::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'name' => '品牌诊断关键词库',
+            'company_name' => '品牌诊断测试品牌',
+            'domain_keyword' => '品牌诊断服务',
+            'status' => 'active',
+            'keyword_count' => 1,
+        ]);
+        $keyword = Keyword::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'library_id' => (int) $library->id,
+            'keyword' => '品牌诊断服务',
+        ]);
+        $questionVariant = KeywordQuestionVariant::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'keyword_id' => (int) $keyword->id,
+            'question' => '品牌诊断测试品牌的服务能力如何？',
+        ]);
+        $inclusionRun = GeoInclusionCheckRun::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'keyword_library_id' => (int) $library->id,
+            'platforms' => ['doubao', 'qianwen', 'deepseek'],
+            'status' => 'completed',
+            'total_checks' => 3,
+            'completed_checks' => 3,
+        ]);
+        foreach (['doubao', 'qianwen', 'deepseek'] as $platform) {
+            GeoInclusionCheckResult::query()->create([
+                'site_id' => (int) $site->id,
+                'owner_admin_id' => (int) $admin->id,
+                'run_id' => (int) $inclusionRun->id,
+                'keyword_library_id' => (int) $library->id,
+                'keyword_id' => (int) $keyword->id,
+                'question_variant_id' => (int) $questionVariant->id,
+                'platform' => $platform,
+                'question' => (string) $questionVariant->question,
+                'answer' => '回答提到品牌诊断测试品牌。',
+                'keyword_hit' => true,
+                'brand_hit' => true,
+                'status' => 'success',
+                'checked_at' => now(),
+            ]);
+        }
+
+        BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => '品牌诊断测试品牌',
+            'platforms' => ['doubao'],
+            'status' => 'completed',
+            'total_questions' => 1,
+            'completed_questions' => 1,
+            'failed_questions' => 0,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->subDay()->toDateString(),
+            'completed_at' => now()->subDay(),
+        ]);
+
+        $diagnosisRun = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'owner_admin_id' => (int) $admin->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => '品牌诊断测试品牌',
+            'platforms' => ['doubao', 'qianwen', 'deepseek'],
+            'status' => 'completed',
+            'total_questions' => 12,
+            'completed_questions' => 12,
+            'failed_questions' => 0,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+            'completed_at' => now(),
+        ]);
+
+        $platformMentionFlags = [
+            'doubao' => [true, false, false, false],
+            'qianwen' => [true, true, true, false],
+            'deepseek' => [true, true, true, true],
+        ];
+        $sortOrder = 1;
+        foreach ($platformMentionFlags as $platform => $mentionFlags) {
+            foreach ($mentionFlags as $mentioned) {
+                $question = BrandDiagnosisQuestion::query()->create([
+                    'site_id' => (int) $site->id,
+                    'owner_admin_id' => (int) $admin->id,
+                    'run_id' => (int) $diagnosisRun->id,
+                    'question' => '品牌诊断测试问题 '.$sortOrder,
+                    'question_type' => 'choice',
+                    'sort_order' => $sortOrder++,
+                    'status' => 'completed',
+                ]);
+                $result = BrandDiagnosisResult::query()->create([
+                    'site_id' => (int) $site->id,
+                    'owner_admin_id' => (int) $admin->id,
+                    'run_id' => (int) $diagnosisRun->id,
+                    'question_id' => (int) $question->id,
+                    'platform' => $platform,
+                    'answer' => $mentioned ? '回答提到品牌诊断测试品牌。' : '回答未提到目标品牌。',
+                    'brand_mentioned' => $mentioned,
+                    'mention_count' => $mentioned ? 1 : 0,
+                    'mention_rank' => $mentioned ? 1 : 0,
+                    'sentiment' => 'positive',
+                    'status' => 'success',
+                    'checked_at' => now(),
+                ]);
+
+                if ($mentioned) {
+                    BrandDiagnosisBrandMention::query()->create([
+                        'site_id' => (int) $site->id,
+                        'owner_admin_id' => (int) $admin->id,
+                        'run_id' => (int) $diagnosisRun->id,
+                        'question_id' => (int) $question->id,
+                        'result_id' => (int) $result->id,
+                        'platform' => $platform,
+                        'brand_name' => '品牌诊断测试品牌',
+                        'mention_count' => 1,
+                        'mention_rank' => 1,
+                        'sentiment' => 'positive',
+                        'source_count' => 0,
+                        'is_target_brand' => true,
+                        'evidence' => '回答中提到品牌诊断测试品牌。',
+                    ]);
+                }
+            }
+        }
+
+        $report = app(MonitoringReportDataService::class)->enterpriseReport($admin, $site);
+        $collection = collect($report['model_collection'])->mapWithKeys(
+            fn (array $row): array => [$row['name'] => $row['mention_rate']]
+        );
+
+        $this->assertSame(85, $collection['豆包']);
+        $this->assertSame(75, $collection['千问']);
+        $this->assertSame(100, $collection['DeepSeek']);
+        $this->assertSame(null, $collection['元宝']);
+        $this->assertSame(null, $collection['文心一言']);
     }
 
     public function test_report_company_name_uses_latest_non_empty_keyword_library_company_name(): void
@@ -375,9 +523,9 @@ class MonitoringReportDataServiceTest extends TestCase
             'owner_admin_id' => (int) $admin->id,
             'name' => '编码关键词库',
             'company_name' => '重庆异荣竞业电竞科技有限公司',
-            'domain_keyword' => "线上陪玩服务�",
+            'domain_keyword' => '线上陪玩服务�',
             'industry' => "游戏陪练\xB1服务 - 综合电竞服务品? - 专业陪玩",
-            'brand_description' => "电竞服务�说明",
+            'brand_description' => '电竞服务�说明',
             'status' => 'active',
             'keyword_count' => 1,
         ]);
@@ -403,11 +551,11 @@ class MonitoringReportDataServiceTest extends TestCase
         $this->seedSearchData($admin, $site, [
             'company' => '重庆异荣竞业电竞科技有限公司',
             'question' => '电竞服务怎么选？',
-            'keyword' => "电竞服务�",
-            'competitor' => "综合电竞服务品�",
+            'keyword' => '电竞服务�',
+            'competitor' => '综合电竞服务品�',
             'platform' => 'doubao',
-            'sourceTitle' => "引用资料�标题",
-            'articleTitle' => "行业文章�标题",
+            'sourceTitle' => '引用资料�标题',
+            'articleTitle' => '行业文章�标题',
         ]);
 
         $report = app(MonitoringReportDataService::class)->industryReport($admin, $site);
@@ -676,11 +824,11 @@ class MonitoringReportDataServiceTest extends TestCase
 
         $this->assertSame(1, $report['summary']['model_collection_total']['actual']);
         $this->assertSame([
-            ['name' => '豆包', 'value' => 1],
-            ['name' => '千问', 'value' => 0],
-            ['name' => 'DeepSeek', 'value' => 0],
-            ['name' => '元宝', 'value' => 0],
-            ['name' => '文心一言', 'value' => 0],
+            ['name' => '豆包', 'value' => 1, 'mention_rate' => null],
+            ['name' => '千问', 'value' => 0, 'mention_rate' => null],
+            ['name' => 'DeepSeek', 'value' => 0, 'mention_rate' => null],
+            ['name' => '元宝', 'value' => 0, 'mention_rate' => null],
+            ['name' => '文心一言', 'value' => 0, 'mention_rate' => null],
         ], $report['model_collection']);
     }
 

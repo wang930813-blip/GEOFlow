@@ -125,7 +125,7 @@ Skill 不内置 MCP Server 地址或 MCP Key。用户必须在当前站点“MCP
 
 Skill 采用“自然语言操作台”方式工作。用户明确要求生成视频、查询视频结果、保存文章、发布到站点、媒体投稿、查询投稿进度、管理素材、执行任务或查看结果时，直接匹配对应 `geo_*` 工具，不强制先走诊断、策略、内容、发布的顺序。用户只提出开放式推广、定位、竞争或曝光问题时，再输出增长方案并列出可执行动作。
 
-当前品牌诊断只支持豆包、DeepSeek、千问和文心一言。ChatGPT 等其他平台的问题可以触发 Skill，但 MCP Server 不能执行对应平台实测。当前也没有定时品牌监控和自动趋势对比工具，只能按相同问题及模型重复诊断后人工比较。AI 答案中的占位品牌不等同于现实市场中的完整竞争对手，市场竞品仍需可靠来源验证。
+当前品牌诊断支持豆包、DeepSeek、千问、文心一言和元宝。ChatGPT 等其他平台的问题可以触发 Skill，但 MCP Server 不能执行对应平台实测。当前也没有定时品牌监控和自动趋势对比工具，只能按相同问题及模型重复诊断后人工比较。AI 答案中的占位品牌不等同于现实市场中的完整竞争对手，市场竞品仍需可靠来源验证。
 
 ## 6. 费用结算
 
@@ -316,10 +316,11 @@ location /mcp {
 - `deepseek`：DeepSeek。
 - `qianwen`：千问。
 - `wenxin`：文心一言。
+- `yuanbao`：元宝（混元模型）。
 
 执行顺序：
 
-1. 调用 `geo_create_brand_diagnosis` 提交品牌词和一至四个模型，保存返回的 `run_id`。
+1. 调用 `geo_create_brand_diagnosis` 提交品牌词和一至五个模型，保存返回的 `run_id`。
 2. 调用 `geo_get_brand_diagnosis` 查询进度；`raw_status=questions_generating` 表示正在生成问题。
 3. 当 `raw_status=questions_ready` 且 `can_confirm=true` 时检查 `questions`。需要调整时向确认工具传入问题编号和文本；省略 `questions` 表示保留全部问题。
 4. 在用户确认消耗一次品牌诊断额度后，调用 `geo_confirm_brand_diagnosis`。网络重试必须保持 `idempotency_key` 和问题内容不变。

@@ -12,6 +12,7 @@ use App\Services\BrandDiagnosis\BrandDiagnosisQuestionLabeler;
 use App\Services\BrandDiagnosis\BrandDiagnosisRunService;
 use App\Services\BrandDiagnosis\BrandDiagnosisSnapshotPayload;
 use App\Services\BrandDiagnosis\BrandEntityResolver;
+use App\Services\ProductCases\ProductCaseDemoDataService;
 use App\Support\AdminWeb;
 use App\Support\CurrentSite;
 use App\Support\Site\ArticleHtmlPresenter;
@@ -99,7 +100,7 @@ class BrandDiagnosisController extends Controller
             'reuse_questions' => ['nullable', 'boolean'],
         ], [
             'brand_name.required' => '请输入品牌名称',
-            'platforms.*.in' => '当前版本支持豆包、DeepSeek、千问和文心一言诊断',
+            'platforms.*.in' => '当前版本支持豆包、DeepSeek、千问、文心一言和元宝诊断',
         ]);
 
         $admin = auth('admin')->user();
@@ -147,9 +148,14 @@ class BrandDiagnosisController extends Controller
     public function confirm(int $run, Request $request): RedirectResponse
     {
         $payload = $request->validate([
+            'confirm_platforms' => ['required', 'array', 'min:1'],
+            'confirm_platforms.*' => ['string', BrandDiagnosisPlatform::validationRule()],
             'questions' => ['required', 'array', 'min:1'],
             'questions.*' => ['nullable', 'string', 'max:240'],
         ], [
+            'confirm_platforms.required' => '请至少选择一个本次诊断模型',
+            'confirm_platforms.min' => '请至少选择一个本次诊断模型',
+            'confirm_platforms.*.in' => '当前版本支持豆包、DeepSeek、千问、文心一言和元宝诊断',
             'questions.required' => '请确认至少一个 AI 问题',
             'questions.min' => '请确认至少一个 AI 问题',
             'questions.*.max' => 'AI 问题不能超过 240 个字符',
@@ -168,7 +174,8 @@ class BrandDiagnosisController extends Controller
             $this->runService->confirm(
                 $admin,
                 $diagnosisRun,
-                (array) $payload['questions']
+                (array) $payload['questions'],
+                (array) $payload['confirm_platforms'],
             );
         } catch (BrandDiagnosisLimitExceededException $exception) {
             return back()->withErrors(['questions' => $exception->getMessage()])->withInput();
@@ -220,6 +227,7 @@ class BrandDiagnosisController extends Controller
             ['name' => 'DeepSeek', 'key' => 'deepseek', 'initial' => 'DS', 'color' => 'bg-indigo-600', 'logo' => BrandDiagnosisPlatform::logoUrl('deepseek'), 'desc' => '深度推理', 'deep' => true, 'available' => true],
             ['name' => '千问', 'key' => 'qianwen', 'initial' => '千', 'color' => 'bg-violet-600', 'logo' => BrandDiagnosisPlatform::logoUrl('qianwen'), 'desc' => '通义问答', 'deep' => true, 'available' => true],
             ['name' => '文心一言', 'key' => 'wenxin', 'initial' => '文', 'color' => 'bg-emerald-600', 'logo' => BrandDiagnosisPlatform::logoUrl('wenxin'), 'desc' => '千帆搜索', 'deep' => false, 'available' => true],
+            ['name' => '元宝', 'key' => 'yuanbao', 'initial' => '元', 'color' => 'bg-red-600', 'logo' => BrandDiagnosisPlatform::logoUrl('yuanbao'), 'desc' => '混元模型', 'deep' => false, 'available' => true],
         ];
     }
 
@@ -293,7 +301,7 @@ class BrandDiagnosisController extends Controller
      */
     private function reportRecords(): array
     {
-        return $this->diagnosisRunBaseQuery()
+        return $this->listedDiagnosisRunBaseQuery()
             ->select($this->diagnosisRunSummaryColumns())
             ->where('status', 'completed')
             ->orderByDesc('created_at')
@@ -309,8 +317,17 @@ class BrandDiagnosisController extends Controller
      */
     private function diagnosisRunQuery(): Builder
     {
-        return $this->diagnosisRunBaseQuery()
+        return $this->listedDiagnosisRunBaseQuery()
             ->with($this->diagnosisRunRelations());
+    }
+
+    /**
+     * @return Builder<BrandDiagnosisRun>
+     */
+    private function listedDiagnosisRunBaseQuery(): Builder
+    {
+        return $this->diagnosisRunBaseQuery()
+            ->where('billing_mode', '<>', ProductCaseDemoDataService::BILLING_MODE);
     }
 
     /**

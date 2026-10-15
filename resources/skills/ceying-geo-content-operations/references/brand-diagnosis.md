@@ -24,7 +24,7 @@
 
 ## 创建与确认
 
-1. 收集品牌词、诊断目标和需要使用的模型。当前只支持 `doubao`、`deepseek`、`qianwen`、`wenxin`，分别对应豆包、DeepSeek、千问和文心一言。
+1. 收集品牌词、诊断目标和需要使用的模型。当前支持 `doubao`、`deepseek`、`qianwen`、`wenxin`、`yuanbao`，分别对应豆包、DeepSeek、千问、文心一言和元宝。
 2. 调用 `geo_create_brand_diagnosis`，保存诊断任务编号和本次幂等键。创建问题阶段不消耗品牌诊断额度。
 3. 使用 `geo_get_brand_diagnosis` 查询，直到 `raw_status` 为 `questions_ready`、状态失败或出现明确错误。
 4. 完整展示问题编号和文本。允许用户修改问题文本，或使用空字符串删除指定问题。

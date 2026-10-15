@@ -12,6 +12,8 @@ final class BrandDiagnosisPlatform
 
     public const WENXIN = 'wenxin';
 
+    public const YUANBAO = 'yuanbao';
+
     /**
      * @return list<string>
      */
@@ -22,6 +24,7 @@ final class BrandDiagnosisPlatform
             self::DEEPSEEK,
             self::QIANWEN,
             self::WENXIN,
+            self::YUANBAO,
         ];
     }
 
@@ -50,6 +53,7 @@ final class BrandDiagnosisPlatform
             self::DEEPSEEK => 'DeepSeek',
             self::QIANWEN => '千问',
             self::WENXIN => '文心一言',
+            self::YUANBAO => '元宝',
             self::DOUBAO => '豆包',
             default => $platform,
         };
@@ -63,6 +67,7 @@ final class BrandDiagnosisPlatform
             self::DEEPSEEK => 'DS',
             self::QIANWEN => 'QW',
             self::WENXIN => 'WX',
+            self::YUANBAO => '元',
             self::DOUBAO => 'DB',
             default => mb_strtoupper(mb_substr($platform, 0, 2, 'UTF-8'), 'UTF-8'),
         };
@@ -76,6 +81,7 @@ final class BrandDiagnosisPlatform
             self::DEEPSEEK => 'deepseek.png',
             self::QIANWEN => 'qianwen.png',
             self::WENXIN => 'wenxin.png',
+            self::YUANBAO => 'yuanbao.png',
             self::DOUBAO => 'doubao.png',
             default => '',
         };
@@ -104,6 +110,7 @@ final class BrandDiagnosisPlatform
             self::DEEPSEEK => 'https://chat.deepseek.com/',
             self::QIANWEN => 'https://tongyi.aliyun.com/qianwen/',
             self::WENXIN => 'https://chat.baidu.com/',
+            self::YUANBAO => 'https://yuanbao.tencent.com/',
             default => '',
         };
     }
@@ -118,6 +125,7 @@ final class BrandDiagnosisPlatform
             self::DEEPSEEK => ['deepseek.com'],
             self::QIANWEN => ['tongyi.com', 'qianwen.com', 'aliyun.com', 'qwen.ai', 'qianwen.my.cn'],
             self::WENXIN => ['baidu.com'],
+            self::YUANBAO => ['yuanbao.tencent.com'],
         };
     }
 

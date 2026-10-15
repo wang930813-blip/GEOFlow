@@ -7,9 +7,14 @@ use App\Models\BrandDiagnosisBrandMention;
 use App\Models\BrandDiagnosisQuestion;
 use App\Models\BrandDiagnosisResult;
 use App\Models\BrandDiagnosisRun;
+use App\Models\BrandDiagnosisSource;
+use App\Models\Keyword;
 use App\Models\KeywordLibrary;
+use App\Models\KeywordQuestionVariant;
 use App\Models\ProductCase;
 use App\Models\Site;
+use App\Services\ProductCases\ProductCaseDemoDataService;
+use App\Services\ProductCases\ProductCaseReportSummaryService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -62,6 +67,7 @@ class ProductCaseModuleTest extends TestCase
         $this->get(route('product-cases.index'))
             ->assertOk()
             ->assertSee($published->title)
+            ->assertDontSee($published->summary)
             ->assertDontSee('Draft Product Case')
             ->assertDontSee('Hidden Product Case')
             ->assertDontSee('Deleted Product Case');
@@ -150,6 +156,36 @@ class ProductCaseModuleTest extends TestCase
             ->assertDontSee('Service Brand Case')
             ->assertDontSee('Platform')
             ->assertDontSee('AI Search Inclusion');
+    }
+
+    public function test_public_case_region_filter_matches_partial_region_names(): void
+    {
+        ProductCase::query()->create([
+            'title' => 'Pudong Education Case',
+            'slug' => 'pudong-education-case',
+            'company_name' => 'Pudong Education Brand',
+            'industry' => '教育培训',
+            'region' => '上海市浦东新区',
+            'summary' => 'A case with a detailed Shanghai region.',
+            'status' => ProductCase::STATUS_PUBLISHED,
+            'published_at' => now()->subDay(),
+        ]);
+
+        ProductCase::query()->create([
+            'title' => 'Beijing Education Case',
+            'slug' => 'beijing-education-case',
+            'company_name' => 'Beijing Education Brand',
+            'industry' => '教育培训',
+            'region' => '北京市朝阳区',
+            'summary' => 'A case from Beijing.',
+            'status' => ProductCase::STATUS_PUBLISHED,
+            'published_at' => now()->subDay(),
+        ]);
+
+        $this->get(route('product-cases.index', ['region' => '上海市']))
+            ->assertOk()
+            ->assertSee('Pudong Education Case')
+            ->assertDontSee('Beijing Education Case');
     }
 
     public function test_admin_prefixed_product_case_library_routes_render_public_pages(): void
@@ -322,6 +358,49 @@ class ProductCaseModuleTest extends TestCase
         $this->assertNull($case->module_tags);
     }
 
+    public function test_special_service_industry_options_are_available_on_public_filters_and_admin_form(): void
+    {
+        [$superAdmin] = $this->createAdminWithSite('super_case_special_industry', 'super_admin');
+        [$owner, $site] = $this->createAdminWithSite('case_special_industry_customer', 'direct_admin');
+
+        $this->get(route('product-cases.index'))
+            ->assertOk()
+            ->assertSee('value="律师服务 / 企业法律顾问"', false)
+            ->assertSee('value="婚纱摄影 / 婚礼影像"', false)
+            ->assertDontSee('value="律师/律所"', false);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->get(route('admin.product-cases.create'))
+            ->assertOk()
+            ->assertSee('律师服务 / 企业法律顾问')
+            ->assertSee('婚纱摄影 / 婚礼影像')
+            ->assertDontSee('律师/律所');
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.product-cases.store'), $this->casePayload($site, $owner, [
+                'title' => 'Law Firm Product Case',
+                'industry' => '律师服务 / 企业法律顾问',
+            ]))
+            ->assertRedirect(route('admin.product-cases.index'))
+            ->assertSessionHasNoErrors();
+
+        $case = ProductCase::query()->where('title', 'Law Firm Product Case')->firstOrFail();
+
+        $this->assertSame('律师服务 / 企业法律顾问', $case->industry);
+
+        $this->actingAs($superAdmin, 'admin')
+            ->post(route('admin.product-cases.store'), $this->casePayload($site, $owner, [
+                'title' => 'Wedding Photography Product Case',
+                'industry' => '婚纱摄影 / 婚礼影像',
+            ]))
+            ->assertRedirect(route('admin.product-cases.index'))
+            ->assertSessionHasNoErrors();
+
+        $case = ProductCase::query()->where('title', 'Wedding Photography Product Case')->firstOrFail();
+
+        $this->assertSame('婚纱摄影 / 婚礼影像', $case->industry);
+    }
+
     public function test_non_super_admin_cannot_manage_product_cases(): void
     {
         [$admin] = $this->createAdminWithSite('normal_case_manager', 'direct_admin');
@@ -352,6 +431,279 @@ class ProductCaseModuleTest extends TestCase
             ->assertSee('Manual case content should stay primary.')
             ->assertSee('GEO 成效总览')
             ->assertSee('AI 平台覆盖');
+    }
+
+    public function test_manual_site_case_uses_monitoring_center_brand_data_when_case_label_differs(): void
+    {
+        [$owner, $site] = $this->createAdminWithSite('manual_monitoring_case_owner', 'direct_admin');
+
+        $library = KeywordLibrary::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'name' => 'Monitoring Center Library',
+            'company_name' => 'Monitoring Center Brand',
+            'domain_keyword' => 'monitoring center',
+            'industry' => 'Technology Service',
+            'brand_description' => 'The real brand configured in the monitoring center.',
+            'status' => 'active',
+        ]);
+        $keyword = Keyword::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'library_id' => $library->id,
+            'keyword' => 'monitoring center keyword',
+        ]);
+        foreach (['Question A', 'Question B', 'Question C'] as $variantQuestion) {
+            KeywordQuestionVariant::query()->create([
+                'site_id' => $site->id,
+                'owner_admin_id' => $owner->id,
+                'keyword_id' => $keyword->id,
+                'question' => $variantQuestion,
+            ]);
+        }
+
+        $case = ProductCase::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'title' => 'Manual Case Label',
+            'slug' => 'manual-monitoring-case',
+            'company_name' => 'Manual Case Label',
+            'summary' => 'The case label is maintained separately from monitoring data.',
+            'content' => 'Manual case content.',
+            'status' => ProductCase::STATUS_PUBLISHED,
+            'published_at' => now()->subDay(),
+        ]);
+
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'admin_id' => $owner->id,
+            'brand_name' => 'Monitoring Center Brand',
+            'brand_profile' => 'Monitoring Center brand profile.',
+            'platforms' => ['doubao'],
+            'status' => 'completed',
+            'total_questions' => 1,
+            'completed_questions' => 1,
+            'billing_mode' => 'daily_free',
+            'usage_date' => now()->toDateString(),
+            'started_at' => now()->subHour(),
+            'completed_at' => now()->subMinutes(10),
+        ]);
+
+        $question = BrandDiagnosisQuestion::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'run_id' => $run->id,
+            'question' => 'Which monitoring center brand is recommended?',
+            'question_type' => 'recommendation',
+            'sort_order' => 1,
+            'status' => 'completed',
+        ]);
+
+        $result = BrandDiagnosisResult::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'run_id' => $run->id,
+            'question_id' => $question->id,
+            'platform' => 'doubao',
+            'answer' => 'Monitoring Center Brand is recommended.',
+            'brand_mentioned' => true,
+            'mention_count' => 1,
+            'mention_rank' => 1,
+            'sentiment' => 'positive',
+            'status' => 'success',
+            'checked_at' => now()->subMinutes(5),
+        ]);
+
+        BrandDiagnosisBrandMention::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'run_id' => $run->id,
+            'question_id' => $question->id,
+            'result_id' => $result->id,
+            'platform' => 'doubao',
+            'brand_name' => 'Monitoring Center Brand',
+            'mention_count' => 1,
+            'mention_rank' => 1,
+            'sentiment' => 'positive',
+            'source_count' => 1,
+            'is_target_brand' => true,
+        ]);
+
+        BrandDiagnosisSource::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'run_id' => $run->id,
+            'question_id' => $question->id,
+            'result_id' => $result->id,
+            'platform' => 'doubao',
+            'title' => 'Monitoring Center Source',
+            'url' => 'https://example.test/monitoring-center-source',
+            'domain' => 'example.test',
+            'source_type' => 'url_citation',
+        ]);
+
+        $report = app(ProductCaseReportSummaryService::class)->detail($case);
+
+        $this->assertSame(10, data_get($report, 'summary.search_report_count'));
+        $this->assertSame(20, data_get($report, 'summary.distillation_word_count'));
+        $this->assertSame('Monitoring Center Brand', data_get($report, 'brand_profile.company_name'));
+        $this->assertSame(
+            'The real brand configured in the monitoring center.',
+            data_get($report, 'brand_profile.description')
+        );
+        $this->assertSame(
+            'Which monitoring center brand is recommended?',
+            data_get($report, 'search_rows.0.question')
+        );
+        $this->assertNotEmpty(data_get($report, 'platforms'));
+    }
+
+    public function test_case_detail_uses_beautified_geo_metrics_and_hides_mode_and_sentiment_blocks(): void
+    {
+        [$owner, $site] = $this->createAdminWithSite('beautified_case_owner', 'direct_admin');
+
+        $case = ProductCase::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'title' => 'Beautified Metric Case',
+            'slug' => 'beautified-metric-case',
+            'company_name' => 'Beautified Brand',
+            'industry' => '商务服务',
+            'region' => '亚太',
+            'business_mode' => 'Direct',
+            'summary' => 'A public product case with small raw diagnosis data.',
+            'content' => 'Manual case content.',
+            'status' => ProductCase::STATUS_PUBLISHED,
+            'published_at' => now()->subDay(),
+        ]);
+
+        $this->seedProductCaseDiagnosis($case, platformCount: 1, questionCount: 1, sourcesPerResult: 1);
+
+        $report = app(ProductCaseReportSummaryService::class)->detail($case);
+        $metrics = collect(data_get($report, 'summary.metrics', []))->keyBy('label');
+
+        $this->assertSame(9, data_get($metrics->get('AI 平台覆盖'), 'value'));
+        $this->assertGreaterThanOrEqual(100, data_get($metrics->get('搜索报表数量'), 'value'));
+        $this->assertGreaterThanOrEqual(100, data_get($metrics->get('AI 搜索词数量'), 'value'));
+        $this->assertGreaterThanOrEqual(100, data_get($metrics->get('引用来源数量'), 'value'));
+        $this->assertGreaterThanOrEqual(100, data_get($report, 'summary.performance_score'));
+        $this->assertFalse($metrics->has('GEO 成效指数'));
+
+        $this->get(route('product-cases.show', ['slug' => 'beautified-metric-case']))
+            ->assertOk()
+            ->assertSee('GEO 成效总览')
+            ->assertDontSee('GEO 成效指数')
+            ->assertDontSee('模式')
+            ->assertDontSee('Direct')
+            ->assertDontSee('情感倾向')
+            ->assertDontSee('Sentiment');
+    }
+
+    public function test_case_report_can_use_reasonable_four_digit_metrics_and_groups_non_domestic_ai_platforms(): void
+    {
+        [$owner, $site] = $this->createAdminWithSite('rich_case_owner', 'direct_admin');
+
+        $case = ProductCase::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'title' => 'Rich Metric Case',
+            'slug' => 'rich-metric-case',
+            'company_name' => 'Rich Metric Brand',
+            'industry' => '商务服务',
+            'region' => '亚太',
+            'summary' => 'A public product case with rich diagnosis data.',
+            'content' => 'Manual case content.',
+            'status' => ProductCase::STATUS_PUBLISHED,
+            'published_at' => now()->subDay(),
+        ]);
+
+        $this->seedProductCaseDiagnosis($case, platformCount: 9, questionCount: 12, sourcesPerResult: 5);
+
+        $report = app(ProductCaseReportSummaryService::class)->detail($case);
+        $metrics = collect(data_get($report, 'summary.metrics', []))->keyBy('label');
+        $platformLabels = collect(data_get($report, 'platforms', []))->pluck('platform')->all();
+
+        $this->assertSame(9, data_get($metrics->get('AI 平台覆盖'), 'value'));
+        $this->assertGreaterThanOrEqual(1000, data_get($metrics->get('搜索报表数量'), 'value'));
+        $this->assertGreaterThanOrEqual(1000, data_get($metrics->get('引用来源数量'), 'value'));
+        $this->assertFalse($metrics->has('GEO 成效指数'));
+        $this->assertContains('其他 AI', $platformLabels);
+        $this->assertNotContains('ChatGPT', $platformLabels);
+        $this->assertNotContains('Gemini', $platformLabels);
+        $this->assertNotContains('Claude', $platformLabels);
+        $this->assertNotContains('Grok', $platformLabels);
+    }
+
+    public function test_case_search_report_is_paginated_to_match_ai_platform_panel(): void
+    {
+        [$owner, $site] = $this->createAdminWithSite('paginated_case_owner', 'direct_admin');
+
+        $case = ProductCase::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'title' => 'Paginated Search Case',
+            'slug' => 'paginated-search-case',
+            'company_name' => 'Paginated Search Brand',
+            'industry' => '商务服务',
+            'region' => '亚太',
+            'summary' => 'A public product case with a long search report.',
+            'content' => 'Manual case content.',
+            'status' => ProductCase::STATUS_PUBLISHED,
+            'published_at' => now()->subDay(),
+        ]);
+
+        $this->seedProductCaseDiagnosis($case, platformCount: 9, questionCount: 2, sourcesPerResult: 1);
+
+        $report = app(ProductCaseReportSummaryService::class)->detail($case);
+
+        $this->assertCount(10, data_get($report, 'search_rows'));
+        $this->assertSame(18, data_get($report, 'search_pagination.total'));
+        $this->assertSame(10, data_get($report, 'search_pagination.per_page'));
+        $this->assertSame(1, data_get($report, 'search_pagination.current_page'));
+        $this->assertSame(2, data_get($report, 'search_pagination.last_page'));
+
+        $this->get(route('product-cases.show', ['slug' => $case->slug, 'search_page' => 2]))
+            ->assertOk()
+            ->assertSee('搜索报表摘要')
+            ->assertSee('data-search-pagination', false)
+            ->assertSee('search_page=1', false);
+    }
+
+    public function test_product_case_list_prioritizes_cases_with_better_geo_metrics(): void
+    {
+        [$owner, $site] = $this->createAdminWithSite('case_metric_sort_owner', 'direct_admin');
+
+        $high = ProductCase::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'title' => 'High Metric Case',
+            'slug' => 'high-metric-case',
+            'company_name' => 'High Metric Brand',
+            'summary' => 'High metric case should be listed first.',
+            'status' => ProductCase::STATUS_PUBLISHED,
+            'sort_order' => 0,
+            'published_at' => now()->subDay(),
+        ]);
+
+        ProductCase::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'title' => 'Low Metric Case',
+            'slug' => 'low-metric-case',
+            'company_name' => 'Low Metric Brand',
+            'summary' => 'Low metric case has no diagnosis data.',
+            'status' => ProductCase::STATUS_PUBLISHED,
+            'sort_order' => 0,
+            'published_at' => now()->subDay(),
+        ]);
+
+        $this->seedProductCaseDiagnosis($high, platformCount: 4, questionCount: 5, sourcesPerResult: 4);
+
+        $this->get(route('product-cases.index'))
+            ->assertOk()
+            ->assertDontSee('GEO 成效指数')
+            ->assertSeeInOrder(['High Metric Case', 'Low Metric Case']);
     }
 
     public function test_case_detail_hides_bound_site_name_and_renders_numeric_customer_level_as_stars(): void
@@ -511,10 +863,178 @@ class ProductCaseModuleTest extends TestCase
             ->assertSee('行业竞争力')
             ->assertSee('品牌画像')
             ->assertSee('竞品表现')
-            ->assertSee('情感倾向')
+            ->assertDontSee('情感倾向')
             ->assertSee('Competitor Alpha')
             ->assertSee('Competitor Beta')
             ->assertSee('TOP5');
+    }
+
+    public function test_manual_site_case_uses_bound_site_monitoring_reports(): void
+    {
+        [$owner, $site] = $this->createAdminWithSite('case_scoped_summary_owner', 'direct_admin');
+
+        KeywordLibrary::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'name' => 'Scoped Monitoring Library',
+            'company_name' => 'Scoped Monitoring Brand',
+            'domain_keyword' => 'Scoped Service',
+            'industry' => 'Scoped Industry',
+            'brand_description' => 'Scoped monitoring report profile.',
+            'status' => 'active',
+        ]);
+
+        $caseA = ProductCase::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'title' => 'Scoped Brand A Case',
+            'slug' => 'scoped-brand-a-case',
+            'company_name' => 'Scoped Brand A',
+            'industry' => '商务服务',
+            'region' => '北京市',
+            'summary' => 'Brand A summary.',
+            'content' => 'Brand A content.',
+            'status' => ProductCase::STATUS_PUBLISHED,
+            'published_at' => now()->subDay(),
+        ]);
+        ProductCase::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'title' => 'Scoped Brand B Case',
+            'slug' => 'scoped-brand-b-case',
+            'company_name' => 'Scoped Brand B',
+            'industry' => '商务服务',
+            'region' => '北京市',
+            'summary' => 'Brand B summary.',
+            'content' => 'Brand B content.',
+            'status' => ProductCase::STATUS_PUBLISHED,
+            'published_at' => now()->subDay(),
+        ]);
+
+        $runA = BrandDiagnosisRun::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'admin_id' => $owner->id,
+            'brand_name' => 'Scoped Brand A',
+            'brand_profile' => 'Brand A profile.',
+            'platforms' => ['doubao'],
+            'status' => 'completed',
+            'total_questions' => 1,
+            'completed_questions' => 1,
+            'usage_date' => now()->toDateString(),
+            'started_at' => now()->subHour(),
+            'completed_at' => now()->subMinutes(30),
+        ]);
+        $questionA = BrandDiagnosisQuestion::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'run_id' => $runA->id,
+            'question' => 'Scoped Brand A question',
+            'question_type' => 'brand_profile',
+            'sort_order' => 1,
+            'status' => 'completed',
+        ]);
+        $resultA = BrandDiagnosisResult::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'run_id' => $runA->id,
+            'question_id' => $questionA->id,
+            'platform' => 'doubao',
+            'answer' => 'Scoped Brand A is recommended.',
+            'brand_mentioned' => true,
+            'mention_count' => 2,
+            'mention_rank' => 1,
+            'sentiment' => 'positive',
+            'status' => 'success',
+            'checked_at' => now()->subMinutes(20),
+        ]);
+        BrandDiagnosisBrandMention::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'run_id' => $runA->id,
+            'question_id' => $questionA->id,
+            'result_id' => $resultA->id,
+            'platform' => 'doubao',
+            'brand_name' => 'Scoped Brand A',
+            'mention_count' => 2,
+            'mention_rank' => 1,
+            'sentiment' => 'positive',
+            'source_count' => 1,
+            'is_target_brand' => true,
+        ]);
+        BrandDiagnosisBrandMention::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'run_id' => $runA->id,
+            'question_id' => $questionA->id,
+            'result_id' => $resultA->id,
+            'platform' => 'doubao',
+            'brand_name' => 'Scoped Competitor A',
+            'mention_count' => 1,
+            'mention_rank' => 2,
+            'sentiment' => 'neutral',
+            'source_count' => 1,
+            'is_target_brand' => false,
+        ]);
+
+        $runB = BrandDiagnosisRun::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'admin_id' => $owner->id,
+            'brand_name' => 'Scoped Brand B',
+            'brand_profile' => 'Brand B profile.',
+            'platforms' => ['doubao'],
+            'status' => 'completed',
+            'total_questions' => 1,
+            'completed_questions' => 1,
+            'usage_date' => now()->toDateString(),
+            'started_at' => now()->subHour(),
+            'completed_at' => now()->subMinutes(20),
+        ]);
+        $questionB = BrandDiagnosisQuestion::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'run_id' => $runB->id,
+            'question' => 'Scoped Brand B question',
+            'question_type' => 'brand_profile',
+            'sort_order' => 1,
+            'status' => 'completed',
+        ]);
+        $resultB = BrandDiagnosisResult::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'run_id' => $runB->id,
+            'question_id' => $questionB->id,
+            'platform' => 'doubao',
+            'answer' => 'Scoped Brand B is recommended.',
+            'brand_mentioned' => true,
+            'mention_count' => 1,
+            'mention_rank' => 1,
+            'sentiment' => 'positive',
+            'status' => 'success',
+            'checked_at' => now()->subMinutes(10),
+        ]);
+        BrandDiagnosisBrandMention::query()->create([
+            'site_id' => $site->id,
+            'owner_admin_id' => $owner->id,
+            'run_id' => $runB->id,
+            'question_id' => $questionB->id,
+            'result_id' => $resultB->id,
+            'platform' => 'doubao',
+            'brand_name' => 'Scoped Brand B',
+            'mention_count' => 1,
+            'mention_rank' => 1,
+            'sentiment' => 'positive',
+            'source_count' => 1,
+            'is_target_brand' => true,
+        ]);
+
+        $report = app(ProductCaseReportSummaryService::class)->detail($caseA);
+
+        $this->assertSame('Scoped Monitoring Brand', data_get($report, 'brand_profile.company_name'));
+        $this->assertSame(10, data_get($report, 'summary.search_report_count'));
+        $this->assertSame('Scoped Brand B question', data_get($report, 'search_rows.0.question'));
+        $this->assertSame(['Scoped Competitor A'], collect(data_get($report, 'competitors', []))->pluck('brand_name')->all());
     }
 
     public function test_logged_in_user_can_view_bound_report_data_for_another_site_case(): void
@@ -715,6 +1235,102 @@ class ProductCaseModuleTest extends TestCase
         $site->members()->attach((int) $admin->id, ['role' => 'owner']);
 
         return [$admin, $site];
+    }
+
+    private function seedProductCaseDiagnosis(
+        ProductCase $case,
+        int $platformCount = 1,
+        int $questionCount = 1,
+        int $sourcesPerResult = 1
+    ): BrandDiagnosisRun {
+        $platforms = array_slice([
+            'doubao',
+            'deepseek',
+            'qianwen',
+            'wenxin',
+            'chatgpt',
+            'gemini',
+            'claude',
+            'grok',
+            'yuanbao',
+        ], 0, $platformCount);
+
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $case->site_id,
+            'owner_admin_id' => (int) $case->owner_admin_id,
+            'admin_id' => (int) $case->owner_admin_id,
+            'brand_name' => (string) $case->company_name,
+            'brand_profile' => 'Product case profile for '.$case->company_name,
+            'platforms' => $platforms,
+            'status' => 'completed',
+            'total_questions' => $questionCount,
+            'completed_questions' => $questionCount,
+            'billing_mode' => ProductCaseDemoDataService::BILLING_MODE,
+            'usage_date' => now()->toDateString(),
+            'started_at' => now()->subHour(),
+            'completed_at' => now()->subMinutes(10),
+        ]);
+
+        for ($questionIndex = 1; $questionIndex <= $questionCount; $questionIndex++) {
+            $question = BrandDiagnosisQuestion::query()->create([
+                'site_id' => (int) $case->site_id,
+                'owner_admin_id' => (int) $case->owner_admin_id,
+                'run_id' => (int) $run->id,
+                'question' => 'Product case diagnosis question '.$questionIndex,
+                'question_type' => 'recommendation',
+                'sort_order' => $questionIndex,
+                'status' => 'completed',
+            ]);
+
+            foreach ($platforms as $platformIndex => $platform) {
+                $result = BrandDiagnosisResult::query()->create([
+                    'site_id' => (int) $case->site_id,
+                    'owner_admin_id' => (int) $case->owner_admin_id,
+                    'run_id' => (int) $run->id,
+                    'question_id' => (int) $question->id,
+                    'platform' => $platform,
+                    'answer' => $case->company_name.' is recommended in this product case response.',
+                    'brand_mentioned' => true,
+                    'mention_count' => 2,
+                    'mention_rank' => 1,
+                    'sentiment' => 'positive',
+                    'status' => 'success',
+                    'checked_at' => now()->subMinutes($questionIndex + $platformIndex),
+                ]);
+
+                for ($sourceIndex = 1; $sourceIndex <= $sourcesPerResult; $sourceIndex++) {
+                    BrandDiagnosisSource::query()->create([
+                        'site_id' => (int) $case->site_id,
+                        'owner_admin_id' => (int) $case->owner_admin_id,
+                        'run_id' => (int) $run->id,
+                        'question_id' => (int) $question->id,
+                        'result_id' => (int) $result->id,
+                        'platform' => $platform,
+                        'title' => 'Source '.$sourceIndex,
+                        'url' => 'https://example.test/'.$case->slug.'/'.$questionIndex.'/'.$platformIndex.'/'.$sourceIndex,
+                        'domain' => 'example.test',
+                        'source_type' => 'test',
+                    ]);
+                }
+
+                BrandDiagnosisBrandMention::query()->create([
+                    'site_id' => (int) $case->site_id,
+                    'owner_admin_id' => (int) $case->owner_admin_id,
+                    'run_id' => (int) $run->id,
+                    'question_id' => (int) $question->id,
+                    'result_id' => (int) $result->id,
+                    'platform' => $platform,
+                    'brand_name' => (string) $case->company_name,
+                    'mention_count' => 2,
+                    'mention_rank' => 1,
+                    'sentiment' => 'positive',
+                    'source_count' => $sourcesPerResult,
+                    'is_target_brand' => true,
+                ]);
+            }
+        }
+
+        return $run;
     }
 
     /**

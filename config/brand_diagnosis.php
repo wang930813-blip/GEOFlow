@@ -15,7 +15,6 @@ return [
         'enabled' => filter_var(env('BRAND_DIAGNOSIS_LOOKUP_API_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
         'api_key' => trim((string) env('BRAND_DIAGNOSIS_LOOKUP_API_KEY', '')),
         'cache_ttl' => max(0, (int) env('BRAND_DIAGNOSIS_LOOKUP_CACHE_TTL', 21600)),
-        'rate_limit' => max(1, (int) env('BRAND_DIAGNOSIS_LOOKUP_RATE_LIMIT', 10)),
         'candidate_limit' => max(20, (int) env('BRAND_DIAGNOSIS_LOOKUP_CANDIDATE_LIMIT', 100)),
         'async_job_timeout' => max(180, (int) env('BRAND_DIAGNOSIS_LOOKUP_ASYNC_JOB_TIMEOUT', 300)),
         'async_result_ttl' => max(300, (int) env('BRAND_DIAGNOSIS_LOOKUP_ASYNC_RESULT_TTL', 1800)),
@@ -50,7 +49,7 @@ return [
         'enabled' => filter_var(env('BRAND_DIAGNOSIS_DEEPSEEK_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
         'base_url' => rtrim((string) env('BRAND_DIAGNOSIS_DEEPSEEK_BASE_URL', env('BRAND_DIAGNOSIS_DOUBAO_BASE_URL', 'https://ark.cn-beijing.volces.com/api/v3')), '/'),
         'api_key' => (string) env('BRAND_DIAGNOSIS_DEEPSEEK_API_KEY', env('BRAND_DIAGNOSIS_DOUBAO_API_KEY', '')),
-        'model' => (string) env('BRAND_DIAGNOSIS_DEEPSEEK_MODEL', 'deepseek-v4-flash-260425'),
+        'model' => (string) env('BRAND_DIAGNOSIS_DEEPSEEK_MODEL', 'deepseek-v4-1-flash-260910'),
         'timeout' => (int) env('BRAND_DIAGNOSIS_DEEPSEEK_TIMEOUT', env('BRAND_DIAGNOSIS_DOUBAO_TIMEOUT', 60)),
         'connect_timeout' => (int) env('BRAND_DIAGNOSIS_DEEPSEEK_CONNECT_TIMEOUT', env('BRAND_DIAGNOSIS_DOUBAO_CONNECT_TIMEOUT', 10)),
         'max_keywords' => (int) env('BRAND_DIAGNOSIS_DEEPSEEK_WEB_SEARCH_MAX_KEYWORDS', env('BRAND_DIAGNOSIS_DOUBAO_WEB_SEARCH_MAX_KEYWORDS', 5)),
@@ -74,5 +73,15 @@ return [
         'timeout' => (int) env('BRAND_DIAGNOSIS_WENXIN_TIMEOUT', 60),
         'connect_timeout' => (int) env('BRAND_DIAGNOSIS_WENXIN_CONNECT_TIMEOUT', 10),
         'max_keywords' => (int) env('BRAND_DIAGNOSIS_WENXIN_WEB_SEARCH_MAX_KEYWORDS', 5),
+    ],
+
+    'yuanbao' => [
+        'enabled' => filter_var(env('BRAND_DIAGNOSIS_YUANBAO_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        'base_url' => rtrim((string) env('BRAND_DIAGNOSIS_YUANBAO_BASE_URL', 'https://tokenhub.tencentmaas.com/v1'), '/'),
+        'api_key' => (string) env('BRAND_DIAGNOSIS_YUANBAO_API_KEY', ''),
+        'model' => (string) env('BRAND_DIAGNOSIS_YUANBAO_MODEL', 'hy3'),
+        'timeout' => (int) env('BRAND_DIAGNOSIS_YUANBAO_TIMEOUT', 60),
+        'connect_timeout' => (int) env('BRAND_DIAGNOSIS_YUANBAO_CONNECT_TIMEOUT', 10),
+        'max_keywords' => (int) env('BRAND_DIAGNOSIS_YUANBAO_WEB_SEARCH_MAX_KEYWORDS', 5),
     ],
 ];

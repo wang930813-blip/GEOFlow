@@ -43,7 +43,7 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         config()->set('brand_diagnosis.deepseek.enabled', true);
         config()->set('brand_diagnosis.deepseek.base_url', 'https://ark.cn-beijing.volces.com/api/v3');
         config()->set('brand_diagnosis.deepseek.api_key', '');
-        config()->set('brand_diagnosis.deepseek.model', 'deepseek-v4-flash-260425');
+        config()->set('brand_diagnosis.deepseek.model', 'deepseek-v4-1-flash-260910');
         config()->set('brand_diagnosis.deepseek.timeout', 10);
         config()->set('brand_diagnosis.qianwen.enabled', true);
         config()->set('brand_diagnosis.qianwen.base_url', 'https://ark.cn-beijing.volces.com/api/v3');
@@ -55,6 +55,11 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         config()->set('brand_diagnosis.wenxin.api_key', 'test-wenxin-key');
         config()->set('brand_diagnosis.wenxin.model', 'wenxin-test-model');
         config()->set('brand_diagnosis.wenxin.timeout', 10);
+        config()->set('brand_diagnosis.yuanbao.enabled', true);
+        config()->set('brand_diagnosis.yuanbao.base_url', 'https://tokenhub.tencentmaas.com/v1');
+        config()->set('brand_diagnosis.yuanbao.api_key', 'test-yuanbao-key');
+        config()->set('brand_diagnosis.yuanbao.model', 'hy3');
+        config()->set('brand_diagnosis.yuanbao.timeout', 10);
     }
 
     public function test_brand_diagnosis_workflow_status_values_fit_database_column_length(): void
@@ -362,21 +367,21 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         $this->assertSame('豆包', (string) $run->brand_profile_model);
     }
 
-    public function test_admin_can_create_brand_diagnosis_run_with_four_platforms(): void
+    public function test_admin_can_create_brand_diagnosis_run_with_five_platforms(): void
     {
         Queue::fake();
-        [$admin, $site] = $this->createAdminWithSite('brand_diagnosis_four_platform_admin');
+        [$admin, $site] = $this->createAdminWithSite('brand_diagnosis_five_platform_admin');
 
         $this->actingAs($admin, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
             ->post(route('admin.brand-diagnosis.store'), [
                 'brand_name' => 'Acme AI',
-                'platforms' => ['doubao', 'deepseek', 'qianwen', 'wenxin'],
+                'platforms' => ['doubao', 'deepseek', 'qianwen', 'wenxin', 'yuanbao'],
             ])
             ->assertRedirect(route('admin.brand-diagnosis.index'));
 
         $run = BrandDiagnosisRun::query()->firstOrFail();
-        $this->assertSame(['doubao', 'deepseek', 'qianwen', 'wenxin'], $run->platforms);
+        $this->assertSame(['doubao', 'deepseek', 'qianwen', 'wenxin', 'yuanbao'], $run->platforms);
 
         Queue::assertPushedOn('geoflow', GenerateBrandDiagnosisQuestionsJob::class, function (GenerateBrandDiagnosisQuestionsJob $job) use ($run): bool {
             return $job->runId === (int) $run->id;
@@ -425,6 +430,37 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         $this->assertSame('豆包', (string) $run->brand_profile_model);
 
         Http::assertNotSent(static fn ($request): bool => str_contains($request->url(), 'qianwen.test'));
+    }
+
+    public function test_yuanbao_uses_tokenhub_chat_completions_endpoint(): void
+    {
+        config()->set('brand_diagnosis.yuanbao.base_url', 'https://tokenhub.tencentmaas.com/v1');
+
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://tokenhub.tencentmaas.com/v1/chat/completions' => Http::response(
+                $this->chatCompletionBrandMentionAnswerResponse('yuanbao-answer', 'Yuanbao answer mentions Acme AI.'),
+                200
+            ),
+        ]);
+
+        $response = app(DoubaoBrandDiagnosisClient::class)
+            ->ask('Acme AI', 'Which AI brand service is reliable?', 'yuanbao');
+
+        $this->assertSame('Yuanbao answer mentions Acme AI.', $response->answer);
+        $this->assertSame('yuanbao', $response->meta['platform'] ?? null);
+
+        Http::assertSent(function ($request): bool {
+            $payload = $request->data();
+
+            return $request->url() === 'https://tokenhub.tencentmaas.com/v1/chat/completions'
+                && $request->hasHeader('Authorization', 'Bearer test-yuanbao-key')
+                && ($payload['model'] ?? null) === 'hy3'
+                && ($payload['stream'] ?? null) === false
+                && isset($payload['messages'][0]['content'])
+                && ! isset($payload['input'])
+                && ! isset($payload['tools']);
+        });
     }
 
     public function test_question_generation_resolves_brand_profile_once_and_reuses_it_without_platform_web_search(): void
@@ -856,6 +892,7 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         $response = $this->actingAs($admin, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
             ->post(route('admin.brand-diagnosis.confirm', ['run' => $run->id]), [
+                'confirm_platforms' => ['deepseek', 'qianwen'],
                 'questions' => [
                     (int) $questionOne->id => '企业AI搜索优化服务怎么选？',
                     (int) $questionTwo->id => 'GEO品牌诊断工具有哪些？',
@@ -866,6 +903,7 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
 
         $run->refresh();
         $this->assertSame('running', $run->status);
+        $this->assertSame(['deepseek', 'qianwen'], $run->platforms);
         $this->assertSame('plan_quota', $run->billing_mode);
         $this->assertSame(now()->toDateString(), $run->usage_date?->toDateString());
         $this->assertSame('企业AI搜索优化服务怎么选？', $questionOne->refresh()->question);
@@ -879,6 +917,57 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         Queue::assertPushedOn('geoflow', ProcessBrandDiagnosisJob::class, function (ProcessBrandDiagnosisJob $job) use ($run): bool {
             return $job->runId === (int) $run->id;
         });
+    }
+
+    public function test_confirming_without_selecting_platform_is_rejected_without_usage_or_job(): void
+    {
+        Queue::fake();
+        [$admin, $site] = $this->createAdminWithSite('brand_diagnosis_confirm_platform_required_admin');
+        $this->openTestingPlanForSite($site, $admin, [
+            PlatformPlan::RESOURCE_BRAND_DIAGNOSES => [
+                'quota_value' => 2,
+                'quota_period' => 'cycle',
+                'unit' => 'times',
+            ],
+        ]);
+        $run = BrandDiagnosisRun::query()->create([
+            'site_id' => (int) $site->id,
+            'admin_id' => (int) $admin->id,
+            'brand_name' => '策影GEO',
+            'platforms' => ['doubao'],
+            'status' => 'questions_ready',
+            'total_questions' => 1,
+            'completed_questions' => 0,
+            'failed_questions' => 0,
+            'billing_mode' => 'pending_confirmation',
+            'usage_date' => null,
+        ]);
+        $question = $run->questions()->create([
+            'site_id' => (int) $site->id,
+            'question' => 'AI搜索优化服务怎么选？',
+            'question_type' => '选择',
+            'sort_order' => 1,
+            'status' => 'pending',
+        ]);
+
+        $response = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.brand-diagnosis.confirm', ['run' => $run->id]), [
+                'questions' => [
+                    (int) $question->id => 'AI搜索优化服务怎么选？',
+                ],
+            ]);
+
+        $response->assertSessionHasErrors('confirm_platforms');
+        $run->refresh();
+        $this->assertSame('questions_ready', $run->status);
+        $this->assertSame(['doubao'], $run->platforms);
+        $this->assertSame(0, AdminResourceUsage::query()
+            ->where('admin_id', (int) $admin->id)
+            ->where('site_id', (int) $site->id)
+            ->where('resource_key', PlatformPlan::RESOURCE_BRAND_DIAGNOSES)
+            ->count());
+        Queue::assertNothingPushed();
     }
 
     public function test_brand_diagnosis_plan_quota_is_independent_per_agent_site_user(): void
@@ -950,6 +1039,7 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         $this->actingAs($userOne, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
             ->post(route('admin.brand-diagnosis.confirm', ['run' => (int) $runOne->id]), [
+                'confirm_platforms' => ['doubao'],
                 'questions' => [
                     (int) $runOne->questions()->value('id') => '用户一品牌怎么做 AI 搜索优化？',
                 ],
@@ -959,6 +1049,7 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         $this->actingAs($userTwo, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
             ->post(route('admin.brand-diagnosis.confirm', ['run' => (int) $runTwo->id]), [
+                'confirm_platforms' => ['doubao'],
                 'questions' => [
                     (int) $runTwo->questions()->value('id') => '用户二品牌怎么做 AI 搜索优化？',
                 ],
@@ -1012,6 +1103,7 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         $this->actingAs($admin, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
             ->post(route('admin.brand-diagnosis.confirm', ['run' => $run->id]), [
+                'confirm_platforms' => ['qianwen'],
                 'questions' => [
                     (int) $question->id => '企业AI搜索优化服务商怎么比较？',
                 ],
@@ -1025,7 +1117,7 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         $newRun = BrandDiagnosisRun::query()->whereKeyNot((int) $run->id)->firstOrFail();
         $this->assertSame('running', $newRun->status);
         $this->assertSame('策影GEO', $newRun->brand_name);
-        $this->assertSame(['doubao', 'deepseek'], $newRun->platforms);
+        $this->assertSame(['qianwen'], $newRun->platforms);
         $this->assertSame('admin_unlimited', $newRun->billing_mode);
         $this->assertTrue((bool) $newRun->limit_bypassed);
         $this->assertSame('企业AI搜索优化服务商怎么比较？', $newRun->questions()->value('question'));
@@ -1062,6 +1154,7 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         $response = $this->actingAs($admin, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
             ->post(route('admin.brand-diagnosis.confirm', ['run' => $run->id]), [
+                'confirm_platforms' => ['doubao'],
                 'questions' => [
                     (int) $question->id => 'AI搜索优化服务怎么选？',
                 ],
@@ -1422,6 +1515,7 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         $response = $this->actingAs($admin, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
             ->post(route('admin.brand-diagnosis.confirm', ['run' => $draftRun->id]), [
+                'confirm_platforms' => ['doubao'],
                 'questions' => [
                     (int) $question->id => 'AI搜索优化服务怎么选？',
                 ],
@@ -1479,6 +1573,7 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         $this->actingAs($admin, 'admin')
             ->withSession(['current_site_id' => (int) $site->id])
             ->post(route('admin.brand-diagnosis.confirm', ['run' => $latest->id]), [
+                'confirm_platforms' => ['deepseek'],
                 'questions' => [
                     (int) $question->id => 'AI搜索优化服务怎么选？',
                 ],
@@ -2704,12 +2799,42 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
 
             return $request->url() === 'https://ark.cn-beijing.volces.com/api/v3/responses'
                 && $request->hasHeader('Authorization', 'Bearer test-doubao-key')
-                && ($payload['model'] ?? null) === 'deepseek-v4-flash-260425';
+                && ($payload['model'] ?? null) === 'deepseek-v4-1-flash-260910';
         });
 
         $result = BrandDiagnosisResult::query()->firstOrFail();
         $this->assertSame('deepseek', $result->platform);
         $this->assertSame('success', $result->status);
+    }
+
+    public function test_deepseek_closed_ark_endpoint_error_explains_model_update(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake([
+            'ark.cn-beijing.volces.com/api/v3/responses' => Http::response([
+                'error' => [
+                    'code' => 'InvalidEndpoint.ClosedEndpoint',
+                    'message' => 'The request targeted an endpoint that is currently closed or temporarily unavailable.',
+                ],
+            ], 400),
+        ]);
+
+        try {
+            app(DoubaoBrandDiagnosisClient::class)
+                ->ask('策影GEO', 'GEO优化系统哪家更全面？', 'deepseek');
+            $this->fail('Expected a closed endpoint exception.');
+        } catch (RuntimeException $exception) {
+            $message = $exception->getMessage();
+            $this->assertStringContainsString('HTTP 400', $message);
+            $this->assertStringContainsString('DeepSeek', $message);
+            $this->assertStringContainsString('deepseek-v4-1-flash-260910', $message);
+            $this->assertStringContainsString('InvalidEndpoint.ClosedEndpoint', $message);
+            $this->assertStringContainsString('请更新 BRAND_DIAGNOSIS_DEEPSEEK_MODEL', $message);
+        }
+
+        Http::assertSent(function ($request): bool {
+            return ($request->data()['model'] ?? null) === 'deepseek-v4-1-flash-260910';
+        });
     }
 
     public function test_deepseek_extracts_clean_competitor_brands_from_answer_when_brand_mentions_payload_is_empty(): void

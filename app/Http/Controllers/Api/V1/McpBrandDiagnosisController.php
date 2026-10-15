@@ -77,7 +77,7 @@ class McpBrandDiagnosisController extends BaseApiController
      * @Url [POST] /api/v1/mcp/brand-diagnoses
      *      登录 是
      *      brand_name string 必选 需要诊断的品牌词，最长 120 个字符
-     *      models array 必选 诊断模型列表，支持 doubao、deepseek、qianwen、wenxin
+     *      models array 必选 诊断模型列表，支持 doubao、deepseek、qianwen、wenxin、yuanbao
      *      reuse_questions bool 可选 是否复用当前账号同站点最近生成的问题
      *
      * @Author: cdkay

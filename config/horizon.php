@@ -208,7 +208,7 @@ return [
             'maxJobs' => 0,
             'memory' => 128,
             'tries' => 1,
-            'timeout' => 600,
+            'timeout' => max(1260, (int) env('HORIZON_WORKER_TIMEOUT', 1260)),
             'nice' => 0,
         ],
     ],

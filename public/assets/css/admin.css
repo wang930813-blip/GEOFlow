@@ -97,6 +97,11 @@ body.admin-ui a:hover {
     color: var(--aliyun-link);
 }
 
+body.admin-ui a.text-white,
+body.admin-ui a.text-white:hover {
+    color: #ffffff !important;
+}
+
 body.admin-ui main {
     padding-top: 24px;
     padding-bottom: 36px;
