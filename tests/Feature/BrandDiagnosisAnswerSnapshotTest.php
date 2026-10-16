@@ -562,7 +562,7 @@ class BrandDiagnosisAnswerSnapshotTest extends TestCase
             'status' => 'active',
         ]);
 
-        $yuanbaoUrl = 'https://yuanbao.tencent.com/share/yuanbao-example';
+        $yuanbaoUrl = 'https://yb.tencent.com/s/yuanbao-example';
         $doubaoUrl = 'https://www.doubao.com/thread/doubao-example';
 
         $this->actingAs($superAdmin, 'admin')
