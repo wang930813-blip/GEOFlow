@@ -21,10 +21,23 @@
         @endif
 
         @if ($errors->any())
-            <div class="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                {{ $errors->first() }}
-            </div>
+            @php
+                $generalErrors = collect($errors->getMessages())
+                    ->filter(static fn (array $messages, string $key): bool => ! str_starts_with($key, 'official_links.'))
+                    ->flatten();
+            @endphp
+            @if ($generalErrors->isNotEmpty())
+                <div class="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    @foreach ($generalErrors as $error)
+                        <div>{{ $error }}</div>
+                    @endforeach
+                </div>
+            @endif
         @endif
+
+        <div class="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">
+            每条模型回答都要填写对应模型自己的分享链接，不能跨模型复用。请先打开对应平台官网，在当前对话中复制分享链接后粘贴到本行；暂时没有分享链接可以留空。
+        </div>
 
         <form method="POST" action="{{ route('admin.brand-diagnosis.official-links.update', ['run' => $run->id]) }}" class="space-y-4">
             @csrf
@@ -72,11 +85,20 @@
                                             @endif
                                             {{ $result['platform'] }}
                                         </span>
+                                        @if ($result['platform_chat_url'])
+                                            <a href="{{ $result['platform_chat_url'] }}" target="_blank" rel="noopener noreferrer" class="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-orange-700 hover:text-orange-800">
+                                                <i data-lucide="external-link" class="h-3.5 w-3.5"></i>
+                                                打开{{ $result['platform'] }}官网
+                                            </a>
+                                        @endif
                                     </td>
                                     <td class="px-4 py-4 text-sm leading-6 text-slate-700">{{ $result['question'] }}</td>
                                     <td class="px-4 py-4">
                                         <label for="official-link-{{ $result['id'] }}" class="sr-only">{{ $result['question'] }}官方对话链接</label>
-                                        <input id="official-link-{{ $result['id'] }}" type="url" name="official_links[{{ $result['id'] }}]" value="{{ old('official_links.'.$result['id'], $result['official_share_url']) }}" maxlength="2048" placeholder="https://" class="block h-10 w-full rounded-md border-slate-300 text-sm shadow-sm focus:border-orange-500 focus:ring-orange-500">
+                                        <input id="official-link-{{ $result['id'] }}" type="url" name="official_links[{{ $result['id'] }}]" value="{{ old('official_links.'.$result['id'], $result['official_share_url']) }}" maxlength="2048" placeholder="粘贴{{ $result['platform'] }}分享链接" class="block h-10 w-full rounded-md border-slate-300 text-sm shadow-sm focus:border-orange-500 focus:ring-orange-500 @error('official_links.'.$result['id']) border-red-500 focus:border-red-500 focus:ring-red-500 @enderror">
+                                        @error('official_links.'.$result['id'])
+                                            <p class="mt-1.5 text-xs font-semibold text-red-600">{{ $message }}</p>
+                                        @enderror
                                         <p class="mt-1.5 text-xs text-slate-400">允许域名：{{ $result['official_domains'] }}</p>
                                     </td>
                                     <td class="px-4 py-4 text-right">

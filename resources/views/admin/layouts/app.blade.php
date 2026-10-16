@@ -28,7 +28,7 @@
                 <span class="block sm:inline">{{ session('message') }}</span>
             </div>
         @endif
-        @if ($errors->any())
+        @if (($showGlobalErrors ?? true) && $errors->any())
             <div class="admin-flash-alert mb-4 border px-4 py-3 relative" style="background: rgba(255, 87, 34, 0.12); border-color: rgba(255, 87, 34, 0.28); color: #d63b1f;">
                 @foreach ($errors->all() as $err)
                     <div>{{ $err }}</div>
