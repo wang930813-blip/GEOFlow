@@ -125,7 +125,7 @@ final class BrandDiagnosisPlatform
             self::DEEPSEEK => ['deepseek.com'],
             self::QIANWEN => ['tongyi.com', 'qianwen.com', 'aliyun.com', 'qwen.ai', 'qianwen.my.cn'],
             self::WENXIN => ['baidu.com'],
-            self::YUANBAO => ['yuanbao.tencent.com', 'yb.tencent.com'],
+            self::YUANBAO => ['yb.tencent.com'],
         };
     }
 
