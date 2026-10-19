@@ -801,6 +801,7 @@ class AdminMonitoringCenterPageTest extends TestCase
     public function test_monitoring_center_share_endpoint_creates_expiring_link_for_current_site(): void
     {
         $this->travelTo(Carbon::parse('2026-08-19 10:00:00'));
+        config(['geoflow.monitoring_report_share_ttl_days' => 14]);
         $this->withoutMiddleware(ValidateCsrfToken::class);
 
         [$admin, $site] = $this->createAdminWithSite('monitoring_share_creator');
@@ -820,8 +821,34 @@ class AdminMonitoringCenterPageTest extends TestCase
         $this->assertSame('industry', (string) $share->report_type);
         $this->assertSame((int) $site->id, (int) $share->site_id);
         $this->assertSame((int) $admin->id, (int) $share->created_by_admin_id);
-        $this->assertSame('2026-08-26 10:00:00', $share->expires_at?->format('Y-m-d H:i:s'));
+        $this->assertSame('2026-09-02 10:00:00', $share->expires_at?->format('Y-m-d H:i:s'));
         $this->assertStringContainsString('/monitoring-report/share/', (string) $response->json('url'));
+    }
+
+    public function test_monitoring_center_share_endpoint_can_create_a_permanent_link_when_ttl_is_zero(): void
+    {
+        $this->travelTo(Carbon::parse('2026-08-19 10:00:00'));
+        config(['geoflow.monitoring_report_share_ttl_days' => 0]);
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+
+        [$admin, $site] = $this->createAdminWithSite('monitoring_permanent_share_creator');
+
+        $response = $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->postJson(route('admin.monitoring-center.share'), [
+                'report' => 'enterprise',
+            ])
+            ->assertOk()
+            ->assertJsonStructure(['url']);
+
+        $share = MonitoringReportShare::query()->firstOrFail();
+        $this->assertNull($share->expires_at);
+
+        $token = basename((string) parse_url((string) $response->json('url'), PHP_URL_PATH));
+        $this->travelTo(Carbon::parse('2036-08-19 10:00:00'));
+
+        $this->get(route('monitoring-report-share.show', ['token' => $token]))
+            ->assertOk();
     }
 
     public function test_monitoring_report_share_link_is_public_and_renders_realtime_report_data(): void

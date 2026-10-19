@@ -67,8 +67,16 @@ class MonitoringReportShareController extends Controller
 
     private function isExpired(MonitoringReportShare $share): bool
     {
-        $expiresAt = $share->expires_at ?? $share->created_at?->copy()->addDays(7);
+        if ($share->expires_at !== null) {
+            return $share->expires_at->isPast();
+        }
 
+        $shareTtlDays = (int) config('geoflow.monitoring_report_share_ttl_days', 7);
+        if ($shareTtlDays <= 0) {
+            return false;
+        }
+
+        $expiresAt = $share->created_at?->copy()->addDays($shareTtlDays);
         return $expiresAt === null || $expiresAt->isPast();
     }
 
