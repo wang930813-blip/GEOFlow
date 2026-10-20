@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ $pageTitle }} - {{ config('geoflow.site_name', config('app.name')) }}</title>
+    <title>{{ $pageTitle }}</title>
     <meta name="description" content="{{ $pageDescription }}">
     <script src="{{ asset('js/tailwindcss.play-cdn.js') }}"></script>
     <script src="{{ asset('js/lucide.min.js') }}"></script>

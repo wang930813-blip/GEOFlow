@@ -66,6 +66,8 @@ class ProductCaseModuleTest extends TestCase
 
         $this->get(route('product-cases.index'))
             ->assertOk()
+            ->assertSee('<title>产品案例</title>', false)
+            ->assertDontSee('<title>产品案例 - 策影GEO</title>', false)
             ->assertSee($published->title)
             ->assertDontSee($published->summary)
             ->assertDontSee('Draft Product Case')
@@ -74,6 +76,8 @@ class ProductCaseModuleTest extends TestCase
 
         $this->get(route('product-cases.show', ['slug' => 'jufulou-geo-case']))
             ->assertOk()
+            ->assertSee('<title>Jufulou GEO Case</title>', false)
+            ->assertDontSee('<title>Jufulou GEO Case - 策影GEO</title>', false)
             ->assertSee('Jufulou GEO Case')
             ->assertSee('Brand Intro');
 
