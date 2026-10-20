@@ -384,8 +384,10 @@ class BrandDiagnosisAnswerSnapshotTest extends TestCase
             ->get('/geo_admin/brand-diagnosis/'.$result->run_id.'/official-links')
             ->assertOk()
             ->assertSee('官方链接管理')
+            ->assertSee('每条模型回答都要填写对应模型自己的分享链接')
             ->assertSee('国内科研选题辅导平台哪些好？')
             ->assertSee('name="official_links['.$result->id.']"', false)
+            ->assertSee('href="https://chat.baidu.com/"', false)
             ->assertSee('/brand-diagnosis/snapshot/'.$result->snapshot_token, false);
     }
 
@@ -531,6 +533,52 @@ class BrandDiagnosisAnswerSnapshotTest extends TestCase
         $this->assertSame($officialUrl, $result->fresh()->official_share_url);
     }
 
+    public function test_super_admin_can_save_independent_yuanbao_and_doubao_links(): void
+    {
+        $yuanbaoResult = $this->createResult([
+            'platform' => 'yuanbao',
+            'answer' => '元宝模型回答。',
+        ]);
+        $doubaoResult = BrandDiagnosisResult::query()->create([
+            'site_id' => (int) $yuanbaoResult->site_id,
+            'owner_admin_id' => (int) $yuanbaoResult->owner_admin_id,
+            'run_id' => (int) $yuanbaoResult->run_id,
+            'question_id' => (int) $yuanbaoResult->question_id,
+            'platform' => 'doubao',
+            'answer' => '豆包模型回答。',
+            'brand_mentioned' => false,
+            'mention_count' => 0,
+            'mention_rank' => 0,
+            'sentiment' => 'neutral',
+            'status' => 'success',
+            'checked_at' => now(),
+        ]);
+        $superAdmin = Admin::query()->create([
+            'username' => 'snapshot_independent_links_super',
+            'password' => 'secret-123',
+            'email' => 'snapshot-independent-links-super@example.com',
+            'display_name' => 'Snapshot Independent Links Super',
+            'role' => 'super_admin',
+            'status' => 'active',
+        ]);
+
+        $yuanbaoUrl = 'https://yb.tencent.com/s/yuanbao-example';
+        $doubaoUrl = 'https://www.doubao.com/thread/doubao-example';
+
+        $this->actingAs($superAdmin, 'admin')
+            ->put('/geo_admin/brand-diagnosis/'.$yuanbaoResult->run_id.'/official-links', [
+                'official_links' => [
+                    $yuanbaoResult->id => $yuanbaoUrl,
+                    $doubaoResult->id => $doubaoUrl,
+                ],
+            ])
+            ->assertRedirect('/geo_admin/brand-diagnosis/'.$yuanbaoResult->run_id.'/official-links')
+            ->assertSessionDoesntHaveErrors();
+
+        $this->assertSame($yuanbaoUrl, $yuanbaoResult->fresh()->official_share_url);
+        $this->assertSame($doubaoUrl, $doubaoResult->fresh()->official_share_url);
+    }
+
     public function test_official_link_must_match_the_results_platform_domain(): void
     {
         $result = $this->createResult();
@@ -552,6 +600,14 @@ class BrandDiagnosisAnswerSnapshotTest extends TestCase
             ])
             ->assertRedirect('/geo_admin/brand-diagnosis/'.$result->run_id.'/official-links')
             ->assertSessionHasErrors('official_links.'.$result->id);
+
+        $errorMessage = '该链接不是对应平台的官方域名，允许域名：baidu.com。';
+        $page = $this->get('/geo_admin/brand-diagnosis/'.$result->run_id.'/official-links');
+        $page
+            ->assertOk()
+            ->assertSee($errorMessage)
+            ->assertSee('border-red-500', false);
+        $this->assertSame(1, substr_count((string) $page->getContent(), $errorMessage));
 
         $this->assertNull($result->fresh()->official_share_url);
     }

@@ -51,6 +51,7 @@ class BrandDiagnosisOfficialLinkController extends Controller
                         'platform_key' => $platformKey,
                         'platform' => BrandDiagnosisPlatform::label($platformKey),
                         'platform_logo' => BrandDiagnosisPlatform::logoUrl($platformKey),
+                        'platform_chat_url' => BrandDiagnosisPlatform::chatUrl($platformKey),
                         'status' => (string) $result->status,
                         'snapshot_url' => route('brand-diagnosis.snapshot', ['token' => $result->snapshot_token]),
                         'official_share_url' => (string) ($result->official_share_url ?? ''),
@@ -76,6 +77,7 @@ class BrandDiagnosisOfficialLinkController extends Controller
             'run' => $diagnosisRun,
             'results' => $results,
             'platformOptions' => $platformOptions,
+            'showGlobalErrors' => false,
         ]);
     }
 

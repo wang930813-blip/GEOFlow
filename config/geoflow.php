@@ -48,6 +48,8 @@ return [
         env('GEOFLOW_MONITORING_SEARCH_REPORT_VIRTUAL_DATA', false),
         FILTER_VALIDATE_BOOLEAN
     ),
+    // 监测中心分享链接有效期（天），0 表示永久有效
+    'monitoring_report_share_ttl_days' => max(0, (int) env('GEOFLOW_MONITORING_REPORT_SHARE_TTL_DAYS', 7)),
 
     // 前台列表每页条数
     'items_per_page' => (int) env('GEOFLOW_ITEMS_PER_PAGE', 12),

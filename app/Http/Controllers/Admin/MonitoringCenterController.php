@@ -62,6 +62,9 @@ class MonitoringCenterController extends Controller
         $companyName = trim((string) data_get($reportData, 'context.company_name', ''));
         $reportLabel = $report === 'industry' ? 'Industry report' : 'Enterprise report';
 
+        $shareTtlDays = (int) config('geoflow.monitoring_report_share_ttl_days', 7);
+        $expiresAt = $shareTtlDays > 0 ? now()->addDays($shareTtlDays) : null;
+
         MonitoringReportShare::query()->create([
             'token_hash' => hash('sha256', $token),
             'report_type' => $report,
@@ -71,7 +74,7 @@ class MonitoringCenterController extends Controller
             'title' => trim($reportLabel.($companyName !== '' ? ' - '.$companyName : '')),
             'payload' => $reportData,
             'use_virtual_search_report_data' => $useVirtualSearchReportData,
-            'expires_at' => now()->addDays(7),
+            'expires_at' => $expiresAt,
         ]);
 
         return response()->json([
