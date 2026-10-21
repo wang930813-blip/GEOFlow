@@ -78,7 +78,7 @@ class MonitoringReportDataServiceTest extends TestCase
         $this->assertSame(1, $report['summary']['search_report_count']['actual']);
         $this->assertSame(1, $report['summary']['model_collection_total']['actual']);
         $this->assertSame([
-            ['name' => '豆包', 'value' => 1, 'mention_rate' => 100],
+            ['name' => '豆包', 'value' => 1, 'mention_rate' => 90],
             ['name' => '千问', 'value' => 0, 'mention_rate' => null],
             ['name' => 'DeepSeek', 'value' => 0, 'mention_rate' => null],
             ['name' => '元宝', 'value' => 0, 'mention_rate' => null],
@@ -196,10 +196,10 @@ class MonitoringReportDataServiceTest extends TestCase
             'owner_admin_id' => (int) $admin->id,
             'admin_id' => (int) $admin->id,
             'brand_name' => '品牌诊断测试品牌',
-            'platforms' => ['doubao', 'qianwen', 'deepseek'],
+            'platforms' => ['doubao', 'qianwen', 'deepseek', 'yuanbao', 'wenxin'],
             'status' => 'completed',
-            'total_questions' => 12,
-            'completed_questions' => 12,
+            'total_questions' => 32,
+            'completed_questions' => 32,
             'failed_questions' => 0,
             'billing_mode' => 'daily_free',
             'usage_date' => now()->toDateString(),
@@ -210,6 +210,8 @@ class MonitoringReportDataServiceTest extends TestCase
             'doubao' => [true, false, false, false],
             'qianwen' => [true, true, true, false],
             'deepseek' => [true, true, true, true],
+            'yuanbao' => [true, true, true, false, false, false, false, false, false, false],
+            'wenxin' => [true, true, true, true, true, true, true, true, true, false],
         ];
         $sortOrder = 1;
         foreach ($platformMentionFlags as $platform => $mentionFlags) {
@@ -263,11 +265,11 @@ class MonitoringReportDataServiceTest extends TestCase
             fn (array $row): array => [$row['name'] => $row['mention_rate']]
         );
 
-        $this->assertSame(85, $collection['豆包']);
+        $this->assertSame(30, $collection['豆包']);
         $this->assertSame(75, $collection['千问']);
-        $this->assertSame(100, $collection['DeepSeek']);
-        $this->assertSame(null, $collection['元宝']);
-        $this->assertSame(null, $collection['文心一言']);
+        $this->assertSame(90, $collection['DeepSeek']);
+        $this->assertSame(30, $collection['元宝']);
+        $this->assertSame(90, $collection['文心一言']);
     }
 
     public function test_report_company_name_uses_latest_non_empty_keyword_library_company_name(): void
