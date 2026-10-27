@@ -340,8 +340,8 @@ class MonitoringReportDataService
     /**
      * 获取当前站点与管理员范围内最近一次已完成品牌诊断的各平台提及展现率。
      *
-     * 低于 60% 的平台按原始值增加 60 个百分点，并将结果限制在 100% 以内；
-     * 60% 及以上的平台保持原始值。没有对应诊断结果的平台返回 null，由前端显示占位符。
+     * 低于 30% 的平台按 30% 展示，30% 至 90% 的平台保持原始值，
+     * 高于 90% 的平台按 90% 展示。没有对应诊断结果的平台返回 null，由前端显示占位符。
      *
      * @param  array{admin:Admin,site:?Site,site_id:?int,owner_admin_id:?int}  $context
      * @return array<string,int|null>
@@ -350,7 +350,7 @@ class MonitoringReportDataService
      *
      * @CreateTime: 2026-10-14 15:54:59
      *
-     * @UpdateTime: 2026-10-14 15:54:59
+     * @UpdateTime: 2026-10-21 10:57:14
      */
     private function latestBrandDiagnosisMentionRates(array $context): array
     {
@@ -398,7 +398,7 @@ class MonitoringReportDataService
                     ? (int) round(((int) ($mentionedByPlatform[$platform] ?? 0) / $total) * 100)
                     : 0;
 
-                return $rawRate < 60 ? min(100, $rawRate + 60) : $rawRate;
+                return max(30, min(90, $rawRate));
             })
             ->all();
     }
