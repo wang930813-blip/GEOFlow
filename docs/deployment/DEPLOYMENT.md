@@ -71,6 +71,7 @@ DB_USERNAME=geo_user
 DB_PASSWORD=change-this-password
 
 REDIS_PASSWORD=
+REDIS_DATA_DIR=./docker-data/prod/redis
 WEB_PORT=18080
 REVERB_EXPOSE_PORT=18081
 ```
@@ -83,6 +84,7 @@ REVERB_EXPOSE_PORT=18081
 - `AUTO_MIGRATE` 在 `.env.prod` 中默认建议为 `false`
 - 生产镜像不会在启动时执行 `composer install`
 - **`postgres` / `redis` 凭据**：`docker-compose.prod.yml` 中 postgres 使用 `DB_DATABASE` / `DB_USERNAME` / `DB_PASSWORD` 映射为官方镜像的 `POSTGRES_*`；redis 使用 `REDIS_PASSWORD`；值均由 Compose 插值（推荐 `--env-file .env.prod`），与 Laravel 的 `DB_*` 同源、不重复定义。
+- **Redis 持久化**：生产 Compose 使用 `appendonly yes`，并将 `${REDIS_DATA_DIR}` 挂载到 Redis 的 `/data`。请使用独立、可备份的宿主机目录；升级、重建或回滚容器时保留该目录，避免队列和缓存数据因容器重建丢失。
 - **建议仍使用 `--env-file .env.prod`**：便于插值 `WEB_PORT`、`POSTGRES_DATA_DIR` 等与根目录 `.env` 对齐；若曾用错误密码初始化过 Postgres，须删掉 `POSTGRES_DATA_DIR` 对应数据目录后再启动。
 
 ## 3. 启动步骤
@@ -98,6 +100,7 @@ export COMPOSE_PROD='docker compose --env-file .env.prod -f docker-compose.prod.
 ```bash
 $COMPOSE_PROD build
 $COMPOSE_PROD up -d postgres redis
+$COMPOSE_PROD config --quiet
 $COMPOSE_PROD up -d init
 $COMPOSE_PROD up -d app web queue scheduler reverb
 ```
@@ -162,6 +165,18 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm app php 
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
 ```
 
+修改生产配置或升级前，先渲染并校验 Compose 配置：
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml config --quiet
+```
+
+确认输出无错误后再执行构建或重启。检查 Redis 持久化挂载是否生效：
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml config | grep -A2 -E '^\s+redis:|REDIS_DATA_DIR|/data'
+```
+
 - 若需要手动跑迁移：
 
 ```bash
@@ -191,6 +206,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
 
 - 切回目标 commit / tag
 - 重新执行相同的 `build` 与 `up -d`
+- 保留 `.env.prod`、`storage/`、`POSTGRES_DATA_DIR` 和 `REDIS_DATA_DIR`；回滚代码不得删除数据库或 Redis AOF 数据目录。
 
 ## 8. 原理说明
 

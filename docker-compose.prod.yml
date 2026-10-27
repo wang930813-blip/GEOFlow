@@ -35,6 +35,8 @@ services:
           exec redis-server --appendonly yes --requirepass "$${REDIS_PASSWORD}"
         fi
         exec redis-server --appendonly yes
+    volumes:
+      - ${REDIS_DATA_DIR:-./docker-data/prod/redis}:/data
     healthcheck:
       test:
         [

@@ -78,6 +78,7 @@ bash geoflow-docker-deploy.sh
 | `GEOFLOW_INSTALL_DOCKER` | `auto` | `1` 自动安装 Docker；`0` 缺少 Docker 时直接失败 |
 | `GEOFLOW_DB_PASSWORD` | 随机生成 | PostgreSQL 密码 |
 | `GEOFLOW_REDIS_PASSWORD` | 随机生成 | Redis 密码 |
+| `GEOFLOW_REDIS_DATA_DIR` | `./docker-data/prod/redis` | Redis AOF 宿主机持久化目录；升级和重建容器时必须保留 |
 | `GEOFLOW_TRUSTED_PROXIES` | `*` | 反向代理、CDN、二级目录部署时的可信代理设置 |
 | `GEOFLOW_SELF_DELETE` | `0` | 设置为 `1` 时，部署成功后删除当前执行的部署脚本 |
 
@@ -129,6 +130,7 @@ proxy_set_header X-Forwarded-Host $host;
 - 脚本是部署辅助工具，不替代服务器安全加固。
 - 不要把 PostgreSQL 和 Redis 暴露到公网。
 - 更新前请备份 `.env.prod`、`storage/` 和 PostgreSQL 数据。
+- Redis 使用 AOF 持久化，更新前同时备份 `REDIS_DATA_DIR` 指向的目录；不要删除该目录后再重建 Redis 容器。
 - 如果大陆服务器拉取 Docker 镜像较慢，建议先在 Docker daemon 层配置稳定镜像源，再执行脚本。
 
 ---
@@ -209,6 +211,7 @@ Optional variables:
 | `GEOFLOW_INSTALL_DOCKER` | `auto` | `1` to install Docker automatically, `0` to fail if Docker is missing |
 | `GEOFLOW_DB_PASSWORD` | random | PostgreSQL password |
 | `GEOFLOW_REDIS_PASSWORD` | random | Redis password |
+| `GEOFLOW_REDIS_DATA_DIR` | `./docker-data/prod/redis` | Redis AOF host persistence directory; preserve it during upgrades and container rebuilds |
 | `GEOFLOW_TRUSTED_PROXIES` | `*` | Trusted proxy setting for reverse proxy/CDN/subdirectory deployments |
 | `GEOFLOW_SELF_DELETE` | `0` | Set to `1` to remove the deployment script after a successful deployment |
 
@@ -260,4 +263,5 @@ proxy_set_header X-Forwarded-Host $host;
 - The scripts are references, not a replacement for server security hardening.
 - Do not expose PostgreSQL or Redis to the public Internet.
 - Keep `.env.prod`, `storage/`, and PostgreSQL data backed up before upgrades.
+- Redis uses AOF persistence; also back up the directory referenced by `REDIS_DATA_DIR` before upgrades and do not remove it when rebuilding Redis.
 - If Docker image pulling is slow or unstable in mainland China, configure a stable registry mirror at the server level before running the script.

@@ -251,7 +251,7 @@ prepare_env() {
   fi
 
   local default_ip current_app_url current_admin_path current_web_port current_reverb_port
-  local app_url admin_path web_port reverb_port db_password redis_password reverb_secret
+  local app_url admin_path web_port reverb_port db_password redis_password redis_data_dir reverb_secret
   default_ip="$(detect_primary_ip || true)"
   default_ip="${default_ip:-127.0.0.1}"
 
@@ -267,9 +267,11 @@ prepare_env() {
 
   db_password="${GEOFLOW_DB_PASSWORD:-$(get_env_value .env.prod DB_PASSWORD)}"
   redis_password="${GEOFLOW_REDIS_PASSWORD:-$(get_env_value .env.prod REDIS_PASSWORD)}"
+  redis_data_dir="${GEOFLOW_REDIS_DATA_DIR:-$(get_env_value .env.prod REDIS_DATA_DIR)}"
   reverb_secret="${GEOFLOW_REVERB_SECRET:-$(get_env_value .env.prod REVERB_APP_SECRET)}"
   db_password="${db_password:-$(random_secret)}"
   redis_password="${redis_password:-$(random_secret)}"
+  redis_data_dir="${redis_data_dir:-./docker-data/prod/redis}"
   reverb_secret="${reverb_secret:-$(random_secret)}"
 
   check_ports "$web_port" "$reverb_port"
@@ -288,6 +290,7 @@ prepare_env() {
   set_env_value .env.prod DB_PASSWORD "$db_password"
   set_env_value .env.prod REDIS_HOST redis
   set_env_value .env.prod REDIS_PASSWORD "$redis_password"
+  set_env_value .env.prod REDIS_DATA_DIR "$redis_data_dir"
   set_env_value .env.prod WEB_PORT "$web_port"
   set_env_value .env.prod REVERB_EXPOSE_PORT "$reverb_port"
   set_env_value .env.prod REVERB_APP_SECRET "$reverb_secret"
