@@ -98,9 +98,9 @@ export COMPOSE_PROD='docker compose --env-file .env.prod -f docker-compose.prod.
 首次部署建议按以下顺序：
 
 ```bash
+$COMPOSE_PROD config --quiet
 $COMPOSE_PROD build
 $COMPOSE_PROD up -d postgres redis
-$COMPOSE_PROD config --quiet
 $COMPOSE_PROD up -d init
 $COMPOSE_PROD up -d app web queue scheduler reverb
 ```
