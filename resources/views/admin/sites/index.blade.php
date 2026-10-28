@@ -19,9 +19,9 @@
                 <h1 class="text-2xl font-bold text-gray-900">站点管理</h1>
                 <p class="mt-1 text-sm text-gray-600">
                     @if($isAgentSiteManager)
-                        为下级用户创建和维护前台站点，站点数据仅归属当前代理。
+                        为下级用户创建和维护前台站点，站点数据仅归属当前代理；客户自定义域名请使用 CNAME 指向系统默认域名。
                     @else
-                        超管可以创建客户站点、绑定二级域名，并分配可维护该站点的管理员。
+                        超管可以创建客户站点、管理系统默认域名，并分配可维护该站点的管理员；客户自定义域名请使用 CNAME 指向系统默认域名。
                     @endif
                 </p>
             </div>
@@ -40,7 +40,7 @@
                 </div>
                 <div>
                     <h2 class="text-lg font-semibold text-gray-900">创建站点</h2>
-                    <p class="text-sm text-gray-500">域名只在创建时填写，创建后不可修改。</p>
+                    <p class="text-sm text-gray-500">系统默认域名在创建时分配且不可修改；客户自定义域名需通过 CNAME 指向系统默认域名。</p>
                 </div>
             </div>
 
@@ -51,8 +51,13 @@
                     <input id="create-name" name="name" required value="{{ old('name') }}" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" placeholder="客户A官网">
                 </div>
                 <div class="lg:col-span-3">
-                    <label class="mb-1 block text-sm font-medium text-gray-700" for="create-domain">前台域名</label>
+                    <label class="mb-1 block text-sm font-medium text-gray-700" for="create-domain">系统默认域名（创建时分配）</label>
                     <input id="create-domain" name="domain" value="{{ old('domain') }}" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" placeholder="a.geo.xinzhidi.cn">
+                </div>
+                <div class="lg:col-span-3">
+                    <label class="mb-1 block text-sm font-medium text-gray-700" for="create-custom-domain">客户自定义域名（可选）</label>
+                    <input id="create-custom-domain" name="custom_domain" value="{{ old('custom_domain') }}" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" placeholder="www.example.com">
+                    <p class="mt-1 text-xs text-slate-500">请将 CNAME 指向系统默认域名。</p>
                 </div>
                 @if($isSuperSiteManager)
                     <div class="lg:col-span-4">
@@ -146,6 +151,7 @@
                                 $latestSubscription = $site->planSubscriptions->first();
                                 $accountSubscription = ($accountPlanSubscriptionsBySite ?? collect())->get((int) $site->owner_admin_id.':'.(int) $site->id);
                                 $displaySubscription = $latestSubscription ?: $accountSubscription;
+                                $customDomain = trim((string) ($site->custom_domain ?? ''));
                             @endphp
                             <tr>
                                 <td class="px-5 py-4 align-top">
@@ -153,10 +159,28 @@
                                     <div class="mt-1 text-xs text-gray-400">ID: {{ $site->id }}</div>
                                 </td>
                                 <td class="break-all px-5 py-4 align-top text-sm text-gray-600">
-                                    @if ((string) $site->domain !== '')
-                                        {{ $site->domain }}
-                                    @else
-                                        <span class="text-gray-400">未绑定</span>
+                                    <div>系统默认：{{ $site->domain !== '' ? $site->domain : '未分配' }}</div>
+                                    <div class="mt-1 text-xs text-indigo-600">客户自定义：{{ $customDomain !== '' ? $customDomain : '未绑定' }}</div>
+                                    @if ($customDomain !== '')
+                                        @php
+                                            $deploymentStatus = (string) $site->custom_domain_deployment_status;
+                                            $deploymentLabel = match ($deploymentStatus) {
+                                                'active' => (bool) $site->custom_https_enabled ? 'HTTPS 已自动部署' : '域名代理已部署',
+                                                'failed' => '部署失败',
+                                                'pending' => '部署中',
+                                                'removed' => '代理已移除',
+                                                default => '待平台部署',
+                                            };
+                                            $deploymentClass = match ($deploymentStatus) {
+                                                'active' => 'text-emerald-700',
+                                                'failed' => 'text-rose-700',
+                                                default => 'text-amber-700',
+                                            };
+                                        @endphp
+                                        <div class="mt-1 text-xs {{ $deploymentClass }}">{{ $deploymentLabel }}</div>
+                                        @if ($deploymentStatus === 'failed' && $site->custom_domain_deployment_error)
+                                            <div class="mt-1 text-xs text-rose-600">{{ $site->custom_domain_deployment_error }}</div>
+                                        @endif
                                     @endif
                                 </td>
                                 <td class="px-5 py-4 align-top text-sm text-gray-600">
@@ -241,9 +265,14 @@
                                     <input id="site-name-{{ $site->id }}" name="name" required value="{{ $site->name }}" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100">
                                 </div>
                                 <div>
-                                    <label class="mb-1 block text-sm font-medium text-gray-700" for="site-domain-{{ $site->id }}">前台域名</label>
-                                    <input id="site-domain-{{ $site->id }}" value="{{ $site->domain }}" readonly class="block h-10 w-full cursor-not-allowed rounded-md border border-slate-200 bg-slate-100 px-3 text-sm text-slate-500 outline-none">
-                                    <p class="mt-1 text-xs text-slate-500">创建后不可修改。</p>
+                                    <label class="mb-1 block text-sm font-medium text-gray-700" for="site-domain-{{ $site->id }}">系统默认域名（不可修改）</label>
+                                    <input id="site-domain-{{ $site->id }}" value="{{ $site->domain }}" readonly disabled class="block h-10 w-full cursor-not-allowed rounded-md border border-slate-200 bg-slate-100 px-3 text-sm text-slate-500 outline-none">
+                                    <p class="mt-1 text-xs text-slate-500">系统分配域名仅用于 CNAME 指向，不能修改。</p>
+                                </div>
+                                <div>
+                                    <label class="mb-1 block text-sm font-medium text-gray-700" for="site-custom-domain-{{ $site->id }}">客户自定义域名</label>
+                                    <input id="site-custom-domain-{{ $site->id }}" name="custom_domain" value="{{ $customDomain }}" class="block h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" placeholder="www.example.com">
+                                    <p class="mt-1 text-xs text-slate-500">请将 CNAME 指向上面的系统默认域名；留空可解除绑定。</p>
                                 </div>
                                 @if($isSuperSiteManager)
                                     <div class="xl:col-span-2">

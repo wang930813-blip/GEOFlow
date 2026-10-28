@@ -44,6 +44,11 @@ return [
     'operation_guide_agent_url' => env('GEOFLOW_OPERATION_GUIDE_AGENT_URL', ''),
     'operation_guide_user_url' => env('GEOFLOW_OPERATION_GUIDE_USER_URL', ''),
     'customer_site_domain_base' => trim((string) env('GEOFLOW_CUSTOMER_SITE_DOMAIN_BASE', 'geo.xinzhidi.cn'), " \t\n\r\0\x0B."),
+    'customer_domain_deployer' => [
+        'enabled' => filter_var(env('GEOFLOW_CUSTOM_DOMAIN_DEPLOY_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        'socket' => (string) env('GEOFLOW_CUSTOM_DOMAIN_DEPLOY_SOCKET', ''),
+        'timeout_seconds' => max(1, (int) env('GEOFLOW_CUSTOM_DOMAIN_DEPLOY_TIMEOUT', 60)),
+    ],
     'monitoring_search_report_virtual_data_enabled' => filter_var(
         env('GEOFLOW_MONITORING_SEARCH_REPORT_VIRTUAL_DATA', false),
         FILTER_VALIDATE_BOOLEAN

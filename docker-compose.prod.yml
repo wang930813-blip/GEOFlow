@@ -98,6 +98,11 @@ services:
     volumes:
       - ./.env.prod:/var/www/html/.env
       - ./storage:/var/www/html/storage
+      - type: bind
+        source: ${GEOFLOW_CUSTOM_DOMAIN_DEPLOY_SOCKET_DIR:-/run/geoflow-domain-deployer}
+        target: /run/geoflow-domain-deployer
+    group_add:
+      - "${GEOFLOW_CUSTOM_DOMAIN_DEPLOY_GID:-992}"
     depends_on:
       init:
         condition: service_completed_successfully

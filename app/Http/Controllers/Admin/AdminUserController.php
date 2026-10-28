@@ -197,7 +197,11 @@ class AdminUserController extends Controller
                 throw ValidationException::withMessages(['plan_id' => '所选规格不适用于当前客户角色']);
             }
             $domain = trim((string) ($payload['site_domain'] ?? ''));
-            if ($mode === 'direct' && $domain !== '' && Site::query()->where('domain', $domain)->exists()) {
+            if ($mode === 'direct' && $domain !== '' && Site::query()
+                ->where(function ($query) use ($domain): void {
+                    $query->where('domain', $domain)->orWhere('custom_domain', $domain);
+                })
+                ->exists()) {
                 throw ValidationException::withMessages(['site_domain' => '该站点域名已经绑定到其他站点']);
             }
         }

@@ -51,7 +51,7 @@
             </div>
         @endif
 
-        <details class="mb-6 bg-white shadow rounded-lg overflow-hidden group">
+        <details open class="mb-6 bg-white shadow rounded-lg overflow-hidden group">
             <summary class="px-6 py-4 border-b border-gray-200 flex items-center justify-between gap-3 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
                 <div>
                     <h3 class="text-lg font-medium text-gray-900">{{ __('admin.site_settings.section_basic') }}</h3>
@@ -60,7 +60,7 @@
                 <i data-lucide="chevron-down" class="w-5 h-5 shrink-0 text-gray-400 transition-transform duration-200 group-open:rotate-180" aria-hidden="true"></i>
             </summary>
             <div class="px-6 py-6">
-                <form method="POST" action="{{ route('admin.site-settings.update') }}" class="space-y-6" data-analytics-settings-form>
+                <form method="POST" action="{{ route('admin.site-settings.update') }}" enctype="multipart/form-data" class="space-y-6" data-analytics-settings-form>
                     @csrf
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -82,30 +82,89 @@
                     </div>
 
                     <div class="rounded-lg border border-amber-200 bg-amber-50 p-4">
-                        <label class="block text-sm font-medium text-gray-900 mb-2">前台访问域名</label>
+                        <label class="block text-sm font-medium text-gray-900 mb-2">系统默认域名（不可修改）</label>
+                        <input type="text"
+                               value="{{ $systemDomain ?? '' }}"
+                               readonly disabled
+                               class="mb-2 h-10 w-full rounded-md border border-gray-300 bg-gray-100 px-3 text-sm text-gray-700 shadow-sm disabled:cursor-not-allowed">
+                        <p class="mb-4 text-xs leading-5 text-amber-800">这是系统为当前站点分配的默认访问域名，仅用于 CNAME 指向，不能修改。</p>
+
+                        <label class="block text-sm font-medium text-gray-900 mb-2">客户自定义域名（可选）</label>
                         @if ($canEditDomainSettings ?? false)
-                            <input type="text" name="public_domain"
-                                   value="{{ old('public_domain', $publicDomain ?? '') }}"
+                            <input type="text" name="custom_domain"
+                                   value="{{ old('custom_domain', $customDomain ?? '') }}"
                                    class="mb-3 w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                                   placeholder="client.example.com">
+                                   placeholder="www.example.com">
                         @else
                             <div class="mb-3 flex flex-col gap-2 sm:flex-row">
-                                <input type="text" name="public_domain"
-                                       value="{{ $publicDomain ?? '' }}"
+                                <input type="text" name="custom_domain"
+                                       value="{{ $customDomain ?? '' }}"
                                        readonly disabled
-                                       data-public-domain-value
+                                       data-custom-domain-value
                                        class="h-10 min-w-0 flex-1 rounded-md border border-gray-300 bg-gray-100 px-3 text-sm text-gray-700 shadow-sm disabled:cursor-not-allowed">
                                 <button type="button"
-                                        data-copy-public-domain="{{ $publicDomain ?? '' }}"
+                                        data-copy-custom-domain="{{ $customDomain ?? '' }}"
                                         class="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700">
                                     <i data-lucide="copy" class="h-4 w-4"></i>
-                                    <span data-copy-public-domain-label>复制</span>
+                                    <span data-copy-custom-domain-label>复制</span>
                                 </button>
                             </div>
                         @endif
                         <p class="mb-4 text-xs leading-5 text-amber-800">
-                            {{ ($canEditDomainSettings ?? false) ? '用于二级域名前台访问，只填写域名即可，例如 client.example.com。' : '域名由平台管理员配置，当前账号不可修改。' }}
+                            @if ($canEditDomainSettings ?? false)
+                                请填写客户已拥有的完整域名，例如 www.example.com。请先在域名服务商处添加 CNAME 记录，将该域名指向上面的系统默认域名（{{ $systemDomain ?? '' }}），不要指向服务器 IP；解析生效后再保存。
+                            @else
+                                客户自定义域名由平台管理员配置，当前账号不可修改。
+                            @endif
                         </p>
+
+                        @php
+                            $customHttpsChecked = (bool) old('custom_https_enabled', $customHttpsEnabled ?? false);
+                        @endphp
+                        <div class="rounded-lg border border-blue-200 bg-blue-50 p-4" data-custom-https-config>
+                            <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-900" for="custom-https-enabled">启用 HTTPS 访问</label>
+                                    <p class="mt-1 text-xs leading-5 text-blue-800">仅适用于已绑定的客户自定义域名。证书校验通过后，保存时会自动部署到站点入口。</p>
+                                </div>
+                                @if ($canEditDomainSettings ?? false)
+                                    <label class="inline-flex shrink-0 items-center gap-2 text-sm font-medium text-blue-900">
+                                        <input id="custom-https-enabled" type="checkbox" name="custom_https_enabled" value="1" @checked($customHttpsChecked) class="h-4 w-4 rounded border-blue-300 text-blue-600 focus:ring-blue-500" data-custom-https-toggle>
+                                        启用
+                                    </label>
+                                @else
+                                    <span class="inline-flex shrink-0 items-center rounded-full bg-white px-3 py-1 text-xs font-medium text-blue-700">{{ $customHttpsChecked ? '已启用' : '未启用' }}</span>
+                                @endif
+                            </div>
+
+                            <div class="mt-4 space-y-4 {{ $customHttpsChecked ? '' : 'hidden' }}" data-custom-https-fields>
+                                <div>
+                                    <label class="mb-1 block text-sm font-medium text-gray-700" for="custom-https-certificate">HTTPS 证书（PEM）</label>
+                                    <textarea id="custom-https-certificate" name="custom_https_certificate" rows="5" class="w-full rounded-md border border-gray-300 bg-white px-3 py-2 font-mono text-xs shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="-----BEGIN CERTIFICATE-----">{{ old('custom_https_certificate', '') }}</textarea>
+                                    <input type="file" name="custom_https_certificate_file" accept=".pem,.crt,.cer,.txt" class="mt-2 block w-full text-sm text-gray-600 file:mr-3 file:rounded-md file:border-0 file:bg-blue-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-blue-700 hover:file:bg-blue-200">
+                                    <p class="mt-1 text-xs text-gray-500">可直接粘贴 PEM 内容，或上传 .pem/.crt/.cer 文件。{{ ($customHttpsCertificateConfigured ?? false) ? '系统已保存一份证书；留空且不上传文件时保留原证书。' : '' }}</p>
+                                </div>
+
+                                <div>
+                                    <label class="mb-1 block text-sm font-medium text-gray-700" for="custom-https-private-key">HTTPS 私钥（PEM）</label>
+                                    <textarea id="custom-https-private-key" name="custom_https_private_key" rows="5" autocomplete="new-password" class="w-full rounded-md border border-gray-300 bg-white px-3 py-2 font-mono text-xs shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="-----BEGIN PRIVATE KEY-----"></textarea>
+                                    <input type="file" name="custom_https_private_key_file" accept=".pem,.key,.txt" class="mt-2 block w-full text-sm text-gray-600 file:mr-3 file:rounded-md file:border-0 file:bg-blue-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-blue-700 hover:file:bg-blue-200">
+                                    <p class="mt-1 text-xs text-gray-500">私钥不会回显，留空且不上传文件时保留已保存私钥；系统会加密存储私钥。</p>
+                                </div>
+
+                                @if ($customerDomainDeploymentEnabled ?? false)
+                                    @if (($customerDomainDeploymentStatus ?? '') === 'active')
+                                        <p class="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs leading-5 text-emerald-800">域名和 HTTPS 配置已自动部署生效。</p>
+                                    @elseif (($customerDomainDeploymentStatus ?? '') === 'failed')
+                                        <p class="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs leading-5 text-rose-800">自动部署未成功：{{ $customerDomainDeploymentError ?: '请联系平台管理员检查部署服务。' }}</p>
+                                    @else
+                                        <p class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">保存域名设置后，系统会自动写入反向代理配置、校验并 reload；部署成功后 HTTPS 跳转才会启用。</p>
+                                    @endif
+                                @else
+                                    <p class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">当前环境未启用自动证书部署。保存证书不会自动使 HTTPS 生效，仍需管理员配置反向代理。</p>
+                                @endif
+                            </div>
+                        </div>
 
                         <label class="block text-sm font-medium text-gray-900 mb-2">{{ __('admin.site_settings.field_admin_base_path') }}</label>
                         <div class="flex rounded-md shadow-sm">
@@ -113,11 +172,11 @@
                             <input type="text" name="admin_base_path" required
                                    value="{{ $settings['admin_base_path'] }}"
                                    class="w-full min-w-0 flex-1 rounded-none rounded-r-md border border-gray-300 px-3 py-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
-                                   @disabled(!($canEditDomainSettings ?? false))
+                                   @disabled(!($canEditAdminBasePath ?? false))
                                    placeholder="{{ __('admin.site_settings.placeholder_admin_base_path') }}">
                         </div>
                         <p class="mt-2 text-xs leading-5 text-amber-800">
-                            {{ ($canEditDomainSettings ?? false) ? __('admin.site_settings.admin_base_path_help') : '后台入口路径由平台管理员配置，当前账号不可修改。' }}
+                            {{ ($canEditAdminBasePath ?? false) ? __('admin.site_settings.admin_base_path_help') : '后台入口路径由平台管理员配置，当前账号不可修改。' }}
                         </p>
                     </div>
 
@@ -841,7 +900,7 @@
                 lucide.createIcons();
             }
 
-            document.querySelectorAll('[data-copy-public-domain]').forEach((button) => {
+            document.querySelectorAll('[data-copy-custom-domain]').forEach((button) => {
                 button.addEventListener('click', async () => {
                     const value = button.dataset.copyPublicDomain || '';
                     if (value === '') {
@@ -863,7 +922,7 @@
                             textarea.remove();
                         }
 
-                        const label = button.querySelector('[data-copy-public-domain-label]');
+                        const label = button.querySelector('[data-copy-custom-domain-label]');
                         if (label) {
                             const previous = label.textContent;
                             label.textContent = '已复制';
@@ -872,7 +931,7 @@
                             }, 1400);
                         }
                     } catch (error) {
-                        const label = button.querySelector('[data-copy-public-domain-label]');
+                        const label = button.querySelector('[data-copy-custom-domain-label]');
                         if (label) {
                             label.textContent = '复制失败';
                         }
@@ -924,6 +983,12 @@
             } else if (shouldOpenAdminRegistrationModal) {
                 openAdminSettingsModal(adminRegistrationModal);
             }
+
+            const customHttpsToggle = document.querySelector('[data-custom-https-toggle]');
+            const customHttpsFields = document.querySelector('[data-custom-https-fields]');
+            customHttpsToggle?.addEventListener('change', () => {
+                customHttpsFields?.classList.toggle('hidden', !customHttpsToggle.checked);
+            });
 
             const adList = document.getElementById('article-ad-list');
             const emptyState = document.getElementById('article-ad-empty');

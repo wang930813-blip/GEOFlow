@@ -10,6 +10,7 @@ use App\Models\SiteSetting;
 use App\Support\AdminWeb;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class AdminSiteSettingsPageTest extends TestCase
@@ -34,7 +35,133 @@ class AdminSiteSettingsPageTest extends TestCase
             ->assertSee(__('admin.site_settings.section_home_carousel'))
             ->assertSee(__('admin.site_settings.section_products'))
             ->assertSee(__('admin.site_settings.module_sensitive_words'))
+            ->assertSee('系统默认域名（不可修改）', false)
+            ->assertSee('客户自定义域名（可选）', false)
+            ->assertSee('启用 HTTPS 访问', false)
+            ->assertSee('name="custom_https_enabled"', false)
+            ->assertSee('data-custom-https-fields', false)
+            ->assertSee('<details open', false)
             ->assertSee('value="'.AdminWeb::basePath().'"', false);
+    }
+
+    public function test_admin_must_bind_a_domain_and_provide_https_credentials_before_enabling_https(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+
+        [$admin, $site] = $this->createAdminWithSite('site_https_required');
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => $site->id])
+            ->post(route('admin.site-settings.update'), [
+                'site_name' => 'HTTPS Site',
+                'custom_https_enabled' => '1',
+                'site_subtitle' => '',
+                'site_description' => '',
+                'site_keywords' => '',
+                'copyright_info' => '',
+                'site_logo' => '',
+                'site_favicon' => '',
+                'analytics_code' => '',
+                'seo_title_template' => '{title} - {site_name}',
+                'seo_description_template' => '{description}',
+                'featured_limit' => 6,
+                'per_page' => 12,
+                'admin_base_path' => AdminWeb::basePath(),
+            ])
+            ->assertSessionHasErrors(['custom_domain']);
+
+        $this->assertFalse((bool) $site->fresh()->custom_https_enabled);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => $site->id])
+            ->post(route('admin.site-settings.update'), [
+                'site_name' => 'HTTPS Site',
+                'custom_domain' => 'www.example.com',
+                'custom_https_enabled' => '1',
+                'site_subtitle' => '',
+                'site_description' => '',
+                'site_keywords' => '',
+                'copyright_info' => '',
+                'site_logo' => '',
+                'site_favicon' => '',
+                'analytics_code' => '',
+                'seo_title_template' => '{title} - {site_name}',
+                'seo_description_template' => '{description}',
+                'featured_limit' => 6,
+                'per_page' => 12,
+                'admin_base_path' => AdminWeb::basePath(),
+            ])
+            ->assertSessionHasErrors('custom_https_certificate');
+
+        $this->assertFalse((bool) $site->fresh()->custom_https_enabled);
+    }
+
+    public function test_site_https_private_key_is_encrypted_at_rest(): void
+    {
+        $site = Site::query()->create([
+            'name' => 'Encrypted HTTPS Site',
+            'domain' => 'encrypted.example.test',
+            'status' => 'active',
+        ]);
+        $privateKey = '-----BEGIN PRIVATE KEY-----secret-----END PRIVATE KEY-----';
+
+        $site->forceFill(['custom_https_private_key' => $privateKey])->save();
+
+        $storedValue = (string) DB::table('sites')->whereKey($site->id)->value('custom_https_private_key');
+
+        $this->assertNotSame($privateKey, $storedValue);
+        $this->assertSame($privateKey, (string) $site->fresh()->custom_https_private_key);
+    }
+
+    public function test_admin_can_save_a_matching_https_certificate_and_private_key(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+
+        if (! function_exists('openssl_pkey_new')) {
+            $this->markTestSkipped('OpenSSL extension is unavailable');
+        }
+
+        [$admin, $site] = $this->createAdminWithSite('site_https_credentials');
+        $privateKeyResource = openssl_pkey_new([
+            'private_key_type' => OPENSSL_KEYTYPE_RSA,
+            'private_key_bits' => 2048,
+        ]);
+        $this->assertNotFalse($privateKeyResource);
+
+        $csr = openssl_csr_new(['commonName' => 'www.example.com'], $privateKeyResource, ['digest_alg' => 'sha256']);
+        $this->assertNotFalse($csr);
+        $certificateResource = openssl_csr_sign($csr, null, $privateKeyResource, 30, ['digest_alg' => 'sha256']);
+        $this->assertNotFalse($certificateResource);
+        $this->assertTrue(openssl_x509_export($certificateResource, $certificate));
+        $this->assertTrue(openssl_pkey_export($privateKeyResource, $privateKey));
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => $site->id])
+            ->post(route('admin.site-settings.update'), [
+                'site_name' => 'HTTPS Site',
+                'custom_domain' => 'www.example.com',
+                'custom_https_enabled' => '1',
+                'custom_https_certificate' => $certificate,
+                'custom_https_private_key' => $privateKey,
+                'site_subtitle' => '',
+                'site_description' => '',
+                'site_keywords' => '',
+                'copyright_info' => '',
+                'site_logo' => '',
+                'site_favicon' => '',
+                'analytics_code' => '',
+                'seo_title_template' => '{title} - {site_name}',
+                'seo_description_template' => '{description}',
+                'featured_limit' => 6,
+                'per_page' => 12,
+                'admin_base_path' => AdminWeb::basePath(),
+            ])
+            ->assertRedirect(route('admin.site-settings.index'));
+
+        $savedSite = $site->fresh();
+        $this->assertTrue((bool) $savedSite->custom_https_enabled);
+        $this->assertSame(trim($certificate), (string) $savedSite->custom_https_certificate);
+        $this->assertSame(trim($privateKey), (string) $savedSite->custom_https_private_key);
     }
 
     public function test_super_admin_can_update_admin_display_settings_independently(): void
@@ -236,7 +363,7 @@ class AdminSiteSettingsPageTest extends TestCase
         );
     }
 
-    public function test_admin_can_update_current_site_public_domain(): void
+    public function test_admin_can_update_current_site_custom_domain_without_changing_system_domain(): void
     {
         $this->withoutMiddleware(ValidateCsrfToken::class);
 
@@ -251,6 +378,7 @@ class AdminSiteSettingsPageTest extends TestCase
         $site = Site::query()->create([
             'owner_admin_id' => $admin->id,
             'name' => 'Domain Site',
+            'domain' => 'system-domain.example.test',
             'status' => 'active',
         ]);
         $site->members()->attach($admin->id, ['role' => 'owner']);
@@ -259,7 +387,7 @@ class AdminSiteSettingsPageTest extends TestCase
             ->withSession(['current_site_id' => $site->id])
             ->post(route('admin.site-settings.update'), [
                 'site_name' => 'Frontend Site',
-                'public_domain' => 'https://Client-A.Example.test/some/path',
+                'custom_domain' => 'https://Client-A.Example.test/some/path',
                 'site_subtitle' => '',
                 'site_description' => '',
                 'site_keywords' => '',
@@ -275,16 +403,19 @@ class AdminSiteSettingsPageTest extends TestCase
             ])
             ->assertRedirect(route('admin.site-settings.index'));
 
-        $this->assertSame('client-a.example.test', (string) $site->fresh()->domain);
+        $site->refresh();
+        $this->assertSame('system-domain.example.test', (string) $site->domain);
+        $this->assertSame('client-a.example.test', (string) $site->custom_domain);
     }
 
-    public function test_direct_admin_and_site_user_can_access_site_settings_but_cannot_change_domain_settings(): void
+    public function test_direct_admin_and_site_user_can_update_their_current_site_domain_settings(): void
     {
         $this->withoutMiddleware(ValidateCsrfToken::class);
 
         foreach (['direct_admin', 'site_user'] as $role) {
             [$admin, $site] = $this->createAdminWithSite('site_domain_locked_'.$role, $role);
-            $site->forceFill(['domain' => 'locked-'.$role.'.example.test'])->save();
+            $site->forceFill(['domain' => 'system-'.$role.'.example.test'])->save();
+            $changedDomain = 'changed-'.str_replace('_', '-', $role).'.example.test';
 
             SiteSetting::query()->updateOrCreate(
                 ['site_id' => $site->id, 'setting_key' => 'admin_base_path'],
@@ -302,17 +433,16 @@ class AdminSiteSettingsPageTest extends TestCase
 
             $settingsResponse
                 ->assertOk()
-                ->assertSee('name="public_domain"', false)
-                ->assertSee('data-copy-public-domain', false)
-                ->assertSee('locked-'.$role.'.example.test')
+                ->assertSee('name="custom_domain"', false)
+                ->assertSee('system-'.$role.'.example.test')
                 ->assertSee('name="admin_base_path"', false)
-                ->assertSee('disabled', false);
+                ->assertDontSee('name="custom_domain" value="system-'.$role.'.example.test" readonly', false);
 
             $this->actingAs($admin, 'admin')
                 ->withSession(['current_site_id' => $site->id])
                 ->post(route('admin.site-settings.update'), [
                     'site_name' => 'Locked Site '.$role,
-                    'public_domain' => 'changed-'.$role.'.example.test',
+                    'custom_domain' => $changedDomain,
                     'site_subtitle' => '',
                     'site_description' => '',
                     'site_keywords' => '',
@@ -328,7 +458,9 @@ class AdminSiteSettingsPageTest extends TestCase
                 ])
                 ->assertRedirect(route('admin.site-settings.index'));
 
-            $this->assertSame('locked-'.$role.'.example.test', (string) $site->fresh()->domain);
+            $site->refresh();
+            $this->assertSame('system-'.$role.'.example.test', (string) $site->domain);
+            $this->assertSame($changedDomain, (string) $site->custom_domain);
             $this->assertSame(
                 AdminWeb::basePath(),
                 (string) SiteSetting::withoutGlobalScope('current_site')
@@ -355,7 +487,9 @@ class AdminSiteSettingsPageTest extends TestCase
                 ])
                 ->assertRedirect(route('admin.site-settings.index'));
 
-            $this->assertSame('locked-'.$role.'.example.test', (string) $site->fresh()->domain);
+            $site->refresh();
+            $this->assertSame('system-'.$role.'.example.test', (string) $site->domain);
+            $this->assertSame($changedDomain, (string) $site->custom_domain);
         }
     }
 

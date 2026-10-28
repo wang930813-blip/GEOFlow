@@ -12,10 +12,25 @@ class Site extends Model
 {
     use SoftDeletes;
 
+    protected $hidden = [
+        'custom_https_private_key',
+    ];
+
+    protected $attributes = [
+        'custom_domain_deployment_status' => 'manual',
+    ];
+
     protected $fillable = [
         'owner_admin_id',
         'name',
         'domain',
+        'custom_domain',
+        'custom_https_enabled',
+        'custom_https_certificate',
+        'custom_https_private_key',
+        'custom_domain_deployment_status',
+        'custom_domain_deployment_error',
+        'custom_domain_deployed_at',
         'status',
         'customer_mode',
         'agent_admin_id',
@@ -28,6 +43,11 @@ class Site extends Model
         return [
             'owner_admin_id' => 'integer',
             'agent_admin_id' => 'integer',
+            'custom_domain' => 'string',
+            'custom_https_enabled' => 'boolean',
+            'custom_https_certificate' => 'encrypted',
+            'custom_https_private_key' => 'encrypted',
+            'custom_domain_deployed_at' => 'datetime',
             'settings' => 'array',
             'deleted_at' => 'datetime',
         ];

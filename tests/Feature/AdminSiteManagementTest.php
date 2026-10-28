@@ -289,7 +289,7 @@ class AdminSiteManagementTest extends TestCase
         $this->assertSame(0, $createdPrompts);
     }
 
-    public function test_super_admin_can_update_site_and_toggle_status(): void
+    public function test_super_admin_can_update_site_custom_domain_and_toggle_status(): void
     {
         $this->withoutMiddleware(ValidateCsrfToken::class);
 
@@ -304,11 +304,18 @@ class AdminSiteManagementTest extends TestCase
             'status' => 'active',
         ]);
         $site->members()->attach($owner->id, ['role' => 'owner']);
+        $site->forceFill([
+            'custom_domain' => 'old.example.com',
+            'custom_https_enabled' => true,
+            'custom_https_certificate' => 'old-certificate',
+            'custom_https_private_key' => 'old-private-key',
+        ])->save();
 
         $this->actingAs($superAdmin, 'admin')
             ->post(route('admin.sites.manage.update', ['site' => $site->id]), [
                 'name' => 'New Site',
-                'domain' => 'new.geo.xinzhidi.cn',
+                'domain' => 'changed-system-domain.example.test',
+                'custom_domain' => 'www.example.com',
                 'status' => 'inactive',
                 'owner_admin_id' => $newOwner->id,
                 'member_ids' => [],
@@ -319,6 +326,10 @@ class AdminSiteManagementTest extends TestCase
 
         $this->assertSame('New Site', $site->name);
         $this->assertSame('old.geo.xinzhidi.cn', $site->domain);
+        $this->assertSame('www.example.com', $site->custom_domain);
+        $this->assertFalse((bool) $site->custom_https_enabled);
+        $this->assertNull($site->custom_https_certificate);
+        $this->assertNull($site->custom_https_private_key);
         $this->assertSame('inactive', $site->status);
         $this->assertDatabaseMissing('site_members', [
             'site_id' => $site->id,
@@ -337,7 +348,7 @@ class AdminSiteManagementTest extends TestCase
         $this->assertSame('active', $site->fresh()->status);
     }
 
-    public function test_site_domain_is_read_only_after_creation(): void
+    public function test_site_system_domain_is_read_only_and_custom_domain_is_editable(): void
     {
         $superAdmin = $this->createAdmin('platform_domain_lock_viewer', 'super_admin');
         $owner = $this->createAdmin('domain_lock_owner', 'direct_admin');
@@ -355,8 +366,10 @@ class AdminSiteManagementTest extends TestCase
             ->get(route('admin.sites.manage.index'))
             ->assertOk()
             ->assertSee('id="site-domain-'.$site->id.'"', false)
-            ->assertSee('readonly', false)
-            ->assertDontSee('name="domain" value="locked-domain.geo.xinzhidi.cn"', false);
+            ->assertSee('value="locked-domain.geo.xinzhidi.cn"', false)
+            ->assertSee('name="custom_domain"', false)
+            ->assertSee('系统默认域名（不可修改）', false)
+            ->assertSee('readonly disabled', false);
     }
 
     public function test_site_edit_form_is_rendered_in_modal_instead_of_inline_table_row(): void
@@ -406,6 +419,7 @@ class AdminSiteManagementTest extends TestCase
             ->post(route('admin.sites.manage.update', ['site' => $site->id]), [
                 'name' => 'Agent Report Logo Site',
                 'domain' => 'changed-agent-report-logo.geo.xinzhidi.cn',
+                'custom_domain' => 'agent.example.com',
                 'status' => 'active',
                 'owner_admin_id' => $member->id,
                 'member_ids' => [$member->id],
@@ -413,7 +427,9 @@ class AdminSiteManagementTest extends TestCase
             ])
             ->assertRedirect(route('admin.sites.manage.index'));
 
-        $this->assertSame('agent-report-logo.geo.xinzhidi.cn', (string) $site->fresh()->domain);
+        $site->refresh();
+        $this->assertSame('agent-report-logo.geo.xinzhidi.cn', (string) $site->domain);
+        $this->assertSame('agent.example.com', (string) $site->custom_domain);
         $this->assertDatabaseMissing('site_settings', [
             'site_id' => (int) $site->id,
             'setting_key' => 'monitoring_report_logo',

@@ -239,7 +239,12 @@ class AgentUserController extends Controller
             $name = Str::lower(Str::random(8));
         } while (
             Site::query()->where('name', $name)->exists()
-            || Site::query()->where('domain', $this->customerSiteDomain($name))->exists()
+            || Site::query()
+                ->where(function ($query) use ($name): void {
+                    $domain = $this->customerSiteDomain($name);
+                    $query->where('domain', $domain)->orWhere('custom_domain', $domain);
+                })
+                ->exists()
         );
 
         return $name;

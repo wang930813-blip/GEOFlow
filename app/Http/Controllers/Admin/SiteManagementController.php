@@ -8,6 +8,8 @@ use App\Models\AdminPlanSubscription;
 use App\Models\Site;
 use App\Models\SitePlanSubscription;
 use App\Models\SiteSetting;
+use App\Services\CustomerDomain\CustomerDomainDeploymentException;
+use App\Services\CustomerDomain\CustomerDomainDeploymentManager;
 use App\Services\MonitoringCenter\MonitoringReportLogoResolver;
 use App\Support\AdminWeb;
 use Illuminate\Http\RedirectResponse;
@@ -22,7 +24,8 @@ use Illuminate\View\View;
 class SiteManagementController extends Controller
 {
     public function __construct(
-        private readonly MonitoringReportLogoResolver $reportLogoResolver
+        private readonly MonitoringReportLogoResolver $reportLogoResolver,
+        private readonly CustomerDomainDeploymentManager $customerDomainDeploymentManager
     ) {}
 
     public function index(): View
@@ -64,11 +67,12 @@ class SiteManagementController extends Controller
         $admin = $this->authorizedAdmin();
         $payload = $this->validatedPayload($request, null, $admin);
 
-        DB::transaction(function () use ($admin, $payload): void {
+        $site = DB::transaction(function () use ($admin, $payload): Site {
             $site = Site::query()->create(Arr::only($payload, [
                 'owner_admin_id',
                 'name',
                 'domain',
+                'custom_domain',
                 'status',
                 'customer_mode',
                 'agent_admin_id',
@@ -76,7 +80,19 @@ class SiteManagementController extends Controller
 
             $this->syncMembers($site, $payload);
             $this->saveMonitoringReportLogo($admin, $site, $payload);
+
+            return $site;
         });
+
+        if (trim((string) $site->custom_domain) !== '') {
+            try {
+                $this->customerDomainDeploymentManager->synchronize($site);
+            } catch (CustomerDomainDeploymentException $exception) {
+                return back()
+                    ->withErrors(['custom_domain' => $exception->getMessage()])
+                    ->withInput($request->except(['custom_https_private_key', 'custom_https_private_key_file']));
+            }
+        }
 
         return redirect()->route('admin.sites.manage.index')->with('message', '站点已创建');
     }
@@ -87,20 +103,46 @@ class SiteManagementController extends Controller
         $this->authorizeSiteAccess($admin, $site);
 
         $payload = $this->validatedPayload($request, $site, $admin);
+        $customDomainChanged = (string) $site->custom_domain !== (string) $payload['custom_domain'];
+        $siteStatusChanged = (string) $site->status !== (string) $payload['status'];
 
         DB::transaction(function () use ($admin, $site, $payload): void {
-            $site->update(Arr::only($payload, [
+            $siteUpdate = Arr::only($payload, [
                 'owner_admin_id',
                 'name',
-                'domain',
+                'custom_domain',
                 'status',
                 'customer_mode',
                 'agent_admin_id',
-            ]));
+            ]);
+
+            if ((string) $site->custom_domain !== (string) $payload['custom_domain'] && (bool) $site->custom_https_enabled) {
+                // 域名更换后旧证书不再可信，必须重新配置证书后才能恢复 HTTPS 强制跳转。
+                $siteUpdate['custom_https_enabled'] = false;
+                $siteUpdate['custom_https_certificate'] = null;
+                $siteUpdate['custom_https_private_key'] = null;
+            }
+
+            $site->forceFill($siteUpdate)->save();
 
             $this->syncMembers($site, $payload);
             $this->saveMonitoringReportLogo($admin, $site, $payload);
         });
+
+        if ($customDomainChanged || $siteStatusChanged) {
+            try {
+                $site = $site->refresh();
+                if ($site->status === 'active') {
+                    $this->customerDomainDeploymentManager->synchronize($site);
+                } else {
+                    $this->customerDomainDeploymentManager->remove($site);
+                }
+            } catch (CustomerDomainDeploymentException $exception) {
+                return back()
+                    ->withErrors(['custom_domain' => $exception->getMessage()])
+                    ->withInput($request->except(['custom_https_private_key', 'custom_https_private_key_file']));
+            }
+        }
 
         return redirect()->route('admin.sites.manage.index')->with('message', '站点已更新');
     }
@@ -110,9 +152,17 @@ class SiteManagementController extends Controller
         $admin = $this->authorizedAdmin();
         $this->authorizeSiteAccess($admin, $site);
 
-        $site->update([
-            'status' => $site->status === 'active' ? 'inactive' : 'active',
-        ]);
+        $site->update(['status' => $site->status === 'active' ? 'inactive' : 'active']);
+
+        try {
+            if ($site->status === 'active') {
+                $this->customerDomainDeploymentManager->synchronize($site->refresh());
+            } else {
+                $this->customerDomainDeploymentManager->remove($site);
+            }
+        } catch (CustomerDomainDeploymentException $exception) {
+            return back()->withErrors(['custom_domain' => $exception->getMessage()]);
+        }
 
         return redirect()->route('admin.sites.manage.index')->with('message', '站点状态已更新');
     }
@@ -121,6 +171,12 @@ class SiteManagementController extends Controller
     {
         $admin = $this->authorizedAdmin();
         $this->authorizeSiteAccess($admin, $site);
+
+        try {
+            $this->customerDomainDeploymentManager->remove($site);
+        } catch (CustomerDomainDeploymentException $exception) {
+            return back()->withErrors(['custom_domain' => $exception->getMessage()]);
+        }
 
         DB::transaction(function () use ($site): void {
             SitePlanSubscription::query()
@@ -141,16 +197,21 @@ class SiteManagementController extends Controller
     }
 
     /**
-     * @return array{owner_admin_id:int|null,name:string,domain:string,status:string,customer_mode:string,agent_admin_id:int|null,member_ids:array<int,int>,monitoring_report_logo:string}
+     * @return array{owner_admin_id:int|null,name:string,domain:string,custom_domain:string,status:string,customer_mode:string,agent_admin_id:int|null,member_ids:array<int,int>,monitoring_report_logo:string}
      */
     private function validatedPayload(Request $request, ?Site $site = null, ?Admin $actor = null): array
     {
         $actor ??= $this->authorizedAdmin();
+        // 系统默认域名只在创建时写入，更新请求始终保留原值，避免被客户域名覆盖。
         $domainInput = $site instanceof Site
             ? (string) $site->domain
             : (string) $request->input('domain', '');
+        $customDomainInput = $request->exists('custom_domain')
+            ? (string) $request->input('custom_domain', '')
+            : (string) ($site?->custom_domain ?? '');
         $request->merge([
             'domain' => $this->normalizeDomain($domainInput),
+            'custom_domain' => $this->normalizeDomain($customDomainInput),
         ]);
 
         $ownerExistsRule = $actor->isAgentAdmin()
@@ -172,6 +233,12 @@ class SiteManagementController extends Controller
                 'max:255',
                 'regex:/^[A-Za-z0-9.-]+$/',
             ],
+            'custom_domain' => [
+                'nullable',
+                'string',
+                'max:255',
+                'regex:/^[A-Za-z0-9.-]+$/',
+            ],
             'status' => ['required', Rule::in(['active', 'inactive'])],
             'customer_mode' => ['nullable', Rule::in(['agent', 'direct', 'internal'])],
             'owner_admin_id' => [$actor->isAgentAdmin() ? 'required' : 'nullable', 'integer', $ownerExistsRule],
@@ -180,7 +247,8 @@ class SiteManagementController extends Controller
             'monitoring_report_logo' => ['nullable', 'string', 'max:500'],
         ], [
             'name.required' => '请填写站点名称',
-            'domain.regex' => '前台域名只填写域名，不要包含路径或特殊字符',
+            'domain.regex' => '系统默认域名只填写域名，不要包含路径或特殊字符',
+            'custom_domain.regex' => '客户自定义域名只填写域名，不要包含路径或特殊字符',
             'status.in' => '站点状态不正确',
         ]);
 
@@ -197,13 +265,32 @@ class SiteManagementController extends Controller
 
         if (($payload['domain'] ?? '') !== '') {
             $domainExists = Site::query()
-                ->where('domain', $payload['domain'])
                 ->when($site instanceof Site, fn ($query) => $query->whereKeyNot($site->id))
+                ->where(function ($query) use ($payload): void {
+                    $query->where('domain', $payload['domain'])
+                        ->orWhere('custom_domain', $payload['domain']);
+                })
                 ->exists();
 
             if ($domainExists) {
                 throw ValidationException::withMessages([
-                    'domain' => '该前台域名已经绑定到其他站点',
+                    'domain' => '该系统默认域名已经绑定到其他站点',
+                ]);
+            }
+        }
+
+        if (($payload['custom_domain'] ?? '') !== '') {
+            $domainExists = Site::query()
+                ->when($site instanceof Site, fn ($query) => $query->whereKeyNot($site->id))
+                ->where(function ($query) use ($payload): void {
+                    $query->where('domain', $payload['custom_domain'])
+                        ->orWhere('custom_domain', $payload['custom_domain']);
+                })
+                ->exists();
+
+            if ($domainExists) {
+                throw ValidationException::withMessages([
+                    'custom_domain' => '该客户自定义域名已经绑定到其他站点',
                 ]);
             }
         }
@@ -232,6 +319,7 @@ class SiteManagementController extends Controller
             'owner_admin_id' => $ownerAdminId > 0 ? $ownerAdminId : null,
             'name' => trim((string) $payload['name']),
             'domain' => trim((string) ($payload['domain'] ?? '')),
+            'custom_domain' => trim((string) ($payload['custom_domain'] ?? '')),
             'status' => (string) $payload['status'],
             'customer_mode' => $customerMode,
             'agent_admin_id' => $agentAdminId,
