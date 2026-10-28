@@ -21,14 +21,26 @@ class ResolveFrontendSiteByDomain
         $host = SiteDomain::normalize($request->getHost());
         $site = $host !== ''
             ? Site::query()
-                ->select(['id', 'owner_admin_id', 'name', 'domain', 'status', 'settings', 'created_at', 'updated_at'])
+                ->select(['id', 'owner_admin_id', 'name', 'domain', 'custom_domain', 'custom_https_enabled', 'status', 'settings', 'created_at', 'updated_at'])
                 ->where('status', 'active')
-                ->where('domain', $host)
+                ->where(function ($query) use ($host): void {
+                    $query->where('domain', $host)->orWhere('custom_domain', $host);
+                })
                 ->first()
             : null;
 
         if ($site instanceof Site) {
             $this->currentSite->set($site);
+
+            if ((bool) $site->custom_https_enabled
+                && $site->custom_domain !== ''
+                && $host === SiteDomain::normalize((string) $site->custom_domain)
+                && ! $request->isSecure()) {
+                return redirect()->to(
+                    'https://'.$request->getHost().$request->getRequestUri(),
+                    301
+                );
+            }
 
             return $next($request);
         }
@@ -45,7 +57,9 @@ class ResolveFrontendSiteByDomain
     {
         return Site::query()
             ->where('status', 'active')
-            ->where('domain', '!=', '')
+            ->where(function ($query): void {
+                $query->where('domain', '!=', '')->orWhere('custom_domain', '!=', '');
+            })
             ->exists();
     }
 }

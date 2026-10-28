@@ -63,6 +63,40 @@ class SiteDomainResolutionTest extends TestCase
             ->assertNotFound();
     }
 
+    public function test_frontend_resolves_a_customer_owned_domain_without_changing_system_domain(): void
+    {
+        $site = $this->createSiteWithArticle(
+            'Customer Domain Site',
+            'generated.geo.xinzhidi.cn',
+            'Customer Domain Article',
+            'customer-domain-article'
+        );
+
+        $site->update(['custom_domain' => 'www.example.com']);
+
+        $this->assertSame('generated.geo.xinzhidi.cn', (string) $site->fresh()->domain);
+        $this->get('https://www.example.com/')
+            ->assertOk()
+            ->assertSee('Customer Domain Article');
+    }
+
+    public function test_enabled_custom_https_redirects_plain_http_to_https(): void
+    {
+        $site = $this->createSiteWithArticle(
+            'HTTPS Site',
+            'generated.geo.xinzhidi.cn',
+            'HTTPS Article',
+            'https-article'
+        );
+        $site->update([
+            'custom_domain' => 'www.example.com',
+            'custom_https_enabled' => true,
+        ]);
+
+        $this->get('http://www.example.com/article/https-article')
+            ->assertRedirect('https://www.example.com/article/https-article');
+    }
+
     private function createSiteWithArticle(string $siteName, string $domain, string $title, string $slug): Site
     {
         $site = Site::query()->create([

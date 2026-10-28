@@ -16,7 +16,11 @@ final class CustomerSiteDomain
 
         do {
             $domain = Str::lower(Str::random(8)).'.'.$base;
-        } while (Site::query()->where('domain', $domain)->exists());
+        } while (Site::query()
+            ->where(function ($query) use ($domain): void {
+                $query->where('domain', $domain)->orWhere('custom_domain', $domain);
+            })
+            ->exists());
 
         return $domain;
     }
@@ -36,7 +40,9 @@ final class CustomerSiteDomain
             $domain = $prefix.'.'.$base;
 
             $exists = Site::query()
-                ->where('domain', $domain)
+                ->where(function ($query) use ($domain): void {
+                    $query->where('domain', $domain)->orWhere('custom_domain', $domain);
+                })
                 ->when($ignoreSiteId !== null, fn ($query) => $query->whereKeyNot($ignoreSiteId))
                 ->exists();
 
@@ -49,7 +55,9 @@ final class CustomerSiteDomain
             $domain = $basePrefix.'-'.Str::lower(Str::random(8)).'.'.$base;
         } while (
             Site::query()
-                ->where('domain', $domain)
+                ->where(function ($query) use ($domain): void {
+                    $query->where('domain', $domain)->orWhere('custom_domain', $domain);
+                })
                 ->when($ignoreSiteId !== null, fn ($query) => $query->whereKeyNot($ignoreSiteId))
                 ->exists()
         );

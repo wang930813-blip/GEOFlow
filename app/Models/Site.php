@@ -16,6 +16,10 @@ class Site extends Model
         'owner_admin_id',
         'name',
         'domain',
+        'custom_domain',
+        'custom_https_enabled',
+        'custom_https_certificate',
+        'custom_https_private_key',
         'status',
         'customer_mode',
         'agent_admin_id',
@@ -28,6 +32,10 @@ class Site extends Model
         return [
             'owner_admin_id' => 'integer',
             'agent_admin_id' => 'integer',
+            'custom_domain' => 'string',
+            'custom_https_enabled' => 'boolean',
+            'custom_https_certificate' => 'encrypted',
+            'custom_https_private_key' => 'encrypted',
             'settings' => 'array',
             'deleted_at' => 'datetime',
         ];

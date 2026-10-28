@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Admin;
 use App\Models\PlatformPlan;
 use App\Models\Site;
 use App\Models\SiteSetting;
@@ -17,6 +18,8 @@ use App\Support\SiteDomain;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 /**
@@ -48,7 +51,11 @@ class SiteSettingsController extends Controller
             'activeMenu' => 'site_settings',
             'adminSiteName' => AdminWeb::siteName(),
             'settings' => $settings,
-            'publicDomain' => (string) ($currentSite?->domain ?? ''),
+            'systemDomain' => (string) ($currentSite?->domain ?? ''),
+            'customDomain' => (string) ($currentSite?->custom_domain ?? ''),
+            'customHttpsEnabled' => (bool) ($currentSite?->custom_https_enabled ?? false),
+            'customHttpsCertificateConfigured' => trim((string) ($currentSite?->custom_https_certificate ?? '')) !== '',
+            'customHttpsPrivateKeyConfigured' => trim((string) ($currentSite?->custom_https_private_key ?? '')) !== '',
             'canEditAnalytics' => auth('admin')->user()?->isSuperAdmin() === true,
             'canEditAdminDisplaySettings' => $canEditAdminDisplaySettings,
             'adminDisplaySettings' => AdminDisplaySettings::all(),
@@ -62,6 +69,7 @@ class SiteSettingsController extends Controller
                     ->get(['id', 'name', 'code', 'duration_days', 'audience'])
                 : collect(),
             'canEditDomainSettings' => $this->canEditDomainSettings(),
+            'canEditAdminBasePath' => $this->canEditAdminBasePath(),
             'availableThemes' => $this->siteThemeCatalog->all(),
             'homeCarouselSlides' => $this->parseHomeCarouselSlides((string) ($settings['home_carousel_slides'] ?? '[]')),
             'articleDetailAds' => $this->parseArticleDetailAds((string) ($settings['article_detail_ads'] ?? '[]')),
@@ -76,6 +84,10 @@ class SiteSettingsController extends Controller
     {
         $currentAdminBasePath = AdminWeb::basePath();
         $canEditDomainSettings = $this->canEditDomainSettings();
+        $canEditAdminBasePath = $this->canEditAdminBasePath();
+        // 私钥不进入 Request 的旧输入闪存，避免校验失败时写入 Session 或回显到页面。
+        $customHttpsPrivateKeyInput = trim((string) $request->input('custom_https_private_key', ''));
+        $request->request->remove('custom_https_private_key');
         $rules = [
             'site_name' => ['required', 'string', 'max:120'],
             'site_subtitle' => ['nullable', 'string', 'max:255'],
@@ -84,7 +96,13 @@ class SiteSettingsController extends Controller
             'copyright_info' => ['nullable', 'string', 'max:500'],
             'site_logo' => ['nullable', 'url', 'max:500'],
             'site_favicon' => ['nullable', 'url', 'max:500'],
+            'custom_domain' => ['nullable', 'string', 'max:255'],
+            // 兼容旧版页面提交，旧字段只映射到客户自定义域名，不会修改系统默认域名。
             'public_domain' => ['nullable', 'string', 'max:255'],
+            'custom_https_enabled' => ['nullable', 'boolean'],
+            'custom_https_certificate' => ['nullable', 'string', 'max:262144'],
+            'custom_https_certificate_file' => ['nullable', 'file', 'max:256', 'extensions:pem,crt,cer,txt'],
+            'custom_https_private_key_file' => ['nullable', 'file', 'max:256', 'extensions:pem,key,txt'],
             'analytics_code' => ['nullable', 'string'],
             'seo_title_template' => ['nullable', 'string', 'max:255'],
             'seo_description_template' => ['nullable', 'string', 'max:255'],
@@ -105,7 +123,7 @@ class SiteSettingsController extends Controller
             'contact_payments.*.account' => ['nullable', 'string', 'max:200'],
             'contact_payments.*.enabled' => ['nullable'],
             'admin_base_path' => [
-                Rule::requiredIf($canEditDomainSettings),
+                Rule::requiredIf($canEditAdminBasePath),
                 'nullable',
                 'string',
                 'min:3',
@@ -115,7 +133,7 @@ class SiteSettingsController extends Controller
             ],
         ];
 
-        $payload = $request->validate($rules, [
+        $validator = Validator::make($request->all(), $rules, [
             'site_name.required' => __('admin.site_settings.error.site_name_required'),
             'admin_base_path.required' => __('admin.site_settings.error.admin_base_path_required'),
             'admin_base_path.min' => __('admin.site_settings.error.admin_base_path_invalid'),
@@ -123,9 +141,16 @@ class SiteSettingsController extends Controller
             'admin_base_path.regex' => __('admin.site_settings.error.admin_base_path_invalid'),
             'admin_base_path.not_in' => __('admin.site_settings.error.admin_base_path_reserved'),
         ]);
+        if ($validator->fails()) {
+            return back()
+                ->withErrors($validator)
+                ->withInput($request->except(['custom_https_private_key', 'custom_https_private_key_file']));
+        }
+
+        $payload = $validator->validated();
 
         try {
-            $newAdminBasePath = $canEditDomainSettings
+            $newAdminBasePath = $canEditAdminBasePath
                 ? AdminBasePathManager::normalize((string) $payload['admin_base_path'])
                 : $currentAdminBasePath;
         } catch (\Throwable) {
@@ -135,23 +160,39 @@ class SiteSettingsController extends Controller
         $currentSettings = $this->loadSettings();
         $canEditAnalytics = auth('admin')->user()?->isSuperAdmin() === true;
         $currentSite = app(CurrentSite::class)->get();
-        $publicDomain = $canEditDomainSettings
-            ? SiteDomain::normalize((string) ($payload['public_domain'] ?? ''))
-            : (string) ($currentSite?->domain ?? '');
+        $customDomainInput = $request->exists('custom_domain')
+            ? (string) ($payload['custom_domain'] ?? '')
+            : ($request->exists('public_domain')
+                ? (string) ($payload['public_domain'] ?? '')
+                : (string) ($currentSite?->custom_domain ?? ''));
+        $customDomain = $canEditDomainSettings
+            ? SiteDomain::normalize($customDomainInput)
+            : (string) ($currentSite?->custom_domain ?? '');
 
-        if ($canEditDomainSettings && $publicDomain === '' && trim((string) ($payload['public_domain'] ?? '')) !== '') {
-            return back()->withErrors(['public_domain' => __('admin.site_settings.error.public_domain_invalid')])->withInput();
+        if ($canEditDomainSettings && $customDomain === '' && trim($customDomainInput) !== '') {
+            return back()->withErrors(['custom_domain' => __('admin.site_settings.error.public_domain_invalid')])->withInput();
         }
 
-        if ($canEditDomainSettings && $currentSite instanceof Site && $publicDomain !== '') {
+        if ($canEditDomainSettings && $currentSite instanceof Site && $customDomain !== '') {
             $domainExists = Site::query()
-                ->where('domain', $publicDomain)
                 ->whereKeyNot($currentSite->id)
+                ->where(function ($query) use ($customDomain): void {
+                    $query->where('domain', $customDomain)
+                        ->orWhere('custom_domain', $customDomain);
+                })
                 ->exists();
             if ($domainExists) {
-                return back()->withErrors(['public_domain' => __('admin.site_settings.error.public_domain_taken')])->withInput();
+                return back()->withErrors(['custom_domain' => __('admin.site_settings.error.public_domain_taken')])->withInput();
             }
         }
+
+        $customHttps = $this->resolveCustomHttpsSettings(
+            $request,
+            $customHttpsPrivateKeyInput,
+            $currentSite,
+            $customDomain,
+            $canEditDomainSettings
+        );
 
         $settings = [
             'site_name' => trim((string) $payload['site_name']),
@@ -174,7 +215,7 @@ class SiteSettingsController extends Controller
             'company_address' => trim((string) ($payload['company_address'] ?? '')),
             'site_remark' => trim((string) ($payload['site_remark'] ?? '')),
             'contact_payments' => (string) json_encode($this->normalizeContactPayments($payload['contact_payments'] ?? []), JSON_UNESCAPED_UNICODE),
-            'admin_base_path' => $canEditDomainSettings ? $newAdminBasePath : $currentAdminBasePath,
+            'admin_base_path' => $canEditAdminBasePath ? $newAdminBasePath : $currentAdminBasePath,
         ];
 
         foreach ($settings as $settingKey => $settingValue) {
@@ -185,13 +226,15 @@ class SiteSettingsController extends Controller
         }
 
         if ($canEditDomainSettings && $currentSite instanceof Site) {
-            Site::query()->whereKey($currentSite->id)->update(['domain' => $publicDomain]);
-            $currentSite->forceFill(['domain' => $publicDomain]);
+            $currentSite->forceFill([
+                'custom_domain' => $customDomain,
+                ...$customHttps,
+            ])->save();
         }
 
         SiteSettingsBag::forget();
 
-        if ($canEditDomainSettings && $newAdminBasePath !== $currentAdminBasePath) {
+        if ($canEditAdminBasePath && $newAdminBasePath !== $currentAdminBasePath) {
             try {
                 AdminBasePathManager::persist($newAdminBasePath);
             } catch (\Throwable $e) {
@@ -206,6 +249,177 @@ class SiteSettingsController extends Controller
         }
 
         return redirect()->route('admin.site-settings.index')->with('message', __('admin.site_settings.message.saved'));
+    }
+
+    /**
+     * 解析并校验站点自定义域名的 HTTPS 配置。
+     *
+     * @param Request $request 当前后台请求
+     * @param string $privateKeyInput 页面粘贴的私钥内容
+     * @param Site|null $currentSite 当前站点
+     * @param string $customDomain 已归一化的客户自定义域名
+     * @param bool $canEditDomainSettings 当前账号是否有域名配置权限
+     * @return array{custom_https_enabled:bool,custom_https_certificate:string|null,custom_https_private_key:string|null} HTTPS 配置
+     * @throws ValidationException 证书缺失、格式错误、域名不匹配或私钥不匹配时抛出
+     */
+    private function resolveCustomHttpsSettings(
+        Request $request,
+        string $privateKeyInput,
+        ?Site $currentSite,
+        string $customDomain,
+        bool $canEditDomainSettings
+    ): array {
+        if (! $canEditDomainSettings) {
+            return [
+                'custom_https_enabled' => (bool) ($currentSite?->custom_https_enabled ?? false),
+                'custom_https_certificate' => $currentSite?->custom_https_certificate,
+                'custom_https_private_key' => $currentSite?->custom_https_private_key,
+            ];
+        }
+
+        if ($customDomain === '') {
+            if ($request->boolean('custom_https_enabled')) {
+                throw ValidationException::withMessages([
+                    'custom_domain' => '启用 HTTPS 前请先绑定客户自定义域名',
+                ]);
+            }
+
+            return [
+                'custom_https_enabled' => false,
+                'custom_https_certificate' => null,
+                'custom_https_private_key' => null,
+            ];
+        }
+
+        $enabled = $request->boolean('custom_https_enabled');
+        if (! $enabled) {
+            return [
+                'custom_https_enabled' => false,
+                'custom_https_certificate' => $currentSite?->custom_https_certificate,
+                'custom_https_private_key' => $currentSite?->custom_https_private_key,
+            ];
+        }
+
+        $certificate = $this->uploadedText($request, 'custom_https_certificate_file')
+            ?: trim((string) $request->input('custom_https_certificate', ''))
+            ?: trim((string) ($currentSite?->custom_https_certificate ?? ''));
+        $privateKey = $this->uploadedText($request, 'custom_https_private_key_file')
+            ?: $privateKeyInput
+            ?: trim((string) ($currentSite?->custom_https_private_key ?? ''));
+
+        if ($certificate === '') {
+            throw ValidationException::withMessages([
+                'custom_https_certificate' => '启用 HTTPS 时必须填写或上传证书内容',
+            ]);
+        }
+        if ($privateKey === '') {
+            throw ValidationException::withMessages([
+                'custom_https_private_key' => '启用 HTTPS 时必须填写或上传私钥内容',
+            ]);
+        }
+
+        $this->validateCertificatePair($certificate, $privateKey, $customDomain);
+
+        return [
+            'custom_https_enabled' => true,
+            'custom_https_certificate' => $certificate,
+            'custom_https_private_key' => $privateKey,
+        ];
+    }
+
+    /**
+     * 读取上传的 PEM 文本文件。
+     *
+     * @param Request $request 当前后台请求
+     * @param string $field 文件字段名
+     * @return string 文件内容，读取失败时返回空字符串
+     */
+    private function uploadedText(Request $request, string $field): string
+    {
+        $file = $request->file($field);
+        if (! $file || ! $file->isValid()) {
+            return '';
+        }
+
+        $content = @file_get_contents($file->getRealPath());
+
+        return is_string($content) ? trim($content) : '';
+    }
+
+    /**
+     * 校验证书、私钥和客户域名的对应关系，并拒绝过期证书。
+     *
+     * @param string $certificate PEM 证书内容
+     * @param string $privateKey PEM 私钥内容
+     * @param string $customDomain 客户自定义域名
+     * @return void
+     * @throws ValidationException 证书链、有效期、域名或密钥不符合要求时抛出
+     */
+    private function validateCertificatePair(string $certificate, string $privateKey, string $customDomain): void
+    {
+        if (! function_exists('openssl_x509_read') || ! function_exists('openssl_pkey_get_private')) {
+            throw ValidationException::withMessages([
+                'custom_https_certificate' => '服务器未启用 OpenSSL，暂时无法校验 HTTPS 证书',
+            ]);
+        }
+
+        $certificateResource = @openssl_x509_read($certificate);
+        if ($certificateResource === false) {
+            throw ValidationException::withMessages([
+                'custom_https_certificate' => 'HTTPS 证书格式无效，请填写 PEM 格式证书',
+            ]);
+        }
+
+        $privateKeyResource = @openssl_pkey_get_private($privateKey);
+        if ($privateKeyResource === false) {
+            throw ValidationException::withMessages([
+                'custom_https_private_key' => 'HTTPS 私钥格式无效，请填写 PEM 格式私钥',
+            ]);
+        }
+
+        if (! @openssl_x509_check_private_key($certificateResource, $privateKeyResource)) {
+            throw ValidationException::withMessages([
+                'custom_https_private_key' => 'HTTPS 证书与私钥不匹配',
+            ]);
+        }
+
+        $parsed = @openssl_x509_parse($certificateResource);
+        if (! is_array($parsed)) {
+            throw ValidationException::withMessages([
+                'custom_https_certificate' => 'HTTPS 证书解析失败',
+            ]);
+        }
+
+        $now = now()->timestamp;
+        if ((int) ($parsed['validFrom_time_t'] ?? 0) > $now || (int) ($parsed['validTo_time_t'] ?? 0) < $now) {
+            throw ValidationException::withMessages([
+                'custom_https_certificate' => 'HTTPS 证书尚未生效或已经过期',
+            ]);
+        }
+
+        $names = [];
+        $subjectAltName = (string) ($parsed['extensions']['subjectAltName'] ?? '');
+        foreach (preg_split('/,\s*/', $subjectAltName, -1, PREG_SPLIT_NO_EMPTY) ?: [] as $entry) {
+            if (str_starts_with($entry, 'DNS:')) {
+                $names[] = trim(substr($entry, 4));
+            }
+        }
+        $commonName = (string) ($parsed['subject']['commonName'] ?? $parsed['subject']['CN'] ?? '');
+        if ($commonName !== '') {
+            $names[] = $commonName;
+        }
+
+        foreach ($names as $name) {
+            $name = strtolower(trim($name));
+            $domain = strtolower($customDomain);
+            if ($name === $domain || (str_starts_with($name, '*.') && str_ends_with($domain, substr($name, 1)) && substr_count($domain, '.') === substr_count($name, '.') )) {
+                return;
+            }
+        }
+
+        throw ValidationException::withMessages([
+            'custom_https_certificate' => 'HTTPS 证书不包含当前客户自定义域名',
+        ]);
     }
 
     /**
@@ -422,6 +636,24 @@ class SiteSettingsController extends Controller
     }
 
     private function canEditDomainSettings(): bool
+    {
+        $admin = auth('admin')->user();
+        $currentSite = app(CurrentSite::class)->get();
+
+        if (! $admin instanceof Admin || ! $currentSite instanceof Site) {
+            return false;
+        }
+
+        if ($admin->isSuperAdmin()) {
+            return true;
+        }
+
+        // 域名属于当前站点配置，仅允许当前站点负责人或成员修改，避免跨站点越权绑定。
+        return (int) $currentSite->owner_admin_id === (int) $admin->id
+            || $currentSite->members()->whereKey($admin->id)->exists();
+    }
+
+    private function canEditAdminBasePath(): bool
     {
         $admin = auth('admin')->user();
 

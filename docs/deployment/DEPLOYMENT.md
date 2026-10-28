@@ -117,6 +117,49 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
 - 后台：`/geo_admin/login`（或你的 `ADMIN_BASE_PATH`）
 - Reverb：默认映射 `${REVERB_EXPOSE_PORT}:8080`
 
+### 客户自有域名绑定
+
+网站设置和站点管理支持在系统默认域名之外绑定客户自定义域名，例如 `www.example.com`。系统默认域名保存在站点的 `domain` 字段且不可修改，客户域名保存在 `custom_domain` 字段；应用会按请求 Host 匹配这两个字段，保存前不需要把域名写入环境变量。
+
+生产接入必须同时完成以下配置：
+
+1. 在 DNS 中为客户域名添加 CNAME 记录，记录值填写该站点的系统默认域名，不要填写服务器 IP。
+2. 等待 DNS 生效后，在“网站设置”的“网站基本设置”中填写“客户自定义域名”并保存；平台管理员也可以在“站点管理”中维护该字段。
+3. 在外层 Nginx、宝塔或 CDN 中为客户域名签发 HTTPS 证书，并确保请求转发到 GEOFlow。
+4. 代理必须保留原始 Host，至少透传 `Host`、`X-Forwarded-Host`、`X-Forwarded-Proto`。
+
+外层 Nginx 示例（以下按 `WEB_PORT=18080`）：
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name www.example.com;
+
+    ssl_certificate /etc/letsencrypt/live/www.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/www.example.com/privkey.pem;
+
+    location / {
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_pass http://127.0.0.1:18080;
+    }
+}
+```
+
+如果外层代理未配置客户域名，或 HTTPS 证书不包含客户域名，即使数据库绑定成功，浏览器仍可能命中错误站点或报证书错误。
+
+后台“网站设置”中的“启用 HTTPS 访问”用于记录该站点的 HTTPS 状态，并支持客户粘贴或上传与自定义域名匹配的 PEM 证书和私钥。私钥在数据库中加密保存且不会回显；启用前应用会校验证书有效期、证书域名和证书私钥是否匹配。
+
+启用流程必须按以下顺序执行：
+
+1. 先绑定客户自定义域名，并确认 DNS CNAME 已生效。
+2. 在外层 Nginx、宝塔或 CDN 中配置该域名的证书和私钥，并完成配置 reload。
+3. 回到“网站设置”勾选“启用 HTTPS 访问”并保存。
+
+勾选开关不会自动申请证书、写入宿主机证书目录或修改外层 Nginx。开关启用后，应用会把该客户域名的 HTTP 请求重定向到 HTTPS；如果外层代理尚未加载证书，访问会出现证书错误或重定向失败。每个站点最多绑定一个客户自定义域名，因此每个站点只需配置一套证书。
+
 ### 默认管理员（首次种子）
 
 生产 `docker-compose.prod.yml` 的 **`init`** 服务会在迁移完成后执行一次 `db:seed`，用于写入默认后台账号。常驻的 `app`、`queue`、`scheduler`、`reverb` 服务不会自动 seed，避免每次重启都执行种子。
