@@ -161,6 +161,27 @@
                                 <td class="break-all px-5 py-4 align-top text-sm text-gray-600">
                                     <div>系统默认：{{ $site->domain !== '' ? $site->domain : '未分配' }}</div>
                                     <div class="mt-1 text-xs text-indigo-600">客户自定义：{{ $customDomain !== '' ? $customDomain : '未绑定' }}</div>
+                                    @if ($customDomain !== '')
+                                        @php
+                                            $deploymentStatus = (string) $site->custom_domain_deployment_status;
+                                            $deploymentLabel = match ($deploymentStatus) {
+                                                'active' => (bool) $site->custom_https_enabled ? 'HTTPS 已自动部署' : '域名代理已部署',
+                                                'failed' => '部署失败',
+                                                'pending' => '部署中',
+                                                'removed' => '代理已移除',
+                                                default => '待平台部署',
+                                            };
+                                            $deploymentClass = match ($deploymentStatus) {
+                                                'active' => 'text-emerald-700',
+                                                'failed' => 'text-rose-700',
+                                                default => 'text-amber-700',
+                                            };
+                                        @endphp
+                                        <div class="mt-1 text-xs {{ $deploymentClass }}">{{ $deploymentLabel }}</div>
+                                        @if ($deploymentStatus === 'failed' && $site->custom_domain_deployment_error)
+                                            <div class="mt-1 text-xs text-rose-600">{{ $site->custom_domain_deployment_error }}</div>
+                                        @endif
+                                    @endif
                                 </td>
                                 <td class="px-5 py-4 align-top text-sm text-gray-600">
                                     {{ $site->owner?->name ?? '未指定' }}

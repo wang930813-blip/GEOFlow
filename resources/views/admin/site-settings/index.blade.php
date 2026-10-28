@@ -125,7 +125,7 @@
                             <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                                 <div>
                                     <label class="block text-sm font-medium text-gray-900" for="custom-https-enabled">启用 HTTPS 访问</label>
-                                    <p class="mt-1 text-xs leading-5 text-blue-800">仅适用于已绑定的客户自定义域名。启用前请确保证书已包含该域名，并已配置到外层 Nginx、宝塔或 CDN。</p>
+                                    <p class="mt-1 text-xs leading-5 text-blue-800">仅适用于已绑定的客户自定义域名。证书校验通过后，保存时会自动部署到站点入口。</p>
                                 </div>
                                 @if ($canEditDomainSettings ?? false)
                                     <label class="inline-flex shrink-0 items-center gap-2 text-sm font-medium text-blue-900">
@@ -152,7 +152,17 @@
                                     <p class="mt-1 text-xs text-gray-500">私钥不会回显，留空且不上传文件时保留已保存私钥；系统会加密存储私钥。</p>
                                 </div>
 
-                                <p class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">保存证书后仍需在生产反向代理中加载证书并 reload。应用只负责保存配置和识别 HTTPS 状态，不会直接替换服务器 Nginx 配置。</p>
+                                @if ($customerDomainDeploymentEnabled ?? false)
+                                    @if (($customerDomainDeploymentStatus ?? '') === 'active')
+                                        <p class="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs leading-5 text-emerald-800">域名和 HTTPS 配置已自动部署生效。</p>
+                                    @elseif (($customerDomainDeploymentStatus ?? '') === 'failed')
+                                        <p class="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs leading-5 text-rose-800">自动部署未成功：{{ $customerDomainDeploymentError ?: '请联系平台管理员检查部署服务。' }}</p>
+                                    @else
+                                        <p class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">保存域名设置后，系统会自动写入反向代理配置、校验并 reload；部署成功后 HTTPS 跳转才会启用。</p>
+                                    @endif
+                                @else
+                                    <p class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">当前环境未启用自动证书部署。保存证书不会自动使 HTTPS 生效，仍需管理员配置反向代理。</p>
+                                @endif
                             </div>
                         </div>
 

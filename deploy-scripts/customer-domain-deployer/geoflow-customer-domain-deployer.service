@@ -1,0 +1,24 @@
+[Unit]
+Description=GEOFlow customer domain certificate and Nginx deployment service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Group=geoflow-deployer
+UMask=0007
+RuntimeDirectory=geoflow-domain-deployer
+RuntimeDirectoryMode=0750
+EnvironmentFile=/etc/geoflow-domain-deployer.env
+ExecStart=/opt/geoflow-domain-deployer/venv/bin/python /usr/local/lib/geoflow-domain-deployer/server.py
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+ReadOnlyDirectories=/www/server/nginx/conf
+ReadWriteDirectories=/run/geoflow-domain-deployer /www/server/nginx/conf/geoflow-customer-sites /www/server/nginx/conf/geoflow-customer-certs
+
+[Install]
+WantedBy=multi-user.target

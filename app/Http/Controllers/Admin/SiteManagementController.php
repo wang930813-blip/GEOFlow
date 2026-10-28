@@ -8,6 +8,8 @@ use App\Models\AdminPlanSubscription;
 use App\Models\Site;
 use App\Models\SitePlanSubscription;
 use App\Models\SiteSetting;
+use App\Services\CustomerDomain\CustomerDomainDeploymentException;
+use App\Services\CustomerDomain\CustomerDomainDeploymentManager;
 use App\Services\MonitoringCenter\MonitoringReportLogoResolver;
 use App\Support\AdminWeb;
 use Illuminate\Http\RedirectResponse;
@@ -22,7 +24,8 @@ use Illuminate\View\View;
 class SiteManagementController extends Controller
 {
     public function __construct(
-        private readonly MonitoringReportLogoResolver $reportLogoResolver
+        private readonly MonitoringReportLogoResolver $reportLogoResolver,
+        private readonly CustomerDomainDeploymentManager $customerDomainDeploymentManager
     ) {}
 
     public function index(): View
@@ -64,7 +67,7 @@ class SiteManagementController extends Controller
         $admin = $this->authorizedAdmin();
         $payload = $this->validatedPayload($request, null, $admin);
 
-        DB::transaction(function () use ($admin, $payload): void {
+        $site = DB::transaction(function () use ($admin, $payload): Site {
             $site = Site::query()->create(Arr::only($payload, [
                 'owner_admin_id',
                 'name',
@@ -77,7 +80,19 @@ class SiteManagementController extends Controller
 
             $this->syncMembers($site, $payload);
             $this->saveMonitoringReportLogo($admin, $site, $payload);
+
+            return $site;
         });
+
+        if (trim((string) $site->custom_domain) !== '') {
+            try {
+                $this->customerDomainDeploymentManager->synchronize($site);
+            } catch (CustomerDomainDeploymentException $exception) {
+                return back()
+                    ->withErrors(['custom_domain' => $exception->getMessage()])
+                    ->withInput($request->except(['custom_https_private_key', 'custom_https_private_key_file']));
+            }
+        }
 
         return redirect()->route('admin.sites.manage.index')->with('message', '站点已创建');
     }
@@ -88,6 +103,8 @@ class SiteManagementController extends Controller
         $this->authorizeSiteAccess($admin, $site);
 
         $payload = $this->validatedPayload($request, $site, $admin);
+        $customDomainChanged = (string) $site->custom_domain !== (string) $payload['custom_domain'];
+        $siteStatusChanged = (string) $site->status !== (string) $payload['status'];
 
         DB::transaction(function () use ($admin, $site, $payload): void {
             $siteUpdate = Arr::only($payload, [
@@ -112,6 +129,21 @@ class SiteManagementController extends Controller
             $this->saveMonitoringReportLogo($admin, $site, $payload);
         });
 
+        if ($customDomainChanged || $siteStatusChanged) {
+            try {
+                $site = $site->refresh();
+                if ($site->status === 'active') {
+                    $this->customerDomainDeploymentManager->synchronize($site);
+                } else {
+                    $this->customerDomainDeploymentManager->remove($site);
+                }
+            } catch (CustomerDomainDeploymentException $exception) {
+                return back()
+                    ->withErrors(['custom_domain' => $exception->getMessage()])
+                    ->withInput($request->except(['custom_https_private_key', 'custom_https_private_key_file']));
+            }
+        }
+
         return redirect()->route('admin.sites.manage.index')->with('message', '站点已更新');
     }
 
@@ -120,9 +152,17 @@ class SiteManagementController extends Controller
         $admin = $this->authorizedAdmin();
         $this->authorizeSiteAccess($admin, $site);
 
-        $site->update([
-            'status' => $site->status === 'active' ? 'inactive' : 'active',
-        ]);
+        $site->update(['status' => $site->status === 'active' ? 'inactive' : 'active']);
+
+        try {
+            if ($site->status === 'active') {
+                $this->customerDomainDeploymentManager->synchronize($site->refresh());
+            } else {
+                $this->customerDomainDeploymentManager->remove($site);
+            }
+        } catch (CustomerDomainDeploymentException $exception) {
+            return back()->withErrors(['custom_domain' => $exception->getMessage()]);
+        }
 
         return redirect()->route('admin.sites.manage.index')->with('message', '站点状态已更新');
     }
@@ -131,6 +171,12 @@ class SiteManagementController extends Controller
     {
         $admin = $this->authorizedAdmin();
         $this->authorizeSiteAccess($admin, $site);
+
+        try {
+            $this->customerDomainDeploymentManager->remove($site);
+        } catch (CustomerDomainDeploymentException $exception) {
+            return back()->withErrors(['custom_domain' => $exception->getMessage()]);
+        }
 
         DB::transaction(function () use ($site): void {
             SitePlanSubscription::query()

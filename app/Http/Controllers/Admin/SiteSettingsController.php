@@ -7,6 +7,8 @@ use App\Models\Admin;
 use App\Models\PlatformPlan;
 use App\Models\Site;
 use App\Models\SiteSetting;
+use App\Services\CustomerDomain\CustomerDomainDeploymentException;
+use App\Services\CustomerDomain\CustomerDomainDeploymentManager;
 use App\Support\AdminBasePathManager;
 use App\Support\AdminDisplaySettings;
 use App\Support\AdminRegistrationSettings;
@@ -17,8 +19,8 @@ use App\Support\Site\SiteThemeCatalog;
 use App\Support\SiteDomain;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
@@ -34,7 +36,8 @@ class SiteSettingsController extends Controller
 {
     public function __construct(
         private readonly SiteThemeCatalog $siteThemeCatalog,
-        private readonly AdminRegistrationSettings $adminRegistrationSettings
+        private readonly AdminRegistrationSettings $adminRegistrationSettings,
+        private readonly CustomerDomainDeploymentManager $customerDomainDeploymentManager
     ) {}
 
     /**
@@ -56,6 +59,9 @@ class SiteSettingsController extends Controller
             'customHttpsEnabled' => (bool) ($currentSite?->custom_https_enabled ?? false),
             'customHttpsCertificateConfigured' => trim((string) ($currentSite?->custom_https_certificate ?? '')) !== '',
             'customHttpsPrivateKeyConfigured' => trim((string) ($currentSite?->custom_https_private_key ?? '')) !== '',
+            'customerDomainDeploymentEnabled' => $this->customerDomainDeploymentManager->enabled(),
+            'customerDomainDeploymentStatus' => (string) ($currentSite?->custom_domain_deployment_status ?? 'manual'),
+            'customerDomainDeploymentError' => (string) ($currentSite?->custom_domain_deployment_error ?? ''),
             'canEditAnalytics' => auth('admin')->user()?->isSuperAdmin() === true,
             'canEditAdminDisplaySettings' => $canEditAdminDisplaySettings,
             'adminDisplaySettings' => AdminDisplaySettings::all(),
@@ -193,6 +199,17 @@ class SiteSettingsController extends Controller
             $customDomain,
             $canEditDomainSettings
         );
+        $domainConfigurationChanged = $currentSite instanceof Site && (
+            (string) $currentSite->custom_domain !== $customDomain
+            || (bool) $currentSite->custom_https_enabled !== $customHttps['custom_https_enabled']
+            || (string) ($currentSite->custom_https_certificate ?? '') !== (string) ($customHttps['custom_https_certificate'] ?? '')
+            || (string) ($currentSite->custom_https_private_key ?? '') !== (string) ($customHttps['custom_https_private_key'] ?? '')
+        );
+        $expectedDeploymentStatus = $this->customerDomainDeploymentManager->enabled()
+            ? ($customDomain !== '' && $currentSite?->status === 'active' ? 'active' : 'removed')
+            : 'manual';
+        $domainDeploymentNeeded = $currentSite instanceof Site
+            && ($domainConfigurationChanged || $currentSite->custom_domain_deployment_status !== $expectedDeploymentStatus);
 
         $settings = [
             'site_name' => trim((string) $payload['site_name']),
@@ -230,6 +247,23 @@ class SiteSettingsController extends Controller
                 'custom_domain' => $customDomain,
                 ...$customHttps,
             ])->save();
+
+            SiteSettingsBag::forget();
+
+            if ($domainDeploymentNeeded) {
+                try {
+                    $currentSite->refresh();
+                    if ($currentSite->status === 'active' && $currentSite->custom_domain !== '') {
+                        $this->customerDomainDeploymentManager->synchronize($currentSite);
+                    } else {
+                        $this->customerDomainDeploymentManager->remove($currentSite);
+                    }
+                } catch (CustomerDomainDeploymentException $exception) {
+                    return back()
+                        ->withErrors(['custom_domain' => $exception->getMessage()])
+                        ->withInput($request->except(['custom_https_private_key', 'custom_https_private_key_file']));
+                }
+            }
         }
 
         SiteSettingsBag::forget();
@@ -254,12 +288,13 @@ class SiteSettingsController extends Controller
     /**
      * 解析并校验站点自定义域名的 HTTPS 配置。
      *
-     * @param Request $request 当前后台请求
-     * @param string $privateKeyInput 页面粘贴的私钥内容
-     * @param Site|null $currentSite 当前站点
-     * @param string $customDomain 已归一化的客户自定义域名
-     * @param bool $canEditDomainSettings 当前账号是否有域名配置权限
+     * @param  Request  $request  当前后台请求
+     * @param  string  $privateKeyInput  页面粘贴的私钥内容
+     * @param  Site|null  $currentSite  当前站点
+     * @param  string  $customDomain  已归一化的客户自定义域名
+     * @param  bool  $canEditDomainSettings  当前账号是否有域名配置权限
      * @return array{custom_https_enabled:bool,custom_https_certificate:string|null,custom_https_private_key:string|null} HTTPS 配置
+     *
      * @throws ValidationException 证书缺失、格式错误、域名不匹配或私钥不匹配时抛出
      */
     private function resolveCustomHttpsSettings(
@@ -317,6 +352,16 @@ class SiteSettingsController extends Controller
                 'custom_https_private_key' => '启用 HTTPS 时必须填写或上传私钥内容',
             ]);
         }
+        if (strlen($certificate) > 262144) {
+            throw ValidationException::withMessages([
+                'custom_https_certificate' => 'HTTPS 证书文件不能超过 256 KB',
+            ]);
+        }
+        if (strlen($privateKey) > 262144) {
+            throw ValidationException::withMessages([
+                'custom_https_private_key' => 'HTTPS 私钥文件不能超过 256 KB',
+            ]);
+        }
 
         $this->validateCertificatePair($certificate, $privateKey, $customDomain);
 
@@ -330,8 +375,8 @@ class SiteSettingsController extends Controller
     /**
      * 读取上传的 PEM 文本文件。
      *
-     * @param Request $request 当前后台请求
-     * @param string $field 文件字段名
+     * @param  Request  $request  当前后台请求
+     * @param  string  $field  文件字段名
      * @return string 文件内容，读取失败时返回空字符串
      */
     private function uploadedText(Request $request, string $field): string
@@ -349,10 +394,10 @@ class SiteSettingsController extends Controller
     /**
      * 校验证书、私钥和客户域名的对应关系，并拒绝过期证书。
      *
-     * @param string $certificate PEM 证书内容
-     * @param string $privateKey PEM 私钥内容
-     * @param string $customDomain 客户自定义域名
-     * @return void
+     * @param  string  $certificate  PEM 证书内容
+     * @param  string  $privateKey  PEM 私钥内容
+     * @param  string  $customDomain  客户自定义域名
+     *
      * @throws ValidationException 证书链、有效期、域名或密钥不符合要求时抛出
      */
     private function validateCertificatePair(string $certificate, string $privateKey, string $customDomain): void
@@ -397,22 +442,26 @@ class SiteSettingsController extends Controller
             ]);
         }
 
+        $extensions = $parsed['extensions'] ?? [];
+        $subjectAltName = (string) ($extensions['subjectAltName'] ?? '');
         $names = [];
-        $subjectAltName = (string) ($parsed['extensions']['subjectAltName'] ?? '');
-        foreach (preg_split('/,\s*/', $subjectAltName, -1, PREG_SPLIT_NO_EMPTY) ?: [] as $entry) {
-            if (str_starts_with($entry, 'DNS:')) {
-                $names[] = trim(substr($entry, 4));
+        if (array_key_exists('subjectAltName', $extensions)) {
+            foreach (preg_split('/,\s*/', $subjectAltName, -1, PREG_SPLIT_NO_EMPTY) ?: [] as $entry) {
+                if (str_starts_with($entry, 'DNS:')) {
+                    $names[] = trim(substr($entry, 4));
+                }
             }
-        }
-        $commonName = (string) ($parsed['subject']['commonName'] ?? $parsed['subject']['CN'] ?? '');
-        if ($commonName !== '') {
-            $names[] = $commonName;
+        } else {
+            $commonName = (string) ($parsed['subject']['commonName'] ?? $parsed['subject']['CN'] ?? '');
+            if ($commonName !== '') {
+                $names[] = $commonName;
+            }
         }
 
         foreach ($names as $name) {
             $name = strtolower(trim($name));
             $domain = strtolower($customDomain);
-            if ($name === $domain || (str_starts_with($name, '*.') && str_ends_with($domain, substr($name, 1)) && substr_count($domain, '.') === substr_count($name, '.') )) {
+            if ($name === $domain || (str_starts_with($name, '*.') && str_ends_with($domain, substr($name, 1)) && substr_count($domain, '.') === substr_count($name, '.'))) {
                 return;
             }
         }

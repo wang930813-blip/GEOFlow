@@ -21,7 +21,7 @@ class ResolveFrontendSiteByDomain
         $host = SiteDomain::normalize($request->getHost());
         $site = $host !== ''
             ? Site::query()
-                ->select(['id', 'owner_admin_id', 'name', 'domain', 'custom_domain', 'custom_https_enabled', 'status', 'settings', 'created_at', 'updated_at'])
+                ->select(['id', 'owner_admin_id', 'name', 'domain', 'custom_domain', 'custom_https_enabled', 'custom_domain_deployment_status', 'status', 'settings', 'created_at', 'updated_at'])
                 ->where('status', 'active')
                 ->where(function ($query) use ($host): void {
                     $query->where('domain', $host)->orWhere('custom_domain', $host);
@@ -32,7 +32,13 @@ class ResolveFrontendSiteByDomain
         if ($site instanceof Site) {
             $this->currentSite->set($site);
 
+            $domainDeploymentEnabled = (bool) config('geoflow.customer_domain_deployer.enabled', false);
+            $deploymentReady = $domainDeploymentEnabled
+                ? $site->custom_domain_deployment_status === 'active'
+                : in_array((string) $site->custom_domain_deployment_status, ['manual', 'active'], true);
+
             if ((bool) $site->custom_https_enabled
+                && $deploymentReady
                 && $site->custom_domain !== ''
                 && $host === SiteDomain::normalize((string) $site->custom_domain)
                 && ! $request->isSecure()) {
