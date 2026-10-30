@@ -40,6 +40,8 @@ class MaterialsController extends Controller
 
     /**
      * 展示素材管理总览页。
+     *
+     * @UpdateTime: 2026-10-30 13:44:31
      */
     public function index(Request $request): View
     {
@@ -50,6 +52,7 @@ class MaterialsController extends Controller
             'pageTitle' => __('admin.materials.page_title'),
             'activeMenu' => 'materials',
             'adminSiteName' => AdminWeb::siteName(),
+            'canManageProtectedWorkflows' => $admin->canManageProtectedWorkflows(),
             'stats' => $this->loadStats($admin),
         ]);
     }
