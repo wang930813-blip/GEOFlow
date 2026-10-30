@@ -41,6 +41,11 @@ class AdminAuthController extends Controller
             'password' => ['required', 'string'],
         ]);
         $username = trim((string) $credentials['username']);
+        $ipAddress = (string) $request->ip();
+        if ($this->adminLoginLockService->tooManyAttempts($username, $ipAddress)) {
+            return $this->temporaryLockoutResponse($username, $ipAddress);
+        }
+
         /** @var Admin|null $targetAdmin */
         $targetAdmin = Admin::query()->where('username', $username)->first();
         if ($targetAdmin instanceof Admin && $this->adminLoginLockService->isLocked($targetAdmin)) {
@@ -56,10 +61,8 @@ class AdminAuthController extends Controller
             ['username' => $username, 'password' => $credentials['password'], 'status' => 'active'],
             $remember
         )) {
-            if ($targetAdmin instanceof Admin && $this->adminLoginLockService->recordFailedAttemptAndLock($targetAdmin)) {
-                return back()->withErrors([
-                    'username' => __('admin.login.error.account_locked'),
-                ])->onlyInput('username');
+            if ($this->adminLoginLockService->recordFailedAttempt($username, $ipAddress)) {
+                return $this->temporaryLockoutResponse($username, $ipAddress);
             }
 
             return back()->withErrors([
@@ -70,7 +73,8 @@ class AdminAuthController extends Controller
         /** @var Admin $admin */
         $admin = Auth::guard('admin')->user();
         $request->session()->regenerate();
-        $this->adminLoginLockService->clearFailedAttempts((string) $admin->username);
+        $request->session()->put(Admin::AUTH_VERSION_SESSION_KEY, (int) $admin->auth_version);
+        $this->adminLoginLockService->clearFailedAttempts((string) $admin->username, $ipAddress);
 
         $admin->forceFill(['last_login' => now()])->save();
         AdminActivityLogger::logFromRequest($request, $admin, 'auth:login', [
@@ -78,6 +82,15 @@ class AdminAuthController extends Controller
         ]);
 
         return redirect()->intended(route('admin.dashboard'));
+    }
+
+    private function temporaryLockoutResponse(string $username, string $ipAddress): RedirectResponse
+    {
+        $seconds = max(1, $this->adminLoginLockService->availableIn($username, $ipAddress));
+
+        return back()->withErrors([
+            'username' => __('admin.login.error.too_many_attempts', ['seconds' => $seconds]),
+        ])->onlyInput('username');
     }
 
     public function logout(Request $request): RedirectResponse
