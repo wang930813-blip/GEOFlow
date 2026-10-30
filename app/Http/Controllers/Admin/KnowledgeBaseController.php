@@ -3,22 +3,32 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Data\Ai\SystemAiIdentity;
 use App\Models\Admin;
 use App\Models\AiModel;
 use App\Models\KnowledgeBase;
+use App\Models\KnowledgeBaseRevision;
 use App\Models\KnowledgeChunk;
 use App\Models\Task;
+use App\Services\AiWorkspace\AdminHelpFeatureRegistry;
+use App\Services\AiWorkspace\SystemKnowledgeBaseManager;
+use App\Services\GeoFlow\ArticleAiQualityInvalidationService;
+use App\Services\GeoFlow\KnowledgeChunkSyncCoordinator;
+use App\Services\GeoFlow\KnowledgeFacts\KnowledgeFactLibraryPresenter;
 use App\Services\GeoFlow\KnowledgeChunkSyncService;
+use App\Support\AdminActivityLogger;
 use App\Support\AdminWeb;
 use App\Support\AiConfigurationScope;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rules\File;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 /**
@@ -26,9 +36,16 @@ use Illuminate\View\View;
  */
 class KnowledgeBaseController extends Controller
 {
+    private const MAX_KNOWLEDGE_BYTES = 8 * 1024 * 1024;
+
     public function __construct(
         private readonly KnowledgeChunkSyncService $chunkSyncService,
-        private readonly AiConfigurationScope $aiConfigurationScope
+        private readonly AiConfigurationScope $aiConfigurationScope,
+        private readonly SystemKnowledgeBaseManager $systemKnowledgeBases,
+        private readonly AdminHelpFeatureRegistry $adminHelpFeatures,
+        private readonly KnowledgeFactLibraryPresenter $factLibraryPresenter,
+        private readonly ArticleAiQualityInvalidationService $qualityInvalidationService,
+        private readonly KnowledgeChunkSyncCoordinator $chunkSyncCoordinator,
     ) {}
 
     /**
@@ -67,7 +84,22 @@ class KnowledgeBaseController extends Controller
      */
     public function detail(int $knowledgeBaseId): View|RedirectResponse
     {
-        $knowledgeBase = KnowledgeBase::query()->whereKey($knowledgeBaseId)->firstOrFail();
+        $knowledgeBase = $this->findVisibleKnowledgeBase($knowledgeBaseId);
+        $knowledgeBase->load([
+            'systemBinding',
+            'revisions.creator',
+            'mediaAssets.creator',
+            'factLibrary.activeRevision',
+        ]);
+        $admin = request()->user('admin');
+        $isSystemKnowledge = $knowledgeBase->isSystemManaged();
+        $canEditSystemKnowledge = $admin instanceof Admin && $admin->canManageProtectedWorkflows();
+        $systemKnowledgeHealth = $isSystemKnowledge ? $this->systemKnowledgeBases->health($knowledgeBase) : null;
+        $systemOfficialContent = null;
+        if ($canEditSystemKnowledge && ($systemKnowledgeHealth['is_customized'] ?? false)) {
+            $definition = $this->systemKnowledgeBases->definition((string) $knowledgeBase->systemBinding?->system_key);
+            $systemOfficialContent = $this->systemKnowledgeBases->bundledContent($definition);
+        }
 
         return view('admin.knowledge-bases.detail', [
             'pageTitle' => __('admin.knowledge_detail.page_title'),
@@ -77,8 +109,36 @@ class KnowledgeBaseController extends Controller
             'relatedTasks' => $this->loadRelatedTasks($knowledgeBaseId),
             'chunkStats' => $this->loadChunkStats($knowledgeBaseId),
             'chunkPreviewRows' => $this->loadChunkPreviewRows($knowledgeBaseId),
+            'factSummary' => $knowledgeBase->factLibrary
+                ? $this->factLibraryPresenter->summary($knowledgeBase->factLibrary)
+                : null,
+            'isSystemKnowledge' => $isSystemKnowledge,
+            'systemKnowledgeHealth' => $systemKnowledgeHealth,
+            'systemOfficialContent' => $systemOfficialContent,
+            'canEditSystemKnowledge' => $canEditSystemKnowledge,
+            'knowledgeMediaAssets' => $knowledgeBase->mediaAssets
+                ->filter(fn ($asset): bool => $admin instanceof Admin
+                    && $this->adminHelpFeatures->canAccessRoute($admin, (string) $asset->route_name))
+                ->values(),
             'hasDefaultEmbeddingModel' => $this->hasDefaultEmbeddingModel(),
             'canManageAiConfig' => $this->canManageAiConfig(),
+        ]);
+    }
+
+    public function chunks(int $knowledgeBaseId): View
+    {
+        $knowledgeBase = $this->findVisibleKnowledgeBase($knowledgeBaseId);
+        $admin = request()->user('admin');
+
+        return view('admin.knowledge-bases.chunks.index', [
+            'pageTitle' => __('admin.knowledge_chunks.page_title'),
+            'activeMenu' => 'materials',
+            'adminSiteName' => AdminWeb::siteName(),
+            'knowledgeBase' => $knowledgeBase,
+            'chunkStats' => $this->loadChunkStats($knowledgeBaseId),
+            'chunkRows' => $this->paginateChunkRows($knowledgeBaseId),
+            'systemReadOnly' => $knowledgeBase->isSystemManaged()
+                && ! ($admin instanceof Admin && $admin->canManageProtectedWorkflows()),
         ]);
     }
 
@@ -87,19 +147,46 @@ class KnowledgeBaseController extends Controller
      */
     public function updateFromDetail(Request $request, int $knowledgeBaseId): RedirectResponse
     {
-        $knowledgeBase = KnowledgeBase::query()->whereKey($knowledgeBaseId)->firstOrFail();
+        $knowledgeBase = $this->findVisibleKnowledgeBase($knowledgeBaseId);
 
         $payload = $request->validate([
             'name' => ['required', 'string', 'max:100'],
             'description' => ['nullable', 'string'],
             'content' => ['required', 'string'],
-            'file_type' => ['required', 'in:markdown,word,text'],
+            'file_type' => ['required', 'in:markdown,word,text,pdf,presentation'],
         ], [
             'name.required' => __('admin.knowledge_bases.error.name_required'),
             'content.required' => __('admin.knowledge_bases.error.content_required'),
         ]);
 
         $content = trim((string) $payload['content']);
+        $this->assertKnowledgeContentSize($content);
+
+        if ($knowledgeBase->isSystemManaged()) {
+            $admin = $request->user('admin');
+            abort_unless($admin instanceof Admin && $admin->canManageProtectedWorkflows(), 403);
+            $contentChanged = ! hash_equals(hash('sha256', trim((string) $knowledgeBase->content)), hash('sha256', $content));
+
+            try {
+                $this->systemKnowledgeBases->update($knowledgeBase, $admin, $payload);
+            } catch (\RuntimeException $exception) {
+                throw ValidationException::withMessages(['content' => $exception->getMessage()]);
+            }
+            if ($contentChanged) {
+                $this->qualityInvalidationService->invalidateKnowledgeBase($knowledgeBaseId, '系统知识正文已更新');
+            }
+            AdminActivityLogger::logFromRequest($request, $admin, 'system_knowledge.updated', [
+                'knowledge_base_id' => $knowledgeBaseId,
+                'content_hash' => hash('sha256', (string) $knowledgeBase->fresh()->content),
+                'content_changed' => $contentChanged,
+            ]);
+
+            return redirect()->route('admin.knowledge-bases.detail', ['knowledgeBaseId' => $knowledgeBaseId])
+                ->with('message', __($contentChanged
+                    ? 'admin.knowledge_bases.message.chunk_sync_queued'
+                    : 'admin.knowledge_bases.message.saved_without_reindex'));
+        }
+
         DB::transaction(function () use ($knowledgeBase, $payload, $content): void {
             $knowledgeBase->update([
                 'name' => trim((string) $payload['name']),
@@ -112,6 +199,7 @@ class KnowledgeBaseController extends Controller
 
             $this->chunkSyncService->sync((int) $knowledgeBase->id, $content);
         });
+        $this->qualityInvalidationService->invalidateKnowledgeBase($knowledgeBaseId, '知识库正文已更新');
 
         return redirect()->route('admin.knowledge-bases.detail', ['knowledgeBaseId' => $knowledgeBaseId])->with(
             'message',
@@ -128,6 +216,13 @@ class KnowledgeBaseController extends Controller
             'knowledge_file' => ['required', File::types(['txt', 'md', 'docx'])->max(10 * 1024)],
             'name' => ['nullable', 'string', 'max:100'],
             'description' => ['nullable', 'string'],
+            'source_name' => ['nullable', 'string', 'max:150'],
+            'source_url' => ['nullable', 'string', 'max:500'],
+            'source_type' => ['nullable', 'in:document,website,business,faq,other'],
+            'business_line' => ['nullable', 'string', 'max:100'],
+            'effective_date' => ['nullable', 'date'],
+            'risk_level' => ['nullable', 'in:low,medium,high'],
+            'review_status' => ['nullable', 'in:unreviewed,reviewed'],
         ], [
             'knowledge_file.required' => __('admin.knowledge_bases.error.file_required'),
         ]);
@@ -164,7 +259,15 @@ class KnowledgeBaseController extends Controller
                     'usage_count' => 0,
                     'used_task_count' => 0,
                     'file_path' => $storedRelativePath,
-                ]);
+                ] + $this->knowledgeMetadataPayload($request->only([
+                    'source_name',
+                    'source_url',
+                    'source_type',
+                    'business_line',
+                    'effective_date',
+                    'risk_level',
+                    'review_status',
+                ])));
                 $chunkCount = $this->chunkSyncService->sync((int) $knowledgeBase->id, $content);
             });
 
@@ -194,7 +297,7 @@ class KnowledgeBaseController extends Controller
             'usage_count' => 0,
             'used_task_count' => 0,
             'file_path' => '',
-        ]);
+        ] + $this->knowledgeMetadataPayload($payload));
 
         $chunkCount = $this->chunkSyncService->sync((int) $knowledgeBase->id, $content);
 
@@ -208,7 +311,9 @@ class KnowledgeBaseController extends Controller
      */
     public function edit(int $knowledgeBaseId): View|RedirectResponse
     {
-        $knowledgeBase = KnowledgeBase::query()->whereKey($knowledgeBaseId)->firstOrFail();
+        $knowledgeBase = $this->findVisibleKnowledgeBase($knowledgeBaseId);
+        $isSystemKnowledge = $knowledgeBase->isSystemManaged();
+        $admin = request()->user('admin');
 
         return view('admin.knowledge-bases.form', [
             'pageTitle' => __('admin.knowledge_bases.page_title'),
@@ -216,11 +321,22 @@ class KnowledgeBaseController extends Controller
             'adminSiteName' => AdminWeb::siteName(),
             'isEdit' => true,
             'knowledgeBaseId' => (int) $knowledgeBase->id,
+            'knowledgeBase' => $knowledgeBase,
+            'isSystemKnowledge' => $isSystemKnowledge,
+            'systemKnowledgeHealth' => $isSystemKnowledge ? $this->systemKnowledgeBases->health($knowledgeBase) : null,
+            'canEditSystemKnowledge' => $admin instanceof Admin && $admin->canManageProtectedWorkflows(),
             'knowledgeForm' => [
                 'name' => (string) $knowledgeBase->name,
                 'description' => (string) ($knowledgeBase->description ?? ''),
                 'content' => (string) ($knowledgeBase->content ?? ''),
                 'file_type' => (string) ($knowledgeBase->file_type ?? 'markdown'),
+                'source_name' => (string) ($knowledgeBase->source_name ?? ''),
+                'source_url' => (string) ($knowledgeBase->source_url ?? ''),
+                'source_type' => (string) ($knowledgeBase->source_type ?? 'document'),
+                'business_line' => (string) ($knowledgeBase->business_line ?? ''),
+                'effective_date' => $knowledgeBase->effective_date?->toDateString() ?? '',
+                'risk_level' => (string) ($knowledgeBase->risk_level ?? 'medium'),
+                'review_status' => (string) ($knowledgeBase->review_status ?? 'unreviewed'),
             ],
             'chunkCount' => (int) $knowledgeBase->chunks()->count(),
         ]);
@@ -231,10 +347,35 @@ class KnowledgeBaseController extends Controller
      */
     public function update(Request $request, int $knowledgeBaseId): RedirectResponse
     {
-        $knowledgeBase = KnowledgeBase::query()->whereKey($knowledgeBaseId)->firstOrFail();
+        $knowledgeBase = $this->findVisibleKnowledgeBase($knowledgeBaseId);
 
         $payload = $this->validateKnowledgeForm($request);
         $content = trim((string) $payload['content']);
+
+        if ($knowledgeBase->isSystemManaged()) {
+            $admin = $request->user('admin');
+            abort_unless($admin instanceof Admin && $admin->canManageProtectedWorkflows(), 403);
+            $contentChanged = ! hash_equals(hash('sha256', trim((string) $knowledgeBase->content)), hash('sha256', $content));
+
+            try {
+                $this->systemKnowledgeBases->update($knowledgeBase, $admin, $payload);
+            } catch (\RuntimeException $exception) {
+                throw ValidationException::withMessages(['content' => $exception->getMessage()]);
+            }
+            if ($contentChanged) {
+                $this->qualityInvalidationService->invalidateKnowledgeBase($knowledgeBaseId, '系统知识正文已更新');
+            }
+            AdminActivityLogger::logFromRequest($request, $admin, 'system_knowledge.updated', [
+                'knowledge_base_id' => $knowledgeBaseId,
+                'content_hash' => hash('sha256', (string) $knowledgeBase->fresh()->content),
+                'content_changed' => $contentChanged,
+            ]);
+
+            return redirect()->route('admin.knowledge-bases.detail', ['knowledgeBaseId' => $knowledgeBaseId])
+                ->with('message', __($contentChanged
+                    ? 'admin.knowledge_bases.message.chunk_sync_queued'
+                    : 'admin.knowledge_bases.message.saved_without_reindex'));
+        }
 
         $knowledgeBase->update([
             'name' => trim((string) $payload['name']),
@@ -243,7 +384,8 @@ class KnowledgeBaseController extends Controller
             'file_type' => (string) $payload['file_type'],
             'character_count' => mb_strlen($content, 'UTF-8'),
             'word_count' => mb_strlen(strip_tags($content), 'UTF-8'),
-        ]);
+        ] + $this->knowledgeMetadataPayload($payload));
+        $this->qualityInvalidationService->invalidateKnowledgeBase($knowledgeBaseId, '知识库正文已更新');
 
         $chunkCount = $this->chunkSyncService->sync((int) $knowledgeBase->id, $content);
 
@@ -257,7 +399,10 @@ class KnowledgeBaseController extends Controller
      */
     public function destroy(int $knowledgeBaseId): RedirectResponse
     {
-        $knowledgeBase = KnowledgeBase::query()->whereKey($knowledgeBaseId)->firstOrFail();
+        $knowledgeBase = $this->findVisibleKnowledgeBase($knowledgeBaseId);
+        if ($knowledgeBase->isSystemManaged()) {
+            return back()->withErrors(__('admin.knowledge_bases.error.system_delete_forbidden'));
+        }
 
         $taskCount = Task::query()->where('knowledge_base_id', $knowledgeBaseId)->count();
         if ($taskCount > 0) {
@@ -273,9 +418,22 @@ class KnowledgeBaseController extends Controller
 
     public function refreshChunks(Request $request, int $knowledgeBaseId): RedirectResponse
     {
-        $knowledgeBase = KnowledgeBase::query()->whereKey($knowledgeBaseId)->firstOrFail();
+        $knowledgeBase = $this->findVisibleKnowledgeBase($knowledgeBaseId);
         $content = trim((string) ($knowledgeBase->content ?? ''));
         $redirectRoute = $this->refreshChunksRedirectRoute($request, $knowledgeBaseId);
+
+        if ($knowledgeBase->isSystemManaged()) {
+            $admin = $request->user('admin');
+            abort_unless($admin instanceof Admin && $admin->canManageProtectedWorkflows(), 403);
+            $this->chunkSyncCoordinator->request(
+                (int) $knowledgeBase->id,
+                SystemAiIdentity::knowledgeIndex(),
+                requireRealEmbedding: false,
+                force: true,
+            );
+
+            return redirect()->to($redirectRoute)->with('message', __('admin.knowledge_bases.message.chunks_refresh_queued'));
+        }
 
         if ($content === '') {
             return redirect()
@@ -314,13 +472,76 @@ class KnowledgeBaseController extends Controller
         }
     }
 
+    public function restoreRevision(Request $request, int $knowledgeBaseId, int $revisionId): RedirectResponse
+    {
+        $admin = $request->user('admin');
+        abort_unless($admin instanceof Admin && $admin->canManageProtectedWorkflows(), 403);
+        $knowledgeBase = $this->findVisibleKnowledgeBase($knowledgeBaseId);
+        abort_unless($knowledgeBase->isSystemManaged(), 404);
+        $revision = KnowledgeBaseRevision::query()->findOrFail($revisionId);
+
+        try {
+            $restored = $this->systemKnowledgeBases->restore($knowledgeBase, $revision, $admin);
+        } catch (\RuntimeException $exception) {
+            throw ValidationException::withMessages(['revision' => $exception->getMessage()]);
+        }
+        $this->qualityInvalidationService->invalidateKnowledgeBase($knowledgeBaseId, '系统知识修订已恢复');
+        AdminActivityLogger::logFromRequest($request, $admin, 'system_knowledge.revision_restored', [
+            'knowledge_base_id' => $knowledgeBaseId,
+            'revision_id' => $restored->getKey(),
+            'restored_from_revision_id' => $revisionId,
+        ]);
+
+        return redirect()->route('admin.knowledge-bases.detail', ['knowledgeBaseId' => $knowledgeBaseId])
+            ->with('message', __('admin.knowledge_bases.message.chunk_sync_queued'));
+    }
+
+    public function adoptOfficial(Request $request, int $knowledgeBaseId): RedirectResponse
+    {
+        $admin = $request->user('admin');
+        abort_unless($admin instanceof Admin && $admin->canManageProtectedWorkflows(), 403);
+        $knowledgeBase = $this->findVisibleKnowledgeBase($knowledgeBaseId);
+        abort_unless($knowledgeBase->isSystemManaged(), 404);
+        $definition = $this->systemKnowledgeBases->definition((string) $knowledgeBase->systemBinding?->system_key);
+        $contentChanged = ! hash_equals(hash('sha256', (string) $knowledgeBase->content), (string) $definition['content_hash']);
+        $revision = $this->systemKnowledgeBases->adoptOfficial($knowledgeBase, $admin);
+        if ($contentChanged) {
+            $this->qualityInvalidationService->invalidateKnowledgeBase($knowledgeBaseId, '系统知识已采用当前官方版本');
+        }
+        AdminActivityLogger::logFromRequest($request, $admin, 'system_knowledge.official_adopted', [
+            'knowledge_base_id' => $knowledgeBaseId,
+            'revision_id' => $revision->getKey(),
+            'content_changed' => $contentChanged,
+        ]);
+
+        return redirect()->route('admin.knowledge-bases.detail', ['knowledgeBaseId' => $knowledgeBaseId])
+            ->with('message', __($contentChanged
+                ? 'admin.knowledge_bases.message.chunk_sync_queued'
+                : 'admin.knowledge_bases.message.saved_without_reindex'));
+    }
+
     /**
      * @return array<int, array<string,mixed>>
      */
     private function loadKnowledgeBases(): array
     {
         $query = KnowledgeBase::query()
-            ->select(['id', 'name', 'description', 'file_type', 'word_count', 'usage_count', 'created_at', 'updated_at'])
+            ->select([
+                'id',
+                'name',
+                'description',
+                'file_type',
+                'content',
+                'chunk_sync_status',
+                'chunk_sync_error',
+                'chunk_source_hash',
+                'chunk_synced_at',
+                'word_count',
+                'usage_count',
+                'created_at',
+                'updated_at',
+            ])
+            ->with('systemBinding')
             ->withCount('chunks as chunk_count')
             ->withCount([
                 'chunks as vectorized_chunk_count' => fn ($query) => $query
@@ -329,7 +550,22 @@ class KnowledgeBaseController extends Controller
             ])
             ->orderByDesc('created_at');
 
-        return $query->get()->map(static function (KnowledgeBase $knowledgeBase): array {
+        $knowledgeBases = $query->get();
+        $systemKnowledgeBases = KnowledgeBase::query()
+            ->withoutGlobalScopes()
+            ->whereHas('systemBinding')
+            ->with('systemBinding')
+            ->withCount('chunks as chunk_count')
+            ->withCount([
+                'chunks as vectorized_chunk_count' => fn ($query) => $query
+                    ->whereNotNull('embedding_model_id')
+                    ->where('embedding_dimensions', '>', 0),
+            ])
+            ->get();
+
+        return $knowledgeBases->merge($systemKnowledgeBases)->unique('id')->sortByDesc('created_at')->values()->map(function (KnowledgeBase $knowledgeBase): array {
+            $isSystemKnowledge = $knowledgeBase->isSystemManaged();
+
             return [
                 'id' => (int) $knowledgeBase->id,
                 'name' => (string) $knowledgeBase->name,
@@ -341,6 +577,9 @@ class KnowledgeBaseController extends Controller
                 'vectorized_chunk_count' => (int) ($knowledgeBase->vectorized_chunk_count ?? 0),
                 'created_at' => $knowledgeBase->created_at?->format('Y-m-d H:i:s'),
                 'updated_at' => $knowledgeBase->updated_at?->format('Y-m-d H:i:s'),
+                'is_system' => $isSystemKnowledge,
+                'system_health' => $isSystemKnowledge ? $this->systemKnowledgeBases->health($knowledgeBase) : null,
+                'official_version' => (string) ($knowledgeBase->systemBinding?->official_version ?? ''),
             ];
         })->all();
     }
@@ -368,8 +607,19 @@ class KnowledgeBaseController extends Controller
 
     private function refreshChunksRedirectRoute(Request $request, int $knowledgeBaseId): string
     {
-        return $request->input('redirect_to') === 'detail'
-            ? route('admin.knowledge-bases.detail', ['knowledgeBaseId' => $knowledgeBaseId])
+        $redirectTo = trim((string) $request->input('redirect_to', ''));
+        if ($redirectTo === 'detail') {
+            return route('admin.knowledge-bases.detail', ['knowledgeBaseId' => $knowledgeBaseId]);
+        }
+
+        $allowedPaths = [
+            route('admin.knowledge-bases.index', [], false),
+            route('admin.knowledge-bases.detail', ['knowledgeBaseId' => $knowledgeBaseId], false),
+            route('admin.knowledge-bases.chunks.index', ['knowledgeBaseId' => $knowledgeBaseId], false),
+        ];
+
+        return in_array($redirectTo, $allowedPaths, true)
+            ? url($redirectTo)
             : route('admin.knowledge-bases.index');
     }
 
@@ -378,29 +628,71 @@ class KnowledgeBaseController extends Controller
      */
     private function loadStats(): array
     {
+        $tenantKnowledgeBases = KnowledgeBase::query()->whereDoesntHave('systemBinding');
+        $systemKnowledgeBases = KnowledgeBase::query()->withoutGlobalScopes()->whereHas('systemBinding');
+
         return [
-            'total_knowledge' => KnowledgeBase::query()->count(),
-            'total_words' => (int) (KnowledgeBase::query()->sum('word_count') ?? 0),
-            'markdown_count' => KnowledgeBase::query()->where('file_type', 'markdown')->count(),
-            'word_count' => KnowledgeBase::query()->where('file_type', 'word')->count(),
+            'total_knowledge' => (clone $tenantKnowledgeBases)->count() + (clone $systemKnowledgeBases)->count(),
+            'total_words' => (int) ((clone $tenantKnowledgeBases)->sum('word_count') ?? 0)
+                + (int) ((clone $systemKnowledgeBases)->sum('word_count') ?? 0),
+            'markdown_count' => (clone $tenantKnowledgeBases)->where('file_type', 'markdown')->count()
+                + (clone $systemKnowledgeBases)->where('file_type', 'markdown')->count(),
+            'word_count' => (clone $tenantKnowledgeBases)->where('file_type', 'word')->count()
+                + (clone $systemKnowledgeBases)->where('file_type', 'word')->count(),
         ];
     }
 
     /**
      * 校验知识库表单。
      *
-     * @return array{name:string,description:?string,content:string,file_type:string}
+     * @return array{name:string,description:?string,content:string,file_type:string,source_name:?string,source_url:?string,source_type:?string,business_line:?string,effective_date:?string,risk_level:string,review_status:string}
      */
     private function validateKnowledgeForm(Request $request): array
     {
-        return $request->validate([
+        $payload = $request->validate([
             'name' => ['required', 'string', 'max:100'],
             'description' => ['nullable', 'string'],
             'content' => ['required', 'string'],
-            'file_type' => ['required', 'in:markdown,word,text'],
+            'file_type' => ['required', 'in:markdown,word,text,pdf,presentation'],
+            'source_name' => ['nullable', 'string', 'max:150'],
+            'source_url' => ['nullable', 'string', 'max:500'],
+            'source_type' => ['nullable', 'in:document,website,business,faq,other'],
+            'business_line' => ['nullable', 'string', 'max:100'],
+            'effective_date' => ['nullable', 'date'],
+            'risk_level' => ['nullable', 'in:low,medium,high'],
+            'review_status' => ['nullable', 'in:unreviewed,reviewed'],
         ], [
             'name.required' => __('admin.knowledge_bases.error.name_required'),
             'content.required' => __('admin.knowledge_bases.error.content_required'),
+        ]);
+
+        $this->assertKnowledgeContentSize((string) $payload['content']);
+
+        return $payload;
+    }
+
+    /** @param array<string, mixed> $payload @return array<string, mixed> */
+    private function knowledgeMetadataPayload(array $payload): array
+    {
+        return [
+            'source_name' => trim((string) ($payload['source_name'] ?? '')) ?: null,
+            'source_url' => trim((string) ($payload['source_url'] ?? '')) ?: null,
+            'source_type' => (string) ($payload['source_type'] ?? 'document'),
+            'business_line' => trim((string) ($payload['business_line'] ?? '')) ?: null,
+            'effective_date' => $payload['effective_date'] ?? null,
+            'risk_level' => (string) ($payload['risk_level'] ?? 'medium'),
+            'review_status' => (string) ($payload['review_status'] ?? 'unreviewed'),
+        ];
+    }
+
+    private function assertKnowledgeContentSize(string $content): void
+    {
+        if (strlen($content) <= self::MAX_KNOWLEDGE_BYTES) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'content' => __('admin.knowledge_bases.error.content_too_large'),
         ]);
     }
 
@@ -478,6 +770,48 @@ class KnowledgeBaseController extends Controller
                     'content_preview' => $preview,
                 ];
             });
+    }
+
+    private function findVisibleKnowledgeBase(int $knowledgeBaseId): KnowledgeBase
+    {
+        $knowledgeBase = $this->systemKnowledgeBases->findVisibleKnowledgeBase($knowledgeBaseId);
+        abort_unless($knowledgeBase instanceof KnowledgeBase, 404);
+
+        return $knowledgeBase;
+    }
+
+    /**
+     * @return LengthAwarePaginator<int, array<string, mixed>>
+     */
+    private function paginateChunkRows(int $knowledgeBaseId): LengthAwarePaginator
+    {
+        return KnowledgeChunk::query()
+            ->select([
+                'chunk_index',
+                'content',
+                'chunk_title',
+                'section_path',
+                'chunk_strategy',
+                'token_count',
+                'embedding_model_id',
+                'embedding_dimensions',
+                'embedding_provider',
+            ])
+            ->where('knowledge_base_id', $knowledgeBaseId)
+            ->orderBy('chunk_index')
+            ->paginate(30)
+            ->through(static fn (KnowledgeChunk $chunk): array => [
+                'chunk_index' => (int) $chunk->chunk_index,
+                'content_length' => mb_strlen((string) $chunk->content, 'UTF-8'),
+                'token_count' => (int) ($chunk->token_count ?? 0),
+                'embedding_model_id' => $chunk->embedding_model_id !== null ? (int) $chunk->embedding_model_id : null,
+                'embedding_dimensions' => (int) ($chunk->embedding_dimensions ?? 0),
+                'embedding_provider' => (string) ($chunk->embedding_provider ?? ''),
+                'chunk_title' => (string) ($chunk->chunk_title ?? ''),
+                'section_path' => (string) ($chunk->section_path ?? ''),
+                'chunk_strategy' => (string) ($chunk->chunk_strategy ?? 'structured_rule'),
+                'content_preview' => mb_substr(trim((string) $chunk->content), 0, 240, 'UTF-8'),
+            ]);
     }
 
     /**

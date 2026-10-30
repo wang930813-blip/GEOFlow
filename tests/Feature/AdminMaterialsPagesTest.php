@@ -1,5 +1,16 @@
 <?php
 
+/**
+ * Created by Codex.
+ * @Date: 2026-10-30
+ * @Time: 01:13:11
+ * @Author: cdkay
+ * @Email: network@iyuanma.net
+ *
+ * @File： AdminMaterialsPagesTest.php
+ * @Description: 验证素材管理页面和图片上传流程。
+ */
+
 namespace Tests\Feature;
 
 use App\Models\Admin;
@@ -17,7 +28,9 @@ use App\Models\UrlImportJob;
 use App\Models\UrlImportJobLog;
 use App\Jobs\ProcessUrlImportJob;
 use App\Models\PlatformPlan;
+use App\Services\GeoFlow\ManagedImageFileService;
 use App\Services\GeoFlow\TitleAiGenerationService;
+use App\Support\ImageLibraryUploadPolicy;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -156,6 +169,44 @@ class AdminMaterialsPagesTest extends TestCase
             ->get(route('admin.url-import.history'))
             ->assertOk()
             ->assertSee(__('admin.url_import_history.page_title'));
+    }
+
+    public function test_image_upload_page_and_size_validation_use_the_shared_policy(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'materials_upload_policy_admin',
+            'password' => 'secret-123',
+            'email' => 'materials-upload-policy@example.com',
+            'display_name' => 'Materials Upload Policy Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $site = $this->createSiteForAdmin($admin);
+        $imageLibrary = ImageLibrary::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Upload Policy Library',
+            'description' => 'desc',
+            'image_count' => 0,
+            'used_task_count' => 0,
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->get(route('admin.image-libraries.images.create', ['libraryId' => (int) $imageLibrary->id]))
+            ->assertOk()
+            ->assertSee('data-image-upload-form', false)
+            ->assertSee('data-max-upload-bytes="'.ImageLibraryUploadPolicy::maxBytes().'"', false);
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
+            ->post(route('admin.image-libraries.images.upload', ['libraryId' => (int) $imageLibrary->id]), [
+                'images' => [UploadedFile::fake()->create(
+                    'oversized.png',
+                    ImageLibraryUploadPolicy::maxKilobytes() + 1,
+                    'image/png',
+                )],
+            ])
+            ->assertSessionHasErrors('images.0');
     }
 
     public function test_admin_can_create_knowledge_base_from_form(): void
@@ -1182,7 +1233,7 @@ class AdminMaterialsPagesTest extends TestCase
             'image_count' => 0,
             'used_task_count' => 0,
         ]);
-        Image::query()->create([
+        $image = Image::query()->create([
             'site_id' => (int) $site->id,
             'library_id' => (int) $imageLibrary->id,
             'filename' => 'demo.png',
@@ -1197,6 +1248,7 @@ class AdminMaterialsPagesTest extends TestCase
             'used_count' => 0,
             'usage_count' => 0,
         ]);
+        self::assertNotSame('', (string) $image->managed_path_hash);
         $knowledgeBase = KnowledgeBase::query()->create([
             'site_id' => (int) $site->id,
             'name' => '知识库A',
@@ -1796,6 +1848,9 @@ class AdminMaterialsPagesTest extends TestCase
             'mime_type' => 'image/png',
             'width' => 120,
             'height' => 80,
+            'managed_path_hash' => app(ManagedImageFileService::class)->terminalHashV1(
+                'https://cdn.example.com/2026-05-26/banner.png'
+            ),
         ]);
         $this->assertDatabaseHas('image_libraries', [
             'id' => (int) $imageLibrary->id,

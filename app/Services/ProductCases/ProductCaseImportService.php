@@ -1,5 +1,16 @@
 <?php
 
+/**
+ * Created by Codex.
+ * @Date: 2026-10-30
+ * @Time: 00:07:30
+ * @Author: cdkay
+ * @Email: network@iyuanma.net
+ *
+ * @File： ProductCaseImportService.php
+ * @Description: 导入产品案例、封面图片和品牌诊断演示数据。
+ */
+
 namespace App\Services\ProductCases;
 
 use App\Models\Admin;
@@ -8,6 +19,7 @@ use App\Models\ImageLibrary;
 use App\Models\ProductCase;
 use App\Models\Site;
 use App\Services\GeoFlow\ExternalImageHostClient;
+use App\Services\GeoFlow\ManagedImageFileService;
 use Closure;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -22,7 +34,8 @@ class ProductCaseImportService
         private readonly ProductCaseSpreadsheetReader $reader,
         private readonly ExternalImageHostClient $imageHostClient,
         private readonly ProductCaseDemoDataService $demoData,
-        private readonly ProductCaseIndustryNormalizer $industryNormalizer
+        private readonly ProductCaseIndustryNormalizer $industryNormalizer,
+        private readonly ManagedImageFileService $managedImages
     ) {}
 
     /**
@@ -400,6 +413,7 @@ class ProductCaseImportService
             'original_name' => $originalName,
             'file_name' => $filename,
             'file_path' => $url,
+            'managed_path_hash' => $this->managedImages->terminalHashV1($url),
             'file_size' => (int) ($uploaded['size'] ?? strlen($binary)),
             'mime_type' => (string) ($uploaded['mime_type'] ?? $imageInfo['mime'] ?? $mimeType),
             'width' => (int) ($imageInfo[0] ?? 0),

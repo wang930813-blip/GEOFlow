@@ -12,9 +12,47 @@
     $publishScope = (string) old('publish_scope', (string) ($taskForm['publish_scope'] ?? 'local_and_distribution'));
     $scheduledPublishEnabled = old('scheduled_publish_enabled', (string) ($taskForm['scheduled_publish_enabled'] ?? '0'));
     $scheduledPublishAt = (string) old('scheduled_publish_at', (string) ($taskForm['scheduled_publish_at'] ?? ''));
+    $selectedTitleLibraryId = (string) old('title_library_id', (string) ($taskForm['title_library_id'] ?? ''));
+    $selectedTitleLibrary = collect($formOptions['titleLibraries'] ?? [])->first(
+        static fn (array $library): bool => (string) ($library['id'] ?? '') === $selectedTitleLibraryId
+    );
+    $createdCount = max(0, (int) ($taskForm['created_count'] ?? 0));
+    $articleLimit = max(1, (int) old('article_limit', (int) ($taskForm['article_limit'] ?? 10)));
+    $plannedRemaining = max(0, $articleLimit - $createdCount);
+    $taskFormI18n = [
+        'checking' => $t('task_create.readiness.checking'),
+        'publishCadence' => $t('task_create.ai_quality.publish_cadence', ['minutes' => '__MINUTES__']),
+        'blockedTitle' => $t('task_create.readiness.dialog_blocked_title'),
+        'warningTitle' => $t('task_create.readiness.dialog_warning_title'),
+        'requestFailed' => $t('task_create.readiness.request_failed'),
+        'knowledgeBaseLimit' => $t('task_create.error.knowledge_base_limit'),
+        'distributionCount' => $t('task_create.label.distribution_channel_selected_count', ['count' => '__COUNT__']),
+        'knowledgeBaseCount' => $t('task_create.label.knowledge_base_selected_count', ['count' => '__COUNT__', 'max' => 5]),
+        'adjustLimit' => $t('task_create.readiness.actions.adjust_limit', ['count' => '__COUNT__']),
+        'savePaused' => $t('task_create.readiness.actions.save_paused'),
+        'saveExistingPaused' => $t('task_create.readiness.actions.save_existing_paused'),
+        'requestFailedIssue' => [
+            'code' => 'request_failed',
+            'severity' => 'warning',
+            'title' => $t('task_create.readiness.issue.request_failed.title'),
+            'message' => $t('task_create.readiness.issue.request_failed.message'),
+            'impact' => $t('task_create.readiness.issue.request_failed.impact'),
+            'suggestions' => [
+                $t('task_create.readiness.issue.request_failed.suggestion_1'),
+                $t('task_create.readiness.issue.request_failed.suggestion_2'),
+            ],
+        ],
+    ];
+    $initialTitleReadinessReport = session('title_readiness_report');
 @endphp
 
 @section('content')
+    @if (! $isEdit)
+        <nav aria-label="任务类型" class="mb-5 flex gap-3 border-b border-gray-200 pb-4" data-task-type-chooser>
+            <a aria-current="page" class="rounded-md bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700" href="{{ route('admin.tasks.create', ['content_type' => 'article']) }}">文章任务</a>
+            <a class="rounded-md px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50" href="{{ route('admin.tasks.create', ['content_type' => 'topic']) }}">专题任务</a>
+        </nav>
+    @endif
     <div class="px-4 sm:px-0">
         <div class="flex items-center justify-between mb-6">
             <div class="flex items-center space-x-4">
@@ -41,8 +79,19 @@
                     </div>
                 </div>
             @else
-            <form method="POST" action="{{ $isEdit ? route('admin.tasks.update', ['taskId' => $taskId]) : route('admin.tasks.store') }}" class="space-y-8">
+            <form
+                method="POST"
+                action="{{ $isEdit ? route('admin.tasks.update', ['taskId' => $taskId]) : route('admin.tasks.store') }}"
+                class="space-y-8"
+                data-task-form
+                data-title-readiness-url="{{ route('admin.tasks.title-readiness') }}"
+                data-task-id="{{ $taskId ?? '' }}"
+                data-created-count="{{ $createdCount }}"
+            >
                 @csrf
+                @unless ($isEdit)
+                    <input type="hidden" name="content_type" value="article">
+                @endunless
                 @if ($isEdit)
                     @method('PUT')
                 @endif
@@ -65,11 +114,25 @@
                                 <select name="title_library_id" id="title_library_id" required class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
                                     <option value="">{{ $t('task_create.option.select_title_library') }}</option>
                                     @foreach ($formOptions['titleLibraries'] as $library)
-                                        <option value="{{ $library['id'] }}" @selected((string) old('title_library_id', (string) ($taskForm['title_library_id'] ?? '')) === (string) $library['id'])>
-                                            {{ $t('task_create.option.library_count', ['name' => $library['name'], 'count' => $library['count']]) }}{{ ($library['keyword_library_name'] ?? '') !== '' ? ' - GEO: '.(($library['company_name'] ?? '') !== '' ? $library['company_name'] : $library['keyword_library_name']) : '' }}
+                                        <option
+                                            value="{{ $library['id'] }}"
+                                            data-title-name="{{ $library['name'] }}"
+                                            data-title-total="{{ $library['count'] }}"
+                                            data-title-used="{{ $library['used'] }}"
+                                            data-title-available="{{ $library['available'] }}"
+                                            data-title-manage-url="{{ $library['manage_url'] }}"
+                                            @selected($selectedTitleLibraryId === (string) $library['id'])
+                                        >
+                                            {{ $t('task_create.option.library_readiness_count', ['name' => $library['name'], 'available' => $library['available'], 'total' => $library['count']]) }}{{ ($library['keyword_library_name'] ?? '') !== '' ? ' - GEO: '.(($library['company_name'] ?? '') !== '' ? $library['company_name'] : $library['keyword_library_name']) : '' }}
                                         </option>
                                     @endforeach
                                 </select>
+                                <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs leading-5 text-gray-500" data-task-title-stats aria-live="polite">
+                                    <span>{{ $t('task_create.readiness.stats.total') }} <strong class="font-semibold text-gray-700 tabular-nums" data-task-title-stat="total">{{ (int) ($selectedTitleLibrary['count'] ?? 0) }}</strong></span>
+                                    <span>{{ $t('task_create.readiness.stats.used') }} <strong class="font-semibold text-gray-700 tabular-nums" data-task-title-stat="used">{{ (int) ($selectedTitleLibrary['used'] ?? 0) }}</strong></span>
+                                    <span>{{ $t('task_create.readiness.stats.available') }} <strong class="font-semibold text-gray-700 tabular-nums" data-task-title-stat="available">{{ (int) ($selectedTitleLibrary['available'] ?? 0) }}</strong></span>
+                                    <span>{{ $t('task_create.readiness.stats.remaining') }} <strong class="font-semibold text-gray-700 tabular-nums" data-task-title-stat="remaining">{{ $plannedRemaining }}</strong></span>
+                                </div>
                             </div>
                             <div>
                                 <label for="status" class="block text-sm font-medium text-gray-700">{{ $t('task_create.field.task_status') }}</label>
@@ -144,6 +207,74 @@
                                         <option value="{{ $author['id'] }}" @selected((string) old('author_id', (string) ($taskForm['author_id'] ?? '0')) === (string) $author['id'])>{{ $author['name'] }}</option>
                                     @endforeach
                                 </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white shadow rounded-lg">
+                    <div class="px-6 py-4 border-b border-gray-200">
+                        <h3 class="text-lg font-medium text-gray-900">{{ $t('task_create.section.ai_quality_title') }}</h3>
+                        <p class="mt-1 text-sm text-gray-600">{{ $t('task_create.section.ai_quality_desc') }}</p>
+                    </div>
+                    <div class="px-6 py-4 space-y-5">
+                        <div>
+                            <input type="hidden" name="ai_quality_enabled" value="0">
+                            <label class="inline-flex items-center gap-2">
+                                <input type="checkbox" name="ai_quality_enabled" id="ai_quality_enabled" value="1"
+                                       @checked((bool) old('ai_quality_enabled', (bool) ($taskForm['ai_quality_enabled'] ?? false)))
+                                       class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                <span class="text-sm font-medium text-gray-900">{{ $t('task_create.field.ai_quality_enabled') }}</span>
+                            </label>
+                            <p class="mt-1 text-sm text-gray-500">{{ $t('task_create.help.ai_quality_enabled') }}</p>
+                        </div>
+
+                        <div id="ai-quality-settings" class="grid grid-cols-1 gap-5 md:grid-cols-2">
+                            <div>
+                                <label for="ai_quality_prompt_id" class="block text-sm font-medium text-gray-700">{{ $t('task_create.field.ai_quality_prompt') }}</label>
+                                <select name="ai_quality_prompt_id" id="ai_quality_prompt_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                    <option value="">{{ $t('task_create.option.select_ai_quality_prompt') }}</option>
+                                    @foreach (($formOptions['aiQualityPrompts'] ?? []) as $prompt)
+                                        <option value="{{ $prompt['id'] }}" @selected((string) old('ai_quality_prompt_id', (string) ($taskForm['ai_quality_prompt_id'] ?? '')) === (string) $prompt['id'])>{{ $prompt['name'] }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div>
+                                <label for="ai_quality_model_id" class="block text-sm font-medium text-gray-700">{{ $t('task_create.field.ai_quality_model') }}</label>
+                                <select name="ai_quality_model_id" id="ai_quality_model_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                    <option value="">{{ $t('task_create.option.select_ai_quality_model') }}</option>
+                                    @foreach (($formOptions['aiModels'] ?? []) as $model)
+                                        <option value="{{ $model['id'] }}" @selected((string) old('ai_quality_model_id', (string) ($taskForm['ai_quality_model_id'] ?? '')) === (string) $model['id'])>{{ $model['name'] }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div>
+                                <label for="ai_quality_knowledge_base_ids" class="block text-sm font-medium text-gray-700">{{ $t('task_create.field.ai_quality_knowledge_bases') }}</label>
+                                @php($selectedQualityKnowledgeBaseIds = collect(old('ai_quality_knowledge_base_ids', $taskForm['ai_quality_knowledge_base_ids'] ?? []))->map(static fn ($id): string => (string) $id)->all())
+                                <select name="ai_quality_knowledge_base_ids[]" id="ai_quality_knowledge_base_ids" multiple size="5" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                    @foreach (($formOptions['knowledgeBases'] ?? []) as $knowledgeBase)
+                                        <option value="{{ $knowledgeBase['id'] }}" @selected(in_array((string) $knowledgeBase['id'], $selectedQualityKnowledgeBaseIds, true))>{{ $knowledgeBase['name'] }}</option>
+                                    @endforeach
+                                </select>
+                                <p class="mt-1 text-sm text-gray-500">{{ $t('task_create.help.ai_quality_knowledge_bases') }}</p>
+                            </div>
+                            <div>
+                                <label for="ai_quality_retrieval_mode" class="block text-sm font-medium text-gray-700">{{ $t('task_create.field.ai_quality_retrieval_mode') }}</label>
+                                <select name="ai_quality_retrieval_mode" id="ai_quality_retrieval_mode" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                    <option value="atomic_first" @selected(old('ai_quality_retrieval_mode', (string) ($taskForm['ai_quality_retrieval_mode'] ?? 'chunk')) === 'atomic_first')>{{ $t('task_create.option.ai_quality_mode_atomic_first') }}</option>
+                                    <option value="chunk" @selected(old('ai_quality_retrieval_mode', (string) ($taskForm['ai_quality_retrieval_mode'] ?? 'chunk')) === 'chunk')>{{ $t('task_create.option.ai_quality_mode_chunk') }}</option>
+                                    <option value="knowledge_broad" @selected(old('ai_quality_retrieval_mode', (string) ($taskForm['ai_quality_retrieval_mode'] ?? 'chunk')) === 'knowledge_broad')>{{ $t('task_create.option.ai_quality_mode_knowledge_broad') }}</option>
+                                </select>
+                                <p class="mt-1 text-sm text-gray-500">{{ $t('task_create.help.ai_quality_retrieval_mode') }}</p>
+                            </div>
+                            <div>
+                                <label for="ai_quality_pass_score" class="block text-sm font-medium text-gray-700">{{ $t('task_create.field.ai_quality_pass_score') }}</label>
+                                <input type="number" name="ai_quality_pass_score" id="ai_quality_pass_score" min="1" max="100" value="{{ old('ai_quality_pass_score', (string) ($taskForm['ai_quality_pass_score'] ?? 85)) }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                            </div>
+                            <div>
+                                <label for="ai_quality_manual_override_min_score" class="block text-sm font-medium text-gray-700">{{ $t('task_create.field.ai_quality_manual_score') }}</label>
+                                <input type="number" name="ai_quality_manual_override_min_score" id="ai_quality_manual_override_min_score" min="0" max="99" value="{{ old('ai_quality_manual_override_min_score', (string) ($taskForm['ai_quality_manual_override_min_score'] ?? 70)) }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                <p class="mt-1 text-sm text-gray-500">{{ $t('task_create.help.ai_quality_scores') }}</p>
                             </div>
                         </div>
                     </div>
@@ -429,14 +560,77 @@
                     <a href="{{ route('admin.tasks.index') }}" class="px-6 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
                         {{ __('admin.button.cancel') }}
                     </a>
-                    <button type="submit" class="px-6 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
-                        {{ $isEdit ? __('admin.task_edit.button.save_changes') : __('admin.button.create_task') }}
+                    <button type="submit" class="px-6 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700" data-task-form-submit>
+                        <span data-task-form-submit-label>{{ $isEdit ? __('admin.task_edit.button.save_changes') : __('admin.button.create_task') }}</span>
                     </button>
                 </div>
             </form>
             @endif
         </div>
     </div>
+    @unless ($isEdit)
+        <script>
+            (()=>{const form=document.querySelector('[data-task-form]');if(!form)return;const key='geoflow:task:new:article';try{const entries=JSON.parse(sessionStorage.getItem(key)||'null');if(entries&&!@json($errors->any())){for(const [name,value]of entries){const nodes=Array.from(form.elements).filter(n=>n.name===name);for(const n of nodes){if(n.type==='checkbox'||n.type==='radio')n.checked=String(n.value)===String(value);else if(!n.multiple)n.value=value;}}}}catch{}const save=()=>{try{sessionStorage.setItem(key,JSON.stringify(Array.from(new FormData(form).entries()).filter(([n])=>!['_token','content_type'].includes(n))));}catch{}};document.querySelector('[data-task-type-chooser]')?.addEventListener('click',save);form.addEventListener('submit',()=>{try{sessionStorage.removeItem(key);}catch{}});})();
+        </script>
+    @endunless
+    @if ($hasCategories)
+        <dialog
+            class="fixed inset-0 m-auto w-[min(600px,calc(100vw-2rem))] max-w-none overflow-hidden overscroll-contain rounded-lg border-0 bg-white p-0 text-left text-gray-900 shadow-2xl backdrop:bg-black/50"
+            data-task-title-readiness-dialog
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="task-title-readiness-title"
+            aria-describedby="task-title-readiness-summary task-title-readiness-recommendation"
+        >
+            <div class="flex max-h-[min(760px,calc(100dvh-2rem))] flex-col">
+                <header class="flex items-start gap-4 border-b border-gray-200 px-6 py-5">
+                    <span class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-600" data-task-readiness-icon-wrap aria-hidden="true">
+                        <i data-lucide="triangle-alert" class="h-5 w-5" data-task-readiness-icon></i>
+                    </span>
+                    <div class="min-w-0 flex-1">
+                        <p class="text-xs font-semibold uppercase text-gray-500">{{ $t('task_create.readiness.dialog_eyebrow') }}</p>
+                        <h2 id="task-title-readiness-title" class="mt-1 text-lg font-semibold leading-6 text-gray-900" data-task-readiness-title>{{ $t('task_create.readiness.dialog_blocked_title') }}</h2>
+                    </div>
+                    <button type="button" class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100" data-task-readiness-close aria-label="{{ $t('task_create.readiness.actions.close') }}">
+                        <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+                    </button>
+                </header>
+                <div class="grid grid-cols-2 border-b border-gray-200 bg-gray-50 sm:grid-cols-4">
+                    @foreach ([
+                        'remaining' => $t('task_create.readiness.stats.remaining'),
+                        'total' => $t('task_create.readiness.stats.total'),
+                        'used' => $t('task_create.readiness.stats.used'),
+                        'available' => $t('task_create.readiness.stats.available'),
+                    ] as $statKey => $statLabel)
+                        <div class="border-r border-gray-200 px-4 py-3 last:border-r-0">
+                            <p class="text-xs text-gray-500">{{ $statLabel }}</p>
+                            <p class="mt-1 text-lg font-semibold tabular-nums text-gray-900" data-task-readiness-stat="{{ $statKey }}">0</p>
+                        </div>
+                    @endforeach
+                </div>
+                <div class="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+                    <p id="task-title-readiness-summary" class="text-sm leading-6 text-gray-700" data-task-readiness-summary></p>
+                    <div class="mt-4 space-y-3" data-task-readiness-issues></div>
+                    <div class="mt-4 rounded-lg bg-gray-50 px-4 py-3">
+                        <p id="task-title-readiness-recommendation" class="text-sm leading-6 text-gray-700" data-task-readiness-recommendation></p>
+                        <p class="mt-2 hidden text-sm font-medium text-amber-800" data-task-readiness-paused-hint hidden></p>
+                    </div>
+                </div>
+                <footer class="flex flex-wrap justify-end gap-2 border-t border-gray-200 bg-gray-50 px-6 py-4 max-[520px]:flex-col">
+                    <button type="button" class="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100" data-task-readiness-close>{{ $t('task_create.readiness.actions.close') }}</button>
+                    <a href="#" target="_blank" rel="noopener" class="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100" data-task-readiness-manage>{{ $t('task_create.readiness.actions.manage_library') }}</a>
+                    <button type="button" class="hidden rounded-md border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-900" data-task-readiness-adjust hidden></button>
+                    <button type="button" class="hidden rounded-md border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-900" data-task-readiness-loop hidden>{{ $t('task_create.readiness.actions.enable_loop') }}</button>
+                    <button type="button" class="hidden rounded-md bg-gray-800 px-4 py-2 text-sm font-semibold text-white" data-task-readiness-pause hidden>{{ $t('task_create.readiness.actions.save_paused') }}</button>
+                    <button type="button" class="hidden rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white" data-task-readiness-acknowledge hidden>{{ $t('task_create.readiness.actions.acknowledge') }}</button>
+                    <button type="button" class="hidden rounded-md border border-blue-300 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-800" data-task-readiness-retry hidden>{{ $t('task_create.readiness.actions.retry') }}</button>
+                    <button type="button" class="hidden rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white" data-task-readiness-server hidden>{{ $t('task_create.readiness.actions.server_check') }}</button>
+                </footer>
+            </div>
+        </dialog>
+        <script type="application/json" data-task-form-i18n>@json($taskFormI18n)</script>
+        <script type="application/json" data-task-title-readiness-initial>@json($initialTitleReadinessReport)</script>
+    @endif
 @endsection
 
 @push('scripts')
@@ -467,11 +661,24 @@
             const categoryModeRadios = document.querySelectorAll('input[name="category_mode"]');
             const titleLibrarySelect = document.getElementById('title_library_id');
             const fixedTitleSelect = document.getElementById('fixed_title_id');
+            const aiQualityToggle = document.getElementById('ai_quality_enabled');
+            const aiQualitySettings = document.getElementById('ai-quality-settings');
             const form = document.querySelector('form');
 
             if (!form) {
                 return;
             }
+
+            function toggleAiQualitySettings() {
+                const enabled = aiQualityToggle.checked;
+                aiQualitySettings.querySelectorAll('input, select').forEach(function (control) {
+                    control.disabled = !enabled;
+                });
+                aiQualitySettings.style.opacity = enabled ? '1' : '0.55';
+            }
+
+            aiQualityToggle.addEventListener('change', toggleAiQualitySettings);
+            toggleAiQualitySettings();
 
             function toggleImageControls() {
                 const mode = imageModeSelect.value || 'library';

@@ -18,14 +18,24 @@ class KnowledgeChunk extends Model
         'site_id',
         'owner_admin_id',
         'knowledge_base_id',
+        'generation_key',
         'chunk_index',
         'content',
         'content_hash',
+        'chunk_title',
+        'section_path',
+        'chunk_strategy',
+        'metadata_json',
+        'source_hash',
         'token_count',
         'embedding_json',
         'embedding_model_id',
         'embedding_dimensions',
         'embedding_provider',
+        'embedding_fingerprint',
+        'embedding_profile_version',
+        'embedding_profile_digest',
+        'embedding_config_revision',
         'embedding_vector',
     ];
 
@@ -39,6 +49,7 @@ class KnowledgeChunk extends Model
             'token_count' => 'integer',
             'embedding_model_id' => 'integer',
             'embedding_dimensions' => 'integer',
+            'embedding_profile_version' => 'integer',
         ];
     }
 

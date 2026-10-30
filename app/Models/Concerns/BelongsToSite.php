@@ -15,7 +15,15 @@ trait BelongsToSite
         static::addGlobalScope('current_site', function (Builder $builder): void {
             $siteId = app(CurrentSite::class)->id();
             if ($siteId !== null && $siteId > 0) {
-                $builder->where($builder->getModel()->getTable().'.site_id', $siteId);
+                $admin = Auth::guard('admin')->user();
+                $builder->where(function (Builder $scopedQuery) use ($builder, $siteId, $admin): void {
+                    $scopedQuery->where($builder->getModel()->getTable().'.site_id', $siteId);
+
+                    // 超级管理员需要读取升级前遗留的主站配置（site_id=NULL）；普通账号仍严格限定当前站点。
+                    if ($admin instanceof Admin && $admin->isSuperAdmin()) {
+                        $scopedQuery->orWhereNull($builder->getModel()->getTable().'.site_id');
+                    }
+                });
 
                 return;
             }

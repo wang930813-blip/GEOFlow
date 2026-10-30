@@ -39,6 +39,11 @@
     "/about"
   ],
   "requires_admin_activation": true,
+  "requires": {
+    "views": [
+      "site.partials.friend-links"
+    ]
+  },
   "blade_templates": [
     "layout.blade.php",
     "home.blade.php",

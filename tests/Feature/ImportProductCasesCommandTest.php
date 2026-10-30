@@ -1,5 +1,16 @@
 <?php
 
+/**
+ * Created by Codex.
+ * @Date: 2026-10-30
+ * @Time: 00:07:30
+ * @Author: cdkay
+ * @Email: network@iyuanma.net
+ *
+ * @File： ImportProductCasesCommandTest.php
+ * @Description: 验证产品案例导入命令的写入、幂等和演示数据行为。
+ */
+
 namespace Tests\Feature;
 
 use App\Models\Admin;
@@ -11,6 +22,7 @@ use App\Models\Image;
 use App\Models\ImageLibrary;
 use App\Models\ProductCase;
 use App\Models\Site;
+use App\Services\GeoFlow\ManagedImageFileService;
 use App\Services\ProductCases\ProductCaseIndustryNormalizer;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Config;
@@ -59,6 +71,12 @@ class ImportProductCasesCommandTest extends TestCase
             );
             $this->assertSame(0, BrandDiagnosisBrandMention::query()->where('is_target_brand', false)->count());
             $this->assertSame(2, $uploadCount);
+            $this->assertDatabaseHas('images', [
+                'file_path' => 'https://cdn.example.com/geo-cases/case-1.png',
+                'managed_path_hash' => app(ManagedImageFileService::class)->terminalHashV1(
+                    'https://cdn.example.com/geo-cases/case-1.png'
+                ),
+            ]);
 
             $seededRuns = BrandDiagnosisRun::query()
                 ->where('billing_mode', 'product_case_seed')

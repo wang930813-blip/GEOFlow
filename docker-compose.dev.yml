@@ -79,7 +79,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "http://127.0.0.1:8080/up"]
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--header", "Host: localhost", "http://127.0.0.1:8080/up"]
       interval: 10s
       timeout: 5s
       retries: 12

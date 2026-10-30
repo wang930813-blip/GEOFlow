@@ -128,6 +128,8 @@
         </aside>
     </div>
 
+    @include('site.partials.link-pool')
+
     @if($stickyAd)
         <div id="stickyAd" class="fixed bottom-4 right-4 z-50 max-w-xs rounded-2xl border border-gray-200 bg-white p-4 shadow-xl" data-ad-id="{{ $stickyAd['id'] }}">
             <button type="button" class="absolute right-2 top-2 text-gray-400 hover:text-gray-700" onclick="document.getElementById('stickyAd')?.remove()" aria-label="Close">×</button>

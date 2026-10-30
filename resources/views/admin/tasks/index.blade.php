@@ -67,6 +67,10 @@
                     <i data-lucide="plus" class="w-4 h-4 mr-2"></i>
                     {{ __('admin.button.create_task') }}
                 </a>
+                <a href="{{ route('admin.tasks.create', ['content_type' => 'topic']) }}" class="inline-flex items-center px-4 py-2 border border-blue-200 text-sm font-medium rounded-md text-blue-700 bg-white hover:bg-blue-50">
+                    <i data-lucide="layers-3" class="w-4 h-4 mr-2"></i>
+                    创建专题任务
+                </a>
                 <button onclick="executeAllActiveTasks()" class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
                     <i data-lucide="play" class="w-4 h-4 mr-2"></i>
                     {{ __('admin.button.run_all_tasks') }}
@@ -116,6 +120,7 @@
                                 $failureClasses = $getFailureToneClasses($failureInfo['tone']);
                                 $hasVisibleFailure = !empty($task['batch_error_message']) && in_array($task['batch_status'], ['failed', 'cancelled'], true);
                                 $taskStatus = (string) ($task['status'] ?? 'paused');
+                                $isTopicTask = ($task['content_type'] ?? 'article') === 'topic';
                                 $isActiveTask = $taskStatus === 'active';
                                 $isCompletedTask = $taskStatus === 'completed';
                                 $isRunnableTask = $taskStatus === 'paused';
@@ -123,6 +128,9 @@
                             <tr class="hover:bg-gray-50">
                                 <td class="px-5 py-4 align-top">
                                     <div class="text-sm font-medium leading-6 text-gray-900 break-words">{{ $task['name'] ?? '' }}</div>
+                                    @if ($isTopicTask)
+                                        <span class="mt-1 inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">专题任务</span>
+                                    @endif
                                     <div class="mt-1 text-sm text-gray-500 break-words">{{ __('admin.tasks.label.title_library') }}: {{ $task['title_library_name'] ?? '' }}</div>
                                     @if ($hasVisibleFailure)
                                         <div class="mt-2 rounded-md border px-3 py-2 text-xs {{ $failureClasses['card'] }}">
@@ -144,9 +152,10 @@
                                 </td>
                                 <td class="px-5 py-4 align-top whitespace-nowrap text-sm text-gray-500">
                                     @php
-                                        $articleLimit = max(1, (int) ($task['article_limit'] ?? $task['draft_limit'] ?? 10));
+                                        $articleLimit = max(1, (int) ($isTopicTask ? ($task['topic_limit'] ?? $task['article_limit'] ?? 10) : ($task['article_limit'] ?? $task['draft_limit'] ?? 10)));
                                         $createdForProgress = min($articleLimit, (int) ($task['created_count'] ?? $task['total_articles'] ?? 0));
                                         $progressPercent = (int) floor(($createdForProgress / $articleLimit) * 100);
+                                        $topicProgress = $task['task_progress'] ?? [];
                                         $distributionTotal = (int) ($task['distribution_total_count'] ?? 0);
                                         $distributionSynced = (int) ($task['distribution_synced_count'] ?? 0);
                                         $distributionFailed = (int) ($task['distribution_failed_count'] ?? 0);
@@ -171,9 +180,9 @@
                                             }
                                         }
                                     @endphp
-                                    <div id="task-created-{{ (int) $task['id'] }}">{{ __('admin.tasks.label.created_of_limit', ['created' => (int) ($task['created_count'] ?? $task['total_articles'] ?? 0), 'limit' => $articleLimit]) }}</div>
-                                    <div id="task-published-{{ (int) $task['id'] }}">{{ __('admin.tasks.label.published_articles', ['count' => (int) ($task['published_articles'] ?? 0)]) }}</div>
-                                    <div id="task-drafts-{{ (int) $task['id'] }}">{{ __('admin.tasks.label.draft_articles', ['count' => (int) ($task['draft_articles'] ?? 0)]) }}</div>
+                                    <div id="task-created-{{ (int) $task['id'] }}">{{ $isTopicTask ? str_replace(['__CREATED__', '__LIMIT__'], [(string) (int) ($task['created_count'] ?? 0), (string) $articleLimit], $taskI18n['topicCreatedOfLimit']) : __('admin.tasks.label.created_of_limit', ['created' => (int) ($task['created_count'] ?? $task['total_articles'] ?? 0), 'limit' => $articleLimit]) }}</div>
+                                    <div id="task-published-{{ (int) $task['id'] }}">{{ $isTopicTask ? str_replace('__COUNT__', (string) (int) ($task['published_count'] ?? 0), $taskI18n['topicPublished']) : __('admin.tasks.label.published_articles', ['count' => (int) ($task['published_articles'] ?? 0)]) }}</div>
+                                    <div id="task-drafts-{{ (int) $task['id'] }}">{{ $isTopicTask ? str_replace('__COUNT__', (string) (int) ($topicProgress['draft_topics'] ?? 0), $taskI18n['topicDrafts']) : __('admin.tasks.label.draft_articles', ['count' => (int) ($task['draft_articles'] ?? 0)]) }}</div>
                                     <div class="mt-2 h-1.5 w-28 overflow-hidden rounded-full bg-gray-200">
                                         <div id="task-progress-{{ (int) $task['id'] }}" class="h-full rounded-full bg-blue-600" style="width: {{ $progressPercent }}%"></div>
                                     </div>
@@ -187,7 +196,7 @@
                                     @endif
                                 </td>
                                 <td class="px-5 py-4 align-top whitespace-nowrap text-sm text-gray-500">
-                                    <span id="task-loop-{{ (int) $task['id'] }}">{{ __('admin.tasks.label.loop_times', ['count' => (int) ($task['loop_count'] ?? 0)]) }}</span>
+                                    <span id="task-loop-{{ (int) $task['id'] }}">{{ $isTopicTask ? $taskI18n['topicPublishInterval'] : __('admin.tasks.label.loop_times', ['count' => (int) ($task['loop_count'] ?? 0)]) }}</span>
                                     <div id="task-publish-interval-{{ (int) $task['id'] }}" class="mt-1 text-xs text-gray-400">
                                         {{ __('admin.tasks.label.publish_interval_minutes', ['count' => max(1, (int) ceil(((int) ($task['publish_interval'] ?? 3600)) / 60))]) }}
                                     </div>
@@ -227,11 +236,17 @@
                                             <i data-lucide="settings" class="w-4 h-4"></i>
                                         </a>
 
-                                        <a href="{{ route('admin.articles.index', ['task_id' => (int) $task['id']]) }}" class="inline-flex items-center justify-center w-8 h-8 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-colors border border-green-200" title="{{ __('admin.tasks.action.articles') }}">
-                                            <i data-lucide="file-text" class="w-4 h-4"></i>
-                                        </a>
+                                        @if ($isTopicTask)
+                                            <a href="{{ route('admin.topics.index', ['site' => $task['target_site_key'] ?? 'primary', 'task_id' => (int) $task['id']]) }}" class="inline-flex items-center justify-center w-8 h-8 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-colors border border-green-200" title="查看本任务专题">
+                                                <i data-lucide="layers-3" class="w-4 h-4"></i>
+                                            </a>
+                                        @else
+                                            <a href="{{ route('admin.articles.index', ['task_id' => (int) $task['id']]) }}" class="inline-flex items-center justify-center w-8 h-8 text-green-600 hover:text-green-800 hover:bg-green-50 rounded-md transition-colors border border-green-200" title="{{ __('admin.tasks.action.articles') }}">
+                                                <i data-lucide="file-text" class="w-4 h-4"></i>
+                                            </a>
+                                        @endif
 
-                                        <form method="POST" action="{{ route('admin.tasks.delete', ['taskId' => (int) $task['id']]) }}" class="inline" onsubmit="return confirm(@js(__('admin.tasks.confirm.delete')))">
+                                        <form method="POST" action="{{ route('admin.tasks.delete', ['taskId' => (int) $task['id']]) }}" class="inline" data-admin-confirm-form data-admin-confirm-tone="danger" data-admin-confirm-title="{{ __('admin.tasks.confirm.delete') }}" data-admin-confirm-message="{{ __('admin.action_dialog.target', ['name' => $task['name']]) }}" data-admin-confirm-guidance="{{ __('admin.action_dialog.generic_impact') }}" data-admin-confirm-label="{{ __('admin.tasks.action.delete') }}">
                                             @csrf
                                             <button type="submit" class="inline-flex items-center justify-center w-8 h-8 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md transition-colors border border-red-200" title="{{ __('admin.tasks.action.delete') }}">
                                                 <i data-lucide="trash-2" class="w-4 h-4"></i>
@@ -247,6 +262,51 @@
                 </div>
             @endif
         </div>
+
+        <details class="mt-6 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+            <summary class="cursor-pointer px-5 py-4 text-base font-medium text-gray-900">
+                {{ __('admin.tasks.trash.title') }}
+                <span class="ml-2 text-sm font-normal text-gray-500">{{ count($trashTasks ?? []) }}</span>
+                <p class="mt-1 text-sm font-normal text-gray-500">{{ __('admin.tasks.trash.description') }}</p>
+            </summary>
+            @if (empty($trashTasks))
+                <p class="border-t border-gray-200 px-5 py-4 text-sm text-gray-500">{{ __('admin.tasks.trash.empty') }}</p>
+            @else
+                <div class="overflow-x-auto border-t border-gray-200">
+                    <table class="w-full min-w-[620px] divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-5 py-3 text-left text-xs font-medium text-gray-500">{{ __('admin.tasks.column.name') }}</th>
+                                <th class="px-5 py-3 text-left text-xs font-medium text-gray-500">{{ __('admin.tasks.trash.deleted_at') }}</th>
+                                <th class="px-5 py-3 text-right text-xs font-medium text-gray-500">{{ __('admin.tasks.column.actions') }}</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-200 bg-white">
+                            @foreach ($trashTasks as $trashedTask)
+                                <tr>
+                                    <td class="px-5 py-3 text-sm text-gray-900">{{ $trashedTask['name'] }}</td>
+                                    <td class="px-5 py-3 whitespace-nowrap text-sm text-gray-500">{{ $trashedTask['deleted_at'] }}</td>
+                                    <td class="px-5 py-3 text-right">
+                                        @if (!empty($trashedTask['requires_super_admin_restore']) && !($canRestoreProtectedTasks ?? false))
+                                            <span class="text-xs text-gray-500">{{ __('admin.tasks.trash.protected') }}</span>
+                                        @else
+                                            <form method="POST" action="{{ route('admin.tasks.restore', ['taskId' => (int) $trashedTask['id']]) }}" class="inline">
+                                                @csrf
+                                                <input type="hidden" name="trash_sequence" value="{{ (int) $trashedTask['trash_sequence'] }}">
+                                                <button type="submit" class="inline-flex min-h-10 items-center rounded-md border border-blue-200 px-3 text-sm font-medium text-blue-700 hover:bg-blue-50">
+                                                    <i data-lucide="rotate-ccw" class="mr-2 h-4 w-4"></i>
+                                                    {{ __('admin.tasks.trash.restore') }}
+                                                </button>
+                                            </form>
+                                        @endif
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            @endif
+        </details>
 
         <div class="mt-8 grid grid-cols-1 md:grid-cols-4 gap-6">
             <div class="bg-white overflow-hidden shadow rounded-lg">
@@ -396,6 +456,55 @@
                 </div>
             </div>
         </div>
+        <dialog
+            class="fixed inset-0 m-auto w-[min(600px,calc(100vw-2rem))] max-w-none overflow-hidden rounded-lg border-0 bg-white p-0 text-left text-gray-900 shadow-2xl backdrop:bg-black/50"
+            data-task-index-readiness-dialog
+            data-blocked-title="{{ __('admin.task_create.readiness.dialog_blocked_title') }}"
+            data-warning-title="{{ __('admin.task_create.readiness.dialog_warning_title') }}"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="task-index-readiness-title"
+            aria-describedby="task-index-readiness-summary task-index-readiness-recommendation"
+        >
+            <div class="flex max-h-[min(760px,calc(100dvh-2rem))] flex-col">
+                <header class="flex items-start gap-4 border-b border-gray-200 px-6 py-5">
+                    <span class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-600" data-task-index-readiness-icon-wrap aria-hidden="true">
+                        <i data-lucide="triangle-alert" class="h-5 w-5"></i>
+                    </span>
+                    <div class="min-w-0 flex-1">
+                        <p class="text-xs font-semibold uppercase text-gray-500">{{ __('admin.task_create.readiness.dialog_eyebrow') }}</p>
+                        <h2 id="task-index-readiness-title" class="mt-1 text-lg font-semibold leading-6 text-gray-900" data-task-index-readiness-title>{{ __('admin.task_create.readiness.dialog_blocked_title') }}</h2>
+                    </div>
+                    <button type="button" class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100" data-task-index-readiness-close aria-label="{{ __('admin.common.close') }}">
+                        <i data-lucide="x" class="h-4 w-4"></i>
+                    </button>
+                </header>
+                <div class="grid grid-cols-2 border-b border-gray-200 bg-gray-50 sm:grid-cols-4">
+                    @foreach ([
+                        'remaining' => __('admin.task_create.readiness.stats.remaining'),
+                        'total' => __('admin.task_create.readiness.stats.total'),
+                        'used' => __('admin.task_create.readiness.stats.used'),
+                        'available' => __('admin.task_create.readiness.stats.available'),
+                    ] as $statKey => $statLabel)
+                        <div class="border-r border-gray-200 px-4 py-3 last:border-r-0">
+                            <p class="text-xs text-gray-500">{{ $statLabel }}</p>
+                            <p class="mt-1 text-lg font-semibold tabular-nums text-gray-900" data-task-index-readiness-stat="{{ $statKey }}">0</p>
+                        </div>
+                    @endforeach
+                </div>
+                <div class="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+                    <p id="task-index-readiness-summary" class="text-sm leading-6 text-gray-700" data-task-index-readiness-summary></p>
+                    <div class="mt-4 space-y-3" data-task-index-readiness-issues></div>
+                    <p id="task-index-readiness-recommendation" class="mt-4 rounded-lg bg-gray-50 px-4 py-3 text-sm leading-6 text-gray-700" data-task-index-readiness-recommendation></p>
+                </div>
+                <footer class="flex flex-wrap justify-end gap-2 border-t border-gray-200 bg-gray-50 px-6 py-4 max-[520px]:flex-col">
+                    <button type="button" class="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100" data-task-index-readiness-close>{{ __('admin.common.close') }}</button>
+                    <a href="#" target="_blank" rel="noopener" class="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100" data-task-index-readiness-manage>{{ __('admin.task_create.readiness.actions.manage_library') }}</a>
+                    <a href="#" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700" data-task-index-readiness-edit>{{ __('admin.tasks.action.settings') }}</a>
+                </footer>
+            </div>
+        </dialog>
+        <script type="application/json" data-task-index-readiness-initial>@json(session('title_readiness_report'))</script>
     </div>
 @endsection
 
@@ -428,7 +537,9 @@ const TASK_TEXT = {
 
 function renderIcons() { if (typeof lucide !== 'undefined') { lucide.createIcons(); } }
 
-function showNotification(type, message) { if (window.AdminUtils && typeof window.AdminUtils.showToast === 'function') { window.AdminUtils.showToast(message, type); return; } alert(message); }
+function showNotification(type, message) { if (window.AdminUtils && typeof window.AdminUtils.showToast === 'function') { window.AdminUtils.showToast(message, type); return; } window.AdminActionDialog?.notice?.({ tone: type, message }); }
+
+async function confirmTaskAction(message, tone = 'warning') { return await window.AdminActionDialog?.confirm?.({ title: message, message: @js(__('admin.action_dialog.generic_impact')), tone, confirmLabel: @js(__('admin.action_dialog.continue')) }) === true; }
 
 function setButtonLoading(btn, text, classes) { btn.disabled = true; btn.className = classes; btn.innerHTML = `<i data-lucide="loader-2" class="h-4 w-4 animate-spin"></i><span class="sr-only">${text}</span>`; renderIcons(); }
 
@@ -457,6 +568,13 @@ function updateBatchButton(btn, taskId, taskName, isActive, taskStatus = null) {
     renderIcons();
 }
 
+function dispatchTaskTitleReadiness(data, trigger) {
+    const report = data?.error === 'task_title_library_not_ready' ? data.details?.title_readiness : null;
+    if (!report) return false;
+    window.dispatchEvent(new CustomEvent('geoflow:task-title-readiness', { detail: { report, trigger } }));
+    return true;
+}
+
 function formatEstimatedTime(seconds) { if (seconds < 60) return `${seconds}${TASK_I18N.secondsSuffix}`; if (seconds < 3600) return `${Math.round(seconds / 60)}${TASK_I18N.minutesSuffix}`; if (seconds < 86400) return `${Math.round(seconds / 3600)}${TASK_I18N.hoursSuffix}`; return `${Math.round(seconds / 86400)}${TASK_I18N.daysSuffix}`; }
 
 function escapeHtml(value) { return String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;'); }
@@ -474,8 +592,9 @@ function formatTaskDateTime(value) {
 function updateBatchStatus(task) {
     const statusDiv = document.getElementById(`batch-status-${task.id}`);
     if (!statusDiv) return;
+    const isTopicTask = task.content_type === 'topic';
     const createdCount = Number(task.created_count || 0);
-    const articleLimit = Number(task.article_limit || task.draft_limit || 0);
+    const articleLimit = Number(isTopicTask ? (task.topic_limit || task.article_limit || 0) : (task.article_limit || task.draft_limit || 0));
     const pendingJobs = Number(task.pending_jobs || 0);
     const runningJobs = Number(task.running_jobs || 0);
     const isRunning = task.batch_status === 'running' || task.batch_status === 'pending';
@@ -497,7 +616,8 @@ function updateBatchStatus(task) {
         } else if (task.batch_status === 'draft_pool_full') {
             statusDiv.innerHTML = `<span class="text-xs text-orange-700 bg-orange-50 px-2 py-1 rounded-full border border-orange-200">${escapeHtml(TASK_I18N.draftPoolFull)}</span>`;
         } else if (task.batch_status === 'limit_reached') {
-            statusDiv.innerHTML = `<span class="text-xs text-amber-700 bg-amber-50 px-2 py-1 rounded-full border border-amber-200">${escapeHtml(TASK_I18N.limitReached)}</span>`;
+            const limitLabel = isTopicTask ? TASK_I18N.topicLimitReached : TASK_I18N.limitReached;
+            statusDiv.innerHTML = `<span class="text-xs text-amber-700 bg-amber-50 px-2 py-1 rounded-full border border-amber-200">${escapeHtml(limitLabel)}</span>`;
         } else { statusDiv.innerHTML = ''; }
         return;
     }
@@ -537,23 +657,33 @@ function updateTaskCounters(task) {
     const progressEl = document.getElementById(`task-progress-${task.id}`);
     const loopEl = document.getElementById(`task-loop-${task.id}`);
     const publishIntervalEl = document.getElementById(`task-publish-interval-${task.id}`);
+    const isTopicTask = task.content_type === 'topic';
+    const topicProgress = task.task_progress || {};
     const createdCount = Number(task.created_count || task.total_articles || 0);
-    const articleLimit = Math.max(1, Number(task.article_limit || task.draft_limit || 10));
+    const articleLimit = Math.max(1, Number(isTopicTask ? (task.topic_limit || task.article_limit || 10) : (task.article_limit || task.draft_limit || 10)));
     if (createdEl) {
-        createdEl.textContent = TASK_I18N.createdOfLimitLabel.replace('__CREATED__', String(createdCount)).replace('__LIMIT__', String(articleLimit));
+        createdEl.textContent = isTopicTask
+            ? TASK_I18N.topicCreatedOfLimit.replace('__CREATED__', String(createdCount)).replace('__LIMIT__', String(articleLimit))
+            : TASK_I18N.createdOfLimitLabel.replace('__CREATED__', String(createdCount)).replace('__LIMIT__', String(articleLimit));
     }
     if (publishedEl) {
-        publishedEl.textContent = TASK_I18N.publishedArticlesLabel.replace('__COUNT__', String(Number(task.published_articles || 0)));
+        publishedEl.textContent = isTopicTask
+            ? TASK_I18N.topicPublished.replace('__COUNT__', String(Number(task.published_count || 0)))
+            : TASK_I18N.publishedArticlesLabel.replace('__COUNT__', String(Number(task.published_articles || 0)));
     }
     if (draftsEl) {
-        draftsEl.textContent = TASK_I18N.draftArticlesLabel.replace('__COUNT__', String(Number(task.draft_articles || 0)));
+        draftsEl.textContent = isTopicTask
+            ? TASK_I18N.topicDrafts.replace('__COUNT__', String(Number(topicProgress.draft_topics || 0)))
+            : TASK_I18N.draftArticlesLabel.replace('__COUNT__', String(Number(task.draft_articles || 0)));
     }
     if (progressEl) {
         const percent = Math.max(0, Math.min(100, Math.floor((createdCount / articleLimit) * 100)));
         progressEl.style.width = `${percent}%`;
     }
     if (loopEl) {
-        loopEl.textContent = TASK_I18N.loopTimesLabel.replace('__COUNT__', String(Number(task.loop_count || 0)));
+        loopEl.textContent = isTopicTask
+            ? TASK_I18N.topicPublishInterval
+            : TASK_I18N.loopTimesLabel.replace('__COUNT__', String(Number(task.loop_count || 0)));
     }
     if (publishIntervalEl) {
         const minutes = Math.max(1, Math.ceil(Number(task.publish_interval || 3600) / 60));
@@ -690,39 +820,77 @@ function initTaskRealtime() {
     });
 }
 
-function startBatchExecution(taskId, taskName) {
-    if (!confirm(TASK_I18N.confirmStart.replace('__NAME__', taskName))) return;
+async function startBatchExecution(taskId, taskName) {
+    if (!await confirmTaskAction(TASK_I18N.confirmStart.replace('__NAME__', taskName), 'success')) return;
     const btn = document.getElementById(`batch-btn-${taskId}`);
     setButtonLoading(btn, TASK_I18N.starting, 'inline-flex items-center justify-center w-8 h-8 rounded-md border border-green-200 bg-green-50 text-green-600 cursor-wait');
-    fetch(TASK_BATCH_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': @js(csrf_token()) }, body: JSON.stringify({ task_id: taskId, action: 'start' }) }).then(response => response.json()).then(data => { if (!data.success) { showNotification('error', TASK_I18N.startFailed.replace('__MESSAGE__', data.message)); updateBatchButton(btn, taskId, taskName, false); return; } showNotification('success', TASK_I18N.taskQueued.replace('__NAME__', taskName)); updateBatchButton(btn, taskId, taskName, true); requestTaskSnapshot(); }).catch(error => { showNotification('error', TASK_I18N.requestFailed.replace('__MESSAGE__', error.message)); updateBatchButton(btn, taskId, taskName, false); });
+    fetch(TASK_BATCH_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': @js(csrf_token()) },
+        body: JSON.stringify({ task_id: taskId, action: 'start' }),
+    }).then(response => response.json()).then(data => {
+        if (!data.success) {
+            dispatchTaskTitleReadiness(data, btn);
+            showNotification('error', TASK_I18N.startFailed.replace('__MESSAGE__', data.message));
+            updateBatchButton(btn, taskId, taskName, false);
+            return;
+        }
+        showNotification('success', TASK_I18N.taskQueued.replace('__NAME__', taskName));
+        updateBatchButton(btn, taskId, taskName, true);
+        requestTaskSnapshot();
+    }).catch(error => {
+        showNotification('error', TASK_I18N.requestFailed.replace('__MESSAGE__', error.message));
+        updateBatchButton(btn, taskId, taskName, false);
+    });
 }
 
-function stopBatchExecution(taskId, taskName) {
-    if (!confirm(TASK_I18N.confirmStop.replace('__NAME__', taskName))) return;
+async function stopBatchExecution(taskId, taskName) {
+    if (!await confirmTaskAction(TASK_I18N.confirmStop.replace('__NAME__', taskName), 'warning')) return;
     const btn = document.getElementById(`batch-btn-${taskId}`);
     setButtonLoading(btn, TASK_I18N.stopping, 'inline-flex items-center justify-center w-8 h-8 rounded-md border border-orange-200 bg-orange-50 text-orange-600 cursor-wait');
     fetch(TASK_BATCH_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': @js(csrf_token()) }, body: JSON.stringify({ task_id: taskId, action: 'stop' }) }).then(response => response.json()).then(data => { if (!data.success) { showNotification('error', TASK_I18N.stopFailed.replace('__MESSAGE__', data.message)); updateBatchButton(btn, taskId, taskName, true); return; } showNotification('success', TASK_I18N.taskStopped.replace('__NAME__', taskName)); updateBatchButton(btn, taskId, taskName, false); requestTaskSnapshot(); }).catch(error => { showNotification('error', TASK_I18N.requestFailed.replace('__MESSAGE__', error.message)); updateBatchButton(btn, taskId, taskName, true); });
 }
 
-function executeAllActiveTasks() {
+async function executeAllActiveTasks() {
     const buttons = Array.from(document.querySelectorAll('[id^="batch-btn-"]')).filter(btn => btn.dataset.batchAction === 'start' && btn.dataset.taskRunnable === '1');
     if (buttons.length === 0) { showNotification('info', TASK_I18N.noRunnable); return; }
-    if (!confirm(TASK_I18N.confirmRunAll)) return;
+    if (!await confirmTaskAction(TASK_I18N.confirmRunAll, 'warning')) return;
     let completed = 0; let success = 0;
     buttons.forEach((btn, index) => {
         const taskId = Number(btn.id.replace('batch-btn-', ''));
         setTimeout(() => {
-            fetch(TASK_BATCH_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': @js(csrf_token()) }, body: JSON.stringify({ task_id: taskId, action: 'start' }) }).then(response => response.json()).then(data => { completed += 1; if (data.success) success += 1; if (completed === buttons.length) { showNotification('success', TASK_I18N.bulkSubmitted.replace('__SUCCESS__', success).replace('__TOTAL__', buttons.length)); requestTaskSnapshot(); } }).catch(() => { completed += 1; if (completed === buttons.length) { showNotification('warning', TASK_I18N.bulkSubmittedPartial.replace('__SUCCESS__', success).replace('__TOTAL__', buttons.length)); requestTaskSnapshot(); } });
+            fetch(TASK_BATCH_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': @js(csrf_token()) },
+                body: JSON.stringify({ task_id: taskId, action: 'start' }),
+            }).then(response => response.json()).then(data => {
+                completed += 1;
+                if (data.success) {
+                    success += 1;
+                } else if (!document.querySelector('[data-task-index-readiness-dialog]')?.open) {
+                    dispatchTaskTitleReadiness(data, btn);
+                }
+                if (completed === buttons.length) {
+                    showNotification('success', TASK_I18N.bulkSubmitted.replace('__SUCCESS__', success).replace('__TOTAL__', buttons.length));
+                    requestTaskSnapshot();
+                }
+            }).catch(() => {
+                completed += 1;
+                if (completed === buttons.length) {
+                    showNotification('warning', TASK_I18N.bulkSubmittedPartial.replace('__SUCCESS__', success).replace('__TOTAL__', buttons.length));
+                    requestTaskSnapshot();
+                }
+            });
         }, index * 150);
     });
 }
 
-function handleStatusToggle(taskId, checkbox) {
+async function handleStatusToggle(taskId, checkbox) {
     const form = checkbox.closest('form');
     const currentStatus = form.querySelector('input[name="status"]').value;
     const nextLabel = checkbox.checked ? TASK_I18N.activating : TASK_I18N.pausing;
     const statusSpan = form.querySelector('label span');
-    if (!confirm(checkbox.checked ? TASK_I18N.confirmActivate : TASK_I18N.confirmPause)) { checkbox.checked = currentStatus === 'active'; return; }
+    if (!await confirmTaskAction(checkbox.checked ? TASK_I18N.confirmActivate : TASK_I18N.confirmPause, checkbox.checked ? 'success' : 'warning')) { checkbox.checked = currentStatus === 'active'; return; }
     checkbox.disabled = true;
     statusSpan.textContent = nextLabel;
     statusSpan.className = `ml-2 text-sm ${checkbox.checked ? 'text-blue-600' : 'text-orange-600'}`;

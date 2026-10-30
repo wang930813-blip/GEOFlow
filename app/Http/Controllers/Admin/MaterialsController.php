@@ -1,5 +1,16 @@
 <?php
 
+/**
+ * Created by Codex.
+ * @Date: 2026-10-30
+ * @Time: 01:13:11
+ * @Author: cdkay
+ * @Email: network@iyuanma.net
+ *
+ * @File： MaterialsController.php
+ * @Description: 管理端素材管理总览及站点统计。
+ */
+
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
@@ -12,6 +23,7 @@ use App\Models\KeywordLibrary;
 use App\Models\KnowledgeBase;
 use App\Models\Title;
 use App\Models\TitleLibrary;
+use App\Models\Task;
 use App\Support\AdminDataScope;
 use App\Support\AdminWeb;
 use Illuminate\Database\Eloquent\Builder;
@@ -53,11 +65,18 @@ class MaterialsController extends Controller
      *     image_libraries:int,
      *     total_images:int,
      *     knowledge_bases:int,
+     *     knowledge_usage_count:int,
      *     authors:int
      * }
      */
     private function loadStats(Admin $admin): array
     {
+        $knowledgeUsageQuery = Task::query()->where(function (Builder $query): void {
+            $query->whereHas('knowledgeBase')
+                ->orWhereHas('knowledgeBases');
+        });
+        $this->adminDataScope->applySiteScope($knowledgeUsageQuery, $admin);
+
         return [
             'keyword_libraries' => $this->visibleCount(KeywordLibrary::class, $admin),
             'total_keywords' => $this->visibleCount(Keyword::class, $admin),
@@ -66,6 +85,7 @@ class MaterialsController extends Controller
             'image_libraries' => $this->visibleCount(ImageLibrary::class, $admin),
             'total_images' => $this->visibleCount(Image::class, $admin),
             'knowledge_bases' => $this->visibleCount(KnowledgeBase::class, $admin),
+            'knowledge_usage_count' => $knowledgeUsageQuery->count(),
             'authors' => $this->visibleCount(Author::class, $admin),
         ];
     }

@@ -87,14 +87,76 @@ class OpenAiRuntimeProviderTest extends TestCase
         );
     }
 
+    public function test_it_normalizes_a_full_openai_responses_endpoint_to_its_base_url(): void
+    {
+        $this->assertSame(
+            'https://api.openai.com/v1',
+            OpenAiRuntimeProvider::resolveChatBaseUrl('https://api.openai.com/v1/responses')
+        );
+    }
+
+    public function test_it_normalizes_gemini_base_urls_to_native_v1beta(): void
+    {
+        $this->assertSame(
+            'https://generativelanguage.googleapis.com/v1beta',
+            OpenAiRuntimeProvider::resolveChatBaseUrl('https://generativelanguage.googleapis.com')
+        );
+
+        $this->assertSame(
+            'https://generativelanguage.googleapis.com/v1beta',
+            OpenAiRuntimeProvider::resolveChatBaseUrl('https://generativelanguage.googleapis.com/v1beta/openai')
+        );
+
+        $this->assertSame(
+            'https://generativelanguage.googleapis.com/v1beta',
+            OpenAiRuntimeProvider::resolveChatBaseUrl('https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent')
+        );
+
+        $this->assertSame(
+            'https://generativelanguage.googleapis.com/v1beta',
+            OpenAiRuntimeProvider::resolveEmbeddingBaseUrl('https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2:batchEmbedContents')
+        );
+    }
+
     public function test_it_resolves_chat_driver_for_openai(): void
     {
         $this->assertSame('openai', OpenAiRuntimeProvider::resolveChatDriver('https://api.openai.com/v1', 'gpt-4'));
     }
 
+    public function test_it_resolves_chat_driver_for_gemini(): void
+    {
+        $this->assertSame(
+            'gemini',
+            OpenAiRuntimeProvider::resolveChatDriver('https://generativelanguage.googleapis.com/v1beta', 'gemini-3-flash-preview')
+        );
+    }
+
+    public function test_it_resolves_embedding_driver_for_gemini_and_openai_compatible_providers(): void
+    {
+        $this->assertSame(
+            'gemini',
+            OpenAiRuntimeProvider::resolveEmbeddingDriver('https://generativelanguage.googleapis.com/v1beta', 'gemini-embedding-2')
+        );
+
+        $this->assertSame(
+            'openai',
+            OpenAiRuntimeProvider::resolveEmbeddingDriver('https://api.openai.com/v1', 'text-embedding-3-small')
+        );
+
+        $this->assertSame(
+            'openai-compatible',
+            OpenAiRuntimeProvider::resolveEmbeddingDriver('https://open.bigmodel.cn/api/paas/v4', 'embedding-3')
+        );
+
+        $this->assertSame(
+            'openai-compatible',
+            OpenAiRuntimeProvider::resolveEmbeddingDriver('https://ark.cn-beijing.volces.com/api/v3', 'doubao-embedding-text-240515')
+        );
+    }
+
     public function test_it_resolves_chat_driver_for_deepseek(): void
     {
-        $this->assertSame('deepseek', OpenAiRuntimeProvider::resolveChatDriver('https://api.deepseek.com/v1', 'deepseek-chat'));
+        $this->assertSame('deepseek', OpenAiRuntimeProvider::resolveChatDriver('https://api.deepseek.com/v1', 'deepseek-v4-flash'));
     }
 
     public function test_it_resolves_chat_driver_by_model_prefix(): void
@@ -109,12 +171,13 @@ class OpenAiRuntimeProviderTest extends TestCase
 
     public function test_it_resolves_chat_driver_for_zhipu(): void
     {
-        $this->assertSame('deepseek', OpenAiRuntimeProvider::resolveChatDriver('https://open.bigmodel.cn/api/paas/v4', 'glm-5.1'));
+        $this->assertSame('openai-compatible', OpenAiRuntimeProvider::resolveChatDriver('https://open.bigmodel.cn/api/paas/v4', 'glm-5.2'));
     }
 
     public function test_it_resolves_chat_driver_for_minimax(): void
     {
-        $this->assertSame('deepseek', OpenAiRuntimeProvider::resolveChatDriver('https://api.minimaxi.com/v1', 'MiniMax-M2.7'));
+        $this->assertSame('openai-compatible', OpenAiRuntimeProvider::resolveChatDriver('https://api.minimax.io/v1', 'MiniMax-M3'));
+        $this->assertSame('openai-compatible', OpenAiRuntimeProvider::resolveChatDriver('https://api.minimaxi.com/v1', 'MiniMax-M2.7'));
     }
 
     public function test_it_resolves_chat_driver_for_siliconflow(): void
@@ -124,16 +187,16 @@ class OpenAiRuntimeProviderTest extends TestCase
 
     public function test_it_resolves_chat_driver_for_volcengine(): void
     {
-        $this->assertSame('deepseek', OpenAiRuntimeProvider::resolveChatDriver('https://ark.cn-beijing.volces.com/api/v3', 'doubao-seed-2-0-lite-260428'));
+        $this->assertSame('openai-compatible', OpenAiRuntimeProvider::resolveChatDriver('https://ark.cn-beijing.volces.com/api/v3', 'doubao-seed-2-0-lite-260428'));
     }
 
     public function test_it_resolves_chat_driver_for_aliyun(): void
     {
-        $this->assertSame('deepseek', OpenAiRuntimeProvider::resolveChatDriver('https://dashscope.aliyuncs.com/compatible-mode/v1', 'qwen3.6-plus'));
+        $this->assertSame('openai-compatible', OpenAiRuntimeProvider::resolveChatDriver('https://dashscope.aliyuncs.com/compatible-mode/v1', 'qwen3.6-plus'));
     }
 
-    public function test_it_defaults_to_deepseek_for_unknown(): void
+    public function test_it_defaults_to_the_openai_compatible_driver_for_unknown(): void
     {
-        $this->assertSame('deepseek', OpenAiRuntimeProvider::resolveChatDriver('https://api.unknown-provider.com/v1', 'some-model'));
+        $this->assertSame('openai-compatible', OpenAiRuntimeProvider::resolveChatDriver('https://api.unknown-provider.com/v1', 'some-model'));
     }
 }

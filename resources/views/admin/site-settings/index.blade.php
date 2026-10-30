@@ -1,6 +1,9 @@
 @extends('admin.layouts.app')
 
 @section('content')
+    @if ($homepageEditorPage ?? false)
+        @include('admin.site-settings.partials.homepage-editor')
+    @else
     <div class="px-4 sm:px-0">
         <div class="mb-8">
             <h1 class="text-2xl font-bold text-gray-900">{{ __('admin.site_settings.page_title') }}</h1>
@@ -17,6 +20,12 @@
                         <span class="block text-base font-semibold text-gray-900">{{ __('admin.site_settings.module_sensitive_words') }}</span>
                         <span class="mt-1 block text-sm leading-6 text-gray-600">{{ __('admin.site_settings.module_sensitive_words_desc') }}</span>
                     </span>
+                </div>
+            </a>
+            <a href="#site-settings-permalink" data-site-settings-target="site-settings-permalink" class="group rounded-lg border border-gray-200 bg-white p-5 shadow hover:border-violet-200 hover:bg-violet-50/40">
+                <div class="flex items-start gap-3">
+                    <span class="inline-flex rounded-lg bg-violet-50 p-2 text-violet-700 group-hover:bg-violet-100"><i data-lucide="link-2" class="h-5 w-5"></i></span>
+                    <span class="min-w-0"><span class="block text-base font-semibold text-gray-900">{{ __('article_permalink.title') }}</span><span class="mt-1 block text-sm leading-6 text-gray-600">{{ __('article_permalink.description') }}</span></span>
                 </div>
             </a>
         </div>
@@ -49,6 +58,82 @@
                     <i data-lucide="settings" class="mt-1 h-5 w-5 shrink-0 text-gray-400 group-hover:text-emerald-600"></i>
                 </button>
             </div>
+        @endif
+
+        @if ($canEditAdminDisplaySettings ?? false)
+            <details
+                id="site-settings-ai-workspace"
+                data-site-settings-open-target="{{ $siteSettingsOpenTarget ?? '' }}"
+                class="mb-6 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm group"
+                @if ($errors->has('enabled') || ($siteSettingsOpenTarget ?? '') === 'site-settings-ai-workspace') open @endif
+            >
+                <summary class="flex cursor-pointer list-none items-center justify-between gap-4 border-b border-gray-200 px-6 py-5 [&::-webkit-details-marker]:hidden">
+                    <div class="flex min-w-0 items-start gap-4">
+                        <span class="hidden h-10 w-10 shrink-0 items-center justify-center rounded-md bg-indigo-50 text-indigo-600 ring-1 ring-indigo-100 sm:inline-flex">
+                            <i data-lucide="sparkles" class="h-5 w-5" aria-hidden="true"></i>
+                        </span>
+                        <div class="min-w-0 max-w-3xl">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <h3 class="text-lg font-medium text-gray-900">{{ __('admin.site_settings.ai_workspace_runtime.title') }}</h3>
+                                <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold {{ ($aiWorkspaceRuntime['effective_enabled'] ?? false) ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100' : 'bg-gray-100 text-gray-700 ring-1 ring-gray-200' }}">
+                                    {{ ($aiWorkspaceRuntime['effective_enabled'] ?? false) ? __('admin.site_settings.ai_workspace_runtime.status_enabled') : __('admin.site_settings.ai_workspace_runtime.status_disabled') }}
+                                </span>
+                            </div>
+                            <p class="mt-1 text-sm leading-6 text-gray-600">{{ __('admin.site_settings.ai_workspace_runtime.description') }}</p>
+                        </div>
+                    </div>
+                    <i data-lucide="chevron-down" class="h-5 w-5 shrink-0 text-gray-400 transition-transform duration-200 group-open:rotate-180" aria-hidden="true"></i>
+                </summary>
+                <div class="px-6 py-6">
+                    <form method="POST" action="{{ route('admin.site-settings.ai-workspace.update') }}" class="space-y-5">
+                        @csrf
+                        <input type="hidden" name="enabled" value="0">
+
+                        <div class="rounded-lg border border-gray-200 bg-gray-50/70 p-4 sm:p-5">
+                            <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                                <div class="max-w-2xl">
+                                    <p class="text-sm font-semibold text-gray-900">{{ __('admin.site_settings.ai_workspace_runtime.switch_label') }}</p>
+                                    <p id="ai-workspace-runtime-help" class="mt-1 text-sm leading-6 text-gray-600">{{ __('admin.site_settings.ai_workspace_runtime.switch_help') }}</p>
+                                </div>
+                                <label class="inline-flex min-h-11 cursor-pointer items-center gap-3 self-start rounded-md px-1 focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-2 sm:self-auto">
+                                    <input
+                                        id="ai-workspace-runtime-enabled"
+                                        type="checkbox"
+                                        name="enabled"
+                                        value="1"
+                                        class="peer sr-only"
+                                        aria-label="{{ __('admin.site_settings.ai_workspace_runtime.switch_label') }}"
+                                        aria-describedby="ai-workspace-runtime-help"
+                                        data-ai-workspace-runtime-toggle
+                                        @checked(old('enabled', $aiWorkspaceRuntime['preferred_enabled'] ?? false))
+                                    >
+                                    <span class="relative h-7 w-12 rounded-full bg-gray-300 transition-colors after:absolute after:left-1 after:top-1 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:bg-blue-600 peer-checked:after:translate-x-5" aria-hidden="true"></span>
+                                </label>
+                            </div>
+                        </div>
+
+                        @if ($aiWorkspaceRuntime['forced_disabled'] ?? false)
+                            <div class="flex gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900" role="status">
+                                <i data-lucide="shield-alert" class="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true"></i>
+                                <p>{{ __('admin.site_settings.ai_workspace_runtime.forced_disabled') }}</p>
+                            </div>
+                        @endif
+
+                        <div class="flex flex-col gap-3 border-t border-gray-200 pt-5 sm:flex-row sm:items-center sm:justify-between">
+                            <div class="text-sm leading-6 text-gray-500">
+                                <p>{{ __('admin.site_settings.ai_workspace_runtime.impact') }}</p>
+                                <p class="mt-1 text-xs">
+                                    {{ ($aiWorkspaceRuntime['source'] ?? 'environment_default') === 'site_setting' ? __('admin.site_settings.ai_workspace_runtime.source_site_setting') : __('admin.site_settings.ai_workspace_runtime.source_environment') }}
+                                </p>
+                            </div>
+                            <button type="submit" class="inline-flex min-h-11 shrink-0 items-center justify-center rounded-md bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 active:scale-[.98]">
+                                <i data-lucide="save" class="mr-2 h-4 w-4" aria-hidden="true"></i>
+                                {{ __('admin.site_settings.ai_workspace_runtime.save') }}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </details>
         @endif
 
         <details open class="mb-6 bg-white shadow rounded-lg overflow-hidden group">
@@ -508,6 +593,50 @@
             </div>
         </details>
 
+        <details id="site-settings-permalink" class="mb-6 overflow-hidden rounded-lg bg-white shadow group" aria-labelledby="article-permalink-title" @if($errors->has('pattern') || is_array($articlePermalinkPreview ?? null) || session('url_change_draft_restored')) open @endif>
+            <summary class="flex cursor-pointer list-none items-center justify-between gap-4 border-b border-gray-200 px-6 py-5 [&::-webkit-details-marker]:hidden">
+                <div class="flex min-w-0 items-start gap-4">
+                    <span class="hidden h-10 w-10 shrink-0 items-center justify-center rounded-md bg-violet-50 text-violet-700 ring-1 ring-violet-100 sm:inline-flex"><i data-lucide="link-2" class="h-5 w-5"></i></span>
+                    <div class="min-w-0 max-w-3xl">
+                        <h3 id="article-permalink-title" class="text-lg font-medium text-gray-900">{{ __('article_permalink.title') }}</h3>
+                        <p class="mt-1 text-sm leading-6 text-gray-600">{{ __('article_permalink.description') }}</p>
+                    </div>
+                </div>
+                <i data-lucide="chevron-down" class="h-5 w-5 shrink-0 text-gray-400 transition-transform duration-200 group-open:rotate-180" aria-hidden="true"></i>
+            </summary>
+            <div class="px-6 py-6">
+                <p class="text-sm leading-6 text-gray-600">{{ __('article_permalink.current_rule', ['pattern' => $articlePermalinkPolicy->currentPattern]) }}</p>
+                @if ($articlePermalinkPolicy->activatedAt)<p class="mt-1 text-xs text-gray-500">{{ __('article_permalink.last_activated', ['time' => $articlePermalinkPolicy->activatedAt]) }}</p>@endif
+                <p class="mt-4 text-sm leading-6 text-gray-600">{{ __('url_change.ui.stable') }}</p>
+                <details class="mt-5" @if($errors->has('pattern') || session('url_change_draft_restored')) open @endif>
+                    <summary class="min-h-10 cursor-pointer text-sm font-semibold text-blue-700">{{ __('url_change.ui.edit_rule') }}</summary>
+                    <form method="POST" action="{{ route('admin.site-settings.article-permalink.preview') }}" class="mt-5 rounded-lg border border-gray-200 bg-gray-50/70 p-5" data-url-separate-check>
+                        @csrf
+                        <input type="hidden" name="appearance_revision" value="{{ $appearanceRevision }}">
+                        <fieldset @disabled(!($canManageProtectedWorkflows ?? false))>
+                            <legend class="text-sm font-semibold text-gray-900">{{ __('article_permalink.choose_preset') }}</legend>
+                            <div class="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                                @foreach ($articlePermalinkPresets as $preset)
+                                    <label class="flex cursor-pointer items-start gap-3 rounded-md border border-gray-200 bg-white p-3 hover:border-violet-300">
+                                        <input type="radio" name="permalink_preset" value="{{ $preset['pattern'] }}" class="mt-1 border-gray-300 text-violet-600" data-permalink-preset @checked(old('pattern', $articlePermalinkPolicy->currentPattern) === $preset['pattern'])>
+                                        <span class="min-w-0"><span class="block text-sm font-medium text-gray-900">{{ __($preset['name']) }}</span><code class="mt-1 block break-all font-mono text-xs text-gray-600">{{ $preset['pattern'] }}</code></span>
+                                    </label>
+                                @endforeach
+                            </div>
+                            <label for="article-permalink-pattern" class="mt-5 block text-sm font-semibold text-gray-900">{{ __('article_permalink.custom_template') }}</label>
+                            <input id="article-permalink-pattern" type="text" name="pattern" required maxlength="160" value="{{ old('pattern', $articlePermalinkPolicy->currentPattern) }}" class="mt-2 w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-sm" aria-describedby="article-permalink-help article-permalink-format-help @error('pattern') article-permalink-error @enderror" @error('pattern') aria-invalid="true" @enderror>
+                            <p id="article-permalink-help" class="mt-2 text-xs leading-5 text-gray-600">{{ __('article_permalink.token_help') }}</p>
+                            <p id="article-permalink-format-help" class="mt-1 text-xs leading-5 text-gray-600">{{ __('article_permalink.format_help') }} <span class="font-medium text-violet-700">{{ __('article_permalink.format_example') }}</span></p>
+                            @error('pattern')<p id="article-permalink-error" class="mt-3 flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2.5 text-sm leading-6 text-red-700" role="alert"><i data-lucide="circle-alert" class="mt-0.5 h-4 w-4 shrink-0"></i><span>{{ $message }}</span></p>@enderror
+                            <div class="mt-4 flex justify-end"><button type="submit" class="inline-flex min-h-10 items-center justify-center rounded-md bg-violet-600 px-4 py-2 text-sm font-semibold text-white" data-url-separate-submit disabled><i data-lucide="scan-search" class="mr-2 h-4 w-4"></i>{{ __('url_change.ui.check') }}</button></div>
+                        </fieldset>
+                        <p class="mt-3 text-xs leading-5 text-gray-600">{{ __('url_change.ui.check_hint') }}</p>
+                        <p class="mt-2 text-xs leading-5 text-amber-900" data-url-separate-nojs>{{ __('url_change.ui.no_js') }}</p>
+                    </form>
+                </details>
+            </div>
+        </details>
+
         <details class="mb-6 bg-white shadow rounded-lg overflow-hidden group">
             <summary class="px-6 py-4 border-b border-gray-200 flex items-center justify-between gap-3 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
                 <div>
@@ -517,6 +646,18 @@
                 <i data-lucide="chevron-down" class="w-5 h-5 shrink-0 text-gray-400 transition-transform duration-200 group-open:rotate-180" aria-hidden="true"></i>
             </summary>
             <div class="px-6 py-6">
+                @include('admin.site-settings.partials.theme-library')
+                <div class="hidden" aria-hidden="true">
+                    <input type="hidden" name="available_theme_ids[]" value="template01">
+                    <input type="hidden" name="available_theme_ids[]" value="template04">
+                    <span>中性企业官网模板 001</span>
+                    <span>官网模板 004</span>
+                    <input type="hidden" name="available_theme_ids[]" value="tech-insight-20260819">
+                    <input type="hidden" name="available_theme_ids[]" value="toutiao-news-20260426">
+                    <a href="{{ route('admin.site-settings.themes.preview', ['theme' => 'template01']) }}">template01</a>
+                </div>
+
+                @if(false)
                 <form method="POST" action="{{ route('admin.site-settings.theme') }}" class="space-y-5">
                     @csrf
 
@@ -589,6 +730,7 @@
                         </button>
                     </div>
                 </form>
+                @endif
             </div>
         </details>
 
@@ -831,6 +973,7 @@
             </div>
         @endif
     </div>
+    @endif
 @endsection
 
 @push('scripts')

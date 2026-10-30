@@ -15,12 +15,25 @@ use League\CommonMark\GithubFlavoredMarkdownConverter;
 final class ArticleHtmlPresenter
 {
     /**
-     * 将 Markdown 转为 HTML（剥离不安全 HTML 输入）。
+     * @Name: markdownToHtml
+     *
+     * @Description: 将完成语法和图片地址归一化的 Markdown 转为剥离不安全 HTML 的正文。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-10-30 05:18:24
+     *
+     * @UpdateTime: 2026-10-30 05:18:24
+     *
+     * @Param: string $markdown 待渲染的 Markdown 正文。
+     *
+     * @Return: string 已装饰且过滤不安全输入的 HTML 正文。
+     *
+     * @Throws: 无
      */
     public static function markdownToHtml(string $markdown): string
     {
-        $markdown = self::normalizeMarkdownSyntax(trim($markdown));
-        $markdown = self::normalizeMarkdownImages($markdown);
+        $markdown = self::prepareMarkdown($markdown);
         if ($markdown === '') {
             return '';
         }
@@ -31,6 +44,28 @@ final class ArticleHtmlPresenter
         ]);
 
         return self::decorateRenderedHtml($converter->convert($markdown)->getContent());
+    }
+
+    /**
+     * @Name: prepareMarkdown
+     *
+     * @Description: 统一前台渲染和图片筛选使用的 Markdown 预处理，保留既有语法及图片地址归一化规则。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-10-30 05:17:20
+     *
+     * @UpdateTime: 2026-10-30 05:17:20
+     *
+     * @Param: string $markdown 原始 Markdown 正文。
+     *
+     * @Return: string 已完成语法及图片地址归一化的 Markdown 正文。
+     *
+     * @Throws: 无
+     */
+    public static function prepareMarkdown(string $markdown): string
+    {
+        return self::normalizeMarkdownImages(self::normalizeMarkdownSyntax(trim($markdown)));
     }
 
     public static function normalizeMarkdownSyntax(string $markdown): string

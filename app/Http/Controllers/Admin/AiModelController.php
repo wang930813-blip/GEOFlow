@@ -80,19 +80,23 @@ class AiModelController extends Controller
         }
 
         try {
-            $createdModel = AiModel::withoutEvents(fn (): AiModel => AiModel::query()->withoutGlobalScope('current_site')->create([
-                'site_id' => null,
-                'owner_admin_id' => $this->managerOwnerAdminId(),
-                'name' => trim((string) $payload['name']),
-                'version' => trim((string) ($payload['version'] ?? '')),
-                'api_key' => $this->encryptApiKey($apiKey),
-                'model_id' => trim((string) $payload['model_id']),
-                'model_type' => $this->normalizeModelType((string) ($payload['model_type'] ?? 'chat')),
-                'api_url' => trim((string) ($payload['api_url'] ?? '')),
-                'failover_priority' => max(1, (int) ($payload['failover_priority'] ?? 100)),
-                'daily_limit' => max(0, (int) ($payload['daily_limit'] ?? 0)),
-                'status' => 'active',
-            ]));
+            $createdModel = AiModel::withoutEvents(function () use ($payload, $apiKey): AiModel {
+                $model = AiModel::query()->withoutGlobalScope('current_site')->create([
+                    'site_id' => null,
+                    'name' => trim((string) $payload['name']),
+                    'version' => trim((string) ($payload['version'] ?? '')),
+                    'api_key' => $this->encryptApiKey($apiKey),
+                    'model_id' => trim((string) $payload['model_id']),
+                    'model_type' => $this->normalizeModelType((string) ($payload['model_type'] ?? 'chat')),
+                    'api_url' => trim((string) ($payload['api_url'] ?? '')),
+                    'failover_priority' => max(1, (int) ($payload['failover_priority'] ?? 100)),
+                    'daily_limit' => max(0, (int) ($payload['daily_limit'] ?? 0)),
+                    'status' => 'active',
+                ]);
+                $model->forceFill(['owner_admin_id' => $this->managerOwnerAdminId()])->saveQuietly();
+
+                return $model;
+            });
         } catch (\RuntimeException) {
             return back()->withInput()->withErrors(__('admin.ai_models.error.crypto_key_missing'));
         }

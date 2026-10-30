@@ -2,34 +2,42 @@
 
 namespace App\Services\GeoFlow;
 
-use App\Ai\Agents\MarkdownContentWriterAgent;
+use App\Data\Ai\AiExecutionContext;
 use App\Models\AiModel;
 use App\Models\PlatformPlan;
 use App\Models\Task;
 use App\Services\Billing\AdminResourceQuotaService;
-use App\Support\AiConfigurationScope;
-use App\Support\GeoFlow\ApiKeyCrypto;
 use App\Support\GeoFlow\OpenAiRuntimeProvider;
-use Illuminate\Support\Facades\DB;
-use Laravel\Ai\Image as AiImage;
 use RuntimeException;
 use Throwable;
 
 class AiGeneratedArticleImageService
 {
     public function __construct(
-        private readonly ApiKeyCrypto $apiKeyCrypto,
         private readonly AiArticleImagePlanner $planner,
         private readonly ExternalImageHostClient $imageHostClient,
         private readonly AdminResourceQuotaService $quotaService,
-        private readonly AiConfigurationScope $aiConfigurationScope,
+        private readonly WorkerAiModelInvocationGateway $invocationGateway,
     ) {}
 
     /**
      * @return array{content:string,blocks:list<array<string,mixed>>}
      */
-    public function generateAndInsert(Task $task, AiModel $chatModel, string $content, string $title, string $keyword): array
+    public function generateAndInsert(
+        Task $task,
+        AiModel $chatModel,
+        string $content,
+        string $title,
+        string $keyword,
+        AiExecutionContext|int $executionIdentity,
+    ): array
     {
+        $taskId = (int) $task->getKey();
+        if (($executionIdentity instanceof AiExecutionContext && $executionIdentity->sourceId !== $taskId)
+            || (is_int($executionIdentity) && $executionIdentity !== $taskId)) {
+            throw new RuntimeException('AI 图片生成任务身份无效');
+        }
+
         $imageCount = max(0, min(5, (int) ($task->image_count ?? 0)));
         if ($imageCount <= 0) {
             return ['content' => $content, 'blocks' => []];
@@ -40,12 +48,16 @@ class AiGeneratedArticleImageService
             $this->quotaService->assertCanUse($quotaAdminId, $siteId, PlatformPlan::RESOURCE_AI_IMAGE_GENERATIONS, $imageCount);
         }
 
-        $imageModel = $this->resolveImageModel($task);
-        $plannedBlocks = $this->planImages($chatModel, $content, $title, $keyword, $imageCount);
+        $imageModelId = (int) ($task->ai_image_model_id ?? 0);
+        if ($imageModelId <= 0) {
+            throw new RuntimeException('任务未配置 AI 图片模型');
+        }
+
+        $plannedBlocks = $this->planImages($executionIdentity, $chatModel, $content, $title, $keyword, $imageCount);
         $generatedBlocks = [];
 
         foreach (array_slice($plannedBlocks, 0, $imageCount) as $index => $plan) {
-            $uploaded = $this->generateOne($imageModel, (string) ($plan['prompt'] ?? ''), $index + 1);
+            $uploaded = $this->generateOne($executionIdentity, $imageModelId, (string) ($plan['prompt'] ?? ''), $index + 1);
             if ($siteId > 0 && $quotaAdminId !== null) {
                 $this->quotaService->consume($quotaAdminId, $siteId, PlatformPlan::RESOURCE_AI_IMAGE_GENERATIONS, 1, [
                     'subject_type' => Task::class,
@@ -72,21 +84,26 @@ class AiGeneratedArticleImageService
     /**
      * @return list<array<string,mixed>>
      */
-    private function planImages(AiModel $chatModel, string $content, string $title, string $keyword, int $count): array
+    private function planImages(
+        AiExecutionContext|int $executionIdentity,
+        AiModel $chatModel,
+        string $content,
+        string $title,
+        string $keyword,
+        int $count,
+    ): array
     {
         try {
             $prompt = $this->buildPlanningPrompt($content, $title, $keyword, $count);
-            $providerUrl = OpenAiRuntimeProvider::resolveChatBaseUrl((string) ($chatModel->api_url ?? ''));
-            $apiKey = $this->apiKeyCrypto->decrypt((string) ($chatModel->getRawOriginal('api_key') ?? ''));
-            if ($providerUrl === '' || $apiKey === '') {
-                throw new RuntimeException('chat model unavailable for image planning');
-            }
-
-            $driver = OpenAiRuntimeProvider::resolveChatDriver($providerUrl, (string) ($chatModel->model_id ?? ''));
-            $providerName = OpenAiRuntimeProvider::registerProvider('image_planner', $driver, $providerUrl, $apiKey);
-            $agent = new MarkdownContentWriterAgent('You plan article images. Output only strict JSON.');
-            $response = $agent->prompt($prompt, [], $providerName, (string) ($chatModel->model_id ?? ''));
-            $planned = $this->parsePlan((string) ($response->text ?? ''));
+            $raw = $this->invocationGateway->generate(
+                $executionIdentity,
+                $chatModel,
+                $prompt,
+                static fn (array $invocation): string => (string) ($invocation['response']->text ?? ''),
+                'article.image.plan',
+                'worker_article_image_plan',
+            );
+            $planned = $this->parsePlan((string) $raw);
             if ($planned !== []) {
                 return $planned;
             }
@@ -153,43 +170,24 @@ class AiGeneratedArticleImageService
     /**
      * @return array{key:string,url:string,size:int,mime_type:string}
      */
-    private function generateOne(AiModel $imageModel, string $prompt, int $index): array
+    private function generateOne(AiExecutionContext|int $executionIdentity, int $imageModelId, string $prompt, int $index): array
     {
         $prompt = trim($prompt);
         if ($prompt === '') {
             throw new RuntimeException('AI图片提示词为空');
         }
 
-        $providerUrl = OpenAiRuntimeProvider::resolveImageBaseUrl((string) ($imageModel->api_url ?? ''));
-        $apiKey = $this->apiKeyCrypto->decrypt((string) ($imageModel->getRawOriginal('api_key') ?? ''));
-        if ($providerUrl === '' || $apiKey === '') {
-            throw new RuntimeException('AI图片模型未配置 API 地址或密钥');
-        }
-
-        $driver = OpenAiRuntimeProvider::resolveImageDriver($providerUrl, (string) ($imageModel->model_id ?? ''));
-        $providerName = OpenAiRuntimeProvider::registerProvider('image', $driver, $providerUrl, $apiKey);
-
         try {
-            $response = AiImage::of($prompt)
-                ->landscape()
-                ->quality('medium')
-                ->timeout(120)
-                ->generate($providerName, (string) ($imageModel->model_id ?? ''));
+            $response = $this->invocationGateway->generateImage($executionIdentity, $imageModelId, $prompt);
         } catch (Throwable $exception) {
-            throw new RuntimeException('AI图片生成失败: '.OpenAiRuntimeProvider::normalizeApiException($exception, $providerUrl), 0, $exception);
+            throw new RuntimeException('AI 图片生成失败: '.$exception->getMessage(), 0, $exception);
         }
 
-        $image = $response->firstImage();
-        $mime = $image->mime ?: 'image/png';
-        $uploaded = $this->imageHostClient->upload($image->content(), $mime, $this->filenameFor($mime, $index));
-
-        AiModel::query()->withoutGlobalScope('current_site')->whereKey((int) $imageModel->id)->update([
-            'used_today' => DB::raw('COALESCE(used_today,0)+1'),
-            'total_used' => DB::raw('COALESCE(total_used,0)+1'),
-            'updated_at' => now(),
-        ]);
-
-        return $uploaded;
+        return $this->imageHostClient->upload(
+            $response['content'],
+            $response['mime'],
+            $this->filenameFor($response['mime'], $index),
+        );
     }
 
     private function quotaAdminId(Task $task): ?int
@@ -211,38 +209,4 @@ class AiGeneratedArticleImageService
         return 'article-ai-image-'.$index.'.'.$extension;
     }
 
-    private function resolveImageModel(Task $task): AiModel
-    {
-        $modelId = (int) ($task->ai_image_model_id ?? 0);
-        if ($modelId <= 0) {
-            throw new RuntimeException('任务未配置AI图片模型');
-        }
-
-        $model = $this->aiConfigurationScope->applyOwnerIdScope(
-            AiModel::query()->withoutGlobalScope('current_site'),
-            $this->aiConfigOwnerIdForTask($task),
-            'ai_models.owner_admin_id'
-        )->whereKey($modelId)
-            ->where('status', 'active')
-            ->where('model_type', 'image')
-            ->first();
-
-        if (! $model) {
-            throw new RuntimeException('任务AI图片模型不可用');
-        }
-
-        return $model;
-    }
-
-    private function aiConfigOwnerIdForTask(Task $task): ?int
-    {
-        $adminId = (int) ($task->owner_admin_id ?? 0);
-        if ($adminId <= 0) {
-            return null;
-        }
-
-        $admin = \App\Models\Admin::query()->whereKey($adminId)->first(['id', 'role', 'created_by']);
-
-        return $admin instanceof \App\Models\Admin ? $this->aiConfigurationScope->ownerAdminIdForConsumer($admin) : null;
-    }
 }

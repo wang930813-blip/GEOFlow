@@ -1,5 +1,16 @@
 <?php
 
+/**
+ * Created by Codex.
+ * @Date: 2026-10-30
+ * @Time: 00:07:30
+ * @Author: cdkay
+ * @Email: network@iyuanma.net
+ *
+ * @File： BrandDiagnosisDoubaoFlowTest.php
+ * @Description: 验证国内版品牌诊断的模型调用、任务流程和错误处理。
+ */
+
 namespace Tests\Feature;
 
 use App\Jobs\GenerateBrandDiagnosisQuestionsJob;
@@ -18,6 +29,7 @@ use App\Models\SiteResourceUsage;
 use App\Services\Billing\AdminPlanSubscriptionService;
 use App\Services\BrandDiagnosis\BrandDiagnosisMentionBackfillService;
 use App\Services\BrandDiagnosis\DoubaoBrandDiagnosisClient;
+use App\Services\Outbound\OutboundRequestFailedException;
 use App\Support\GeoFlow\ApiKeyCrypto;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -1956,18 +1968,25 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
         config()->set('brand_diagnosis.qianwen.model', 'qwen3.7-plus');
 
         Http::preventStrayRequests();
+        $transportAttempts = 0;
         Http::fake([
-            'https://qianwen.example.com/api/v1/services/aigc/multimodal-generation/generation' => Http::failedConnection(),
+            'https://qianwen.example.com/api/v1/services/aigc/multimodal-generation/generation' => function ($request) use (&$transportAttempts) {
+                $transportAttempts++;
+                $failedConnection = Http::failedConnection('Connection refused');
+
+                return $failedConnection($request);
+            },
         ]);
 
         try {
             app(DoubaoBrandDiagnosisClient::class)
                 ->ask('Acme AI', 'Which AI brand service is reliable?', 'qianwen');
         } catch (\Throwable $exception) {
-            $this->assertStringContainsString('Connection', class_basename($exception));
+            $this->assertInstanceOf(OutboundRequestFailedException::class, $exception);
+            $this->assertSame('connection', $exception->transportCategory);
         }
 
-        Http::assertSentCount(1);
+        $this->assertSame(1, $transportAttempts);
     }
 
     public function test_external_source_titles_are_sanitized_before_persisting(): void

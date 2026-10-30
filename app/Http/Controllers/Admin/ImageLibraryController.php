@@ -1,5 +1,21 @@
 <?php
 
+/**
+ * Created by Codex.
+ *
+ * @Date: 2026-10-30
+ *
+ * @Time: 01:13:11
+ *
+ * @Author: cdkay
+ *
+ * @Email: network@iyuanma.net
+ *
+ * @File： ImageLibraryController.php
+ *
+ * @Description: 管理端图片库和图片资源操作。
+ */
+
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
@@ -8,10 +24,13 @@ use App\Models\Image;
 use App\Models\ImageLibrary;
 use App\Models\Task;
 use App\Services\GeoFlow\ExternalImageHostClient;
+use App\Services\GeoFlow\ManagedImageFileService;
 use App\Support\AdminWeb;
+use App\Support\CurrentSite;
 use App\Support\GeoFlow\ImageUrlNormalizer;
-use Illuminate\Http\RedirectResponse;
+use App\Support\ImageLibraryUploadPolicy;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -28,7 +47,11 @@ class ImageLibraryController extends Controller
 {
     private const DETAIL_PER_PAGE = 24;
 
-    public function __construct(private readonly ExternalImageHostClient $imageHostClient) {}
+    public function __construct(
+        private readonly ExternalImageHostClient $imageHostClient,
+        private readonly ManagedImageFileService $managedImages,
+        private readonly CurrentSite $currentSite,
+    ) {}
 
     /**
      * 列表页。
@@ -72,6 +95,41 @@ class ImageLibraryController extends Controller
     }
 
     /**
+     * @Name: createImageUpload
+     *
+     * @Description: 加载指定图片库的上传页，并提供浏览器提示和服务端校验共用的图片格式、大小配置。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-10-30 01:07:44
+     *
+     * @UpdateTime: 2026-10-30 01:13:11
+     *
+     * @Param: int $libraryId 图片库主键
+     *
+     * @Return: View 图片上传表单
+     *
+     * @Throws: ModelNotFoundException 图片库不存在时抛出
+     */
+    public function createImageUpload(int $libraryId): View
+    {
+        $library = ImageLibrary::query()->whereKey($libraryId)->firstOrFail();
+        $maxUploadBytes = ImageLibraryUploadPolicy::maxBytes();
+
+        return view('admin.image-libraries.upload', [
+            'pageTitle' => (string) $library->name.' - '.__('admin.image_detail.page_title'),
+            'activeMenu' => 'materials',
+            'adminSiteName' => AdminWeb::siteName(),
+            'library' => $library,
+            'maxUploadBytes' => $maxUploadBytes,
+            'maxUploadMegabytes' => (int) ceil($maxUploadBytes / 1024 / 1024),
+            'uploadMimeTypes' => ImageLibraryUploadPolicy::MIME_TYPES,
+            'uploadExtensions' => ImageLibraryUploadPolicy::EXTENSIONS,
+            'uploadAccept' => ImageLibraryUploadPolicy::accept(),
+        ]);
+    }
+
+    /**
      * 详情页更新图片库基本信息。
      */
     public function updateFromDetail(Request $request, int $libraryId): RedirectResponse
@@ -104,7 +162,7 @@ class ImageLibraryController extends Controller
             'images' => ['required', 'array', 'min:1'],
             'images.*' => [
                 'required',
-                File::types(['jpg', 'jpeg', 'png', 'gif', 'webp'])->max(10 * 1024),
+                File::types(ImageLibraryUploadPolicy::EXTENSIONS)->max(ImageLibraryUploadPolicy::maxKilobytes()),
             ],
         ], [
             'images.required' => __('admin.image_detail.error.select_images'),
@@ -137,6 +195,7 @@ class ImageLibraryController extends Controller
                         'original_name' => $stored['original_name'],
                         'file_name' => $stored['file_name'],
                         'file_path' => $stored['file_path'],
+                        'managed_path_hash' => $this->managedImages->terminalHashV1($stored['file_path']),
                         'file_size' => $stored['file_size'],
                         'mime_type' => $stored['mime_type'],
                         'width' => $stored['width'],
@@ -203,6 +262,80 @@ class ImageLibraryController extends Controller
         }
 
         return redirect()->route('admin.image-libraries.detail', ['libraryId' => $libraryId])->with('message', $message);
+    }
+
+    /**
+     * @Name: updateImageTags
+     *
+     * @Description: 更新图片备注并供任务生成文章时作为图片匹配依据。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-10-30 05:18:24
+     *
+     * @UpdateTime: 2026-10-30 05:18:24
+     *
+     * @Param: Request $request 包含 tags 的管理端请求。
+     *
+     * @Param: int $libraryId 图片库主键。
+     *
+     * @Param: int $imageId 图片主键。
+     *
+     * @Return: RedirectResponse 返回图片库详情页并显示保存结果。
+     *
+     * @Throws: ModelNotFoundException 图片库或图片不存在时抛出。
+     */
+    public function updateImageTags(Request $request, int $libraryId, int $imageId): RedirectResponse
+    {
+        $admin = auth('admin')->user();
+        $siteId = $this->currentSite->id();
+        $library = ImageLibrary::query()
+            ->withoutGlobalScope('current_site')
+            ->withoutGlobalScope('admin_owner')
+            ->whereKey($libraryId)
+            ->where(function ($query) use ($siteId): void {
+                $query->whereNull('site_id');
+                if ($siteId !== null && $siteId > 0) {
+                    $query->orWhere('site_id', $siteId);
+                }
+            })
+            ->when($admin && ! $admin->isSuperAdmin(), function ($query) use ($admin): void {
+                $query->where(function ($ownerQuery) use ($admin): void {
+                    $ownerQuery
+                        ->whereNull('owner_admin_id')
+                        ->orWhere('owner_admin_id', (int) $admin->getKey());
+                });
+            })
+            ->firstOrFail();
+
+        $payload = $request->validate([
+            'tags' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $image = Image::query()
+            ->withoutGlobalScope('current_site')
+            ->withoutGlobalScope('admin_owner')
+            ->where('library_id', $libraryId)
+            ->whereKey($imageId)
+            ->where(function ($query) use ($siteId): void {
+                $query->whereNull('site_id');
+                if ($siteId !== null && $siteId > 0) {
+                    $query->orWhere('site_id', $siteId);
+                }
+            })
+            ->when($admin && ! $admin->isSuperAdmin(), function ($query) use ($admin): void {
+                $query->where(function ($ownerQuery) use ($admin): void {
+                    $ownerQuery
+                        ->whereNull('owner_admin_id')
+                        ->orWhere('owner_admin_id', (int) $admin->getKey());
+                });
+            })
+            ->firstOrFail();
+        $image->update([
+            'tags' => trim((string) ($payload['tags'] ?? '')),
+        ]);
+
+        return back()->with('message', __('admin.image_detail.message.tags_update_success'));
     }
 
     /**

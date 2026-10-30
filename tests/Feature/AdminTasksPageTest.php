@@ -18,6 +18,7 @@ use App\Services\GeoFlow\TaskMonitoringQueryService;
 use App\Support\AdminWeb;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -53,6 +54,55 @@ class AdminTasksPageTest extends TestCase
             ->assertViewHas('taskI18n');
     }
 
+    public function test_admin_can_restore_a_trashed_task_from_the_task_page(): void
+    {
+        $admin = Admin::query()->create([
+            'username' => 'tasks_trash_restore_admin',
+            'password' => 'secret-123',
+            'email' => 'tasks-trash-restore@example.com',
+            'display_name' => 'Tasks Trash Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $site = Site::query()->create([
+            'owner_admin_id' => (int) $admin->id,
+            'name' => 'Tasks Trash Restore Site',
+            'status' => 'active',
+        ]);
+        $site->members()->attach((int) $admin->id, ['role' => 'owner']);
+
+        $this->actingAs($admin, 'admin')->withSession(['current_site_id' => (int) $site->id]);
+        $task = Task::query()->create([
+            'site_id' => (int) $site->id,
+            'name' => 'Task available for restore',
+            'status' => 'active',
+            'schedule_enabled' => 1,
+            'publish_interval' => 3600,
+            'draft_limit' => 5,
+            'article_limit' => 10,
+            'publish_scope' => 'local_only',
+        ]);
+        $task->delete();
+        $trashEntry = DB::table('task_trash_entries')->where('task_id', $task->id)->first();
+
+        $this->get(route('admin.tasks.index'))
+            ->assertOk()
+            ->assertSee('Task available for restore')
+            ->assertSee(route('admin.tasks.restore', ['taskId' => (int) $task->id]), false);
+
+        $this->post(route('admin.tasks.restore', ['taskId' => (int) $task->id]), [
+            'trash_sequence' => (int) $trashEntry->sequence,
+        ])->assertRedirect(route('admin.tasks.index'));
+
+        $this->assertDatabaseHas('tasks', [
+            'id' => (int) $task->id,
+            'status' => 'paused',
+            'schedule_enabled' => 0,
+            'deleted_at' => null,
+        ]);
+        $this->assertDatabaseMissing('task_trash_entries', ['task_id' => (int) $task->id]);
+    }
+
     public function test_authenticated_admin_can_open_task_create_page(): void
     {
         $admin = Admin::query()->create([
@@ -63,11 +113,70 @@ class AdminTasksPageTest extends TestCase
             'role' => 'admin',
             'status' => 'active',
         ]);
+        [$site] = $this->createTaskFormFixtures($admin);
 
         $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id])
             ->get(route('admin.tasks.create'))
             ->assertOk()
-            ->assertSee(__('admin.task_create.page_heading'));
+            ->assertSee(__('admin.task_create.page_heading'))
+            ->assertSee('name="ai_quality_enabled"', false)
+            ->assertSee('name="ai_quality_knowledge_base_ids[]"', false);
+    }
+
+    public function test_admin_cannot_restore_a_task_from_another_site(): void
+    {
+        $owner = Admin::query()->create([
+            'username' => 'tasks_trash_owner_admin',
+            'password' => 'secret-123',
+            'email' => 'tasks-trash-owner@example.com',
+            'display_name' => 'Task Owner',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $otherAdmin = Admin::query()->create([
+            'username' => 'tasks_trash_other_admin',
+            'password' => 'secret-123',
+            'email' => 'tasks-trash-other@example.com',
+            'display_name' => 'Other Admin',
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+        $ownerSite = Site::query()->create([
+            'owner_admin_id' => (int) $owner->id,
+            'name' => 'Task Trash Owner Site',
+            'status' => 'active',
+        ]);
+        $otherSite = Site::query()->create([
+            'owner_admin_id' => (int) $otherAdmin->id,
+            'name' => 'Task Trash Other Site',
+            'status' => 'active',
+        ]);
+        $ownerSite->members()->attach((int) $owner->id, ['role' => 'owner']);
+        $otherSite->members()->attach((int) $otherAdmin->id, ['role' => 'owner']);
+
+        $this->actingAs($owner, 'admin')->withSession(['current_site_id' => (int) $ownerSite->id]);
+        $task = Task::query()->create([
+            'site_id' => (int) $ownerSite->id,
+            'name' => 'Private trashed task',
+            'status' => 'paused',
+            'publish_scope' => 'local_only',
+        ]);
+        $task->delete();
+        $trashSequence = (int) DB::table('task_trash_entries')->where('task_id', $task->id)->value('sequence');
+
+        $this->actingAs($otherAdmin, 'admin')
+            ->withSession(['current_site_id' => (int) $otherSite->id])
+            ->post(route('admin.tasks.restore', ['taskId' => (int) $task->id]), [
+                'trash_sequence' => $trashSequence,
+            ])
+            ->assertRedirect();
+
+        $this->assertSoftDeleted('tasks', ['id' => (int) $task->id]);
+        $this->assertDatabaseHas('task_trash_entries', [
+            'task_id' => (int) $task->id,
+            'sequence' => $trashSequence,
+        ]);
     }
 
     public function test_task_create_page_hides_distribution_channel_create_entry(): void
@@ -408,6 +517,7 @@ class AdminTasksPageTest extends TestCase
             'api_key' => 'plain-key',
             'status' => 'active',
         ]);
+        $aiModel->forceFill(['owner_admin_id' => (int) $admin->id])->save();
         Category::query()->create([
             'site_id' => (int) $site->id,
             'name' => 'Store Category',
@@ -750,7 +860,8 @@ class AdminTasksPageTest extends TestCase
             ->assertSessionHasNoErrors()
             ->assertSessionHas('message', __('admin.tasks.message.delete_success'));
 
-        $this->assertDatabaseMissing('tasks', ['id' => $task->id]);
+        $this->assertSoftDeleted('tasks', ['id' => $task->id]);
+        $this->assertDatabaseHas('task_trash_entries', ['task_id' => $task->id]);
     }
 
     /**
@@ -788,6 +899,7 @@ class AdminTasksPageTest extends TestCase
             'api_key' => 'plain-key',
             'status' => 'active',
         ]);
+        $aiModel->forceFill(['owner_admin_id' => (int) $admin->id])->save();
         Category::query()->create([
             'site_id' => (int) $site->id,
             'name' => 'Scheduled Publish Category',

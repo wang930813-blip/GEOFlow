@@ -40,9 +40,10 @@ class BrandDiagnosisLookupRankingApiTest extends TestCase
             ->assertJsonPath('data.rankings.by_model.1.model', 'deepseek')
             ->assertJsonPath('data.rankings.by_model.2.model', 'qianwen')
             ->assertJsonPath('data.rankings.by_model.3.model', 'wenxin')
+            ->assertJsonPath('data.rankings.by_model.4.model', 'yuanbao')
             ->assertJsonPath('data.module_status.rankings', 'included');
 
-        $this->assertCount(4, $allResponse->json('data.rankings.by_model'));
+        $this->assertCount(5, $allResponse->json('data.rankings.by_model'));
 
         $doubaoResponse = $this->withHeader('X-Api-Key', 'test-lookup-key')
             ->getJson('/api/v1/brand-diagnoses/search?'.http_build_query([
@@ -81,9 +82,10 @@ class BrandDiagnosisLookupRankingApiTest extends TestCase
             ->assertJsonPath('data.competitors.by_model.0.rows.0.brand_name', 'Competitor Alpha')
             ->assertJsonPath('data.competitors.by_model.1.model', 'deepseek')
             ->assertJsonPath('data.competitors.by_model.1.rows.0.brand_name', 'Competitor Beta')
+            ->assertJsonPath('data.competitors.by_model.4.model', 'yuanbao')
             ->assertJsonPath('data.module_status.competitors', 'included');
 
-        $this->assertCount(4, $allResponse->json('data.competitors.by_model'));
+        $this->assertCount(5, $allResponse->json('data.competitors.by_model'));
 
         $doubaoResponse = $this->withHeader('X-Api-Key', 'test-lookup-key')
             ->getJson('/api/v1/brand-diagnoses/search?'.http_build_query([

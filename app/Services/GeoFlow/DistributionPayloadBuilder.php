@@ -3,6 +3,7 @@
 namespace App\Services\GeoFlow;
 
 use App\Models\Article;
+use App\Support\GeoFlow\ImageUrlNormalizer;
 use App\Support\Site\ArticleHtmlPresenter;
 
 class DistributionPayloadBuilder
@@ -20,11 +21,13 @@ class DistributionPayloadBuilder
             'category:id,name,slug',
             'author:id,name',
             'task:id,name',
+            'articleImages.image',
         ]);
         $title = (string) $article->title;
         $content = (string) $article->content;
         $body = ArticleHtmlPresenter::stripLeadingTitleHeading($content, $title);
         $contentHtml = ArticleHtmlPresenter::markdownToHtml($body);
+        $heroImageUrl = $this->heroImageUrl($article);
 
         return [
             'version' => '1.0',
@@ -38,10 +41,14 @@ class DistributionPayloadBuilder
                 'content' => $content,
                 'content_format' => 'markdown',
                 'content_html' => $contentHtml,
+                'hero_image_url' => $heroImageUrl,
                 'keywords' => (string) ($article->keywords ?? ''),
                 'meta_description' => (string) ($article->meta_description ?? ''),
                 'status' => (string) $article->status,
+                'is_featured' => (bool) $article->is_featured,
+                'is_hot' => (bool) $article->is_hot,
                 'published_at' => $article->published_at?->toISOString(),
+                'created_at' => $article->created_at?->toISOString(),
                 'updated_at' => $article->updated_at?->toISOString(),
                 'category' => $article->category ? [
                     'id' => (int) $article->category->id,
@@ -58,17 +65,31 @@ class DistributionPayloadBuilder
                 ] : null,
             ],
             'assets' => [
-                'images' => $this->extractImageAssets($content, $contentHtml),
+                'images' => $this->extractImageAssets($content, $contentHtml, $heroImageUrl !== '' ? [$heroImageUrl] : []),
             ],
         ];
     }
 
     /**
+     * @return list<string>
+     */
+    private function heroImageUrl(Article $article): string
+    {
+        $image = $article->articleImages->sortBy('position')->first()?->image;
+        if (! $image) {
+            return '';
+        }
+
+        return ImageUrlNormalizer::toPublicUrl((string) ($image->file_path ?? ''));
+    }
+
+    /**
+     * @param  list<string>  $additionalUrls
      * @return list<array<string,string>>
      */
-    private function extractImageAssets(string $markdown, string $html): array
+    private function extractImageAssets(string $markdown, string $html, array $additionalUrls = []): array
     {
-        $urls = [];
+        $urls = $additionalUrls;
         if (preg_match_all('/!\[[^\]]*\]\(([^)\s]+)(?:\s+["\'][^"\']*["\'])?\)/u', $markdown, $matches)) {
             foreach ($matches[1] ?? [] as $url) {
                 $urls[] = trim((string) $url);
@@ -141,7 +162,16 @@ class DistributionPayloadBuilder
             return null;
         }
 
-        return public_path($relativePath);
+        $publicPath = public_path($relativePath);
+        if (is_file($publicPath)) {
+            return $publicPath;
+        }
+
+        if (str_starts_with($relativePath, 'storage/')) {
+            return storage_path('app/public/'.substr($relativePath, strlen('storage/')));
+        }
+
+        return $publicPath;
     }
 
     private function imageAssetFilename(string $url, string $mimeType): string

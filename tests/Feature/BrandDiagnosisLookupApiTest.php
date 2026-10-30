@@ -1,5 +1,16 @@
 <?php
 
+/**
+ * Created by Codex.
+ * @Date: 2026-10-30
+ * @Time: 00:00:46
+ * @Author: cdkay
+ * @Email: network@iyuanma.net
+ *
+ * @File： BrandDiagnosisLookupApiTest.php
+ * @Description: 验证品牌诊断查询 API 的鉴权、筛选和查询结果。
+ */
+
 namespace Tests\Feature;
 
 use App\Jobs\GenerateBrandDiagnosisLookupJob;
@@ -98,7 +109,7 @@ class BrandDiagnosisLookupApiTest extends TestCase
     public function test_lookup_api_rejects_unsupported_model_filter(): void
     {
         $this->withHeader('X-Api-Key', 'test-lookup-key')
-            ->getJson('/api/v1/brand-diagnoses/search?brand_word=策影GEO&include=performance&model=yuanbao')
+            ->getJson('/api/v1/brand-diagnoses/search?brand_word=策影GEO&include=performance&model=unsupported')
             ->assertStatus(422)
             ->assertJsonPath('error.code', 'validation_failed');
     }

@@ -5,6 +5,8 @@ namespace App\Console\Commands;
 use App\Models\Task;
 use App\Models\TaskRun;
 use App\Services\GeoFlow\JobQueueService;
+use App\Services\Topics\TopicTaskProgress;
+use App\Services\Topics\TopicTaskService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -41,13 +43,18 @@ class GeoFlowScheduleTasksCommand extends Command
         $skippedCount = 0;
 
         $tasks = Task::query()
-            ->select(['id', 'name', 'publish_interval', 'draft_limit', 'article_limit', 'created_count', 'next_run_at', 'next_publish_at', 'schedule_enabled'])
+            ->select(['id', 'name', 'content_type', 'target_site_key', 'topic_limit', 'topic_settings', 'topic_config_version', 'title_library_id', 'ai_model_id', 'model_access_admin_id', 'publish_interval', 'draft_limit', 'article_limit', 'created_count', 'next_run_at', 'next_publish_at', 'schedule_enabled'])
             ->where('status', 'active')
             ->orderBy('updated_at')
             ->orderBy('id')
             ->get();
 
         $taskIds = $tasks->pluck('id')->map(static fn (mixed $id): int => (int) $id)->all();
+        $articleTaskIds = $tasks
+            ->filter(static fn (Task $task): bool => ($task->content_type ?: 'article') === 'article')
+            ->pluck('id')
+            ->map(static fn (mixed $id): int => (int) $id)
+            ->all();
         // 批量获取“已有 pending/running 执行记录”的任务集合，减少循环内 exists 查询。
         $busyTaskLookup = empty($taskIds)
             ? []
@@ -62,7 +69,7 @@ class GeoFlowScheduleTasksCommand extends Command
                 true
             );
 
-        $articleStats = empty($taskIds)
+        $articleStats = empty($articleTaskIds)
             ? collect()
             : DB::table('articles')
                 ->selectRaw("
@@ -70,7 +77,7 @@ class GeoFlowScheduleTasksCommand extends Command
                     SUM(CASE WHEN status = 'draft' THEN 1 ELSE 0 END) AS draft_articles,
                     SUM(CASE WHEN status = 'draft' AND review_status IN ('approved','auto_approved') THEN 1 ELSE 0 END) AS publishable_drafts
                 ")
-                ->whereIn('task_id', $taskIds)
+                ->whereIn('task_id', $articleTaskIds)
                 ->whereNull('deleted_at')
                 ->groupBy('task_id')
                 ->get()
@@ -85,6 +92,59 @@ class GeoFlowScheduleTasksCommand extends Command
             $taskId = (int) $task->id;
             if ((int) ($task->schedule_enabled ?? 1) !== 1) {
                 $skippedCount++;
+
+                continue;
+            }
+
+            if ($task->content_type === 'topic') {
+                $topicTasks = app(TopicTaskService::class);
+                if (isset($busyTaskLookup[$taskId])) {
+                    $skippedCount++;
+
+                    continue;
+                }
+
+                if (! $topicTasks->hasWork($task)) {
+                    $progress = app(TopicTaskProgress::class)->forTasks([$taskId]);
+                    $createdTopics = (int) ($progress[$taskId]['created_topics'] ?? 0);
+                    if ($createdTopics >= max(1, (int) $task->topic_limit)) {
+                        Task::query()->whereKey($taskId)->update([
+                            'created_count' => $createdTopics,
+                            'status' => 'completed',
+                            'schedule_enabled' => 0,
+                            'next_run_at' => null,
+                            'updated_at' => now(),
+                        ]);
+                    }
+                    $skippedCount++;
+
+                    continue;
+                }
+
+                if (! $task->next_run_at instanceof Carbon) {
+                    $this->jobQueueService->initializeTaskSchedule($taskId);
+                    $skippedCount++;
+
+                    continue;
+                }
+
+                if ($task->next_run_at->greaterThan($now) && ! $topicTasks->dueRun($task)) {
+                    $skippedCount++;
+
+                    continue;
+                }
+
+                if ($this->jobQueueService->enqueueTaskJob($taskId, 'generate_topic') === null) {
+                    $skippedCount++;
+
+                    continue;
+                }
+
+                Task::query()->whereKey($taskId)->update([
+                    'next_run_at' => $now->copy()->addSeconds(60),
+                    'updated_at' => now(),
+                ]);
+                $queuedCount++;
 
                 continue;
             }

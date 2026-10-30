@@ -7,6 +7,7 @@
  */
 
 use App\Exceptions\ApiException;
+use App\Models\Site;
 use App\Http\Middleware\AdminWebLocale;
 use App\Http\Middleware\AssignApiRequestId;
 use App\Http\Middleware\AuthenticateAdminWeb;
@@ -15,16 +16,28 @@ use App\Http\Middleware\AuthenticateBrandDiagnosisLookupApiKey;
 use App\Http\Middleware\AuthenticateBrandDiagnosisOpenApi;
 use App\Http\Middleware\AuthenticateCrebeeAgent;
 use App\Http\Middleware\AutoFollowRedirectBody;
+use App\Http\Middleware\EnforceCurrentSiteSurface;
+use App\Http\Middleware\EnsureAdminUiV3Enabled;
+use App\Http\Middleware\EnsureApiScope;
 use App\Http\Middleware\EnsureAgentAdmin;
 use App\Http\Middleware\EnsureAiConfigurationManager;
-use App\Http\Middleware\EnsureApiScope;
-use App\Http\Middleware\EnsureCurrentSite;
+use App\Http\Middleware\EnsureBrowserOperationsProtocol;
+use App\Http\Middleware\EnsureHostedSitesEnabled;
 use App\Http\Middleware\EnsureSuperAdmin;
+use App\Http\Middleware\GuardRecoveryTraffic;
+use App\Http\Middleware\GuardRecoveryWrites;
+use App\Http\Middleware\LimitArticleMarkdownExportRequestSize;
 use App\Http\Middleware\LogAdminActivity;
+use App\Http\Middleware\NormalizeRequestHost;
 use App\Http\Middleware\RecordSiteViewLog;
 use App\Http\Middleware\ResolveFrontendSiteByDomain;
+use App\Http\Middleware\EnsureCurrentSite;
+use App\Http\Middleware\RenderAiWorkspaceJsonErrors;
+use App\Http\Middleware\ResolveCurrentSite;
+use App\Http\Middleware\ScopeThemeRevision;
 use App\Http\Middleware\SiteWebLocale;
-use App\Services\Api\IdempotencyService;
+use App\Http\Middleware\TrackAdminRecentPage;
+use App\Services\Api\ThemeReleaseService;
 use App\Support\ApiResponse;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Application;
@@ -34,6 +47,10 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpFoundation\Exception\SuspiciousOperationException;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -45,52 +62,127 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->trustProxies(
-            at: env('TRUSTED_PROXIES') ?: null,
-            headers: Request::HEADER_X_FORWARDED_FOR
-                | Request::HEADER_X_FORWARDED_HOST
-                | Request::HEADER_X_FORWARDED_PORT
-                | Request::HEADER_X_FORWARDED_PROTO
-                | Request::HEADER_X_FORWARDED_PREFIX
-        );
+        $workspaceFileChanges = static fn (Request $request): bool => $request->isMethod('POST')
+            && count($request->segments()) === 6
+            && $request->is('api/v1/management/theme-workspaces/*/changes')
+            && Str::isUuid((string) $request->segment(5));
+        $middleware->trimStrings(except: ['friend_links.links.*.url', $workspaceFileChanges]);
+        $middleware->convertEmptyStringsToNull(except: [$workspaceFileChanges]);
+        $middleware->prepend(LimitArticleMarkdownExportRequestSize::class);
+        $middleware->trustHosts(static function (): array {
+            $patterns = [];
+            $readbackBase = ThemeReleaseService::trustedReadbackBase();
+            if ($readbackBase) {
+                $patterns[] = '^'.preg_quote((string) parse_url($readbackBase, PHP_URL_HOST), '/').'$';
+            }
+            foreach (config('geoflow.hosted_sites.primary_hosts', []) as $hostname) {
+                $patterns[] = '^'.preg_quote($hostname, '/').'$';
+            }
+            foreach (config('geoflow.hosted_sites.root_domains', []) as $rootDomain) {
+                $patterns[] = '^[^.]+\\.'.preg_quote($rootDomain, '/').'$';
+            }
 
-        $middleware->web(append: [
-            AutoFollowRedirectBody::class,
+            // 国内版客户域名由站点管理员动态绑定，必须纳入可信 Host，
+            // 否则请求会在 ResolveFrontendSiteByDomain 之前被 Laravel 直接返回 404。
+            try {
+                foreach (Site::query()
+                    ->where('status', 'active')
+                    ->get(['domain', 'custom_domain']) as $site) {
+                    foreach ([(string) $site->domain, (string) $site->custom_domain] as $hostname) {
+                        $hostname = strtolower(trim($hostname));
+                        if ($hostname !== '' && preg_match('/^[a-z0-9.-]+$/', $hostname) === 1) {
+                            $patterns[] = '^'.preg_quote(rtrim($hostname, '.'), '/').'$';
+                        }
+                    }
+                }
+            } catch (\Throwable) {
+                // 数据库尚未可用时保留静态可信主机，避免影响安装和 CLI 启动。
+            }
+
+            if (app()->environment('testing')) {
+                $patterns[] = '^[a-z0-9.-]+$';
+            }
+
+            return array_values(array_unique($patterns));
+        }, subdomains: false);
+        $middleware->append([
+            NormalizeRequestHost::class,
+            ResolveCurrentSite::class,
+            EnforceCurrentSiteSurface::class,
+            ScopeThemeRevision::class,
         ]);
+        $middleware->appendToGroup('web', AutoFollowRedirectBody::class);
+        $middleware->prependToGroup('web', GuardRecoveryTraffic::class);
+        $middleware->prependToGroup('api', GuardRecoveryTraffic::class);
+        $middleware->appendToGroup('web', AssignApiRequestId::class);
 
         $middleware->alias([
             // 生成/透传 X-Request-Id，并写入响应头
             'api.request_id' => AssignApiRequestId::class,
             // Authorization: Bearer，解析 Sanctum token 并注入 ApiAuthContext
             'api.auth' => AuthenticateApiToken::class,
-            // 品牌诊断开放 API：固定 X-Api-Key 鉴权，不绑定站点
             'brand-diagnosis.api-key' => AuthenticateBrandDiagnosisOpenApi::class,
             'brand-diagnosis.lookup-api-key' => AuthenticateBrandDiagnosisLookupApiKey::class,
+            'crebee.agent' => AuthenticateCrebeeAgent::class,
+            'api.recovery' => GuardRecoveryWrites::class,
             // 校验 Token scopes，如 api.scope:catalog:read
             'api.scope' => EnsureApiScope::class,
-            'crebee.agent' => AuthenticateCrebeeAgent::class,
+            'browser.protocol' => EnsureBrowserOperationsProtocol::class,
             // Blade 后台：管理员会话鉴权（失败跳转 admin.login）
             'admin.auth' => AuthenticateAdminWeb::class,
             // Blade 后台：session locale
             'admin.locale' => AdminWebLocale::class,
-            // Blade 后台：当前站点上下文
             'admin.site' => EnsureCurrentSite::class,
+            'admin.agent' => EnsureAgentAdmin::class,
+            'admin.ai_config_manager' => EnsureAiConfigurationManager::class,
             // 前台：固定 public_locale（默认 zh_CN）
             'site.locale' => SiteWebLocale::class,
             // 前台：保存访问日志，供数据分析模块统计 PV、路径和爬虫类型
             'site.domain' => ResolveFrontendSiteByDomain::class,
             'site.view_log' => RecordSiteViewLog::class,
+            'hosted-sites.enabled' => EnsureHostedSitesEnabled::class,
             // Blade 后台：仅超级管理员
             'admin.super' => EnsureSuperAdmin::class,
-            // Blade 后台：仅代理管理员
-            'admin.agent' => EnsureAgentAdmin::class,
-            // Blade 后台：可管理 AI 配置的账号（超管、代理）
-            'admin.ai_config_manager' => EnsureAiConfigurationManager::class,
             // Blade 后台：写操作日志
             'admin.activity' => LogAdminActivity::class,
+            // Blade 后台：记录经过权限过滤的最近处理页面
+            'admin.recent' => TrackAdminRecentPage::class,
+            // Blade 后台：V3 独占页面在功能开关关闭时不可访问
+            'admin.ui-v3' => EnsureAdminUiV3Enabled::class,
         ]);
+
+        // 已登录的管理员访问登录页(guest:admin)时，重定向到后台仪表盘，而不是 Laravel 默认的 "/"。
+        // 默认逻辑只认名为 dashboard/home 的路由，本项目是 admin.dashboard/site.home，匹配不到就回落到 "/"，
+        // 导致“已登录后再打开登录页”被弹到前台内容站。这里显式指向后台首页。
+        $middleware->redirectUsersTo(fn () => route('admin.dashboard'));
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->dontFlash([
+            'credential',
+            'preview_credential',
+            'confirmation',
+            'api_key',
+            'package_password',
+            'current_password',
+            'current_admin_password',
+            'updater_authorization_code',
+            'authorization_code',
+            'new_password',
+            'confirm_password',
+            'keywords_text',
+            'titles_text',
+            'outputs',
+        ]);
+
+        $exceptions->render(function (Throwable $e, Request $request) {
+            $routeName = (string) ($request->route()?->getName() ?? '');
+            if (! Str::startsWith($routeName, 'admin.ai-workspace.')) {
+                return null;
+            }
+
+            return RenderAiWorkspaceJsonErrors::responseFor($e);
+        });
+
         /**
          * 后台 firstOrFail 友好错误页：
          * Laravel 渲染流程里 ModelNotFoundException 可能会先包装为 NotFoundHttpException，
@@ -119,42 +211,79 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $exceptions->render(function (ApiException $e, Request $request) {
             if (! $request->is('api/*')) {
-                return null;
+                if ($request->expectsJson() && str_starts_with((string) $request->route()?->getName(), 'admin.link-pool.theme-adaptations.')) {
+                    return response()->json(['message' => $e->getMessage(), 'error_code' => $e->getErrorCode()], $e->getHttpStatus())
+                        ->header('Cache-Control', 'no-store, private');
+                }
+
+                return response($e->getMessage(), $e->getHttpStatus())
+                    ->header('Content-Type', 'text/plain; charset=utf-8')
+                    ->header('Cache-Control', 'no-store, private');
             }
 
             $rid = (string) ($request->attributes->get('request_id') ?? Str::uuid()->toString());
 
-            $response = ApiResponse::error(
+            $headers = ['X-Request-Id' => $rid];
+            $retryAfter = $e->getDetails()['retry_after'] ?? null;
+            if ($e->getHttpStatus() === 429 && is_int($retryAfter) && $retryAfter >= 0 && $retryAfter <= 86400) {
+                $headers['Retry-After'] = (string) $retryAfter;
+            }
+
+            return ApiResponse::error(
                 $e->getErrorCode(),
                 $e->getMessage(),
                 $rid,
                 $e->getHttpStatus(),
                 $e->getDetails()
-            )->withHeaders(['X-Request-Id' => $rid]);
-
-            try {
-                IdempotencyService::rememberApiException($request, $response);
-            } catch (Throwable $idempotencyException) {
-                Log::error('幂等异常响应保存失败', [
-                    'exception' => $idempotencyException::class,
-                    'request_id' => $rid,
-                ]);
-            }
-
-            return $response;
-        });
-
-        $exceptions->render(function (ValidationException $e, Request $request) {
-            if ($request->is('api/*')) {
-                IdempotencyService::releaseValidationReservation($request);
-            }
-
-            return null;
+            )->withHeaders($headers);
         });
 
         $exceptions->render(function (Throwable $e, Request $request) {
-            if (! $request->is('api/*') || $e instanceof ApiException || $e instanceof ValidationException) {
+            if ($request->is('api/*')) {
                 return null;
+            }
+
+            $hostRejected = $e instanceof SuspiciousOperationException
+                || ($e instanceof BadRequestHttpException
+                    && $e->getPrevious() instanceof SuspiciousOperationException);
+
+            return $hostRejected
+                ? response('', 404)->header('X-Robots-Tag', 'noindex, nofollow')
+                : null;
+        });
+
+        $exceptions->render(function (Throwable $e, Request $request) {
+            if (! $request->is('api/*') || $e instanceof ApiException) {
+                return null;
+            }
+
+            if ($e instanceof ValidationException) {
+                $rid = (string) ($request->attributes->get('request_id') ?? Str::uuid()->toString());
+
+                return ApiResponse::error('validation_failed', $e->getMessage(), $rid, 422, ['errors' => $e->errors()])->withHeaders(['X-Request-Id' => $rid]);
+            }
+
+            $hostRejected = $e instanceof SuspiciousOperationException
+                || ($e instanceof BadRequestHttpException
+                    && $e->getPrevious() instanceof SuspiciousOperationException);
+            if ($e instanceof NotFoundHttpException || $hostRejected) {
+                $rid = (string) ($request->attributes->get('request_id') ?? Str::uuid()->toString());
+
+                return ApiResponse::error(
+                    'not_found',
+                    'Not Found',
+                    $rid,
+                    404
+                )->withHeaders(['X-Request-Id' => $rid]);
+            }
+
+            if ($e instanceof HttpExceptionInterface) {
+                $rid = (string) ($request->attributes->get('request_id') ?? Str::uuid()->toString());
+                $status = $e->getStatusCode();
+
+                return ApiResponse::error('http_'.$status, Response::$statusTexts[$status] ?? 'Request failed', $rid, $status)
+                    ->withHeaders(array_intersect_key($e->getHeaders(), array_flip(['Retry-After', 'X-RateLimit-Limit', 'X-RateLimit-Remaining'])))
+                    ->withHeaders(['X-Request-Id' => $rid]);
             }
 
             Log::error($e->getMessage(), [

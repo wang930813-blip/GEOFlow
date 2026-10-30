@@ -6,10 +6,13 @@ use App\Models\Admin;
 use App\Models\Task;
 use App\Models\TaskRun;
 use App\Models\WorkerHeartbeat;
+use App\Services\Topics\TopicTaskProgress;
 use App\Support\AdminDataScope;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * 任务监控查询编排服务。
@@ -66,12 +69,17 @@ class TaskMonitoringQueryService
      *     pagination:array{page:int,per_page:int,total:int,total_pages:int}
      * }
      */
-    public function listTasksPaginated(int $page = 1, int $perPage = 20, array $filters = []): array
+    public function listTasksPaginated(
+        int $page = 1,
+        int $perPage = 20,
+        array $filters = [],
+        ?Admin $admin = null,
+    ): array
     {
         $page = max(1, $page);
         $perPage = max(1, min(100, $perPage));
 
-        $query = Task::query()
+        $query = $this->visibleTaskQuery($admin)
             ->when(! empty($filters['status']), fn ($q) => $q->where('status', (string) $filters['status']))
             ->when(! empty($filters['search']), fn ($q) => $q->where('name', 'like', '%'.trim((string) $filters['search']).'%'))
             ->orderByDesc('created_at');
@@ -96,12 +104,82 @@ class TaskMonitoringQueryService
      *
      * @return array<string,mixed>
      */
-    public function getTaskMonitoringDetail(int $taskId): array
+    public function getTaskMonitoringDetail(int $taskId, ?Admin $admin = null): array
     {
-        $task = Task::query()->whereKey($taskId)->firstOrFail();
+        $task = $this->visibleTaskQuery($admin)->whereKey($taskId)->firstOrFail();
         $decorated = $this->decorateTasks(collect([$task]))->first();
 
         return is_array($decorated) ? $decorated : [];
+    }
+
+    /**
+     * @Name: trashedTaskHistory
+     * @Description: 查询当前管理员有权访问且仍在保留期内的已删除任务，供任务页回收站显示。
+     * @Author: cdkay
+     * @CreateTime: 2026-10-29 18:51:01
+     * @UpdateTime: 2026-10-29 18:51:01
+     * @Param: Admin|null admin 当前管理后台用户
+     * @Param: int limit 返回记录数上限
+     * @Return: list<array<string,mixed>> 已删除任务及恢复所需的回收站序列
+     * @Throws: \Illuminate\Database\QueryException 数据库查询失败时抛出
+     */
+    public function trashedTaskHistory(?Admin $admin = null, int $limit = 50): array
+    {
+        if (! Schema::hasTable('task_trash_entries')
+            || ! Schema::hasColumn('task_trash_entries', 'sequence')) {
+            return [];
+        }
+
+        $columns = [
+            'tasks.id',
+            'tasks.name',
+            'tasks.deleted_at',
+            'task_trash_entries.sequence as trash_sequence',
+        ];
+        if (Schema::hasColumn('task_trash_entries', 'requires_super_admin_restore')) {
+            $columns[] = 'task_trash_entries.requires_super_admin_restore';
+        }
+
+        return $this->visibleTaskQuery($admin)
+            ->onlyTrashed()
+            ->join('task_trash_entries', 'task_trash_entries.task_id', '=', 'tasks.id')
+            ->where('task_trash_entries.deleted_at', '>', now()->subDays(Task::TRASH_RETENTION_DAYS))
+            ->orderByDesc('task_trash_entries.sequence')
+            ->limit(max(1, min(200, $limit)))
+            ->get($columns)
+            ->map(static fn (Task $task): array => [
+                'id' => (int) $task->id,
+                'name' => (string) $task->name,
+                'deleted_at' => $task->deleted_at?->toDateTimeString(),
+                'trash_sequence' => (int) $task->trash_sequence,
+                'requires_super_admin_restore' => (bool) ($task->requires_super_admin_restore ?? false),
+            ])
+            ->all();
+    }
+
+    /**
+     * @Name: findTrashedTaskForAdmin
+     * @Description: 以当前管理员的数据范围查询软删除任务，并可在恢复事务内锁定记录。
+     * @Author: cdkay
+     * @CreateTime: 2026-10-29 18:51:01
+     * @UpdateTime: 2026-10-29 18:51:01
+     * @Param: int taskId 任务主键
+     * @Param: Admin|null admin 当前管理后台用户
+     * @Param: bool lockForUpdate 是否对任务行加排他锁
+     * @Return: Task|null 可见的软删除任务，不存在或越权时返回 null
+     * @Throws: \Illuminate\Database\QueryException 数据库查询失败时抛出
+     */
+    public function findTrashedTaskForAdmin(int $taskId, ?Admin $admin = null, bool $lockForUpdate = false): ?Task
+    {
+        $query = $this->visibleTaskQuery($admin)
+            ->onlyTrashed()
+            ->whereKey($taskId);
+
+        if ($lockForUpdate) {
+            $query->lockForUpdate();
+        }
+
+        return $query->first();
     }
 
     /**
@@ -123,6 +201,9 @@ class TaskMonitoringQueryService
 
         if ($admin instanceof Admin) {
             $this->adminDataScope->applySiteScope($query, $admin);
+            if ($admin->isSiteUser() || $admin->isDirectAdmin()) {
+                $this->adminDataScope->applyOwnerScope($query, $admin);
+            }
         }
 
         return $query;
@@ -140,6 +221,18 @@ class TaskMonitoringQueryService
 
         // 一次性收集 task_id，后续所有聚合都基于该集合批量查询，避免 N+1。
         $taskIds = $tasks->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $topicStats = app(TopicTaskProgress::class)->forTasks($taskIds);
+        $qualityKnowledgeBaseIds = Schema::hasTable('task_knowledge_bases')
+            ? DB::table('task_knowledge_bases')
+                ->whereIn('task_id', $taskIds)
+                ->orderBy('sort_order')
+                ->get(['task_id', 'knowledge_base_id'])
+                ->groupBy('task_id')
+                ->map(static fn (Collection $rows): array => $rows
+                    ->map(static fn (object $row): int => (int) $row->knowledge_base_id)
+                    ->values()
+                    ->all())
+            : collect();
 
         // 文章统计（业务真相）：总文章数 + 已发布数。
         $articleStats = DB::table('articles')
@@ -223,7 +316,7 @@ class TaskMonitoringQueryService
             ->whereIn('id', $tasks->pluck('ai_model_id')->filter()->all())
             ->pluck('name', 'id');
 
-        return $tasks->map(function (Task $task) use ($articleStats, $distributionStats, $runStats, $latestRuns, $titleNames, $modelNames): array {
+        return $tasks->map(function (Task $task) use ($topicStats, $articleStats, $distributionStats, $runStats, $latestRuns, $titleNames, $modelNames, $qualityKnowledgeBaseIds): array {
             $taskId = (int) $task->id;
             $articles = $articleStats->get($taskId, ['total_articles' => 0, 'published_articles' => 0, 'draft_articles' => 0, 'publishable_drafts' => 0]);
             $distributions = $distributionStats->get($taskId, ['distribution_total_count' => 0, 'distribution_synced_count' => 0, 'distribution_failed_count' => 0]);
@@ -240,6 +333,11 @@ class TaskMonitoringQueryService
             return [
                 'id' => $taskId,
                 'name' => (string) $task->name,
+                'content_type' => (string) ($task->content_type ?: 'article'),
+                'target_site_key' => (string) ($task->target_site_key ?? 'primary'),
+                'topic_limit' => (int) ($task->topic_limit ?? 10),
+                'topic_settings' => $task->topic_settings ?? [],
+                'topic_config_version' => (int) ($task->topic_config_version ?? 1),
                 'status' => (string) ($task->status ?? 'paused'),
                 'publish_scope' => (string) ($task->publish_scope ?? 'local_and_distribution'),
                 'title_library_id' => $this->nullableInt($task->title_library_id),
@@ -252,6 +350,16 @@ class TaskMonitoringQueryService
                 'image_mode' => (string) ($task->image_mode ?? 'library'),
                 'image_count' => (int) ($task->image_count ?? 0),
                 'ai_image_model_id' => $this->nullableInt($task->ai_image_model_id),
+                'ai_quality_enabled' => (bool) ($task->ai_quality_enabled ?? false),
+                'ai_quality_retrieval_mode' => (string) ($task->ai_quality_retrieval_mode ?? 'chunk'),
+                'ai_quality_timeout_sampling_enabled' => (bool) ($task->ai_quality_timeout_sampling_enabled ?? false),
+                'ai_quality_auto_optimize_enabled' => (bool) ($task->ai_quality_auto_optimize_enabled ?? false),
+                'ai_quality_optimization_level' => (string) ($task->ai_quality_optimization_level ?? 'excellent_80'),
+                'ai_quality_prompt_id' => $this->nullableInt($task->ai_quality_prompt_id),
+                'ai_quality_model_id' => $this->nullableInt($task->ai_quality_model_id),
+                'ai_quality_pass_score' => (int) ($task->ai_quality_pass_score ?? 85),
+                'ai_quality_manual_override_min_score' => (int) ($task->ai_quality_manual_override_min_score ?? 70),
+                'ai_quality_knowledge_base_ids' => $qualityKnowledgeBaseIds->get($taskId, []),
                 'need_review' => (int) ($task->need_review ?? 1),
                 'auto_keywords' => (int) ($task->auto_keywords ?? 1),
                 'auto_description' => (int) ($task->auto_description ?? 1),
@@ -264,9 +372,15 @@ class TaskMonitoringQueryService
                 'created_at' => $task->created_at?->toDateTimeString(),
                 'updated_at' => $task->updated_at?->toDateTimeString(),
                 'loop_count' => (int) ($task->loop_count ?? 0),
-                'created_count' => (int) ($task->created_count ?? 0),
-                'published_count' => (int) ($task->published_count ?? 0),
-                'article_limit' => (int) ($task->article_limit ?? $task->draft_limit ?? 10),
+                'created_count' => $task->content_type === 'topic'
+                    ? (int) ($topicStats[$taskId]['created_topics'] ?? 0)
+                    : (int) ($task->created_count ?? 0),
+                'published_count' => $task->content_type === 'topic'
+                    ? (int) ($topicStats[$taskId]['published_topics'] ?? 0)
+                    : (int) ($task->published_count ?? 0),
+                'article_limit' => $task->content_type === 'topic'
+                    ? (int) ($task->topic_limit ?? 10)
+                    : (int) ($task->article_limit ?? $task->draft_limit ?? 10),
                 'draft_limit' => (int) ($task->draft_limit ?? 10),
                 'publish_interval' => (int) ($task->publish_interval ?? 3600),
                 'batch_status' => $batchStatus,
@@ -277,6 +391,12 @@ class TaskMonitoringQueryService
                 'next_publish_at' => $task->next_publish_at?->toDateTimeString(),
                 'schedule_enabled' => (int) ($task->schedule_enabled ?? 1),
                 'total_articles' => (int) $articles['total_articles'],
+                'total_topics' => $task->content_type === 'topic'
+                    ? (int) ($topicStats[$taskId]['created_topics'] ?? 0)
+                    : 0,
+                'published_topics' => $task->content_type === 'topic'
+                    ? (int) ($topicStats[$taskId]['published_topics'] ?? 0)
+                    : 0,
                 'published_articles' => (int) $articles['published_articles'],
                 'draft_articles' => (int) $articles['draft_articles'],
                 'publishable_drafts' => (int) $articles['publishable_drafts'],
@@ -292,6 +412,10 @@ class TaskMonitoringQueryService
                 'latest_max_attempts' => (int) (($latestRun?->meta['max_attempts'] ?? 0)),
                 // 新契约字段：业务层进度（文章维度），用于“任务成果”视图。
                 'task_progress' => [
+                    'content_type' => (string) ($task->content_type ?: 'article'),
+                    ...($task->content_type === 'topic'
+                        ? [...($topicStats[$taskId] ?? []), 'topic_limit' => (int) ($task->topic_limit ?? 10)]
+                        : []),
                     'created_articles' => (int) $articles['total_articles'],
                     'published_articles' => (int) $articles['published_articles'],
                     'draft_articles' => (int) $articles['draft_articles'],
@@ -412,6 +536,200 @@ class TaskMonitoringQueryService
                 'task_name' => (string) ($row->task?->name ?? ''),
             ])
             ->all();
+    }
+
+    /**
+     * @Name: paginateWorkers
+     * @Description: 分页读取 worker 心跳，并仅附加当前管理员可见任务的执行上下文。
+     * @Author: cdkay
+     * @CreateTime: 2026-10-29 17:39:53
+     * @UpdateTime: 2026-10-29 17:53:17
+     * @Param: int $page 当前页码
+     * @Param: int $perPage 每页数量
+     * @Param: Admin|null $admin 当前后台管理员
+     * @Return: LengthAwarePaginator worker 分页及呈现字段
+     * @Throws: QueryException worker 心跳表查询失败时抛出
+     */
+    public function paginateWorkers(int $page = 1, int $perPage = 10, ?Admin $admin = null): LengthAwarePaginator
+    {
+        $page = max(1, $page);
+        $perPage = max(1, min(50, $perPage));
+        if (! Schema::hasTable('worker_heartbeats')) {
+            return new LengthAwarePaginator([], 0, $perPage, $page, [
+                'path' => request()->url(),
+                'query' => request()->query(),
+            ]);
+        }
+
+        $workers = WorkerHeartbeat::query()
+            ->select(['worker_id', 'status', 'last_seen_at', 'meta'])
+            ->orderByDesc('last_seen_at')
+            ->paginate($perPage, ['*'], 'page', $page);
+        $runIds = $workers->getCollection()
+            ->map(static fn (WorkerHeartbeat $worker): ?int => isset($worker->meta['task_run_id'])
+                ? (int) $worker->meta['task_run_id']
+                : null)
+            ->filter()
+            ->unique()
+            ->values();
+        $runs = TaskRun::query()
+            ->whereIn('id', $runIds)
+            ->when($admin instanceof Admin, fn (Builder $query) => $query->whereIn(
+                'task_id',
+                $this->visibleTaskQuery($admin)->select('tasks.id')
+            ))
+            ->with([
+                'task' => fn ($query) => $query->select(['id', 'name']),
+                'article' => fn ($query) => $query->withTrashed()->select(['id', 'title', 'deleted_at']),
+                'topic' => fn ($query) => $query->withTrashed()->select(['id', 'title', 'deleted_at']),
+            ])
+            ->get(['id', 'task_id', 'article_id', 'topic_id', 'content_type', 'status'])
+            ->keyBy('id');
+        $staleAfterSeconds = max(30, (int) config('geoflow.worker_stale_seconds', 120));
+        $presented = $workers->getCollection()->map(static function (WorkerHeartbeat $worker) use ($runs, $staleAfterSeconds): array {
+            $meta = is_array($worker->meta) ? $worker->meta : [];
+            $runId = isset($meta['task_run_id']) ? (int) $meta['task_run_id'] : null;
+            /** @var TaskRun|null $run */
+            $run = $runId ? $runs->get($runId) : null;
+            $stale = $worker->last_seen_at === null
+                || $worker->last_seen_at->lessThan(now()->subSeconds($staleAfterSeconds));
+            $status = $stale ? 'stale' : (string) $worker->status;
+            $taskName = (string) ($run?->task?->name ?? '');
+
+            return [
+                'worker_id' => (string) $worker->worker_id,
+                'status' => $status,
+                'status_label' => __('admin.tasks.worker.status.'.(in_array($status, ['running', 'idle', 'stale'], true) ? $status : 'unknown')),
+                'summary' => $stale
+                    ? __('admin.tasks.worker.summary_stale')
+                    : ($taskName !== ''
+                        ? __('admin.tasks.worker.summary_busy', ['task' => $taskName])
+                        : __('admin.tasks.worker.summary_idle')),
+                'is_stale' => $stale,
+                'current_job_id' => $run ? (int) $run->id : null,
+                'task_id' => $run?->task_id ? (int) $run->task_id : null,
+                'task_name' => $taskName,
+                'task_deleted' => $run?->task_id
+                    ? $run->task === null
+                    : false,
+                'content_type' => (string) ($run?->content_type ?: 'article'),
+                'topic_id' => $run?->topic_id ? (int) $run->topic_id : null,
+                'topic_title' => (string) ($run?->topic?->title ?? ''),
+                'article_id' => $run?->article_id ? (int) $run->article_id : null,
+                'article_title' => (string) ($run?->article?->title ?? ''),
+                'article_deleted' => $run?->article_id
+                    ? $run->article === null || $run->article->trashed()
+                    : false,
+                'memory_mb' => isset($meta['memory_mb']) ? (float) $meta['memory_mb'] : null,
+                'peak_memory_mb' => isset($meta['peak_memory_mb']) ? (float) $meta['peak_memory_mb'] : null,
+                'last_seen_at' => $worker->last_seen_at?->toDateTimeString(),
+                'last_seen_human' => $worker->last_seen_at?->diffForHumans() ?? __('admin.tasks.worker.never_seen'),
+            ];
+        });
+
+        return $workers->setCollection($presented);
+    }
+
+    /**
+     * @Name: paginateRecentRuns
+     * @Description: 分页读取 task_runs，限制管理员的数据范围并呈现文章或专题的历史状态。
+     * @Author: cdkay
+     * @CreateTime: 2026-10-29 17:39:53
+     * @UpdateTime: 2026-10-29 17:53:17
+     * @Param: int $page 当前页码
+     * @Param: int $perPage 每页数量
+     * @Param: int|null $runId 可选的执行记录 ID
+     * @Param: Admin|null $admin 当前后台管理员
+     * @Return: LengthAwarePaginator 执行记录分页及呈现字段
+     * @Throws: QueryException 执行记录查询失败时抛出
+     */
+    public function paginateRecentRuns(
+        int $page = 1,
+        int $perPage = 10,
+        ?int $runId = null,
+        ?Admin $admin = null,
+    ): LengthAwarePaginator {
+        $page = max(1, $page);
+        $perPage = max(1, min(50, $perPage));
+        $runs = TaskRun::query()
+            ->select(['id', 'task_id', 'status', 'article_id', 'topic_id', 'content_type', 'error_message', 'duration_ms', 'meta', 'started_at', 'finished_at', 'created_at'])
+            ->when($runId !== null, fn (Builder $query) => $query->whereKey($runId))
+            ->when($admin instanceof Admin, fn (Builder $query) => $query->whereIn(
+                'task_id',
+                $this->visibleTaskQuery($admin)->select('tasks.id')
+            ))
+            ->with([
+                'task' => fn ($query) => $query->select(['id', 'name', 'target_site_key']),
+                'article' => fn ($query) => $query->withTrashed()->select(['id', 'title', 'deleted_at']),
+                'topic' => fn ($query) => $query->withTrashed()->select(['id', 'title', 'deleted_at']),
+            ])
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->paginate($perPage, ['*'], 'page', $page);
+
+        return $runs->setCollection($runs->getCollection()->map(function (TaskRun $run): array {
+            $meta = is_array($run->meta) ? $run->meta : [];
+            $isTopic = $run->content_type === 'topic';
+            $title = $isTopic
+                ? (string) ($run->topic?->title ?? '')
+                : (string) ($run->article?->title ?? '');
+            $status = (string) $run->status;
+            $statusKey = in_array($status, ['pending', 'running', 'completed', 'failed', 'cancelled'], true)
+                ? $status
+                : 'unknown';
+            $taskName = (string) ($run->task?->name ?? __('admin.tasks.jobs.unknown_task'));
+            $summary = $status === 'completed' && $title !== ''
+                ? __($isTopic ? 'ai-task.topic_runtime.completed_with_topic' : 'admin.tasks.jobs.summary.completed_with_article', [
+                    'task' => $taskName,
+                    'article' => $title,
+                    'topic' => $title,
+                ])
+                : __('admin.tasks.jobs.summary.'.$statusKey, ['task' => $taskName]);
+            $explanation = $status === 'failed'
+                ? __($isTopic ? 'ai-task.topic_runtime.failed_before_topic' : 'admin.tasks.jobs.failed_before_article', [
+                    'reason' => self::legacyFailureReason((string) ($run->error_message ?? '')),
+                ])
+                : __($isTopic && $status === 'running'
+                    ? 'ai-task.topic_runtime.running_explanation'
+                    : 'admin.tasks.jobs.explanation.'.$statusKey);
+
+            return [
+                'id' => (int) $run->id,
+                'task_id' => (int) $run->task_id,
+                'task_name' => $taskName,
+                'task_deleted' => $run->task_id ? $run->task === null : false,
+                'status' => $status,
+                'status_label' => __('admin.tasks.jobs.status.'.$statusKey),
+                'summary' => $summary,
+                'explanation' => $explanation,
+                'topic_id' => $run->topic_id ? (int) $run->topic_id : null,
+                'topic_deleted' => (bool) ($run->topic?->trashed() ?? false),
+                'topic_title' => (string) ($run->topic?->title ?? ''),
+                'target_site_key' => (string) ($run->task?->target_site_key ?? 'primary'),
+                'content_type' => $run->content_type ?: 'article',
+                'article_id' => $run->article_id ? (int) $run->article_id : null,
+                'article_title' => $title,
+                'article_deleted' => $run->article_id ? $run->article === null || $run->article->trashed() : false,
+                'duration_ms' => (int) ($run->duration_ms ?? 0),
+                'attempt_count' => (int) ($meta['attempt_count'] ?? 0),
+                'max_attempts' => (int) ($meta['max_attempts'] ?? 0),
+                'job_type' => (string) ($meta['job_type'] ?? 'generate_article'),
+                'started_at' => $run->started_at?->toDateTimeString(),
+                'finished_at' => $run->finished_at?->toDateTimeString(),
+                'updated_at' => $run->created_at?->toDateTimeString(),
+            ];
+        }));
+    }
+
+    private static function legacyFailureReason(string $errorMessage): string
+    {
+        return match (true) {
+            str_contains($errorMessage, 'AI返回空正文') => __('admin.tasks.failure.empty_content_detail'),
+            str_contains($errorMessage, '正文过短') => __('admin.tasks.failure.content_too_short_detail'),
+            str_contains($errorMessage, '没有可用的标题') => __('admin.tasks.failure.title_exhausted_detail'),
+            str_contains($errorMessage, 'Operation timed out'), str_contains($errorMessage, '请求超时') => __('admin.tasks.failure.timeout_plain'),
+            default => __('admin.tasks.failure.generic_plain'),
+        };
     }
 
     private function nullableInt(mixed $value): ?int

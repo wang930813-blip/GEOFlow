@@ -337,7 +337,7 @@
                                 <option value="auto_approved">{{ __('admin.articles.review.auto_approved') }}</option>
                             </select>
                             @endif
-                            <button type="submit" class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-blue-600 hover:bg-blue-700">
+                            <button type="submit" data-batch-execute class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-blue-600 hover:bg-blue-700">
                                 {{ __('admin.button.execute') }}
                             </button>
                             <button type="button" onclick="toggleBatchActions()" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50">
@@ -485,13 +485,13 @@
                                     @if($isTrashView)
                                         @if($canOperateArticles)
                                         <div class="flex items-center space-x-2">
-                                            <form method="POST" action="{{ route('admin.articles.restore', ['articleId' => (int) $article->id]) }}" class="inline" onsubmit="return confirm(@json(__('admin.articles.trash.confirm_restore')))">
+                                            <form method="POST" action="{{ route('admin.articles.restore', ['articleId' => (int) $article->id]) }}" class="inline" data-admin-confirm-form data-admin-confirm-tone="success" data-admin-confirm-title="{{ __('admin.articles.trash.confirm_restore') }}" data-admin-confirm-message="{{ __('admin.action_dialog.target', ['name' => $article->title]) }}" data-admin-confirm-guidance="{{ __('admin.action_dialog.generic_impact') }}" data-admin-confirm-label="{{ __('admin.articles.trash.action_restore') }}">
                                                 @csrf
                                                 <button type="submit" class="text-green-600 hover:text-green-800" title="{{ __('admin.articles.trash.action_restore') }}">
                                                     <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
                                                 </button>
                                             </form>
-                                            <form method="POST" action="{{ route('admin.articles.force-delete', ['articleId' => (int) $article->id]) }}" class="inline" onsubmit="return confirm(@json(__('admin.articles.trash.confirm_delete')))">
+                                            <form method="POST" action="{{ route('admin.articles.force-delete', ['articleId' => (int) $article->id]) }}" class="inline" data-admin-confirm-form data-admin-confirm-tone="danger" data-admin-confirm-title="{{ __('admin.articles.trash.confirm_delete') }}" data-admin-confirm-message="{{ __('admin.action_dialog.target', ['name' => $article->title]) }}" data-admin-confirm-guidance="{{ __('admin.action_dialog.generic_impact') }}" data-admin-confirm-label="{{ __('admin.articles.trash.action_force_delete') }}">
                                                 @csrf
                                                 <button type="submit" class="text-red-600 hover:text-red-800" title="{{ __('admin.articles.trash.action_force_delete') }}">
                                                     <i data-lucide="trash-2" class="w-4 h-4"></i>
@@ -666,6 +666,30 @@
         const IS_TRASH_VIEW = @json($isTrashView);
         const EMPTY_TRASH_URL = @json(route('admin.articles.trash.empty'));
         const SELF_MEDIA_ACCOUNT_INPUT_NAME = @json($selfMediaAccountInputName);
+        const ARTICLE_DIALOG_I18N = {
+            confirm: @json(__('admin.action_dialog.continue')),
+            guidance: @json(__('admin.action_dialog.generic_impact')),
+            noticeTitle: @json(__('admin.action_dialog.info_title')),
+        };
+
+        function showArticleNotice(message, focusTarget = null) {
+            window.AdminActionDialog?.notice?.({
+                tone: 'info',
+                title: ARTICLE_DIALOG_I18N.noticeTitle,
+                message,
+            });
+            focusTarget?.focus?.({ preventScroll: true });
+        }
+
+        async function confirmArticleAction(title, tone = 'danger', opener = null) {
+            return await window.AdminActionDialog?.confirm?.({
+                title,
+                message: ARTICLE_DIALOG_I18N.guidance,
+                tone,
+                confirmLabel: ARTICLE_DIALOG_I18N.confirm,
+                opener,
+            }) === true;
+        }
 
         function openSelfMediaPublishModal(action, articleTitle) {
             const modal = document.getElementById('self-media-publish-modal');
@@ -724,8 +748,8 @@
 
         const ARTICLE_BATCH_ROUTES = @json($articleBatchRoutes);
 
-        function submitEmptyTrash() {
-            if (!confirm(TRASH_I18N.confirmEmpty)) {
+        async function submitEmptyTrash() {
+            if (!await confirmArticleAction(TRASH_I18N.confirmEmpty, 'danger', document.activeElement)) {
                 return;
             }
             const form = document.createElement('form');
@@ -762,16 +786,16 @@
             form.submit();
         }
 
-        function deleteArticle(articleId) {
-            if (!confirm(ARTICLES_I18N.confirmDelete)) {
+        async function deleteArticle(articleId) {
+            if (!await confirmArticleAction(ARTICLES_I18N.confirmDelete, 'danger', document.activeElement)) {
                 return;
             }
             submitAction('delete_articles', articleId);
         }
 
-        function quickReview(articleId, status) {
+        async function quickReview(articleId, status) {
             const actionText = status === 'approved' ? ARTICLES_I18N.reviewApproved : ARTICLES_I18N.reviewRejected;
-            if (!confirm(ARTICLES_I18N.confirmQuickReview.replace('__ACTION__', actionText))) {
+            if (!await confirmArticleAction(ARTICLES_I18N.confirmQuickReview.replace('__ACTION__', actionText), 'info', document.activeElement)) {
                 return;
             }
             submitAction('batch_update_review', articleId, { review_status: status });
@@ -811,73 +835,7 @@
                 });
             }
 
-            const batchForm = document.getElementById('batch-form');
-            if (batchForm) {
-                batchForm.addEventListener('submit', function(event) {
-                    const selected = document.querySelectorAll('.article-checkbox:checked');
-                    if (selected.length === 0) {
-                        event.preventDefault();
-                        alert(IS_TRASH_VIEW ? TRASH_I18N.alertSelect : ARTICLES_I18N.selectArticles);
-                        return;
-                    }
-
-                    const action = document.getElementById('batch-action')?.value ?? '';
-                    if (action === '') {
-                        event.preventDefault();
-                        alert(ARTICLES_I18N.selectAction);
-                        return;
-                    }
-
-                    const targetAction = ARTICLE_BATCH_ROUTES[action] ?? '';
-                    if (targetAction === '') {
-                        event.preventDefault();
-                        alert(ARTICLES_I18N.selectAction);
-                        return;
-                    }
-                    batchForm.action = targetAction;
-
-                    if (IS_TRASH_VIEW) {
-                        if (action === 'batch_restore' && !confirm(TRASH_I18N.confirmBatchRestore.replace('__COUNT__', String(selected.length)))) {
-                            event.preventDefault();
-                            return;
-                        }
-                        if (action === 'batch_force_delete' && !confirm(TRASH_I18N.confirmBatchForceDelete.replace('__COUNT__', String(selected.length)))) {
-                            event.preventDefault();
-                            return;
-                        }
-                    } else {
-                    if (action === 'batch_update_status' && !(document.getElementById('status-select')?.value ?? '')) {
-                        event.preventDefault();
-                        alert(ARTICLES_I18N.selectStatus);
-                        return;
-                    }
-
-                    if (action === 'batch_update_review' && !(document.getElementById('review-select')?.value ?? '')) {
-                        event.preventDefault();
-                        alert(ARTICLES_I18N.selectReview);
-                        return;
-                    }
-
-                    if (action === 'delete_articles' && !confirm(ARTICLES_I18N.confirmDeleteSelected.replace('__COUNT__', selected.length))) {
-                        event.preventDefault();
-                        return;
-                    }
-                    }
-
-                    const selectedIdsContainer = document.getElementById('batch-selected-ids');
-                    if (!selectedIdsContainer) {
-                        return;
-                    }
-                    selectedIdsContainer.innerHTML = '';
-                    selected.forEach((checkbox) => {
-                        const input = document.createElement('input');
-                        input.type = 'hidden';
-                        input.name = 'article_ids[]';
-                        input.value = checkbox.value;
-                        selectedIdsContainer.appendChild(input);
-                    });
-                });
-            }
+            @include('admin.articles._batch-submit')
 
             const selfMediaForm = document.getElementById('self-media-publish-form');
             if (selfMediaForm) {
@@ -885,7 +843,7 @@
                     const selected = selfMediaForm.querySelectorAll(`input[name="${SELF_MEDIA_ACCOUNT_INPUT_NAME}[]"]:checked`);
                     if (selected.length === 0) {
                         event.preventDefault();
-                        alert('请选择要发布的自媒体平台');
+                        showArticleNotice('请选择要发布的自媒体平台', selfMediaForm.querySelector(`input[name="${SELF_MEDIA_ACCOUNT_INPUT_NAME}[]"]`));
                         return;
                     }
 

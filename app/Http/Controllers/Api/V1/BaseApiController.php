@@ -1,10 +1,23 @@
 <?php
 
+/**
+ * Created by Codex.
+ * @Date: 2026-10-29
+ * @Time: 23:59:50
+ * @Author: cdkay
+ * @Email: network@iyuanma.net
+ *
+ * @File： BaseApiController.php
+ * @Description: 提供 API v1 控制器通用的认证上下文和响应封装。
+ */
+
 namespace App\Http\Controllers\Api\V1;
 
+use App\Exceptions\AiModelAccessException;
 use App\Exceptions\ApiException;
 use App\Http\ApiAuthContext;
 use App\Http\Controllers\Controller;
+use App\Models\Admin;
 use App\Services\Api\IdempotencyService;
 use App\Support\ApiResponse;
 use Illuminate\Http\JsonResponse;
@@ -15,7 +28,7 @@ use Illuminate\Support\Str;
  * API v1 控制器基类。
  *
  * 统一封装：请求 ID（{@see requestId}）、已认证上下文（{@see auth}）、
- * 成功 JSON 信封（{@see success}）及写操作幂等缓存写入。
+ * 成功 JSON 信封（{@see success}）。写操作幂等由控制器在 mutation 前调用 IdempotencyService。
  */
 abstract class BaseApiController extends Controller
 {
@@ -40,17 +53,54 @@ abstract class BaseApiController extends Controller
         return $context;
     }
 
-    /**
-     * 返回统一成功响应；若提供 $idempotencyRouteKey，则在响应体确定后写入幂等缓存。
-     *
-     * @param  array<string, mixed>  $data  置于 JSON 的 data 字段
-     * @param  string|null  $idempotencyRouteKey  与 {@see IdempotencyService} 中 route_key 一致，如 POST /tasks
-     */
-    protected function success(Request $request, array $data, int $status = 200, ?string $idempotencyRouteKey = null): JsonResponse
+    protected function executionAdmin(Request $request): Admin
     {
+        $admin = Admin::query()
+            ->whereKey($this->auth($request)->auditAdminId)
+            ->active()
+            ->first();
+        $role = $admin instanceof Admin ? trim(strtolower((string) $admin->role)) : '';
+        if (! $admin instanceof Admin || ! in_array($role, ['admin', 'super_admin', 'superadmin'], true)) {
+            throw new ApiException(
+                AiModelAccessException::AI_EXECUTION_ADMIN_INACTIVE,
+                'Token 所属管理员当前不可用',
+                403,
+            );
+        }
+
+        return $admin;
+    }
+
+    /**
+     * @Name: success
+     * @Description: 创建统一成功信封；传入幂等路由键时，将响应写回当前请求的幂等占位。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-10-29 23:59:50
+     * @UpdateTime: 2026-10-29 23:59:50
+     *
+     * @Param: Request $request 当前 HTTP 请求
+     * @Param: array<string, mixed> $data 置于 JSON 的 data 字段
+     * @Param: int $status 成功响应的 HTTP 状态码
+     * @Param: string|null $idempotencyRouteKey 幂等操作的稳定路由键
+     * @Return: JsonResponse 统一 JSON 成功响应
+     * @Throws: \Throwable 幂等状态持久化失败时触发
+     */
+    protected function success(
+        Request $request,
+        array $data,
+        int $status = 200,
+        ?string $idempotencyRouteKey = null,
+    ): JsonResponse {
         $response = ApiResponse::success($data, $this->requestId($request), $status);
-        if ($idempotencyRouteKey !== null) {
-            IdempotencyService::rememberFromResponse($request, $idempotencyRouteKey, $response);
+
+        if ($idempotencyRouteKey !== null && $idempotencyRouteKey !== '') {
+            IdempotencyService::remember(
+                $request,
+                $idempotencyRouteKey,
+                (array) $response->getData(true),
+                $response->getStatusCode(),
+            );
         }
 
         return $response;

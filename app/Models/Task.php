@@ -8,11 +8,23 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use RuntimeException;
 
 class Task extends Model
 {
+    use SoftDeletes {
+        restore as private restoreSoftDeletedModel;
+    }
+
     use BelongsToSite;
     use BelongsToAdminOwner;
+
+    public const TRASH_RETENTION_DAYS = 90;
+
+    protected $dateFormat = 'Y-m-d H:i:s.u';
 
     protected $table = 'tasks';
 
@@ -20,6 +32,13 @@ class Task extends Model
         'site_id',
         'owner_admin_id',
         'name',
+        'content_type',
+        'target_site_key',
+        'topic_limit',
+        'topic_settings',
+        'topic_config_version',
+        'distribution_strategy',
+        'distribution_cursor',
         'title_library_id',
         'fixed_title_id',
         'image_library_id',
@@ -41,6 +60,18 @@ class Task extends Model
         'model_selection_mode',
         'status',
         'publish_scope',
+        'automation_version',
+        'ai_quality_enabled',
+        'ai_quality_retrieval_mode',
+        'ai_quality_policy_version',
+        'ai_quality_config_version',
+        'ai_quality_timeout_sampling_enabled',
+        'ai_quality_auto_optimize_enabled',
+        'ai_quality_optimization_level',
+        'ai_quality_prompt_id',
+        'ai_quality_model_id',
+        'ai_quality_pass_score',
+        'ai_quality_manual_override_min_score',
         'created_count',
         'published_count',
         'loop_count',
@@ -57,9 +88,120 @@ class Task extends Model
         'max_retry_count',
     ];
 
+    protected $attributes = [
+        'automation_version' => 1,
+        'ai_quality_enabled' => false,
+        'ai_quality_policy_version' => 1,
+        'ai_quality_config_version' => 1,
+        'ai_quality_timeout_sampling_enabled' => false,
+        'ai_quality_auto_optimize_enabled' => false,
+        'ai_quality_optimization_level' => 'excellent_80',
+        'ai_quality_pass_score' => 85,
+        'ai_quality_manual_override_min_score' => 70,
+    ];
+
+    /**
+     * @Name: delete
+     * @Description: 在行锁和事务保护下软删除任务，并由删除事件写入有序回收站记录。
+     * @Author: cdkay
+     * @CreateTime: 2026-10-29 18:26:02
+     * @UpdateTime: 2026-10-29 18:26:02
+     * @Return: bool 删除成功时返回 true，任务不存在或已删除时返回 false
+     * @Throws: RuntimeException 回收站迁移尚未完成或序列状态缺失时抛出
+     */
+    public function delete()
+    {
+        return DB::transaction(function (): bool {
+            $locked = static::withTrashed()
+                ->whereKey($this->getKey())
+                ->lockForUpdate()
+                ->first();
+
+            if (! $locked || ($locked->trashed() && ! $this->isForceDeleting())) {
+                return false;
+            }
+
+            $this->setRawAttributes($locked->getAttributes(), true);
+
+            return (bool) parent::delete();
+        });
+    }
+
+    /**
+     * @Name: restore
+     * @Description: 锁定回收站任务后恢复主记录，并通过 restoring 事件移除对应回收站条目。
+     * @Author: cdkay
+     * @CreateTime: 2026-10-29 18:26:02
+     * @UpdateTime: 2026-10-29 18:26:02
+     * @Return: bool 恢复成功时返回 true，任务不存在或已恢复时返回 false
+     * @Throws: Throwable 数据库恢复操作失败时抛出
+     */
+    public function restore()
+    {
+        return DB::transaction(fn (): bool => $this->restoreWithLock());
+    }
+
+    private function restoreWithLock(): bool
+    {
+        $locked = static::withTrashed()
+            ->whereKey($this->getKey())
+            ->lockForUpdate()
+            ->first();
+
+        if (! $locked || ! $locked->trashed()) {
+            return false;
+        }
+
+        $this->setRawAttributes($locked->getAttributes(), true);
+
+        return (bool) $this->restoreSoftDeletedModel();
+    }
+
+    protected static function booted(): void
+    {
+        static::deleting(function (Task $task): void {
+            if ($task->isForceDeleting()) {
+                return;
+            }
+
+            if (! Schema::hasTable('task_trash_entries') || ! Schema::hasTable('task_trash_state')) {
+                throw new RuntimeException('Task trash schema is not ready. Run database migrations before deleting tasks.');
+            }
+
+            $state = DB::table('task_trash_state')
+                ->where('id', 1)
+                ->lockForUpdate()
+                ->first(['last_sequence']);
+
+            if (! $state) {
+                throw new RuntimeException('Task trash sequence state is missing.');
+            }
+
+            $sequence = (int) $state->last_sequence + 1;
+            DB::table('task_trash_state')->where('id', 1)->update(['last_sequence' => $sequence]);
+            DB::table('task_trash_entries')->insert([
+                'task_id' => (int) $task->id,
+                'sequence' => $sequence,
+                'deleted_at' => now()->format('Y-m-d H:i:s.u'),
+            ]);
+        });
+
+        static::restoring(function (Task $task): void {
+            if (Schema::hasTable('task_trash_entries')) {
+                DB::table('task_trash_entries')->where('task_id', $task->id)->delete();
+            }
+        });
+    }
+
     protected function casts(): array
     {
         return [
+            'content_type' => 'string',
+            'target_site_key' => 'string',
+            'topic_limit' => 'integer',
+            'topic_settings' => 'array',
+            'topic_config_version' => 'integer',
+            'distribution_cursor' => 'integer',
             'title_library_id' => 'integer',
             'fixed_title_id' => 'integer',
             'site_id' => 'integer',
@@ -90,8 +232,50 @@ class Task extends Model
             'last_success_at' => 'datetime',
             'last_error_at' => 'datetime',
             'schedule_enabled' => 'integer',
+            'automation_version' => 'integer',
             'max_retry_count' => 'integer',
+            'ai_quality_enabled' => 'boolean',
+            'ai_quality_policy_version' => 'integer',
+            'ai_quality_config_version' => 'integer',
+            'ai_quality_timeout_sampling_enabled' => 'boolean',
+            'ai_quality_auto_optimize_enabled' => 'boolean',
+            'ai_quality_prompt_id' => 'integer',
+            'ai_quality_model_id' => 'integer',
+            'ai_quality_pass_score' => 'integer',
+            'ai_quality_manual_override_min_score' => 'integer',
+            'model_access_admin_id' => 'integer',
+            'model_access_policy_version' => 'integer',
         ];
+    }
+
+    public function modelAccessAdmin(): BelongsTo
+    {
+        return $this->belongsTo(Admin::class, 'model_access_admin_id');
+    }
+
+    public function qualityPrompt(): BelongsTo
+    {
+        return $this->belongsTo(Prompt::class, 'ai_quality_prompt_id');
+    }
+
+    public function qualityModel(): BelongsTo
+    {
+        return $this->belongsTo(AiModel::class, 'ai_quality_model_id');
+    }
+
+    public function knowledgeBases(): BelongsToMany
+    {
+        return $this->belongsToMany(KnowledgeBase::class, 'task_knowledge_bases')
+            ->withPivot(['sort_order'])
+            ->withTimestamps()
+            ->orderByPivot('sort_order');
+    }
+
+    public function requiresPublicationScope(): bool
+    {
+        return $this->content_type === 'topic'
+            ? ($this->topic_settings['after'] ?? 'auto_publish') === 'auto_publish'
+            : ! (bool) $this->need_review;
     }
 
     public function titleLibrary(): BelongsTo

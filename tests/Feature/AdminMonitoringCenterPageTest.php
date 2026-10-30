@@ -1,5 +1,16 @@
 <?php
 
+/**
+ * Created by Codex.
+ * @Date: 2026-10-30
+ * @Time: 00:00:46
+ * @Author: cdkay
+ * @Email: network@iyuanma.net
+ *
+ * @File： AdminMonitoringCenterPageTest.php
+ * @Description: 验证监测中心页面、报告分享和租户数据隔离。
+ */
+
 namespace Tests\Feature;
 
 use App\Models\Admin;
@@ -911,6 +922,7 @@ class AdminMonitoringCenterPageTest extends TestCase
 
     public function test_monitoring_report_share_link_with_legacy_null_expiry_expires_after_seven_days(): void
     {
+        config(['geoflow.monitoring_report_share_ttl_days' => 7]);
         [$admin, $site] = $this->createAdminWithSite('monitoring_legacy_expired_share');
         $token = 'legacyexpiredsharetoken123';
 

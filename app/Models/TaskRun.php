@@ -20,6 +20,8 @@ class TaskRun extends Model
         'task_id',
         'site_id',
         'owner_admin_id',
+        'content_type',
+        'topic_id',
         'status',
         'article_id',
         'error_message',
@@ -35,6 +37,8 @@ class TaskRun extends Model
             'task_id' => 'integer',
             'site_id' => 'integer',
             'owner_admin_id' => 'integer',
+            'content_type' => 'string',
+            'topic_id' => 'integer',
             'article_id' => 'integer',
             'duration_ms' => 'integer',
             'meta' => 'array',
@@ -51,5 +55,10 @@ class TaskRun extends Model
     public function article(): BelongsTo
     {
         return $this->belongsTo(Article::class, 'article_id');
+    }
+
+    public function topic(): BelongsTo
+    {
+        return $this->belongsTo(Topic::class, 'topic_id');
     }
 }

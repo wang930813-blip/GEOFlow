@@ -18,12 +18,18 @@
 
 namespace App\Services\Api;
 
+use App\Models\Admin;
 use App\Exceptions\ApiException;
 use App\Http\ApiAuthContext;
 use App\Models\ApiIdempotencyKey;
+use App\Support\CurrentSite;
+use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use JsonException;
+use Throwable;
 
 class IdempotencyService
 {
@@ -84,6 +90,163 @@ class IdempotencyService
     public static function requestHash(array $body): string
     {
         return hash('sha256', self::encodeJson(self::normalizePayload($body)));
+    }
+
+    /**
+     * @Name: executeJson
+     * @Description: 执行幂等 JSON 写操作，保留 API 预留记录流程，并为后台账号隔离持久响应缓存。
+     * @Author: cdkay
+     * @CreateTime: 2026-10-29 17:26:33
+     * @UpdateTime: 2026-10-29 17:26:33
+     * @Param: Request $request 当前写请求
+     * @Param: string $routeKey 稳定业务路由标识
+     * @Param: Closure $operation 实际业务操作
+     * @Param: Closure|null $operationGuard 业务操作外层校验
+     * @Param: array|Closure|null $fingerprintContext 请求指纹附加上下文
+     * @Return: JsonResponse 业务响应或命中缓存的原响应
+     * @Throws: ApiException 幂等键冲突、并发处理中或记录状态异常
+     */
+    public static function executeJson(
+        Request $request,
+        string $routeKey,
+        Closure $operation,
+        ?Closure $operationGuard = null,
+        array|Closure|null $fingerprintContext = null,
+    ): JsonResponse {
+        $runGuarded = static function (Closure $callback) use ($operationGuard): JsonResponse {
+            return $operationGuard !== null ? $operationGuard($callback) : $callback();
+        };
+
+        $existingReservation = $request->attributes->get(self::RESERVATION_ATTRIBUTE);
+        if (is_array($existingReservation) && ($existingReservation['route_key'] ?? null) === $routeKey) {
+            try {
+                $response = $runGuarded($operation);
+                self::rememberFromResponse($request, $routeKey, $response);
+
+                return $response;
+            } catch (Throwable $exception) {
+                self::releaseValidationReservation($request);
+
+                throw $exception;
+            }
+        }
+
+        $clientKey = self::clientKey($request);
+        if ($clientKey === null) {
+            return $runGuarded($operation);
+        }
+
+        $contextValue = $fingerprintContext instanceof Closure ? $fingerprintContext() : $fingerprintContext;
+        $apiContext = $request->attributes->get('api_auth');
+        if ($apiContext instanceof ApiAuthContext) {
+            $cached = self::maybeReplayJson($request, $routeKey);
+            if ($cached instanceof JsonResponse) {
+                return $cached;
+            }
+
+            try {
+                $response = $runGuarded($operation);
+                self::rememberFromResponse($request, $routeKey, $response);
+
+                return $response;
+            } catch (Throwable $exception) {
+                self::releaseValidationReservation($request);
+
+                throw $exception;
+            }
+        }
+
+        $admin = auth('admin')->user();
+        if (! $admin instanceof Admin) {
+            $admin = $request->user('admin');
+        }
+        if (! $admin instanceof Admin) {
+            throw new ApiException('unauthorized', '幂等写操作缺少有效后台账号', 401);
+        }
+
+        $siteId = app(CurrentSite::class)->id();
+        $storageKey = hash('sha256', implode(':', [
+            (string) ($siteId ?? 0),
+            (string) $admin->id,
+            $routeKey,
+            $clientKey,
+        ]));
+        $requestHash = self::requestHash([
+            'payload' => $request->all(),
+            'context' => $contextValue,
+        ]);
+        $lock = Cache::lock('api-idempotency:admin:'.hash('sha256', $storageKey.':'.$routeKey), 60);
+        if (! $lock->get()) {
+            throw new ApiException('idempotency_in_progress', '相同幂等键的请求正在处理中，请勿重复提交', 409);
+        }
+
+        try {
+            $row = self::reservationQuery($storageKey, $routeKey, $siteId)->first();
+            if ($row instanceof ApiIdempotencyKey) {
+                if (! hash_equals((string) $row->request_hash, $requestHash)) {
+                    throw new ApiException('idempotency_conflict', '同一个幂等键对应了不同的请求内容', 409);
+                }
+                if ((string) $row->state !== self::STATE_COMPLETED) {
+                    throw new ApiException('idempotency_in_progress', '相同幂等键的请求正在处理中', 409);
+                }
+
+                $decoded = json_decode((string) $row->response_body, true);
+                if (! is_array($decoded)) {
+                    throw new ApiException('idempotency_corrupted', '幂等缓存数据损坏', 500);
+                }
+
+                return response()->json($decoded, (int) $row->response_status);
+            }
+
+            $now = now();
+            $inserted = ApiIdempotencyKey::withoutGlobalScope('current_site')->insertOrIgnore([
+                'site_id' => $siteId,
+                'idempotency_key' => $storageKey,
+                'route_key' => $routeKey,
+                'request_hash' => $requestHash,
+                'response_body' => '{}',
+                'response_status' => 0,
+                'state' => self::STATE_PROCESSING,
+                'processing_started_at' => $now,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+            if ($inserted !== 1) {
+                throw new ApiException('idempotency_in_progress', '相同幂等键的请求正在处理中', 409);
+            }
+
+            try {
+                return $runGuarded(fn (): JsonResponse => DB::transaction(function () use ($operation, $storageKey, $routeKey, $siteId, $requestHash): JsonResponse {
+                    $response = $operation();
+                    if (! $response instanceof JsonResponse) {
+                        throw new ApiException('idempotency_response_invalid', '幂等写操作必须返回 JSON 响应', 500);
+                    }
+                    $updated = self::reservationQuery($storageKey, $routeKey, $siteId)
+                        ->where('request_hash', $requestHash)
+                        ->where('state', self::STATE_PROCESSING)
+                        ->update([
+                            'response_body' => self::encodeJson(json_decode($response->getContent(), true) ?? []),
+                            'response_status' => $response->getStatusCode(),
+                            'state' => self::STATE_COMPLETED,
+                            'updated_at' => now(),
+                        ]);
+                    if ($updated !== 1) {
+                        throw new ApiException('idempotency_finalize_failed', '幂等响应保存失败', 500);
+                    }
+
+                    return $response;
+                }));
+            } catch (Throwable $exception) {
+                self::reservationQuery($storageKey, $routeKey, $siteId)
+                    ->where('request_hash', $requestHash)
+                    ->where('state', self::STATE_PROCESSING)
+                    ->delete();
+
+                throw $exception;
+            }
+        } finally {
+            $lock->release();
+        }
     }
 
     /**

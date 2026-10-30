@@ -2,34 +2,30 @@
 
 namespace App\Support\Site;
 
+use App\Models\SiteSetting;
+use App\Models\SiteThemeBinding;
+use App\Services\Site\SiteAppearanceService;
+use App\Services\Topics\TopicTemplateCatalog;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+
 class SiteThemeCatalog
 {
-    /**
-     * 这批旧官网模板暂时保留代码和静态资源，但不再暴露给后台用户选择。
-     */
-    private const HIDDEN_SELECTION_THEME_IDS = [
-        'default',
-        'api-hot-recommendation-20260914',
-        'apihot-recommend-20260623',
-        'apple-support-inspired-20260914',
-        'apple_support_clone',
-        'corporate-growth-20260914',
-    ];
+    public const LIBRARY_STATE_KEY = 'theme_library_state';
+
+    public const DEFAULT_PREVIEW_ID = '__system_default';
 
     /**
-     * @return array<int, array{id:string,name:string,version:string,description:string,templates:list<string>,preview_routes:list<string>,mode:string,base_theme_id:string,asset_css_exists:bool,asset_js_exists:bool,preview_enabled:bool,source:string}>
+     * @return array<int, array{id:string,name:string,version:string,description:string}>
      */
     public function all(): array
     {
         $themesRoot = resource_path('views/theme');
-        if (! is_dir($themesRoot)) {
-            return [];
-        }
-
         $themes = [];
-        $entries = scandir($themesRoot);
+        $entries = is_dir($themesRoot) ? scandir($themesRoot) : [];
         if (! is_array($entries)) {
-            return [];
+            $entries = [];
         }
 
         foreach ($entries as $entry) {
@@ -41,10 +37,6 @@ class SiteThemeCatalog
                 continue;
             }
 
-            if ($this->hiddenFromSelection($entry)) {
-                continue;
-            }
-
             $themeDir = $themesRoot.DIRECTORY_SEPARATOR.$entry;
             if (! is_dir($themeDir)) {
                 continue;
@@ -53,32 +45,23 @@ class SiteThemeCatalog
             $manifestPath = $themeDir.DIRECTORY_SEPARATOR.'manifest.json';
             if (is_file($manifestPath)) {
                 $manifestRaw = file_get_contents($manifestPath);
-                $manifest = is_string($manifestRaw) && $manifestRaw !== ''
-                    ? json_decode($manifestRaw, true)
-                    : null;
-
-                if (is_array($manifest)) {
-                    $templates = $this->normalizeTemplates($this->stringList($manifest['templates'] ?? ($manifest['blade_templates'] ?? [])));
-                    $templates = array_values(array_unique(array_merge($templates, $this->bladeTemplates($themeDir))));
-                    $previewRoutes = $this->stringList($manifest['preview_routes'] ?? ($manifest['preview'] ?? []));
-
-                    $themes[] = [
-                        'id' => (string) $entry,
-                        'name' => (string) ($manifest['name'] ?? $this->humanName($entry)),
-                        'version' => (string) ($manifest['version'] ?? ''),
-                        'description' => (string) ($manifest['description'] ?? ''),
-                        'templates' => $templates,
-                        'preview_routes' => $previewRoutes,
-                        'mode' => (string) ($manifest['mode'] ?? 'theme'),
-                        'base_theme_id' => (string) ($manifest['base_theme_id'] ?? ''),
-                        'asset_css_exists' => is_file(public_path('themes/'.$entry.'/theme.css')),
-                        'asset_js_exists' => is_file(public_path('themes/'.$entry.'/theme.js')),
-                        'preview_enabled' => $this->previewEnabled($entry),
-                        'source' => 'local',
-                    ];
-
+                if (! is_string($manifestRaw) || $manifestRaw === '') {
                     continue;
                 }
+
+                $manifest = json_decode($manifestRaw, true);
+                if (! is_array($manifest)) {
+                    continue;
+                }
+
+                $themes[] = [
+                    'id' => (string) $entry,
+                    'name' => (string) ($manifest['name'] ?? $entry),
+                    'version' => (string) ($manifest['version'] ?? ''),
+                    'description' => (string) ($manifest['description'] ?? ''),
+                ];
+
+                continue;
             }
 
             if (! is_file($themeDir.DIRECTORY_SEPARATOR.'home.blade.php')) {
@@ -87,18 +70,28 @@ class SiteThemeCatalog
 
             $themes[] = [
                 'id' => (string) $entry,
-                'name' => $this->humanName($entry),
+                'name' => ucfirst(str_replace(['-', '_'], ' ', $entry)),
                 'version' => '',
                 'description' => '',
-                'templates' => $this->bladeTemplates($themeDir),
-                'preview_routes' => ['/'],
-                'mode' => 'theme',
-                'base_theme_id' => '',
-                'asset_css_exists' => is_file(public_path('themes/'.$entry.'/theme.css')),
-                'asset_js_exists' => is_file(public_path('themes/'.$entry.'/theme.js')),
-                'preview_enabled' => $this->previewEnabled($entry),
-                'source' => 'local',
             ];
+        }
+
+        $builtinIds = array_column($themes, 'id');
+        foreach ($themes as &$theme) {
+            $manifest = json_decode((string) @file_get_contents($themesRoot.'/'.$theme['id'].'/manifest.json'), true);
+            $theme['source'] = 'builtin';
+            $theme['topic'] = TopicTemplateCatalog::capability(is_array($manifest) ? $manifest : []);
+            $theme['distribution'] = is_array($manifest) ? (array) ($manifest['distribution'] ?? []) : [];
+            $theme['can_export'] = is_array($manifest) && $theme['id'] !== 'default';
+        }
+        unset($theme);
+        foreach (app(InstalledSiteThemeRepository::class)->all() as $theme) {
+            if (! in_array($theme['id'], $builtinIds, true)) {
+                $theme['distribution'] = (array) ($theme['manifest']['distribution'] ?? []);
+                $theme['topic'] = TopicTemplateCatalog::capability($theme['manifest'] ?? []);
+                $theme['can_export'] = true;
+                $themes[] = $theme;
+            }
         }
 
         usort($themes, static fn (array $a, array $b): int => strcmp((string) $a['name'], (string) $b['name']));
@@ -114,98 +107,180 @@ class SiteThemeCatalog
         return array_map(static fn (array $theme): string => (string) $theme['id'], $this->all());
     }
 
-    /**
-     * @return list<string>
-     */
-    private function stringList(mixed $value): array
+    public function defaultTheme(): array
     {
-        if (is_string($value)) {
-            $value = [$value];
+        return ['id' => '', 'name' => __('theme_library.selections.general.name'), 'description' => '', 'version' => '', 'source' => 'builtin', 'can_export' => false, 'distribution' => []];
+    }
+
+    public function libraryTheme(string $id): ?array
+    {
+        return $id === self::DEFAULT_PREVIEW_ID
+            ? $this->defaultTheme()
+            : collect($this->all())->firstWhere('id', $id);
+    }
+
+    /** @return array{current:array,items:LengthAwarePaginator,counts:array,tab:string,search:string,source:string} */
+    public function library(array $filters, string $activeTheme): array
+    {
+        $state = $this->libraryState();
+        $featured = (array) config('theme-library.featured', []);
+        $samples = (array) config('theme-library.samples', []);
+        $themes = array_merge([$this->defaultTheme()], $this->all());
+        $groups = ['featured' => [], 'personal' => [], 'archived' => []];
+        $current = null;
+
+        foreach ($themes as $theme) {
+            $item = $this->present($theme, $activeTheme);
+            if ($item['active']) {
+                $current = $item;
+            }
+            $id = $theme['id'];
+            $tab = array_key_exists($id, $featured) ? 'featured' : 'personal';
+            if (($state[$id] ?? null) === 'archived' || (in_array($id, $samples, true) && ($state[$id] ?? null) !== 'restored')) {
+                $tab = $item['active'] ? 'personal' : 'archived';
+            }
+            $groups[$tab][] = $item;
         }
 
-        if (! is_array($value)) {
-            return [];
-        }
+        $tab = $filters['theme_tab'] ?? 'featured';
+        $search = trim((string) ($filters['theme_search'] ?? ''));
+        $source = $filters['theme_source'] ?? '';
+        $counts = array_map(fn (array $items): int => count($this->groupVersions($items)), $groups);
+        $items = array_values(array_filter($groups[$tab], static function (array $item) use ($search, $source): bool {
+            $sourceMatches = $source === '' || ($source === 'private' ? $item['private'] : $item['source'] === $source);
+            $text = implode(' ', [$item['id'], $item['name'], $item['display_name'], $item['description'], $item['display_description']]);
 
-        $out = [];
-        foreach ($value as $item) {
-            $item = trim((string) $item);
-            if ($item !== '' && ! in_array($item, $out, true)) {
-                $out[] = $item;
+            return $sourceMatches && ($search === '' || Str::contains(Str::lower($text), Str::lower($search)));
+        }));
+        $items = $this->groupVersions($items);
+        if ($tab === 'personal') {
+            $versionGroupOrder = [];
+            foreach (array_keys((array) config('theme-library.version_groups', [])) as $groupIndex => $group) {
+                foreach ((array) config('theme-library.version_groups.'.$group, []) as $id) {
+                    $versionGroupOrder[(string) $id] = $groupIndex;
+                }
+            }
+            usort($items, static fn (array $a, array $b): int => ($versionGroupOrder[$a['id']] ?? PHP_INT_MAX)
+                <=> ($versionGroupOrder[$b['id']] ?? PHP_INT_MAX));
+        }
+        if ($tab === 'featured') {
+            $order = array_flip(array_keys($featured));
+            usort($items, static fn (array $a, array $b): int => ($order[$a['id']] ?? PHP_INT_MAX) <=> ($order[$b['id']] ?? PHP_INT_MAX));
+        }
+        $page = min(max(1, (int) ($filters['theme_page'] ?? 1)), max(1, (int) ceil(count($items) / 12)));
+        $query = array_filter(['theme_tab' => $tab, 'theme_search' => $search, 'theme_source' => $source], static fn ($value): bool => $value !== '');
+        $paginator = new LengthAwarePaginator(array_slice($items, ($page - 1) * 12, 12), count($items), 12, $page, [
+            'path' => route('admin.site-settings.index'), 'pageName' => 'theme_page', 'query' => $query,
+        ]);
+        $paginator->fragment('site-settings-theme');
+
+        return ['current' => $current ?? $this->present(['id' => $activeTheme, 'name' => $activeTheme, 'description' => '', 'version' => '', 'source' => 'builtin'], $activeTheme), 'items' => $paginator, 'counts' => $counts, 'tab' => $tab, 'search' => $search, 'source' => $source];
+    }
+
+    /** @return array{changed:int,retained:list<string>} */
+    public function manageLibrary(array $ids, string $action): array
+    {
+        app(SiteAppearanceService::class)->binding();
+
+        return DB::transaction(function () use ($ids, $action): array {
+            SiteThemeBinding::query()->whereKey('primary')->lockForUpdate()->firstOrFail();
+            $active = (string) (SiteSetting::visibleMap(['active_theme'])['active_theme'] ?? config('geoflow.default_theme', ''));
+            $row = SiteSetting::query()->firstOrCreate(['setting_key' => self::LIBRARY_STATE_KEY], ['setting_value' => '{}']);
+            $state = $this->decodeLibraryState($row->setting_value);
+            $names = collect($this->all())->keyBy('id');
+            $retained = [];
+            $changed = 0;
+            foreach (array_unique($ids) as $id) {
+                if ($action === 'archive' && $id === $active) {
+                    $retained[] = $this->present($names[$id], $active)['display_name'];
+
+                    continue;
+                }
+                $state[$id] = $action === 'archive' ? 'archived' : 'restored';
+                $changed++;
+            }
+            $row->update(['setting_value' => json_encode($state, JSON_THROW_ON_ERROR)]);
+
+            return ['changed' => $changed, 'retained' => $retained];
+        });
+    }
+
+    private function libraryState(): array
+    {
+        return $this->decodeLibraryState(SiteSetting::visibleMap([self::LIBRARY_STATE_KEY])[self::LIBRARY_STATE_KEY] ?? null);
+    }
+
+    private function decodeLibraryState(?string $value): array
+    {
+        $state = json_decode($value ?? '{}', true);
+
+        return is_array($state) ? array_filter($state, static fn ($status): bool => in_array($status, ['archived', 'restored'], true)) : [];
+    }
+
+    private function present(array $theme, string $active): array
+    {
+        $key = config('theme-library.featured', [])[$theme['id']] ?? null;
+        $thumbnail = $key ? 'images/theme-library/'.$key.'.jpg' : null;
+        $private = in_array($theme['distribution']['visibility'] ?? '', ['private', 'customer_private'], true);
+
+        return array_merge($theme, [
+            'display_name' => $key ? __('theme_library.selections.'.$key.'.name') : $theme['name'],
+            'display_description' => $key ? __('theme_library.selections.'.$key.'.description') : __('theme_library.custom_description'),
+            'active' => $theme['id'] === $active,
+            'private' => $private,
+            'source' => $theme['source'] ?? 'builtin',
+            'can_export' => $theme['can_export'] ?? false,
+            'preview_id' => $theme['id'] === '' ? self::DEFAULT_PREVIEW_ID : $theme['id'],
+            'thumbnail' => $thumbnail && is_file(public_path($thumbnail)) ? asset($thumbnail) : null,
+        ]);
+    }
+
+    private function groupVersions(array $items): array
+    {
+        $groupIds = [];
+        foreach ((array) config('theme-library.version_groups', []) as $group => $ids) {
+            foreach ($ids as $id) {
+                $groupIds[$id] = $group;
             }
         }
+        $groups = [];
+        foreach ($items as $item) {
+            $groups[$groupIds[$item['id']] ?? $item['id']][] = $item;
+        }
+        $result = [];
+        foreach ($groups as $versions) {
+            usort($versions, static fn (array $a, array $b): int => ($b['active'] <=> $a['active']) ?: version_compare($b['version'], $a['version']));
+            $head = $versions[0];
+            $head['versions'] = $versions;
+            $result[] = $head;
+        }
 
-        return $out;
+        return $result;
     }
 
     /**
-     * @return list<string>
+     * @return array<int, array{id:string,name:string,version:string,description:string}>
      */
-    private function bladeTemplates(string $themeDir): array
+    public function hostedCompatible(): array
     {
-        $templates = [];
-        $files = glob($themeDir.DIRECTORY_SEPARATOR.'*.blade.php');
-        if (! is_array($files)) {
-            return [];
-        }
+        $certifiedIds = array_values(array_unique(array_map(
+            'strval',
+            (array) config('geoflow.hosted_sites.certified_themes', ['default'])
+        )));
 
-        foreach ($files as $file) {
-            $name = basename((string) $file, '.blade.php');
-            if ($name !== '' && ! in_array($name, $templates, true)) {
-                $templates[] = $name;
-            }
-        }
-
-        sort($templates);
-
-        return array_values($templates);
+        return array_values(array_filter(
+            $this->all(),
+            static fn (array $theme): bool => ($theme['source'] ?? 'builtin') === 'builtin'
+                && in_array((string) $theme['id'], $certifiedIds, true)
+        ));
     }
 
-    /**
-     * @param  list<string>  $templates
-     * @return list<string>
-     */
-    private function normalizeTemplates(array $templates): array
+    /** @return array<int,string> */
+    public function hostedCompatibleIds(): array
     {
-        $out = [];
-        foreach ($templates as $template) {
-            $template = trim(str_replace('\\', '/', $template));
-            if ($template === '') {
-                continue;
-            }
-
-            $template = basename($template);
-            if (str_ends_with($template, '.blade.php')) {
-                $template = substr($template, 0, -10);
-            }
-
-            if ($template !== '' && ! in_array($template, $out, true)) {
-                $out[] = $template;
-            }
-        }
-
-        return $out;
-    }
-
-    private function humanName(string $themeId): string
-    {
-        return str($themeId)
-            ->replace(['-', '_'], ' ')
-            ->title()
-            ->toString();
-    }
-
-    private function previewEnabled(string $themeId): bool
-    {
-        return preg_match('/^template[0-9]+$/i', $themeId) === 1;
-    }
-
-    private function hiddenFromSelection(string $themeId): bool
-    {
-        if (in_array($themeId, self::HIDDEN_SELECTION_THEME_IDS, true)) {
-            return true;
-        }
-
-        return preg_match('/^geoflow-template-(0[1-9]|1[0-9]|20)-/', $themeId) === 1;
+        return array_map(
+            static fn (array $theme): string => (string) $theme['id'],
+            $this->hostedCompatible()
+        );
     }
 }

@@ -24,7 +24,7 @@ body.admin-ui {
     --aliyun-warning-soft: #fff7e8;
     --aliyun-danger: #e34d59;
     --aliyun-danger-soft: #fff0f1;
-    --aliyun-radius: 8px;
+    --aliyun-radius: 2px;
     --aliyun-radius-panel: 12px;
     --aliyun-radius-popover: 12px;
     --aliyun-shadow: 0 1px 2px rgba(24, 28, 36, 0.04), 0 8px 24px rgba(24, 28, 36, 0.06);

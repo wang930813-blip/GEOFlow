@@ -10,21 +10,16 @@ use Illuminate\View\View as ViewContract;
  */
 final class SiteThemeViewResolver
 {
-    private static ?string $temporaryThemeId = null;
-
     /**
      * 当前启用的主题目录名（与 site_settings.active_theme 一致，仅允许安全字符）。
      */
     public static function activeThemeId(): string
     {
-        if (self::$temporaryThemeId !== null) {
-            return self::$temporaryThemeId;
+        $preview = app(SiteThemePreviewContext::class)->themeId();
+        if ($preview !== null) {
+            return $preview;
         }
-
-        $id = trim(SiteSettingsBag::get('active_theme', ''));
-        if ($id === '') {
-            $id = trim((string) config('geoflow.default_theme', ''));
-        }
+        $id = trim(SiteSettingsBag::get('active_theme', (string) config('geoflow.default_theme', '')));
 
         return preg_match('/^[a-zA-Z0-9_-]+$/', $id) === 1 ? $id : '';
     }
@@ -36,12 +31,25 @@ final class SiteThemeViewResolver
      */
     public static function first(string $template, array $data = []): ViewContract
     {
-        $themeId = self::activeThemeId();
-        if ($themeId !== '' && ! array_key_exists('activeThemeId', $data)) {
-            $data['activeThemeId'] = $themeId;
-        }
+        self::registerInstalledTheme();
 
         return View::first(self::candidateViews($template), $data);
+    }
+
+    private static function registerInstalledTheme(): void
+    {
+        app(ThemeRevisionContext::class)->views();
+        if ((app(ThemeRevisionContext::class)->snapshot()['revision_id'] ?? null) !== null) {
+            return;
+        }
+        $id = self::activeThemeId();
+        if ($id === '' || is_dir(resource_path('views/theme/'.$id))) {
+            return;
+        }
+        $theme = app(InstalledSiteThemeRepository::class)->find($id);
+        if ($theme !== null && ! in_array($theme['view_root'], View::getFinder()->getPaths(), true)) {
+            View::addLocation($theme['view_root']);
+        }
     }
 
     /**
@@ -51,32 +59,18 @@ final class SiteThemeViewResolver
     {
         $views = [];
         $themeId = self::activeThemeId();
+        $revisionActive = (app(ThemeRevisionContext::class)->snapshot()['revision_id'] ?? null) !== null;
         if ($themeId !== '') {
-            if ($template === 'home' && self::usesSharedOfficialHomeShell($themeId)) {
+            // 主题不可变版本可以携带独立的 site.home，优先渲染版本内文件，避免回退到当前源码主题布局。
+            if ($template === 'home' && $revisionActive) {
+                $views[] = 'site.'.$template;
+            } elseif ($template === 'home' && preg_match('/^geoflow-template-(0[1-9]|1[0-9]|20)-/', $themeId) === 1) {
                 $views[] = 'theme.geoflow-template-shared.official-home';
             }
-
             $views[] = 'theme.'.$themeId.'.'.$template;
         }
         $views[] = 'site.'.$template;
 
         return $views;
-    }
-
-    public static function usingTheme(string $themeId, callable $callback): mixed
-    {
-        $previous = self::$temporaryThemeId;
-        self::$temporaryThemeId = preg_match('/^[a-zA-Z0-9_-]+$/', $themeId) === 1 ? $themeId : '';
-
-        try {
-            return $callback();
-        } finally {
-            self::$temporaryThemeId = $previous;
-        }
-    }
-
-    private static function usesSharedOfficialHomeShell(string $themeId): bool
-    {
-        return preg_match('/^geoflow-template-(0[1-9]|1[0-9]|20)-/', $themeId) === 1;
     }
 }

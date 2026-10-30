@@ -25,6 +25,9 @@
 @if($seoCanonical !== '')
     <link rel="canonical" href="{{ $seoCanonical }}">
 @endif
+@if(!empty($pageNoindex))
+    <meta name="robots" content="noindex,follow">
+@endif
 <meta property="og:title" content="{{ $seoTitle }}">
 <meta property="og:description" content="{{ $seoDescription }}">
 <meta property="og:type" content="{{ $seoOgType }}">
@@ -33,4 +36,7 @@
 @endif
 @if($seoSiteName !== '')
     <meta property="og:site_name" content="{{ $seoSiteName }}">
+@endif
+@if(!empty($topicStructuredData))
+    <x-json-ld :data="$topicStructuredData" />
 @endif
