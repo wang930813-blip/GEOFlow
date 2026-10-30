@@ -116,6 +116,7 @@ final class BackfillAdminAiAccessCommand extends Command
         $this->line('Structured model reference findings: '.$result['structured_reference_finding_count']);
         $this->line('Tasks recovered from historical runs: '.$result['tasks_recovered_from_historical_runs']);
         $this->line('Tasks recovered from creation audit: '.$result['tasks_recovered_from_creation_audit']);
+        $this->line('Tasks recovered from task owners: '.$result['tasks_recovered_from_task_owners']);
         $this->line('Tasks mapped to legacy owner: '.$result['tasks_mapped_to_legacy_owner']);
         $this->line('Run identities to inherit: '.$result['run_identities_to_inherit']);
         $this->line('Requested models to backfill: '.$result['requested_models_to_backfill']);

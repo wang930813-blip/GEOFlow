@@ -18,6 +18,7 @@ use App\Models\Task;
 use App\Models\Title;
 use App\Models\TitleLibrary;
 use App\Models\Topic;
+use App\Services\Admin\AdminAiModelAccessResolver;
 use App\Services\Api\IdempotencyService;
 use App\Services\GeoFlow\DistributionOrchestrator;
 use App\Services\GeoFlow\TaskTitleReadinessService;
@@ -58,6 +59,7 @@ class TaskController extends Controller
         private readonly DistributionOrchestrator $distributionOrchestrator,
         private readonly AiConfigurationScope $aiConfigurationScope,
         private readonly TaskTitleReadinessService $taskTitleReadinessService,
+        private readonly AdminAiModelAccessResolver $adminAiModelAccessResolver,
     ) {}
 
     /**
@@ -260,7 +262,7 @@ class TaskController extends Controller
             return $this->topicForm($request);
         }
 
-        $formOptions = $this->loadTaskFormOptions();
+        $formOptions = $this->loadTaskFormOptions($this->authenticatedAdmin());
         $prefilledTitleLibraryId = $this->resolvePrefilledTitleLibraryId($request, $formOptions['titleLibraries']);
         $prefilledFixedTitleId = $this->resolvePrefilledFixedTitleId($request, $prefilledTitleLibraryId, $formOptions['titles']);
 
@@ -353,7 +355,7 @@ class TaskController extends Controller
             return redirect()->route('admin.tasks.index')->withErrors($e->getMessage());
         }
 
-        $formOptions = $this->loadTaskFormOptions();
+        $formOptions = $this->loadTaskFormOptions($this->authenticatedAdmin(), $task);
 
         return view('admin.tasks.form', [
             'pageTitle' => __('admin.task_edit.page_title'),
@@ -745,7 +747,7 @@ class TaskController extends Controller
             }
         }
 
-        $formOptions = $this->loadTaskFormOptions();
+        $formOptions = $this->loadTaskFormOptions($this->authenticatedAdmin(), $task);
         $boundTopics = Topic::query()->where('site_key', $site)->orderBy('title')->get(['id', 'title']);
         $fromTopic = $request->integer('fromTopic');
         if ($fromTopic > 0) {
@@ -908,16 +910,16 @@ class TaskController extends Controller
      *     titleLibraries: list<array{id:int,name:string,count:int,used:int,available:int,manage_url:string}>,
      *     titles: list<array{id:int,library_id:int,title:string,keyword:string}>,
      *     prompts: list<array{id:int,name:string}>,
-     *     aiModels: list<array{id:int,name:string}>,
+     *     aiModels: list<array{id:int,name:string,disabled?:bool,current_inaccessible?:bool,current_inaccessible_for?:list<string>}>,
      *     imageLibraries: list<array{id:int,name:string,count:int}>,
      *     knowledgeBases: list<array{id:int,name:string}>,
      *     authors: list<array{id:int,name:string}>,
      *     categories: list<array{id:int,name:string}>,
      *     distributionChannels: list<array{id:int,name:string,domain:string}>,
      * }
-     * @UpdateTime: 2026-10-30 02:15:49
+     * @UpdateTime: 2026-10-30 15:48:42
      */
-    private function loadTaskFormOptions(): array
+    private function loadTaskFormOptions(Admin $actor, ?Task $task = null): array
     {
         // 直接附带标题总数和可用数，避免 Blade 层再次查询。
         $titleLibraries = TitleLibrary::query()
@@ -957,12 +959,9 @@ class TaskController extends Controller
             ])
             ->all();
 
-        $admin = request()->user('admin');
-        abort_unless($admin instanceof Admin, 403);
-
         $prompts = $this->aiConfigurationScope->applyConsumerScope(
             Prompt::query()->withoutGlobalScope('current_site'),
-            $admin,
+            $actor,
             'prompts.owner_admin_id'
         )
             ->select(['id', 'name'])
@@ -975,7 +974,7 @@ class TaskController extends Controller
 
         $aiQualityPrompts = $this->aiConfigurationScope->applyConsumerScope(
             Prompt::query()->withoutGlobalScope('current_site'),
-            $admin,
+            $actor,
             'prompts.owner_admin_id'
         )
             ->select(['id', 'name'])
@@ -986,13 +985,8 @@ class TaskController extends Controller
             ->map(static fn (Prompt $row): array => ['id' => (int) $row->id, 'name' => (string) $row->name])
             ->all();
 
-        $aiModels = $this->aiConfigurationScope->applyConsumerScope(
-            AiModel::query()->withoutGlobalScope('current_site'),
-            $admin,
-            'ai_models.owner_admin_id'
-        )
-            ->select(['id', 'name'])
-            ->where('status', 'active')
+        $aiModels = $this->adminAiModelAccessResolver
+            ->usableQuery($actor)
             ->where(function ($query): void {
                 $query->whereNull('model_type')
                     ->orWhere('model_type', '')
@@ -1004,13 +998,36 @@ class TaskController extends Controller
             ->map(static fn (AiModel $row): array => ['id' => (int) $row->id, 'name' => (string) $row->name])
             ->all();
 
-        $aiImageModels = $this->aiConfigurationScope->applyConsumerScope(
-            AiModel::query()->withoutGlobalScope('current_site'),
-            $admin,
-            'ai_models.owner_admin_id'
-        )
-            ->select(['id', 'name'])
-            ->where('status', 'active')
+        // 编辑旧任务时保留当前不可访问模型，避免表单把历史引用误报成不存在；该选项只读，提交时仍由服务层校验。
+        $inaccessibleCurrentFields = collect([
+            'ai_model_id' => (int) ($task?->ai_model_id ?? 0),
+            'ai_quality_model_id' => (int) ($task?->ai_quality_model_id ?? 0),
+        ])->filter(static fn (int $modelId): bool => $modelId > 0)
+            ->reject(static fn (int $modelId): bool => collect($aiModels)->contains('id', $modelId))
+            ->groupBy(static fn (int $modelId): int => $modelId);
+        foreach ($inaccessibleCurrentFields->keys() as $modelId) {
+            $currentModel = AiModel::query()
+                ->withoutGlobalScope('current_site')
+                ->select(['id', 'name'])
+                ->find((int) $modelId);
+            if (! $currentModel instanceof AiModel) {
+                continue;
+            }
+            $fields = collect(['ai_model_id', 'ai_quality_model_id'])
+                ->filter(static fn (string $field): bool => (int) ($task?->{$field} ?? 0) === (int) $modelId)
+                ->values()
+                ->all();
+            $aiModels[] = [
+                'id' => (int) $currentModel->id,
+                'name' => (string) $currentModel->name,
+                'disabled' => true,
+                'current_inaccessible' => true,
+                'current_inaccessible_for' => $fields,
+            ];
+        }
+
+        $aiImageModels = $this->adminAiModelAccessResolver
+            ->usableQuery($actor)
             ->where('model_type', 'image')
             ->orderBy('failover_priority')
             ->orderByDesc('id')

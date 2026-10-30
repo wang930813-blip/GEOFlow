@@ -29,6 +29,7 @@ final class HistoricalTaskExecutionIdentityBackfillService
                 'status',
                 'schedule_enabled',
                 'ai_model_id',
+                'owner_admin_id',
                 'model_access_admin_id',
                 'model_access_admin_role',
                 'model_access_policy_version',
@@ -51,6 +52,7 @@ final class HistoricalTaskExecutionIdentityBackfillService
             $createdBefore,
         );
         $adminIds = $tasks->pluck('model_access_admin_id')
+            ->merge($tasks->pluck('owner_admin_id'))
             ->merge($runs->pluck('model_access_admin_id'))
             ->merge($creationAudits->flatten())
             ->push((int) $legacyOwner->getKey())
@@ -60,7 +62,7 @@ final class HistoricalTaskExecutionIdentityBackfillService
             ->values();
         $admins = Admin::query()
             ->whereIn('id', $adminIds)
-            ->get(['id', 'role', 'ai_config_access_version'])
+            ->get(['id', 'role', 'status', 'ai_config_access_version'])
             ->keyBy(static fn (Admin $admin): int => (int) $admin->getKey());
 
         $findings = [];
@@ -68,6 +70,7 @@ final class HistoricalTaskExecutionIdentityBackfillService
         $taskUpdates = [];
         $tasksFromRuns = 0;
         $tasksFromAudit = 0;
+        $tasksFromOwners = 0;
         $tasksFromLegacy = 0;
         $pauseTaskIds = [];
 
@@ -76,6 +79,7 @@ final class HistoricalTaskExecutionIdentityBackfillService
             $taskRuns = $runsByTask->get($taskId, collect());
             $snapshot = $this->existingTaskSnapshot($task, $admins, $findings);
             if ($snapshot === null && $this->taskIdentityIsEmpty($task)) {
+                $ownerSnapshot = $this->snapshotFromTaskOwner($task, $admins);
                 $auditSnapshot = $this->snapshotFromCreationAudit(
                     $taskId,
                     $creationAudits->get($taskId, collect()),
@@ -83,7 +87,11 @@ final class HistoricalTaskExecutionIdentityBackfillService
                     $findings,
                 );
                 $runSnapshot = $this->snapshotFromConsistentRuns($taskId, $taskRuns, $admins, $findings);
-                if ($auditSnapshot !== null && $runSnapshot !== null
+                if ($ownerSnapshot !== null) {
+                    $snapshot = $ownerSnapshot;
+                    $snapshot['source'] = 'task_owner';
+                    $tasksFromOwners++;
+                } elseif ($auditSnapshot !== null && $runSnapshot !== null
                     && ! $this->snapshotsMatch($auditSnapshot, $runSnapshot)) {
                     $findings[] = $this->finding(
                         'task',
@@ -234,6 +242,7 @@ final class HistoricalTaskExecutionIdentityBackfillService
             'task_run_max_id' => $taskRunMaxId,
             'tasks_recovered_from_historical_runs' => $tasksFromRuns,
             'tasks_recovered_from_creation_audit' => $tasksFromAudit,
+            'tasks_recovered_from_task_owners' => $tasksFromOwners,
             'tasks_mapped_to_legacy_owner' => $tasksFromLegacy,
             'run_identities_to_inherit' => count(array_filter(
                 $runUpdates,
@@ -604,6 +613,36 @@ final class HistoricalTaskExecutionIdentityBackfillService
     }
 
     /**
+     * 使用任务自身的归属管理员恢复执行身份，优先于无法区分来源的历史兜底管理员。
+     *
+     * @param  Collection<int, Admin>  $admins
+     * @return array{admin_id:int,role:string,policy_version:int}|null
+     */
+    private function snapshotFromTaskOwner(Task $task, Collection $admins): ?array
+    {
+        $adminId = (int) ($task->owner_admin_id ?? 0);
+        if ($adminId <= 0) {
+            return null;
+        }
+
+        $admin = $admins->get($adminId);
+        if (! $admin instanceof Admin || (string) $admin->status !== 'active') {
+            return null;
+        }
+
+        $role = $this->normalizeAdminRole($admin);
+        if ($role === null) {
+            return null;
+        }
+
+        return [
+            'admin_id' => $adminId,
+            'role' => $role,
+            'policy_version' => AiExecutionContext::CURRENT_RESOLVER_POLICY_VERSION,
+        ];
+    }
+
+    /**
      * @param  array{admin_id: int, role: string, policy_version: int}  $left
      * @param  array{admin_id: int, role: string, policy_version: int}  $right
      */
@@ -719,7 +758,7 @@ final class HistoricalTaskExecutionIdentityBackfillService
             return 'super_admin';
         }
 
-        return strtolower(trim((string) $admin->role)) === 'admin' ? 'admin' : null;
+        return trim((string) $admin->role) !== '' ? 'admin' : null;
     }
 
     /** @param list<array<string, int|string>> $findings */

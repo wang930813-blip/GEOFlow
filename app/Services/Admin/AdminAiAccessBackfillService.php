@@ -109,7 +109,12 @@ final class AdminAiAccessBackfillService
 
             $modelsAssigned = $this->historicalModels($createdBefore, $modelMaxId)
                 ->whereNull('owner_admin_id')
-                ->update(['owner_admin_id' => $owner->getKey(), 'updated_at' => now()]);
+                ->update([
+                    'owner_admin_id' => $owner->getKey(),
+                    // 升级前未归属管理员的模型属于旧版共享池，清除旧站点绑定后继续按共享模型提供。
+                    'site_id' => null,
+                    'updated_at' => now(),
+                ]);
             $systemModelsMarked = $this->historicalModels($createdBefore, $modelMaxId)
                 ->whereIn('id', $plan['system_only_model_ids'])
                 ->where('access_scope', '!=', AiModel::ACCESS_SCOPE_SYSTEM_ONLY)
