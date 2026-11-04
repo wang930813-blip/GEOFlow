@@ -25,6 +25,15 @@ class AdminAuthController extends Controller
     public function showLoginForm(Request $request): View|RedirectResponse
     {
         if (Auth::guard('admin')->check()) {
+            $admin = Auth::guard('admin')->user();
+            if ($admin instanceof Admin && ($admin->isDirectAdmin() || $admin->isSiteUser())) {
+                Auth::guard('admin')->logout();
+                $request->session()->invalidate();
+                $request->session()->regenerateToken();
+
+                return redirect('/monitor/login/');
+            }
+
             return redirect()->route('admin.dashboard');
         }
 
@@ -71,6 +80,14 @@ class AdminAuthController extends Controller
         $admin = Auth::guard('admin')->user();
         $request->session()->regenerate();
         $this->adminLoginLockService->clearFailedAttempts((string) $admin->username);
+
+        if ($admin->isDirectAdmin() || $admin->isSiteUser()) {
+            Auth::guard('admin')->logout();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+
+            return redirect('/monitor/login/');
+        }
 
         $admin->forceFill(['last_login' => now()])->save();
         AdminActivityLogger::logFromRequest($request, $admin, 'auth:login', [

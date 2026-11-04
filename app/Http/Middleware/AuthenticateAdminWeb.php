@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Admin;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -17,9 +18,17 @@ class AuthenticateAdminWeb
      */
     public function handle(Request $request, Closure $next): Response
     {
-        // 仅检查 admin guard，保持与 geo_admin 后台会话体系一致。
-        if (! Auth::guard('admin')->check()) {
+        $admin = Auth::guard('admin')->user();
+        if (! $admin instanceof Admin) {
             return redirect()->route('admin.login');
+        }
+
+        if ($admin->isDirectAdmin() || $admin->isSiteUser()) {
+            Auth::guard('admin')->logout();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+
+            return redirect('/monitor/login/');
         }
 
         return $next($request);

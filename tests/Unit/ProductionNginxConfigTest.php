@@ -27,4 +27,14 @@ class ProductionNginxConfigTest extends TestCase
             $config
         );
     }
+
+    public function test_monitoring_center_static_app_is_served_in_both_virtual_hosts(): void
+    {
+        $config = file_get_contents(base_path('docker/nginx/default.conf'));
+
+        $this->assertIsString($config);
+        $pattern = '/location = \/monitor \{\s+return 302 \/monitor\/login\/;\s+\}\s+location \^~ \/monitor\/ \{\s+root \/var\/www\/html\/public;\s+index index\.html;\s+try_files \$uri \$uri\/ \/monitor\/login\/index\.html;\s+\}/';
+
+        $this->assertSame(2, preg_match_all($pattern, $config));
+    }
 }
