@@ -9,6 +9,7 @@ use App\Models\CrebeePublishJob;
 use App\Models\PlatformPlan;
 use App\Models\Site;
 use App\Services\Billing\AdminResourceQuotaService;
+use App\Support\CurrentSite;
 use App\Support\GeoFlow\ImageUrlNormalizer;
 use App\Support\Site\ArticleHtmlPresenter;
 use Illuminate\Database\Eloquent\Collection;
@@ -16,6 +17,21 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
 
+/**
+ * Created by Codex.
+ *
+ * @Date: 2026-11-03
+ *
+ * @Time: 11:37:29
+ *
+ * @Author: cdkay
+ *
+ * @Email: network@iyuanma.net
+ *
+ * @File： SelfMediaArticlePublishService.php
+ *
+ * @Description: 创建 CreBee 文章发布任务，并按当前站点账号绑定发布账号和任务所有者。
+ */
 class SelfMediaArticlePublishService
 {
     /**
@@ -31,6 +47,7 @@ class SelfMediaArticlePublishService
 
     public function __construct(
         private readonly AdminResourceQuotaService $quotaService,
+        private readonly CurrentSite $currentSite,
     ) {}
 
     /**
@@ -50,8 +67,27 @@ class SelfMediaArticlePublishService
     }
 
     /**
-     * @param  array<int,int>  $accountIds
-     * @return array<int,CrebeePublishJob>
+     * @Name: publish
+     *
+     * @Description: 校验当前站点文章和发布账号，创建发布任务并将任务所有者写为所选站点账号。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-11-03 11:31:09
+     *
+     * @UpdateTime: 2026-11-03 11:37:29
+     *
+     * @Param: Article $article 待发布的文章
+     *
+     * @Param: Admin $admin 实际执行发布操作的管理员
+     *
+     * @Param: Site $site 当前站点
+     *
+     * @Param: array<int,int> $accountIds 已选择的自媒体账号 ID
+     *
+     * @Return: array<int,CrebeePublishJob> 新建的发布任务
+     *
+     * @Throws: RuntimeException 文章内容、站点归属或发布账号无效时抛出
      */
     public function publish(Article $article, Admin $admin, Site $site, array $accountIds): array
     {
@@ -74,7 +110,8 @@ class SelfMediaArticlePublishService
             throw new RuntimeException('文章内容不能为空');
         }
 
-        $accounts = $this->boundArticleAccountsForAdmin($admin, $site, $accountIds);
+        $ownerAdminId = $this->currentSite->ownerAdminIdForAdmin($admin);
+        $accounts = $this->boundArticleAccountsForAdmin($site, $accountIds, $ownerAdminId);
         if ($accounts->count() !== count($accountIds)) {
             throw new RuntimeException('请选择已绑定且支持文章发布的自媒体平台');
         }
@@ -96,7 +133,7 @@ class SelfMediaArticlePublishService
             );
         }
 
-        return DB::transaction(function () use ($article, $admin, $site, $accounts, $amount): array {
+        return DB::transaction(function () use ($article, $admin, $site, $accounts, $amount, $ownerAdminId): array {
             $ledger = null;
             if (! $admin->isSuperAdmin()) {
                 $ledger = $this->quotaService->consume(
@@ -120,7 +157,7 @@ class SelfMediaArticlePublishService
             foreach ($accounts->groupBy('agent_id') as $agentId => $agentAccounts) {
                 $job = CrebeePublishJob::query()->create([
                     'site_id' => (int) $site->id,
-                    'owner_admin_id' => (int) $admin->id,
+                    'owner_admin_id' => $ownerAdminId,
                     'agent_id' => (int) $agentId,
                     'content_type' => 'article',
                     'title' => (string) $article->title,
@@ -163,15 +200,32 @@ class SelfMediaArticlePublishService
     }
 
     /**
-     * @param  array<int,int>  $accountIds
-     * @return Collection<int,CrebeeAccount>
+     * @Name: boundArticleAccountsForAdmin
+     *
+     * @Description: 仅返回属于当前站点账号且已绑定的文章发布账号，防止选择其他客户的发布账户。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-11-03 11:31:09
+     *
+     * @UpdateTime: 2026-11-03 11:37:29
+     *
+     * @Param: Site $site 当前站点
+     *
+     * @Param: array<int,int> $accountIds 请求选择的发布账号 ID
+     *
+     * @Param: int $ownerAdminId 当前站点账号所有者 ID
+     *
+     * @Return: Collection<int,CrebeeAccount> 当前账号可用的发布账号集合
+     *
+     * @Throws: 无
      */
-    private function boundArticleAccountsForAdmin(Admin $admin, Site $site, array $accountIds): Collection
+    private function boundArticleAccountsForAdmin(Site $site, array $accountIds, int $ownerAdminId): Collection
     {
         return CrebeeAccount::query()
             ->whereIn('id', $accountIds)
             ->where('site_id', (int) $site->id)
-            ->where('owner_admin_id', (int) $admin->id)
+            ->where('owner_admin_id', $ownerAdminId)
             ->where('status', 'bound')
             ->whereIn('platform', self::articlePlatforms())
             ->orderBy('id')

@@ -58,7 +58,7 @@ services:
     environment:
       <<: *app-environment
       AUTO_GENERATE_APP_KEY: "true"
-      COMPOSER_ON_START: "true"
+      COMPOSER_ON_START: "${COMPOSER_ON_START:-true}"
     depends_on:
       redis:
         condition: service_healthy

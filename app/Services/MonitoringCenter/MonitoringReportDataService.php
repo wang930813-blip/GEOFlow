@@ -163,7 +163,27 @@ class MonitoringReportDataService
     }
 
     /**
-     * @param  array{site:?Site,site_id:?int,owner_admin_id:?int}  $context
+     * @Name: scope
+     *
+     * @Description: 按已验证的站点限制监测数据；站点缺失时才回退到账号所有者，兼容历史操作人写入的归属字段。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-11-03 14:08:08
+     *
+     * @UpdateTime: 2026-11-03 14:08:08
+     *
+     * @Param: Builder $query 待限制的数据查询
+     *
+     * @Param: array{site:?Site,site_id:?int,owner_admin_id:?int} $context 已验证的站点与账号上下文
+     *
+     * @Param: string $siteColumn 站点 ID 字段
+     *
+     * @Param: string $ownerColumn 所有者账号 ID 字段
+     *
+     * @Return: Builder 受站点或账号范围限制的查询
+     *
+     * @Throws: 无
      */
     private function scope(Builder $query, array $context, string $siteColumn = 'site_id', string $ownerColumn = 'owner_admin_id'): Builder
     {
@@ -171,9 +191,7 @@ class MonitoringReportDataService
 
         if ($context['site_id'] !== null) {
             $query->where($siteColumn, (int) $context['site_id']);
-        }
-
-        if ($context['owner_admin_id'] !== null) {
+        } elseif ($context['owner_admin_id'] !== null) {
             $query->where($ownerColumn, (int) $context['owner_admin_id']);
         }
 
@@ -187,7 +205,19 @@ class MonitoringReportDataService
             || $model instanceof BrandDiagnosisSource
             || $model instanceof BrandDiagnosisBrandMention
         ) {
-            $query->whereHas('run', fn (Builder $runQuery): Builder => $runQuery->withoutGlobalScopes(['current_site', 'admin_owner']));
+            $query->whereHas('run', function (Builder $runQuery) use ($context): Builder {
+                $runQuery->withoutGlobalScopes(['current_site', 'admin_owner']);
+
+                if ($context['site_id'] !== null) {
+                    return $runQuery->where('site_id', (int) $context['site_id']);
+                }
+
+                if ($context['owner_admin_id'] !== null) {
+                    return $runQuery->where('owner_admin_id', (int) $context['owner_admin_id']);
+                }
+
+                return $runQuery->whereRaw('1 = 0');
+            });
         }
 
         return $query;

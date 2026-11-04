@@ -12,25 +12,44 @@ use App\Models\SelfMediaAccount;
 use App\Models\Site;
 use App\Models\Task;
 use App\Services\Crebee\SelfMediaArticlePublishService;
-use App\Services\SelfMedia\SelfMediaArticlePublishService as AiToEarnArticlePublishService;
 use App\Services\GeoFlow\DistributionOrchestrator;
+use App\Services\SelfMedia\SelfMediaArticlePublishService as AiToEarnArticlePublishService;
 use App\Support\AdminDataScope;
 use App\Support\AdminWeb;
 use App\Support\Crebee\SelfMediaPlatformCatalog;
-use App\Support\SelfMedia\SelfMediaPlatformCatalog as AiToEarnPlatformCatalog;
 use App\Support\CurrentSite;
 use App\Support\GeoFlow\ArticleWorkflow;
+use App\Support\SelfMedia\SelfMediaPlatformCatalog as AiToEarnPlatformCatalog;
 use App\Support\Site\SiteSettingsBag;
 use Illuminate\Database\QueryException;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\View\View;
+use League\CommonMark\Environment\Environment;
+use League\CommonMark\Extension\CommonMark\CommonMarkCoreExtension;
+use League\CommonMark\Extension\GithubFlavoredMarkdownExtension;
+use League\CommonMark\MarkdownConverter;
 use Throwable;
 
+/**
+ * Created by Codex.
+ *
+ * @Date: 2026-11-03
+ *
+ * @Time: 11:37:29
+ *
+ * @Author: cdkay
+ *
+ * @Email: network@iyuanma.net
+ *
+ * @File： ArticleController.php
+ *
+ * @Description: 管理文章数据并按当前站点账号加载文章发布目标。
+ */
 /**
  * 文章管理页（按 bak/admin/articles.php 行为迁移）：
  * - GET 展示列表、筛选、统计与批量操作区
@@ -488,7 +507,7 @@ HTML;
         if ($this->looksLikeMarkdown($trimmed)) {
             try {
                 return $this->renderMarkdown($trimmed);
-            } catch (\Throwable) {
+            } catch (Throwable) {
                 // 渲染失败时 fall through 到纯文本兜底
             }
         }
@@ -528,11 +547,11 @@ HTML;
             'html_input' => 'allow',
             'allow_unsafe_links' => false,
         ];
-        $environment = new \League\CommonMark\Environment\Environment($config);
-        $environment->addExtension(new \League\CommonMark\Extension\CommonMark\CommonMarkCoreExtension);
-        $environment->addExtension(new \League\CommonMark\Extension\GithubFlavoredMarkdownExtension);
+        $environment = new Environment($config);
+        $environment->addExtension(new CommonMarkCoreExtension);
+        $environment->addExtension(new GithubFlavoredMarkdownExtension);
 
-        $converter = new \League\CommonMark\MarkdownConverter($environment);
+        $converter = new MarkdownConverter($environment);
 
         return (string) $converter->convert($markdown);
     }
@@ -964,19 +983,38 @@ HTML;
         }
     }
 
-    private function loadSelfMediaArticleAccounts(Request $request)
+    /**
+     * @Name: loadSelfMediaArticleAccounts
+     *
+     * @Description: 加载当前站点账号已绑定的文章发布账号；切换客户后按站点所有者查询。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-11-03 11:31:09
+     *
+     * @UpdateTime: 2026-11-03 11:37:29
+     *
+     * @Param: Request $request 当前 HTTP 请求
+     *
+     * @Return: Collection<int,CrebeeAccount|SelfMediaAccount> 已绑定的文章发布账号集合
+     *
+     * @Throws: 无
+     */
+    private function loadSelfMediaArticleAccounts(Request $request): Collection
     {
         $admin = $request->user('admin');
         $site = app(CurrentSite::class)->get();
-        if (! $admin instanceof \App\Models\Admin || ! $site instanceof Site) {
+        if (! $admin instanceof Admin || ! $site instanceof Site) {
             return collect();
         }
+
+        $ownerAdminId = app(CurrentSite::class)->ownerAdminIdForAdmin($admin);
 
         if ((bool) config('aitoearn.enabled', false)) {
             return SelfMediaAccount::query()
                 ->select(['id', 'site_id', 'owner_admin_id', 'provider', 'platform', 'external_account_id', 'account_name', 'avatar', 'status', 'auth_status'])
                 ->where('site_id', (int) $site->id)
-                ->where('owner_admin_id', (int) $admin->id)
+                ->where('owner_admin_id', $ownerAdminId)
                 ->where('provider', 'aitoearn')
                 ->where('status', 'bound')
                 ->where('auth_status', 'authorized')
@@ -989,7 +1027,7 @@ HTML;
         return CrebeeAccount::query()
             ->select(['id', 'agent_id', 'site_id', 'owner_admin_id', 'platform', 'crebee_account_id', 'account_name', 'avatar', 'status'])
             ->where('site_id', (int) $site->id)
-            ->where('owner_admin_id', (int) $admin->id)
+            ->where('owner_admin_id', $ownerAdminId)
             ->where('status', 'bound')
             ->whereIn('platform', SelfMediaArticlePublishService::articlePlatforms())
             ->orderBy('platform')

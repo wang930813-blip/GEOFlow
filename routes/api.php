@@ -3,8 +3,9 @@
 /**
  * GEOFlow REST API 路由（Laravel 默认挂载在 /api 前缀下，本文件内为 v1 子路径）。
  *
- * 中间件：api.request_id 注入/透传 X-Request-Id；api.auth 校验 Bearer；
- * api.scope:* 校验 Sanctum token abilities。幂等写操作在控制器内按 route_key 处理。
+ * 中间件：api.request_id 注入/透传 X-Request-Id；api.auth 校验管理员 Bearer；
+ * api.scope:* 校验 Sanctum abilities；新版监测中心使用独立前端凭证。
+ * 幂等写操作在控制器内按 route_key 处理。
  *
  * @see bak/api/v1/index.php 遗留单入口对照
  */
@@ -22,7 +23,10 @@ use App\Http\Controllers\Api\V1\McpBrandDiagnosisController;
 use App\Http\Controllers\Api\V1\McpVideoGenerationController;
 use App\Http\Controllers\Api\V1\MediaResourceController;
 use App\Http\Controllers\Api\V1\MediaSubmissionController;
+use App\Http\Controllers\Api\V1\MonitorAuthController;
+use App\Http\Controllers\Api\V1\MonitoringDashboardController;
 use App\Http\Controllers\Api\V1\TaskController;
+use App\Http\Middleware\AuthenticateMonitorUser;
 use Illuminate\Support\Facades\Route;
 
 // 实际路径形如：/api/v1/...
@@ -31,6 +35,15 @@ Route::prefix('v1')
     ->group(function (): void {
         // 公开：管理员登录，返回 API Token（无需 Bearer）
         Route::post('auth/login', [AuthController::class, 'login']);
+        Route::post('monitor/auth/login', [MonitorAuthController::class, 'login'])
+            ->middleware('throttle:machine-api');
+
+        Route::middleware(['throttle:machine-api', AuthenticateMonitorUser::class])
+            ->prefix('monitor')
+            ->group(function (): void {
+                Route::post('auth/logout', [MonitorAuthController::class, 'logout']);
+                Route::get('dashboard', [MonitoringDashboardController::class, 'index']);
+            });
 
         Route::middleware(['throttle:machine-api', 'brand-diagnosis.api-key'])->group(function (): void {
             Route::post('brand-diagnoses', [BrandDiagnosisController::class, 'store']);

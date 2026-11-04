@@ -11,7 +11,10 @@ use App\Models\SiteSetting;
 use App\Services\CustomerDomain\CustomerDomainDeploymentException;
 use App\Services\CustomerDomain\CustomerDomainDeploymentManager;
 use App\Services\MonitoringCenter\MonitoringReportLogoResolver;
+use App\Support\AdminDataScope;
 use App\Support\AdminWeb;
+use App\Support\CurrentSite;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
@@ -21,11 +24,27 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
+/**
+ * Created by Codex.
+ *
+ * @Date: 2026-11-03
+ *
+ * @Time: 11:37:29
+ *
+ * @Author: cdkay
+ *
+ * @Email: network@iyuanma.net
+ *
+ * @File： SiteManagementController.php
+ *
+ * @Description: 管理站点资料，并按当前所选客户账号限制超管的站点管理范围。
+ */
 class SiteManagementController extends Controller
 {
     public function __construct(
         private readonly MonitoringReportLogoResolver $reportLogoResolver,
-        private readonly CustomerDomainDeploymentManager $customerDomainDeploymentManager
+        private readonly CustomerDomainDeploymentManager $customerDomainDeploymentManager,
+        private readonly AdminDataScope $adminDataScope,
     ) {}
 
     public function index(): View
@@ -197,7 +216,25 @@ class SiteManagementController extends Controller
     }
 
     /**
-     * @return array{owner_admin_id:int|null,name:string,domain:string,custom_domain:string,status:string,customer_mode:string,agent_admin_id:int|null,member_ids:array<int,int>,monitoring_report_logo:string}
+     * @Name: validatedPayload
+     *
+     * @Description: 校验站点资料，并在管理员切换客户账号后固定站点所有者为当前账号。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-11-03 11:20:14
+     *
+     * @UpdateTime: 2026-11-03 11:37:29
+     *
+     * @Param: Request $request 当前 HTTP 请求
+     *
+     * @Param: ?Site $site 被更新的站点；创建时为 null
+     *
+     * @Param: ?Admin $actor 执行操作的管理员
+     *
+     * @Return: array{owner_admin_id:int|null,name:string,domain:string,custom_domain:string,status:string,customer_mode:string,agent_admin_id:int|null,member_ids:array<int,int>,monitoring_report_logo:string} 校验并规范化后的站点资料
+     *
+     * @Throws: ValidationException 字段验证失败或域名冲突时抛出
      */
     private function validatedPayload(Request $request, ?Site $site = null, ?Admin $actor = null): array
     {
@@ -214,6 +251,8 @@ class SiteManagementController extends Controller
             'custom_domain' => $this->normalizeDomain($customDomainInput),
         ]);
 
+        $currentSite = app(CurrentSite::class);
+
         $ownerExistsRule = $actor->isAgentAdmin()
             ? Rule::exists('admins', 'id')
                 ->where('role', 'site_user')
@@ -224,6 +263,14 @@ class SiteManagementController extends Controller
                 ->where('role', 'site_user')
                 ->where('created_by', (int) $actor->id)
             : Rule::exists('admins', 'id');
+
+        if ($currentSite->isAccountScopeEnabled()) {
+            $manageableAdminIds = $this->manageableAdminsQuery($actor)
+                ->pluck('admins.id')
+                ->map(static fn ($id): int => (int) $id)
+                ->all();
+            $memberExistsRule = Rule::exists('admins', 'id')->whereIn('id', $manageableAdminIds);
+        }
 
         $payload = $request->validate([
             'name' => ['required', 'string', 'max:120'],
@@ -251,6 +298,10 @@ class SiteManagementController extends Controller
             'custom_domain.regex' => '客户自定义域名只填写域名，不要包含路径或特殊字符',
             'status.in' => '站点状态不正确',
         ]);
+
+        if ($currentSite->isAccountScopeEnabled()) {
+            $payload['owner_admin_id'] = $currentSite->ownerAdminId();
+        }
 
         $postedReportLogo = trim((string) ($payload['monitoring_report_logo'] ?? ''));
         $monitoringReportLogo = $actor->isSuperAdmin()
@@ -419,8 +470,35 @@ class SiteManagementController extends Controller
         return $admin;
     }
 
+    /**
+     * @Name: authorizeSiteAccess
+     *
+     * @Description: 检查站点管理权限；切换客户账号后只能管理该账号所属且当前管理员有权访问的站点。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-11-03 11:20:14
+     *
+     * @UpdateTime: 2026-11-03 11:37:29
+     *
+     * @Param: Admin $admin 当前后台管理员
+     *
+     * @Param: Site $site 待访问的站点
+     *
+     * @Return: void
+     *
+     * @Throws: NotFoundHttpException 当前管理员无权访问该站点时返回 404
+     */
     private function authorizeSiteAccess(Admin $admin, Site $site): void
     {
+        $currentSite = app(CurrentSite::class);
+        if ($currentSite->isAccountScopeEnabled()) {
+            $visibleSiteIds = $this->adminDataScope->visibleSiteIds($admin) ?? [];
+            abort_unless(in_array((int) $site->id, $visibleSiteIds, true), 404);
+
+            return;
+        }
+
         if ($admin->isSuperAdmin()) {
             return;
         }
@@ -433,17 +511,58 @@ class SiteManagementController extends Controller
         );
     }
 
-    private function visibleSitesQuery(Admin $admin)
+    /**
+     * @Name: visibleSitesQuery
+     *
+     * @Description: 生成站点管理列表查询；管理员切换账号后仅列出所选账号且当前管理员有权访问的站点。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-11-03 11:20:14
+     *
+     * @UpdateTime: 2026-11-03 11:37:29
+     *
+     * @Param: Admin $admin 当前后台管理员
+     *
+     * @Return: Builder<Site> 站点管理列表查询
+     *
+     * @Throws: 无
+     */
+    private function visibleSitesQuery(Admin $admin): Builder
     {
-        return Site::query()
+        $query = Site::query()
             ->when($admin->isAgentAdmin(), fn ($query) => $query
                 ->where('customer_mode', 'agent')
                 ->where('agent_admin_id', (int) $admin->id));
+
+        $currentSite = app(CurrentSite::class);
+        if ($admin->isSuperAdmin() || $currentSite->isAccountScopeEnabled()) {
+            $this->adminDataScope->applySiteScope($query, $admin, 'sites.id');
+        }
+
+        return $query;
     }
 
-    private function manageableAdminsQuery(Admin $admin)
+    /**
+     * @Name: manageableAdminsQuery
+     *
+     * @Description: 查询站点成员选项；切换账号后仅返回该账号站点内且当前管理员可管理的成员。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-11-03 11:20:14
+     *
+     * @UpdateTime: 2026-11-03 11:37:29
+     *
+     * @Param: Admin $admin 当前后台管理员
+     *
+     * @Return: Builder<Admin> 可管理管理员列表查询
+     *
+     * @Throws: 无
+     */
+    private function manageableAdminsQuery(Admin $admin): Builder
     {
-        return Admin::query()
+        $query = Admin::query()
             ->select(['id', 'username', 'display_name', 'role', 'status'])
             ->when($admin->isAgentAdmin(), fn ($query) => $query
                 ->where('role', 'site_user')
@@ -451,6 +570,30 @@ class SiteManagementController extends Controller
             ->when($admin->isSuperAdmin(), fn ($query) => $query
                 ->orderByRaw("CASE WHEN LOWER(COALESCE(role, '')) IN ('super_admin', 'superadmin') THEN 0 ELSE 1 END"))
             ->orderBy('username');
+
+        $currentSite = app(CurrentSite::class);
+        if ($currentSite->isAccountScopeEnabled()) {
+            $siteIds = $this->adminDataScope->visibleSiteIds($admin) ?? [];
+            $ownerAdminId = $currentSite->ownerAdminId();
+
+            $query->where(function (Builder $accountQuery) use ($ownerAdminId, $siteIds): void {
+                if ($ownerAdminId !== null) {
+                    $accountQuery->whereKey($ownerAdminId);
+                }
+
+                if ($siteIds !== []) {
+                    if ($ownerAdminId === null) {
+                        $accountQuery->whereHas('sites', fn (Builder $siteQuery) => $siteQuery->whereIn('sites.id', $siteIds));
+                    } else {
+                        $accountQuery->orWhereHas('sites', fn (Builder $siteQuery) => $siteQuery->whereIn('sites.id', $siteIds));
+                    }
+                } elseif ($ownerAdminId === null) {
+                    $accountQuery->whereRaw('1 = 0');
+                }
+            });
+        }
+
+        return $query;
     }
 
     /**
