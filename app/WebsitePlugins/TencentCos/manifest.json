@@ -1,0 +1,15 @@
+{
+    "id": "tencent-cos",
+    "name": "腾讯云 COS",
+    "version": "1.0.0",
+    "api_version": 1,
+    "type": "cloud-storage",
+    "description": "将官网图片上传到腾讯云对象存储。存储桶需允许通过公开域名读取图片。",
+    "fields": {
+        "region": {"label": "地域标识", "type": "text", "hint": "例如 ap-guangzhou", "required": true},
+        "bucket": {"label": "存储桶名称", "type": "text", "hint": "需包含 APPID，例如 company-1250000000", "required": true},
+        "secret_id": {"label": "SecretId", "type": "password", "required": true, "secret": true},
+        "secret_key": {"label": "SecretKey", "type": "password", "required": true, "secret": true},
+        "public_url": {"label": "公开访问地址", "type": "url", "hint": "HTTPS 地址，可填写已绑定存储桶的加速域名", "required": true}
+    }
+}

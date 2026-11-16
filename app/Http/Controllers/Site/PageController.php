@@ -1,10 +1,23 @@
 <?php
 
+/**
+ * Created by Codex.
+ * @Date: 2026-11-12
+ * @Time: 10:46:48
+ * @Author: cdkay
+ * @Email: network@iyuanma.net
+ *
+ * @File： PageController.php
+ * @Description: 展示当前站点的资讯、企业信息及其他公开页面。
+ */
+
 namespace App\Http\Controllers\Site;
 
 use App\Http\Controllers\Controller;
 use App\Models\Article;
 use App\Models\Category;
+use App\Models\WebsitePage;
+use App\Support\CurrentSite;
 use App\Support\Site\ArticleHtmlPresenter;
 use App\Support\Site\SiteSettingsBag;
 use App\Support\Site\SiteThemeViewResolver;
@@ -14,22 +27,48 @@ use Illuminate\View\View;
 
 class PageController extends Controller
 {
+    /**
+     * @Name: news
+     * @Description: 查询当前站点已发布文章与分类，并按分类排序值从高到低展示。
+     * @Url [GET] /news
+     *      登录 否
+     *
+     *      分页参数：
+     *      page integer 可选 页码
+     *
+     *      筛选参数：
+     *      无
+     * @Author: cdkay
+     * @CreateTime: 2026-11-12 10:46:48
+     * @UpdateTime: 2026-11-12 10:46:48
+     * @Return View 当前站点资讯页面
+     * @Throws \Throwable 站点配置或内容查询失败
+     */
     public function news(): View
     {
         $context = $this->siteContext();
+        $currentSite = app(CurrentSite::class);
+        $siteId = (int) ($currentSite->id() ?? 0);
+        $ownerAdminId = (int) ($currentSite->ownerAdminId() ?? 0);
         $perPage = max(1, min(200, (int) ($context['map']['per_page'] ?? config('geoflow.items_per_page', 12))));
 
         $categories = Category::query()
-            ->orderBy('sort_order')
+            ->where('site_id', $siteId)
+            ->where('owner_admin_id', $ownerAdminId)
+            ->orderByDesc('sort_order')
             ->orderBy('id')
             ->withCount([
-                'articles as published_count' => function ($q): void {
-                    $q->published();
+                'articles as published_count' => function ($q) use ($siteId, $ownerAdminId): void {
+                    $q->where('site_id', $siteId)
+                        ->where('owner_admin_id', $ownerAdminId)
+                        ->published();
                 },
             ])
             ->get();
 
         $articles = Article::query()
+            ->where('site_id', $siteId)
+            ->where('owner_admin_id', $ownerAdminId)
             ->with(['category', 'author'])
             ->published()
             ->orderByDesc('published_at')
@@ -40,6 +79,8 @@ class PageController extends Controller
         $hotArticles = collect();
         if (Schema::hasColumn('articles', 'is_hot')) {
             $hotArticles = Article::query()
+                ->where('site_id', $siteId)
+                ->where('owner_admin_id', $ownerAdminId)
                 ->with(['category', 'author'])
                 ->published()
                 ->where('is_hot', true)
@@ -66,6 +107,10 @@ class PageController extends Controller
 
     public function about(): View
     {
+        $managedPage = $this->managedPage('about');
+        if ($managedPage instanceof View) {
+            return $managedPage;
+        }
         $context = $this->siteContext();
 
         return SiteThemeViewResolver::first('about', [
@@ -81,6 +126,10 @@ class PageController extends Controller
 
     public function contact(): View
     {
+        $managedPage = $this->managedPage('contact');
+        if ($managedPage instanceof View) {
+            return $managedPage;
+        }
         $context = $this->siteContext();
         $contactInfo = trim((string) ($context['map']['contact_info'] ?? ''));
 
@@ -112,6 +161,49 @@ class PageController extends Controller
             'siteDescription' => (string) ($map['site_description'] ?? config('geoflow.site_description', '')),
             'siteKeywords' => (string) ($map['site_keywords'] ?? config('geoflow.site_keywords', '')),
         ];
+    }
+
+    /**
+     * @Name: managedPage
+     * @Description: 读取当前站点通过网站后台发布的 about 或 contact 单页；不存在时保留原页面回退。
+     * @Author: cdkay
+     * @CreateTime: 2026-11-11 16:49:23
+     * @UpdateTime: 2026-11-11 16:49:23
+     * @Param string $slug 固定页面 URL 标识
+     * @Return View|null 已发布的自定义页面视图；没有自定义内容时返回 null
+     * @Throws ModelNotFoundException 单页查询发生数据库错误时抛出
+     */
+    private function managedPage(string $slug): ?View
+    {
+        $currentSite = app(CurrentSite::class);
+        $siteId = (int) ($currentSite->id() ?? 0);
+        $ownerAdminId = (int) ($currentSite->ownerAdminId() ?? 0);
+        if ($siteId <= 0 || $ownerAdminId <= 0) {
+            return null;
+        }
+
+        $websitePage = WebsitePage::query()
+            ->where('site_id', $siteId)
+            ->where('owner_admin_id', $ownerAdminId)
+            ->published()
+            ->where('slug', $slug)
+            ->first();
+        if (! $websitePage instanceof WebsitePage) {
+            return null;
+        }
+
+        $context = $this->siteContext();
+        return SiteThemeViewResolver::first('page', [
+            'websitePage' => $websitePage,
+            'contentHtml' => ArticleHtmlPresenter::markdownToHtml((string) $websitePage->content),
+            ...$context,
+            'activeNav' => $slug,
+            'pageTitle' => trim((string) $websitePage->meta_title) !== '' ? (string) $websitePage->meta_title : $websitePage->title.' - '.$context['siteTitle'],
+            'pageDescription' => trim((string) $websitePage->meta_description) !== ''
+                ? (string) $websitePage->meta_description
+                : $context['siteTitle'].' - '.$websitePage->title,
+            'canonicalUrl' => $slug === 'about' ? route('site.about') : route('site.contact'),
+        ]);
     }
 
     /**

@@ -1,0 +1,10 @@
+{
+    "id": "cloud-storage",
+    "name": "云存储",
+    "version": "1.0.0",
+    "api_version": 1,
+    "type": "plugin",
+    "author": "cdkay",
+    "description": "将网站上传的图片保存到一个已配置的云存储平台。",
+    "configuration_route": "website-admin.plugins.cloud-storage"
+}

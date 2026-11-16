@@ -14,6 +14,7 @@
         <link rel="icon" href="{{ $siteFavicon }}">
     @endif
     <link rel="canonical" href="{{ $canonicalUrl ?? url()->current() }}">
+    @include('site.partials.seo-structured-data')
     @stack('head')
     <script src="/js/tailwindcss.play-cdn.js"></script>
     <link rel="stylesheet" href="/assets/css/style.css?v={{ filemtime(public_path('assets/css/style.css')) }}">

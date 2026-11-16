@@ -14,6 +14,7 @@ use App\Http\Middleware\AuthenticateApiToken;
 use App\Http\Middleware\AuthenticateBrandDiagnosisLookupApiKey;
 use App\Http\Middleware\AuthenticateBrandDiagnosisOpenApi;
 use App\Http\Middleware\AuthenticateCrebeeAgent;
+use App\Http\Middleware\AuthenticateWebsiteAdmin;
 use App\Http\Middleware\AutoFollowRedirectBody;
 use App\Http\Middleware\EnsureAgentAdmin;
 use App\Http\Middleware\EnsureAiConfigurationManager;
@@ -71,6 +72,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'crebee.agent' => AuthenticateCrebeeAgent::class,
             // Blade 后台：管理员会话鉴权（失败跳转 admin.login）
             'admin.auth' => AuthenticateAdminWeb::class,
+            // 独立官网后台：校验站点后台会话并注入站点与角色权限上下文
+            'website.admin.auth' => AuthenticateWebsiteAdmin::class,
             // Blade 后台：session locale
             'admin.locale' => AdminWebLocale::class,
             // Blade 后台：当前站点上下文

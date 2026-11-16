@@ -8,6 +8,7 @@ use App\Models\Category;
 use App\Support\Site\ArticleHtmlPresenter;
 use App\Support\Site\SiteSettingsBag;
 use App\Support\Site\SiteThemeViewResolver;
+use App\Support\CurrentSite;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -19,7 +20,10 @@ class CategoryController extends Controller
 {
     public function show(string $slug): View
     {
-        $category = Category::query()->where('slug', $slug)->first();
+        $currentSite = app(CurrentSite::class);
+        $siteId = (int) ($currentSite->id() ?? 0);
+        $ownerAdminId = (int) ($currentSite->ownerAdminId() ?? 0);
+        $category = Category::query()->where('site_id', $siteId)->where('owner_admin_id', $ownerAdminId)->where('slug', $slug)->first();
         if (! $category instanceof Category) {
             throw new NotFoundHttpException(__('site.category_not_found'));
         }
@@ -31,6 +35,8 @@ class CategoryController extends Controller
         $siteKeywords = (string) ($map['site_keywords'] ?? config('geoflow.site_keywords', ''));
 
         $articles = Article::query()
+            ->where('site_id', $siteId)
+            ->where('owner_admin_id', $ownerAdminId)
             ->with(['category', 'author'])
             ->published()
             ->where('category_id', $category->id)
@@ -49,6 +55,8 @@ class CategoryController extends Controller
         $hotArticles = collect();
         if (Schema::hasColumn('articles', 'is_hot')) {
             $hotArticles = Article::query()
+                ->where('site_id', $siteId)
+                ->where('owner_admin_id', $ownerAdminId)
                 ->with(['category', 'author'])
                 ->published()
                 ->where('category_id', $category->id)

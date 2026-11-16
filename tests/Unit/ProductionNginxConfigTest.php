@@ -37,4 +37,14 @@ class ProductionNginxConfigTest extends TestCase
 
         $this->assertSame(2, preg_match_all($pattern, $config));
     }
+
+    public function test_website_configuration_static_app_is_served_in_both_virtual_hosts(): void
+    {
+        $config = file_get_contents(base_path('docker/nginx/default.conf'));
+
+        $this->assertIsString($config);
+        $pattern = '/location = \/website \{\s+return 302 \/website\/;\s+\}\s+location \^~ \/website\/ \{\s+root \/var\/www\/html\/public;\s+index index\.html;\s+try_files \$uri \$uri\/ \/website\/index\.html;\s+\}/';
+
+        $this->assertSame(2, preg_match_all($pattern, $config));
+    }
 }

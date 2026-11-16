@@ -1,0 +1,15 @@
+{
+  "id": "zk-blue-tech-028",
+  "name": "蓝色科技服务官网模板 028",
+  "version": "1.0.0",
+  "description": "以海军蓝满幅首屏、倾斜科技网格和清晰内容分区构成的中文官网主题。",
+  "framework": "laravel",
+  "geoflow_contract": "site-theme-view-resolver",
+  "data_contract": "common_site_data",
+  "data_contract_version": "1.0.0",
+  "mode": "full_theme",
+  "requires_admin_activation": true,
+  "templates": ["layout", "home", "about", "products", "news", "article", "contact"],
+  "preview_routes": ["/", "/about", "/products", "/news", "/contact"],
+  "capabilities": ["common_site_data", "dynamic_articles"]
+}

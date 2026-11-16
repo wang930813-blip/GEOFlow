@@ -24,6 +24,8 @@ use App\Http\Controllers\Api\V1\McpVideoGenerationController;
 use App\Http\Controllers\Api\V1\MediaResourceController;
 use App\Http\Controllers\Api\V1\MediaSubmissionController;
 use App\Http\Controllers\Api\V1\MonitorAuthController;
+use App\Http\Controllers\Api\V1\MonitorWebsiteAdminController;
+use App\Http\Controllers\Api\V1\MonitorWebsiteController;
 use App\Http\Controllers\Api\V1\MonitoringDashboardController;
 use App\Http\Controllers\Api\V1\TaskController;
 use App\Http\Middleware\AuthenticateMonitorUser;
@@ -42,6 +44,9 @@ Route::prefix('v1')
             ->prefix('monitor')
             ->group(function (): void {
                 Route::post('auth/logout', [MonitorAuthController::class, 'logout']);
+                Route::post('website-admin/sso', [MonitorWebsiteAdminController::class, 'issue']);
+                Route::get('website', [MonitorWebsiteController::class, 'index']);
+                Route::put('website', [MonitorWebsiteController::class, 'update']);
                 Route::get('dashboard', [MonitoringDashboardController::class, 'index']);
             });
 

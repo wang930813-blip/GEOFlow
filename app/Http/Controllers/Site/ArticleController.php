@@ -8,6 +8,7 @@ use App\Support\Site\ArticleHtmlPresenter;
 use App\Support\Site\ArticleStickyAdPicker;
 use App\Support\Site\SiteSettingsBag;
 use App\Support\Site\SiteThemeViewResolver;
+use App\Support\CurrentSite;
 use Illuminate\View\View;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
@@ -18,7 +19,12 @@ class ArticleController extends Controller
 {
     public function show(string $slug): View
     {
+        $currentSite = app(CurrentSite::class);
+        $siteId = (int) ($currentSite->id() ?? 0);
+        $ownerAdminId = (int) ($currentSite->ownerAdminId() ?? 0);
         $article = Article::query()
+            ->where('site_id', $siteId)
+            ->where('owner_admin_id', $ownerAdminId)
             ->published()
             ->where('slug', $slug)
             ->with(['category', 'author'])
@@ -47,6 +53,8 @@ class ArticleController extends Controller
         $tags = $this->keywordTags((string) $article->keywords);
 
         $related = Article::query()
+            ->where('site_id', $siteId)
+            ->where('owner_admin_id', $ownerAdminId)
             ->published()
             ->where('category_id', $article->category_id)
             ->whereKeyNot($article->id)

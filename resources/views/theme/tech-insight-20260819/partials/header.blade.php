@@ -1,10 +1,12 @@
 @php
-    $activeNav = $activeNav ?? (request()->routeIs('site.news', 'site.category', 'site.article') ? 'news' : (request()->routeIs('site.about') ? 'about' : (request()->routeIs('site.contact') ? 'contact' : 'home')));
+    $activeNav = $activeNav ?? (request()->routeIs('site.news', 'site.category', 'site.article') ? 'news' : (request()->routeIs('site.products.*') ? 'products' : (request()->routeIs('site.about') ? 'about' : (request()->routeIs('site.contact') ? 'contact' : 'home'))));
     $navItems = [
         ['key' => 'home', 'label' => __('front.nav.home'), 'url' => route('site.home')],
         ['key' => 'news', 'label' => '资讯', 'url' => route('site.news')],
+        ...(!empty($hasWebsiteProducts) ? [['key' => 'products', 'label' => '产品', 'url' => route('site.products.index')]] : []),
         ['key' => 'about', 'label' => '关于我们', 'url' => route('site.about')],
         ['key' => 'contact', 'label' => '联系我们', 'url' => route('site.contact')],
+        ...collect($navPages ?? [])->map(fn ($page) => ['key' => $page->slug, 'label' => $page->title, 'url' => route('site.page', $page->slug)])->all(),
     ];
 @endphp
 <header class="tx-header">

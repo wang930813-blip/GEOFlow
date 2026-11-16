@@ -41,6 +41,7 @@
     <script type="application/ld+json">
         {!! json_encode($websiteSchema, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT) !!}
     </script>
+    @include('site.partials.seo-structured-data')
 </head>
 <body class="site-ui tech-insight-theme">
     @include('theme.tech-insight-20260819.partials.header')

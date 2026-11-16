@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Site;
 use App\Http\Controllers\Controller;
 use App\Models\Article;
 use App\Models\Category;
+use App\Support\CurrentSite;
 use App\Support\Site\ArticleHtmlPresenter;
 use App\Support\Site\SiteSettingsBag;
 use App\Support\Site\SiteThemeViewResolver;
@@ -19,6 +20,9 @@ class HomeController extends Controller
 {
     public function index(Request $request): View
     {
+        $currentSite = app(CurrentSite::class);
+        $siteId = (int) ($currentSite->id() ?? 0);
+        $ownerAdminId = (int) ($currentSite->ownerAdminId() ?? 0);
         $search = trim((string) $request->query('search', ''));
         $categoryId = max(0, (int) $request->query('category', 0));
         $page = max(1, (int) $request->query('page', 1));
@@ -36,11 +40,18 @@ class HomeController extends Controller
         $category = null;
         $categoryMissing = false;
         if ($categoryId > 0) {
-            $category = Category::query()->find($categoryId);
+            $category = Category::query()
+                ->where('site_id', $siteId)
+                ->where('owner_admin_id', $ownerAdminId)
+                ->find($categoryId);
             $categoryMissing = ! $category instanceof Category;
         }
 
-        $query = Article::query()->with(['category', 'author'])->published();
+        $query = Article::query()
+            ->where('site_id', $siteId)
+            ->where('owner_admin_id', $ownerAdminId)
+            ->with(['category', 'author'])
+            ->published();
 
         if ($search !== '') {
             $escaped = $this->escapeLike(mb_strtolower($search));
@@ -66,6 +77,8 @@ class HomeController extends Controller
         if ($search === '' && ! $category && $page === 1) {
             if (Schema::hasColumn('articles', 'is_featured')) {
                 $featuredArticles = Article::query()
+                    ->where('site_id', $siteId)
+                    ->where('owner_admin_id', $ownerAdminId)
                     ->with(['category', 'author'])
                     ->published()
                     ->where('is_featured', true)
@@ -77,6 +90,8 @@ class HomeController extends Controller
 
             if (Schema::hasColumn('articles', 'is_hot')) {
                 $hotArticles = Article::query()
+                    ->where('site_id', $siteId)
+                    ->where('owner_admin_id', $ownerAdminId)
                     ->with(['category', 'author'])
                     ->published()
                     ->where('is_hot', true)

@@ -1,11 +1,22 @@
 <?php
 
+/**
+ * Created by Codex.
+ * @Date: 2026-11-11
+ * @Time: 15:12:50
+ * @Author: cdkay
+ * @Email: network@iyuanma.net
+ *
+ * @File： SiteThemeCatalog.php
+ * @Description: 读取已安装官网主题及其公开封面图元数据。
+ */
+
 namespace App\Support\Site;
 
 class SiteThemeCatalog
 {
     /**
-     * @return array<int, array{id:string,name:string,version:string,description:string}>
+     * @return array<int, array{id:string,name:string,version:string,description:string,cover_url:string}>
      */
     public function all(): array
     {
@@ -51,6 +62,7 @@ class SiteThemeCatalog
                     'name' => (string) ($manifest['name'] ?? $entry),
                     'version' => (string) ($manifest['version'] ?? ''),
                     'description' => (string) ($manifest['description'] ?? ''),
+                    'cover_url' => $this->coverUrl((string) $entry),
                 ];
 
                 continue;
@@ -65,6 +77,7 @@ class SiteThemeCatalog
                 'name' => ucfirst(str_replace(['-', '_'], ' ', $entry)),
                 'version' => '',
                 'description' => '',
+                'cover_url' => $this->coverUrl((string) $entry),
             ];
         }
 
@@ -79,5 +92,23 @@ class SiteThemeCatalog
     public function ids(): array
     {
         return array_map(static fn (array $theme): string => (string) $theme['id'], $this->all());
+    }
+
+    /**
+     * @Name: coverUrl
+     * @Description: 仅为存在于公开资源目录的主题封面返回站内 URL，避免输出指向不存在资源的链接。
+     * @Author: cdkay
+     * @CreateTime: 2026-11-11 15:12:50
+     * @UpdateTime: 2026-11-11 15:12:50
+     * @Param string $themeId 已校验的主题目录 ID
+     * @Return string 图片相对 URL；封面文件缺失时返回空字符串
+     * @Throws 无
+     */
+    private function coverUrl(string $themeId): string
+    {
+        $filename = $themeId.'.png';
+        $path = public_path('assets/website-templates/'.$filename);
+
+        return is_file($path) ? '/assets/website-templates/'.$filename : '';
     }
 }

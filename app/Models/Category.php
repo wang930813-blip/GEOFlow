@@ -38,4 +38,18 @@ class Category extends Model
     {
         return $this->hasMany(Article::class, 'category_id');
     }
+
+    /**
+     * @Name: products
+     * @Description: 返回使用该共用分类的官网产品。
+     * @Author: cdkay
+     * @CreateTime: 2026-11-11 16:49:23
+     * @UpdateTime: 2026-11-11 16:49:23
+     * @Return HasMany 官网产品关系
+     * @Throws 无
+     */
+    public function products(): HasMany
+    {
+        return $this->hasMany(WebsiteProduct::class, 'category_id');
+    }
 }

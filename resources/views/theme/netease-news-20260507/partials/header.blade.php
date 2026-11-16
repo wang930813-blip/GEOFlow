@@ -24,6 +24,8 @@
                 @foreach($navCategories->take(5) as $categoryItem)
                     <a href="{{ route('site.category', $categoryItem->slug) }}" class="{{ request()->is('category/'.$categoryItem->slug) ? 'is-active' : '' }}">{{ $categoryItem->name }}</a>
                 @endforeach
+                @if(!empty($hasWebsiteProducts))<a href="{{ route('site.products.index') }}">产品</a>@endif
+                @foreach(collect($navPages ?? [])->take(3) as $pageItem)<a href="{{ route('site.page', $pageItem->slug) }}">{{ $pageItem->title }}</a>@endforeach
             </nav>
 
             <form method="get" action="{{ route('site.home') }}" class="ne-search" role="search">
@@ -41,6 +43,8 @@
                 @foreach($navCategories as $categoryItem)
                     <a href="{{ route('site.category', $categoryItem->slug) }}" class="ne-channel {{ request()->is('category/'.$categoryItem->slug) ? 'is-active' : '' }}">{{ $categoryItem->name }}</a>
                 @endforeach
+                @if(!empty($hasWebsiteProducts))<a href="{{ route('site.products.index') }}">产品</a>@endif
+                @foreach(collect($navPages ?? []) as $pageItem)<a href="{{ route('site.page', $pageItem->slug) }}">{{ $pageItem->title }}</a>@endforeach
             </div>
         </div>
     </div>
