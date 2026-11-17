@@ -26,6 +26,7 @@ use App\Http\Controllers\Api\V1\MediaSubmissionController;
 use App\Http\Controllers\Api\V1\MonitorAuthController;
 use App\Http\Controllers\Api\V1\MonitorWebsiteAdminController;
 use App\Http\Controllers\Api\V1\MonitorWebsiteController;
+use App\Http\Controllers\Api\V1\MonitoringReportPdfController;
 use App\Http\Controllers\Api\V1\MonitoringDashboardController;
 use App\Http\Controllers\Api\V1\TaskController;
 use App\Http\Middleware\AuthenticateMonitorUser;
@@ -48,6 +49,7 @@ Route::prefix('v1')
                 Route::get('website', [MonitorWebsiteController::class, 'index']);
                 Route::put('website', [MonitorWebsiteController::class, 'update']);
                 Route::get('dashboard', [MonitoringDashboardController::class, 'index']);
+                Route::get('report/pdf', [MonitoringReportPdfController::class, 'show']);
             });
 
         Route::middleware(['throttle:machine-api', 'brand-diagnosis.api-key'])->group(function (): void {
