@@ -56,6 +56,7 @@ class AppServiceProvider extends ServiceProvider
                         ? app(AdminUpdateMetadataService::class)->buildNotificationPayload()
                         : null,
                     'currentSite' => app(CurrentSite::class)->get(),
+                    'currentSiteAccountScopeEnabled' => app(CurrentSite::class)->isAccountScopeEnabled(),
                     'availableSites' => $admin instanceof Admin
                         ? $this->availableSitesForAdmin($admin)
                         : collect(),

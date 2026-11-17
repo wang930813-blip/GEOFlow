@@ -21,6 +21,7 @@ namespace App\Services\MonitoringCenter;
 use App\Exceptions\ApiException;
 use App\Models\Admin;
 use App\Models\Site;
+use App\Support\CurrentSite;
 use App\Support\GeoFlow\AdminLoginLockService;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Support\Facades\Cache;
@@ -33,6 +34,8 @@ use JsonException;
 final class MonitorUserAuthService
 {
     private const TOKEN_TTL_DAYS = 7;
+
+    private const ADMIN_SSO_TTL_SECONDS = 90;
 
     public function __construct(
         private readonly AdminLoginLockService $loginLockService
@@ -131,6 +134,144 @@ final class MonitorUserAuthService
         $admin->forceFill(['last_login' => now()])->save();
         $this->loginLockService->clearFailedAttempts($username);
         RateLimiter::clear($throttleKey);
+
+        return [
+            'token' => $token,
+            'expires_at' => $expiresAt->format('Y-m-d H:i:s'),
+            'account' => [
+                'id' => (int) $admin->id,
+                'username' => (string) $admin->username,
+                'display_name' => (string) ($admin->display_name ?: $admin->name ?: $admin->username),
+                'role' => (string) $admin->role,
+            ],
+            'site' => [
+                'id' => (int) $site->id,
+                'name' => (string) $site->name,
+            ],
+        ];
+    }
+
+    /**
+     * @Name: issueAdminSsoCode
+     * @Description: 为已显式切换客户站点的超级管理员创建短时一次性监测中心登录码。
+     * @Author: cdkay
+     * @CreateTime: 2026-11-17 17:48:44
+     * @UpdateTime: 2026-11-17 17:53:00
+     * @Param: Admin $operator 当前后台管理员
+     * @Param: CurrentSite $currentSite 当前站点及账号上下文
+     * @Return: string 90 秒有效的一次性登录码
+     * @Throws: ApiException 操作人无权限、客户账号无效或当前站点不可用
+     */
+    public function issueAdminSsoCode(Admin $operator, CurrentSite $currentSite): string
+    {
+        $selectedSite = $currentSite->get();
+        $ownerAdminId = $currentSite->ownerAdminId();
+        if (! $operator->isSuperAdmin()
+            || (string) $operator->status !== 'active'
+            || ! $currentSite->isAccountScopeEnabled()
+            || ! $selectedSite instanceof Site
+            || $ownerAdminId === null
+            || $ownerAdminId === (int) $operator->id) {
+            throw new ApiException('monitor_sso_forbidden', '请先切换到有效的客户账号', 403);
+        }
+
+        $site = Site::query()
+            ->whereKey((int) $selectedSite->id)
+            ->where('status', 'active')
+            ->where('owner_admin_id', $ownerAdminId)
+            ->whereHas('members', fn ($query) => $query->where('admins.id', $ownerAdminId))
+            ->first();
+        $admin = Admin::query()
+            ->whereKey($ownerAdminId)
+            ->where('status', 'active')
+            ->first();
+
+        if (! $site instanceof Site
+            || ! $admin instanceof Admin
+            || (! $admin->isDirectAdmin() && ! $admin->isSiteUser())) {
+            throw new ApiException('monitor_sso_forbidden', '当前客户账号或站点不可用', 403);
+        }
+        if ($this->loginLockService->isLocked($admin)) {
+            throw new ApiException('account_locked', '账号已被锁定，请联系管理员处理', 423);
+        }
+
+        $code = Str::random(64);
+        Cache::put($this->adminSsoCodeKey($code), [
+            'admin_id' => (int) $admin->id,
+            'site_id' => (int) $site->id,
+        ], now()->addSeconds(self::ADMIN_SSO_TTL_SECONDS));
+
+        return $code;
+    }
+
+    /**
+     * @Name: exchangeAdminSsoCode
+     * @Description: 原子消费后台签发的一次性登录码，复核客户账号与站点后签发监测凭证。
+     * @Author: cdkay
+     * @CreateTime: 2026-11-17 17:48:44
+     * @UpdateTime: 2026-11-17 17:53:00
+     * @Param: string $code 后台签发的一次性登录码
+     * @Return: array<string,mixed> 监测中心凭证、账号和站点信息
+     * @Throws: ApiException 登录码无效、已使用、过期或账号站点权限失效
+     */
+    public function exchangeAdminSsoCode(string $code): array
+    {
+        if (preg_match('/^[A-Za-z0-9]{64}$/', $code) !== 1) {
+            throw new ApiException('monitor_sso_invalid', '自动登录链接已失效，请从后台重新进入', 401);
+        }
+
+        $codeKey = $this->adminSsoCodeKey($code);
+        $identity = Cache::get($codeKey);
+        if (! is_array($identity)) {
+            throw new ApiException('monitor_sso_invalid', '自动登录链接已失效，请从后台重新进入', 401);
+        }
+
+        $consumed = Cache::add(
+            $this->adminSsoConsumedKey($code),
+            true,
+            now()->addSeconds(self::ADMIN_SSO_TTL_SECONDS)
+        );
+        if (! $consumed) {
+            throw new ApiException('monitor_sso_replayed', '自动登录链接已使用，请从后台重新进入', 401);
+        }
+        Cache::forget($codeKey);
+
+        $admin = Admin::query()
+            ->whereKey((int) ($identity['admin_id'] ?? 0))
+            ->where('status', 'active')
+            ->first();
+        $site = Site::query()
+            ->whereKey((int) ($identity['site_id'] ?? 0))
+            ->where('status', 'active')
+            ->when($admin instanceof Admin, fn ($query) => $query->where('owner_admin_id', (int) $admin->id))
+            ->whereHas('members', fn ($query) => $query->where('admins.id', (int) ($identity['admin_id'] ?? 0)))
+            ->first();
+
+        if (! $admin instanceof Admin
+            || (! $admin->isDirectAdmin() && ! $admin->isSiteUser())
+            || ! $site instanceof Site) {
+            throw new ApiException('monitor_sso_forbidden', '当前客户账号或站点已不可用', 403);
+        }
+        if ($this->loginLockService->isLocked($admin)) {
+            throw new ApiException('account_locked', '账号已被锁定，请联系管理员处理', 423);
+        }
+
+        $expiresAt = now()->addDays(self::TOKEN_TTL_DAYS);
+        $tokenId = (string) Str::uuid();
+        try {
+            $token = Crypt::encryptString(json_encode([
+                'aud' => 'monitor',
+                'sub' => (int) $admin->id,
+                'site_id' => (int) $site->id,
+                'jti' => $tokenId,
+                'exp' => $expiresAt->timestamp,
+            ], JSON_THROW_ON_ERROR));
+        } catch (JsonException) {
+            throw new ApiException('token_create_failed', '监测中心凭证创建失败', 500);
+        }
+
+        $admin->forceFill(['last_login' => now()])->save();
+        $this->loginLockService->clearFailedAttempts((string) $admin->username);
 
         return [
             'token' => $token,
@@ -287,5 +428,35 @@ final class MonitorUserAuthService
     private function revokedTokenKey(string $tokenId): string
     {
         return 'monitor_user_token:revoked:'.sha1($tokenId);
+    }
+
+    /**
+     * @Name: adminSsoCodeKey
+     * @Description: 使用 SHA-256 摘要构造一次性登录码缓存键，避免将原始凭证写入缓存键名。
+     * @Author: cdkay
+     * @CreateTime: 2026-11-17 17:53:00
+     * @UpdateTime: 2026-11-17 17:53:00
+     * @Param: string $code 一次性登录码
+     * @Return: string 登录码缓存键
+     * @Throws: 无
+     */
+    private function adminSsoCodeKey(string $code): string
+    {
+        return 'monitor_admin_sso:code:'.hash('sha256', $code);
+    }
+
+    /**
+     * @Name: adminSsoConsumedKey
+     * @Description: 使用 SHA-256 摘要构造一次性登录码的消费标记缓存键。
+     * @Author: cdkay
+     * @CreateTime: 2026-11-17 17:53:00
+     * @UpdateTime: 2026-11-17 17:53:00
+     * @Param: string $code 一次性登录码
+     * @Return: string 登录码消费标记缓存键
+     * @Throws: 无
+     */
+    private function adminSsoConsumedKey(string $code): string
+    {
+        return 'monitor_admin_sso:consumed:'.hash('sha256', $code);
     }
 }

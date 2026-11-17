@@ -62,6 +62,32 @@ final class MonitorAuthController extends BaseApiController
     }
 
     /**
+     * 兑换后台签发的监测中心一次性登录码。
+     * 为已授权的后台客户账号签发监测中心凭证，登录码只能成功兑换一次。
+     * @Url [POST] /api/v1/monitor/auth/sso/exchange
+     *      登录 否
+     *      code string 必选 后台签发的 90 秒一次性登录码
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-11-17 17:48:44
+     * @UpdateTime: 2026-11-17 17:48:44
+     *
+     * @Return JsonResponse 监测中心凭证、账号和站点信息
+     * @Throws ApiException 登录码无效、已使用、过期或账号站点不可用
+     */
+    public function exchangeSso(Request $request, MonitorUserAuthService $authService): JsonResponse
+    {
+        $code = $request->input('code');
+        if (! is_string($code)) {
+            throw new ApiException('validation_failed', '自动登录凭证格式无效', 422, [
+                'field_errors' => ['code' => '自动登录凭证必须是文本'],
+            ]);
+        }
+
+        return $this->success($request, $authService->exchangeAdminSsoCode($code));
+    }
+
+    /**
      * logout
      * 退出新版监测中心并撤销当前前端凭证。
      *

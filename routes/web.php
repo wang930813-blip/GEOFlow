@@ -41,6 +41,7 @@ use App\Http\Controllers\Admin\MediaDistribution\ResourceController as MediaDist
 use App\Http\Controllers\Admin\MediaDistribution\SettingController as MediaDistributionSettingController;
 use App\Http\Controllers\Admin\MediaDistribution\SubmissionController as MediaDistributionSubmissionController;
 use App\Http\Controllers\Admin\MonitoringCenterController;
+use App\Http\Controllers\Admin\MonitorSsoController;
 use App\Http\Controllers\Admin\PlanSubscriptionController;
 use App\Http\Controllers\Admin\PlanUsageController;
 use App\Http\Controllers\Admin\PlatformPlanController;
@@ -202,6 +203,9 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
         // Session and dashboard
         Route::post('logout', [AdminAuthController::class, 'logout'])->name('logout');
         Route::post('sites/switch', [SiteContextController::class, 'switch'])->name('sites.switch');
+        Route::post('monitor/open', [MonitorSsoController::class, 'open'])
+            ->middleware('admin.super')
+            ->name('monitor.open');
         Route::post('welcome/dismiss', [AdminWelcomeController::class, 'dismiss'])->name('welcome.dismiss');
         Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
         Route::get('profile', [ProfileController::class, 'index'])->name('profile.index');

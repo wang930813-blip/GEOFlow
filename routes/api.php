@@ -40,6 +40,8 @@ Route::prefix('v1')
         Route::post('auth/login', [AuthController::class, 'login']);
         Route::post('monitor/auth/login', [MonitorAuthController::class, 'login'])
             ->middleware('throttle:machine-api');
+        Route::post('monitor/auth/sso/exchange', [MonitorAuthController::class, 'exchangeSso'])
+            ->middleware('throttle:machine-api');
 
         Route::middleware(['throttle:machine-api', AuthenticateMonitorUser::class])
             ->prefix('monitor')
