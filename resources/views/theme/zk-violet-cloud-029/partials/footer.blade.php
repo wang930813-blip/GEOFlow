@@ -7,7 +7,8 @@
  * @Email: network@iyuanma.net
  *
  * @File： footer.blade.php
- * @Description: 输出公共品牌说明与统一站内导航。
+ * @Description: 输出公共品牌说明、ICP备案号与统一站内导航。
+ * @UpdateTime: 2026-11-18 16:26:24
  */
 ?>
 <footer class="site-footer">
@@ -25,5 +26,8 @@
             @endforeach
         </nav>
         <p class="copyright">&copy; {{ date('Y') }} {{ $themeData['site']['brand_name'] }}</p>
+        @if (trim((string) ($icpNumber ?? '')) !== '')
+            <small class="website-icp-number">ICP备案号：{{ $icpNumber }}</small>
+        @endif
     </div>
 </footer>

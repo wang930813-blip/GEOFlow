@@ -24,8 +24,9 @@ use App\Http\Controllers\Api\V1\McpVideoGenerationController;
 use App\Http\Controllers\Api\V1\MediaResourceController;
 use App\Http\Controllers\Api\V1\MediaSubmissionController;
 use App\Http\Controllers\Api\V1\MonitorAuthController;
-use App\Http\Controllers\Api\V1\MonitorWebsiteAdminController;
+use App\Http\Controllers\Api\V1\MonitorMediaPublishingController;
 use App\Http\Controllers\Api\V1\MonitorWebsiteController;
+use App\Http\Controllers\Api\V1\MonitorWebsiteContentController;
 use App\Http\Controllers\Api\V1\MonitoringReportPdfController;
 use App\Http\Controllers\Api\V1\MonitoringDashboardController;
 use App\Http\Controllers\Api\V1\TaskController;
@@ -47,11 +48,37 @@ Route::prefix('v1')
             ->prefix('monitor')
             ->group(function (): void {
                 Route::post('auth/logout', [MonitorAuthController::class, 'logout']);
-                Route::post('website-admin/sso', [MonitorWebsiteAdminController::class, 'issue']);
                 Route::get('website', [MonitorWebsiteController::class, 'index']);
                 Route::put('website', [MonitorWebsiteController::class, 'update']);
+                Route::get('website/content', [MonitorWebsiteContentController::class, 'index']);
+                Route::post('website/categories', [MonitorWebsiteContentController::class, 'storeCategory']);
+                Route::put('website/categories/{category}', [MonitorWebsiteContentController::class, 'updateCategory'])
+                    ->whereNumber('category');
+                Route::delete('website/categories/{category}', [MonitorWebsiteContentController::class, 'destroyCategory'])
+                    ->whereNumber('category');
+                Route::post('website/articles/cover-image', [MonitorWebsiteContentController::class, 'uploadArticleCover']);
+                Route::post('website/articles/images', [MonitorWebsiteContentController::class, 'uploadArticleImage']);
+                Route::post('website/articles', [MonitorWebsiteContentController::class, 'storeArticle']);
+                Route::get('website/articles/{article}', [MonitorWebsiteContentController::class, 'showArticle'])
+                    ->whereNumber('article');
+                Route::put('website/articles/{article}', [MonitorWebsiteContentController::class, 'updateArticle'])
+                    ->whereNumber('article');
+                Route::delete('website/articles/{article}', [MonitorWebsiteContentController::class, 'destroyArticle'])
+                    ->whereNumber('article');
                 Route::get('dashboard', [MonitoringDashboardController::class, 'index']);
                 Route::get('report/pdf', [MonitoringReportPdfController::class, 'show']);
+                Route::get('media/resources', [MonitorMediaPublishingController::class, 'resources']);
+                Route::get('media/articles', [MonitorMediaPublishingController::class, 'articles']);
+                Route::get('media/credits', [MonitorMediaPublishingController::class, 'credits']);
+                Route::get('media/submissions', [MonitorMediaPublishingController::class, 'submissions']);
+                Route::post('media/submissions', [MonitorMediaPublishingController::class, 'store'])
+                    ->middleware('throttle:mcp-paid-write');
+                Route::post('media/submissions/{submission}/sync', [MonitorMediaPublishingController::class, 'sync'])
+                    ->whereNumber('submission');
+                Route::post('media/submissions/{submission}/cancel', [MonitorMediaPublishingController::class, 'cancel'])
+                    ->whereNumber('submission');
+                Route::post('media/submissions/{submission}/appeal', [MonitorMediaPublishingController::class, 'appeal'])
+                    ->whereNumber('submission');
             });
 
         Route::middleware(['throttle:machine-api', 'brand-diagnosis.api-key'])->group(function (): void {

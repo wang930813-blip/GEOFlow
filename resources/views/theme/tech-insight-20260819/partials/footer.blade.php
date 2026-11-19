@@ -14,6 +14,9 @@
                 <p>{{ $contactInfo }}</p>
             @endif
             <p>{{ $footerCopyright !== '' ? $footerCopyright : '© '.date('Y').' '.$siteName }}</p>
+            @if (trim((string) ($icpNumber ?? '')) !== '')
+                <small class="website-icp-number">ICP备案号：{{ $icpNumber }}</small>
+            @endif
         </div>
     </div>
 </footer>

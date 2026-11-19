@@ -23,6 +23,7 @@ use App\Support\CurrentSite;
 use App\Support\Site\SiteSettingsBag;
 use App\Support\Site\SiteThemeCatalog;
 use App\Support\SiteDomain;
+use App\WebsitePlugins\WebsiteMediaStorage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -44,14 +45,22 @@ final class MonitorWebsiteController extends BaseApiController
      *
      * @Author: cdkay
      * @CreateTime: 2026-11-11 11:45:00
-     * @UpdateTime: 2026-11-11 15:22:45
+     * @UpdateTime: 2026-11-18 18:21:47
      *
-     * @Return JsonResponse 当前站点配置和主题封面地址，不包含证书私钥内容
+     * @Return JsonResponse 当前站点配置、主题封面及云存储上传能力，不包含证书私钥内容
      * @Throws ApiException 当前账号不是当前站点所有者或站点不可用
      */
-    public function index(Request $request, CurrentSite $currentSite, SiteThemeCatalog $catalog): JsonResponse
-    {
+    public function index(
+        Request $request,
+        CurrentSite $currentSite,
+        SiteThemeCatalog $catalog,
+        WebsiteMediaStorage $mediaStorage
+    ): JsonResponse {
         [, $site] = $this->authorizedSite($request, $currentSite);
+        $settings = SiteSetting::query()
+            ->where('site_id', (int) $site->id)
+            ->where('owner_admin_id', (int) $site->owner_admin_id)
+            ->pluck('setting_value', 'setting_key');
         $themeOptions = array_map(static fn (array $theme): array => [
             'id' => (string) $theme['id'],
             'name' => (string) $theme['name'],
@@ -68,6 +77,12 @@ final class MonitorWebsiteController extends BaseApiController
                 'name' => (string) $site->name,
                 'status' => (string) $site->status,
             ],
+            'settings' => [
+                'site_name' => (string) ($settings->get('site_name') ?: $site->name),
+                'site_keywords' => (string) $settings->get('site_keywords', ''),
+                'site_description' => (string) $settings->get('site_description', ''),
+                'icp_number' => (string) $settings->get('icp_number', ''),
+            ],
             'domain' => [
                 'system_domain' => (string) $site->domain,
                 'custom_domain' => (string) $site->custom_domain,
@@ -82,6 +97,9 @@ final class MonitorWebsiteController extends BaseApiController
                 'active' => SiteSettingsBag::get('active_theme', ''),
                 'default_cover_url' => (string) ($defaultTheme['cover_url'] ?? ''),
                 'options' => $themeOptions,
+            ],
+            'uploads' => [
+                'cloud_storage_ready' => $mediaStorage->isCloudStorageReady((int) $site->id),
             ],
         ]);
     }
@@ -99,19 +117,24 @@ final class MonitorWebsiteController extends BaseApiController
      *
      * @Author: cdkay
      * @CreateTime: 2026-11-11 11:45:00
-     * @UpdateTime: 2026-11-11 15:22:45
+     * @UpdateTime: 2026-11-18 18:21:47
      *
-     * @Return JsonResponse 保存后的当前站点配置，不包含证书私钥内容
+     * @Return JsonResponse 保存后的当前站点配置和云存储上传能力，不包含证书私钥内容
      * @Throws ApiException 未授权、域名冲突或宿主机证书部署失败
      */
     public function update(
         Request $request,
         CurrentSite $currentSite,
         SiteThemeCatalog $catalog,
+        WebsiteMediaStorage $mediaStorage,
         CustomerDomainDeploymentManager $deploymentManager
     ): JsonResponse {
         [$admin, $site] = $this->authorizedSite($request, $currentSite);
         $validated = $request->validate([
+            'site_name' => ['sometimes', 'string', 'max:255'],
+            'site_keywords' => ['sometimes', 'nullable', 'string', 'max:1000'],
+            'site_description' => ['sometimes', 'nullable', 'string', 'max:3000'],
+            'icp_number' => ['sometimes', 'nullable', 'string', 'max:100'],
             'custom_domain' => ['sometimes', 'nullable', 'string', 'max:255'],
             'custom_https_enabled' => ['sometimes', 'boolean'],
             'custom_https_certificate' => ['sometimes', 'nullable', 'string', 'max:262144'],
@@ -186,6 +209,27 @@ final class MonitorWebsiteController extends BaseApiController
             SiteSettingsBag::forget();
         }
 
+        $websiteSettings = array_intersect_key($validated, array_flip([
+            'site_name',
+            'site_keywords',
+            'site_description',
+            'icp_number',
+        ]));
+        if ($websiteSettings !== []) {
+            DB::transaction(function () use ($websiteSettings, $site, $admin): void {
+                foreach ($websiteSettings as $key => $value) {
+                    SiteSetting::query()->updateOrCreate(
+                        ['site_id' => (int) $site->id, 'setting_key' => $key],
+                        [
+                            'owner_admin_id' => (int) $admin->id,
+                            'setting_value' => trim((string) ($value ?? '')),
+                        ]
+                    );
+                }
+            });
+            SiteSettingsBag::forget();
+        }
+
         if ($domainChanged) {
             try {
                 $site->refresh();
@@ -199,7 +243,7 @@ final class MonitorWebsiteController extends BaseApiController
             }
         }
 
-        return $this->index($request, $currentSite, $catalog);
+        return $this->index($request, $currentSite, $catalog, $mediaStorage);
     }
 
     /**

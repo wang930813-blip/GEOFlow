@@ -105,12 +105,28 @@ class IdempotencyService
      */
     public static function maybeReplayJson(Request $request, string $routeKey): ?JsonResponse
     {
+        return self::maybeReplayJsonForContext($request, $routeKey, self::authContext($request));
+    }
+
+    /**
+     * @Name: maybeReplayJsonForContext
+     * @Description: 使用调用方提供的账号、站点上下文执行幂等占位，供监测中心专用凭证等非 API Token 认证复用。
+     * @Author: cdkay
+     * @CreateTime: 2026-07-18 16:30:00
+     * @UpdateTime: 2026-11-18 10:06:26
+     * @Param: Request $request 当前 API 请求
+     * @Param: string $routeKey 稳定路由标识
+     * @Param: ApiAuthContext $context 已认证的账号及站点上下文
+     * @Return: JsonResponse|null 已完成请求的缓存响应，首次请求返回 null
+     * @Throws: ApiException 幂等键冲突、处理中或缓存状态异常
+     */
+    public static function maybeReplayJsonForContext(Request $request, string $routeKey, ApiAuthContext $context): ?JsonResponse
+    {
         $clientKey = self::clientKey($request);
         if ($clientKey === null) {
             return null;
         }
 
-        $context = self::authContext($request);
         $requestHash = self::requestHash($request->all());
         $storageKey = self::storageKey($clientKey, $context);
         $now = now();

@@ -5,6 +5,6 @@
             <a href="{{ $navigationItem['url'] }}" data-site-nav-item="{{ $navigationItem['id'] }}"><span data-site-nav-label>{{ $navigationItem['label'] }}</span></a>
         @endforeach
     </nav>
-    <p>{{ $themeData['site']['footer_text'] }}<br>&copy; {{ date('Y') }} {{ $themeData['site']['brand_name'] }}<br><a href="https://colorlib.com/wp/template/itkol/" rel="noopener noreferrer">视觉素材：Colorlib</a></p>
+    <p>{{ $themeData['site']['footer_text'] }}<br>&copy; {{ date('Y') }} {{ $themeData['site']['brand_name'] }}<br>@if (trim((string) ($icpNumber ?? '')) !== '')ICP备案号：{{ $icpNumber }}<br>@endif<a href="https://colorlib.com/wp/template/itkol/" rel="noopener noreferrer">视觉素材：Colorlib</a></p>
 </footer>
 

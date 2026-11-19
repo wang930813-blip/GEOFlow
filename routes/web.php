@@ -61,11 +61,6 @@ use App\Http\Controllers\BrandDiagnosisSnapshotController;
 use App\Http\Controllers\MediaSubmissionPreviewController;
 use App\Http\Controllers\MonitoringReportShareController;
 use App\Http\Controllers\ProductCaseController;
-use App\Http\Controllers\WebsiteAdmin\WebsiteAdminAuthController;
-use App\Http\Controllers\WebsiteAdmin\WebsiteAdminController;
-use App\Http\Controllers\WebsiteAdmin\WebsiteContentController;
-use App\Http\Controllers\WebsiteAdmin\WebsiteDesignController;
-use App\Http\Controllers\WebsiteAdmin\WebsitePluginController;
 use App\Http\Controllers\Site\SearchOptimizationController;
 use App\Http\Controllers\Site\ArchiveController;
 use App\Http\Controllers\Site\ArticleController as SiteArticleController;
@@ -94,61 +89,7 @@ Route::get('/product-cases/{slug}', [ProductCaseController::class, 'show'])
     ->name('product-cases.show')
     ->where('slug', '[A-Za-z0-9_-]+');
 
-Route::prefix('admin')->name('website-admin.')->middleware(['site.domain', 'site.locale'])->group(function (): void {
-    Route::get('login', [WebsiteAdminAuthController::class, 'showLogin'])->name('login');
-    Route::post('login', [WebsiteAdminAuthController::class, 'login'])->middleware('throttle:10,1')->name('login.attempt');
-    Route::get('sso/{token}', [WebsiteAdminAuthController::class, 'consumeSso'])
-        ->where('token', '[A-Za-z0-9]{64}')
-        ->name('sso');
-    Route::middleware('website.admin.auth')->group(function (): void {
-        Route::get('/', [WebsiteAdminController::class, 'dashboard'])->name('dashboard');
-        Route::post('logout', [WebsiteAdminAuthController::class, 'logout'])->name('logout');
-        Route::get('settings', [WebsiteAdminController::class, 'settings'])->name('settings');
-        Route::put('settings', [WebsiteAdminController::class, 'saveSettings'])->name('settings.save');
-        Route::get('design', [WebsiteDesignController::class, 'index'])->name('design');
-        Route::put('design', [WebsiteDesignController::class, 'save'])->name('design.save');
-        Route::get('plugins', [WebsitePluginController::class, 'index'])->name('plugins');
-        Route::get('plugins/cloud-storage', [WebsitePluginController::class, 'configure'])
-            ->name('plugins.cloud-storage');
-        Route::put('plugins/cloud-storage', [WebsitePluginController::class, 'update'])
-            ->name('plugins.update');
-        Route::post('markdown/preview', [WebsiteAdminController::class, 'previewMarkdown'])->middleware('throttle:60,1')->name('markdown.preview');
-        Route::get('categories', [WebsiteContentController::class, 'categories'])->name('categories');
-        Route::get('categories/create', [WebsiteContentController::class, 'createCategory'])->name('categories.create');
-        Route::post('categories', [WebsiteContentController::class, 'storeCategory'])->name('categories.store');
-        Route::get('categories/{category}/edit', [WebsiteContentController::class, 'editCategory'])->whereNumber('category')->name('categories.edit');
-        Route::put('categories/{category}', [WebsiteContentController::class, 'updateCategory'])->whereNumber('category')->name('categories.update');
-        Route::delete('categories/{category}', [WebsiteContentController::class, 'deleteCategory'])->whereNumber('category')->name('categories.delete');
-        Route::get('products', [WebsiteContentController::class, 'products'])->name('products');
-        Route::get('products/create', [WebsiteContentController::class, 'createProduct'])->name('products.create');
-        Route::post('products', [WebsiteContentController::class, 'storeProduct'])->name('products.store');
-        Route::get('products/{product}/edit', [WebsiteContentController::class, 'editProduct'])->whereNumber('product')->name('products.edit');
-        Route::put('products/{product}', [WebsiteContentController::class, 'updateProduct'])->whereNumber('product')->name('products.update');
-        Route::delete('products/{product}', [WebsiteContentController::class, 'deleteProduct'])->whereNumber('product')->name('products.delete');
-        Route::get('pages', [WebsiteContentController::class, 'pages'])->name('pages');
-        Route::get('pages/create', [WebsiteContentController::class, 'createPage'])->name('pages.create');
-        Route::post('pages', [WebsiteContentController::class, 'storePage'])->name('pages.store');
-        Route::get('pages/{page}/edit', [WebsiteContentController::class, 'editPage'])->whereNumber('page')->name('pages.edit');
-        Route::put('pages/{page}', [WebsiteContentController::class, 'updatePage'])->whereNumber('page')->name('pages.update');
-        Route::delete('pages/{page}', [WebsiteContentController::class, 'deletePage'])->whereNumber('page')->name('pages.delete');
-        Route::get('articles', [WebsiteAdminController::class, 'articles'])->name('articles');
-        Route::get('articles/create', [WebsiteAdminController::class, 'createArticle'])->name('articles.create');
-        Route::post('articles/generate', [WebsiteAdminController::class, 'generateDraft'])->middleware('throttle:10,1')->name('articles.generate');
-        Route::post('articles', [WebsiteAdminController::class, 'saveArticle'])->name('articles.store');
-        Route::get('articles/{article}/edit', [WebsiteAdminController::class, 'editArticle'])->whereNumber('article')->name('articles.edit');
-        Route::put('articles/{article}', [WebsiteAdminController::class, 'saveArticle'])->whereNumber('article')->name('articles.update');
-        Route::delete('articles/{article}', [WebsiteAdminController::class, 'deleteArticle'])->whereNumber('article')->name('articles.delete');
-        Route::get('team', [WebsiteAdminController::class, 'team'])->name('team');
-        Route::get('team/roles', [WebsiteAdminController::class, 'team'])->name('team.roles');
-        Route::get('team/users', [WebsiteAdminController::class, 'team'])->name('team.users');
-        Route::post('team/roles', [WebsiteAdminController::class, 'createRole'])->name('team.roles.create');
-        Route::put('team/roles/{role}', [WebsiteAdminController::class, 'updateRole'])->whereNumber('role')->name('team.roles.update');
-        Route::delete('team/roles/{role}', [WebsiteAdminController::class, 'deleteRole'])->whereNumber('role')->name('team.roles.delete');
-        Route::post('team/users', [WebsiteAdminController::class, 'createUser'])->name('team.users.create');
-        Route::put('team/users/{user}', [WebsiteAdminController::class, 'updateUser'])->whereNumber('user')->name('team.users.update');
-        Route::delete('team/users/{user}', [WebsiteAdminController::class, 'deleteUser'])->whereNumber('user')->name('team.users.delete');
-    });
-});
+// 独立官网后台暂不启用，官网设置与内容统一由新版监测中心管理。
 
 Route::middleware(['site.domain', 'site.locale', 'site.view_log'])->group(function (): void {
     Route::get('/sitemap.xml', [SearchOptimizationController::class, 'sitemap'])->name('site.sitemap');

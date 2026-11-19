@@ -53,13 +53,22 @@ final class SiteThemeViewResolver
     }
 
     /**
-     * 渲染第一个存在的视图：theme.{themeId}.{template} → site.{template}。
-     *
-     * @param  array<string, mixed>  $data
+     * @Name: first
+     * @Description: 选择当前主题的首个可用视图，并向所有官网模板注入备案号展示字段。
+     * @Author: cdkay
+     * @CreateTime: 2026-11-11 15:12:50
+     * @UpdateTime: 2026-11-18 16:26:24
+     * @Param string $template 官网页面模板标识
+     * @Param array<string,mixed> $data 当前页面渲染数据
+     * @Return ViewContract 已合并站点资料的官网页面
+     * @Throws InvalidArgumentException 候选视图无法解析时由 Laravel 视图层抛出
      */
     public static function first(string $template, array $data = []): ViewContract
     {
-        return View::first(self::candidateViews($template), $data);
+        return View::first(self::candidateViews($template), [
+            'icpNumber' => SiteSettingsBag::get('icp_number'),
+            ...$data,
+        ]);
     }
 
     /**

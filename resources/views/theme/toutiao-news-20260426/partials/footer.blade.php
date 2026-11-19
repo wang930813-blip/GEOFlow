@@ -77,6 +77,9 @@
 
         <div class="tt-footer-inner">
             {{ $footerCopyright !== '' ? $footerCopyright : '© '.date('Y').' '.$siteName.'. All rights reserved.' }}
+            @if (trim((string) ($icpNumber ?? '')) !== '')
+                <small class="website-icp-number">ICP备案号：{{ $icpNumber }}</small>
+            @endif
         </div>
     </div>
 </footer>

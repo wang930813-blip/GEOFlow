@@ -21,4 +21,7 @@
         <span>© {{ data_get($site, 'copyright', now()->year) }} {{ data_get($site, 'brand_name') }}</span>
         <span>科技服务 · 清晰呈现</span>
     </div>
+    @if (trim((string) ($icpNumber ?? '')) !== '')
+        <div class="footer-bottom section-shell"><small class="website-icp-number">ICP备案号：{{ $icpNumber }}</small></div>
+    @endif
 </footer>

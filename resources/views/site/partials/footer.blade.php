@@ -73,6 +73,9 @@
 
         <div class="text-center pt-6 border-t border-gray-100">
             <p class="text-gray-500 text-sm">{{ $footerCopyright !== '' ? $footerCopyright : '© '.date('Y').' '.$siteName }}</p>
+            @if (trim((string) ($icpNumber ?? '')) !== '')
+                <small class="block mt-2 text-gray-500">ICP备案号：{{ $icpNumber }}</small>
+            @endif
         </div>
     </div>
 </footer>
