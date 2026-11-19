@@ -24,11 +24,14 @@ use App\Http\Controllers\Api\V1\McpVideoGenerationController;
 use App\Http\Controllers\Api\V1\MediaResourceController;
 use App\Http\Controllers\Api\V1\MediaSubmissionController;
 use App\Http\Controllers\Api\V1\MonitorAuthController;
-use App\Http\Controllers\Api\V1\MonitorMediaPublishingController;
-use App\Http\Controllers\Api\V1\MonitorWebsiteController;
-use App\Http\Controllers\Api\V1\MonitorWebsiteContentController;
-use App\Http\Controllers\Api\V1\MonitoringReportPdfController;
 use App\Http\Controllers\Api\V1\MonitoringDashboardController;
+use App\Http\Controllers\Api\V1\MonitoringReportPdfController;
+use App\Http\Controllers\Api\V1\MonitorMediaPublishingController;
+use App\Http\Controllers\Api\V1\MonitorOpenPlatformApplicationController;
+use App\Http\Controllers\Api\V1\MonitorWebsiteContentController;
+use App\Http\Controllers\Api\V1\MonitorWebsiteController;
+use App\Http\Controllers\Api\V1\OpenPlatformAuthController;
+use App\Http\Controllers\Api\V1\OpenPlatformDataController;
 use App\Http\Controllers\Api\V1\TaskController;
 use App\Http\Middleware\AuthenticateMonitorUser;
 use Illuminate\Support\Facades\Route;
@@ -67,6 +70,14 @@ Route::prefix('v1')
                     ->whereNumber('article');
                 Route::get('dashboard', [MonitoringDashboardController::class, 'index']);
                 Route::get('report/pdf', [MonitoringReportPdfController::class, 'show']);
+                Route::get('open-platform/apps', [MonitorOpenPlatformApplicationController::class, 'index']);
+                Route::post('open-platform/apps', [MonitorOpenPlatformApplicationController::class, 'store']);
+                Route::patch('open-platform/apps/{application}', [MonitorOpenPlatformApplicationController::class, 'update'])
+                    ->whereNumber('application');
+                Route::post('open-platform/apps/{application}/rotate-secret', [MonitorOpenPlatformApplicationController::class, 'rotateSecret'])
+                    ->whereNumber('application');
+                Route::delete('open-platform/apps/{application}', [MonitorOpenPlatformApplicationController::class, 'destroy'])
+                    ->whereNumber('application');
                 Route::get('media/resources', [MonitorMediaPublishingController::class, 'resources']);
                 Route::get('media/articles', [MonitorMediaPublishingController::class, 'articles']);
                 Route::get('media/credits', [MonitorMediaPublishingController::class, 'credits']);
@@ -79,6 +90,22 @@ Route::prefix('v1')
                     ->whereNumber('submission');
                 Route::post('media/submissions/{submission}/appeal', [MonitorMediaPublishingController::class, 'appeal'])
                     ->whereNumber('submission');
+            });
+
+        Route::post('open-platform/auth/token', [OpenPlatformAuthController::class, 'token'])
+            ->middleware('throttle:12,1');
+
+        Route::prefix('open-platform')
+            ->middleware(['throttle:machine-api', 'open-platform.auth'])
+            ->group(function (): void {
+                Route::get('report', [OpenPlatformDataController::class, 'report'])
+                    ->middleware('open-platform.scope:reports:read');
+                Route::get('diagnosis-records', [OpenPlatformDataController::class, 'diagnosisRecords'])
+                    ->middleware('open-platform.scope:diagnosis-records:read');
+                Route::get('platforms', [OpenPlatformDataController::class, 'platforms'])
+                    ->middleware('open-platform.scope:platforms:read');
+                Route::get('questions', [OpenPlatformDataController::class, 'questions'])
+                    ->middleware('open-platform.scope:questions:read');
             });
 
         Route::middleware(['throttle:machine-api', 'brand-diagnosis.api-key'])->group(function (): void {

@@ -14,12 +14,14 @@ use App\Http\Middleware\AuthenticateApiToken;
 use App\Http\Middleware\AuthenticateBrandDiagnosisLookupApiKey;
 use App\Http\Middleware\AuthenticateBrandDiagnosisOpenApi;
 use App\Http\Middleware\AuthenticateCrebeeAgent;
+use App\Http\Middleware\AuthenticateOpenPlatformToken;
 use App\Http\Middleware\AuthenticateWebsiteAdmin;
 use App\Http\Middleware\AutoFollowRedirectBody;
 use App\Http\Middleware\EnsureAgentAdmin;
 use App\Http\Middleware\EnsureAiConfigurationManager;
 use App\Http\Middleware\EnsureApiScope;
 use App\Http\Middleware\EnsureCurrentSite;
+use App\Http\Middleware\EnsureOpenPlatformScope;
 use App\Http\Middleware\EnsureSuperAdmin;
 use App\Http\Middleware\LogAdminActivity;
 use App\Http\Middleware\RecordSiteViewLog;
@@ -67,6 +69,8 @@ return Application::configure(basePath: dirname(__DIR__))
             // 品牌诊断开放 API：固定 X-Api-Key 鉴权，不绑定站点
             'brand-diagnosis.api-key' => AuthenticateBrandDiagnosisOpenApi::class,
             'brand-diagnosis.lookup-api-key' => AuthenticateBrandDiagnosisLookupApiKey::class,
+            'open-platform.auth' => AuthenticateOpenPlatformToken::class,
+            'open-platform.scope' => EnsureOpenPlatformScope::class,
             // 校验 Token scopes，如 api.scope:catalog:read
             'api.scope' => EnsureApiScope::class,
             'crebee.agent' => AuthenticateCrebeeAgent::class,

@@ -57,6 +57,27 @@ abstract class BaseApiController extends Controller
     }
 
     /**
+     * @Name: successNoStore
+     * @Description: 为包含访问令牌或应用密钥明文的成功响应添加禁止缓存响应头，避免客户端和中间代理持久化敏感凭证。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-11-19 12:41:17
+     * @UpdateTime: 2026-11-19 12:41:17
+     *
+     * @Param: Request $request 当前请求上下文
+     * @Param: array<string,mixed> $data 统一响应中的业务数据
+     * @Param: int $status HTTP 响应状态码
+     * @Return: JsonResponse 带禁止缓存头的成功响应
+     * @Throws: 无
+     */
+    protected function successNoStore(Request $request, array $data, int $status = 200): JsonResponse
+    {
+        return $this->success($request, $data, $status)
+            ->header('Cache-Control', 'no-store, private')
+            ->header('Pragma', 'no-cache');
+    }
+
+    /**
      * Success response variant for endpoints that need additional public meta fields.
      * Existing endpoint envelopes remain unchanged.
      *
