@@ -7,6 +7,8 @@
  *
  * @Time: 12:11:31
  *
+ * @UpdateTime: 2026-11-20 10:41:07
+ *
  * @Author: cdkay
  *
  * @Email: network@iyuanma.net
@@ -31,6 +33,11 @@ final class OpenPlatformApplication extends Model
         'diagnosis-records:read',
         'platforms:read',
         'questions:read',
+        'mentions:read',
+        'sentiment:read',
+        'sources:read',
+        'conversations:read',
+        'citations:read',
     ];
 
     protected $hidden = [

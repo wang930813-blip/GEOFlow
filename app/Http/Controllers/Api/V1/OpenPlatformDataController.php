@@ -7,6 +7,8 @@
  *
  * @Time: 12:11:31
  *
+ * @UpdateTime: 2026-11-20 10:41:07
+ *
  * @Author: cdkay
  *
  * @Email: network@iyuanma.net
@@ -53,7 +55,7 @@ final class OpenPlatformDataController extends BaseApiController
      *
      * @CreateTime: 2026-11-19 12:11:31
      *
-     * @UpdateTime: 2026-11-19 12:34:09
+     * @UpdateTime: 2026-11-20 10:41:07
      *
      * @Return JsonResponse 筛选条件、诊断记录摘要和完整报告明细
      *
@@ -64,6 +66,210 @@ final class OpenPlatformDataController extends BaseApiController
         CurrentSite $currentSite,
         MonitoringDashboardDataService $dashboardData
     ): JsonResponse {
+        $dashboard = $this->filteredDashboard($request, $currentSite, $dashboardData);
+
+        return $this->success($request, [
+            'filters' => $dashboard['filters'] ?? [],
+            'diagnosis_records' => $dashboard['diagnosis_records'] ?? [],
+            'report' => $dashboard['latest_diagnosis'] ?? null,
+        ]);
+    }
+
+    /**
+     * 提及率与排名
+     * 返回当前筛选范围内的品牌提及摘要、平台表现和问题排名。
+     * @Url [GET] /api/v1/open-platform/mentions
+     *      登录 是
+     *      run_id integer 可选 诊断记录编号；未传时使用日期范围内最新的已完成记录
+     *      platform string 可选 平台键
+     *      question_id integer 可选 诊断问题编号
+     *      start_date string 可选 诊断完成起始日期，格式 YYYY-MM-DD
+     *      end_date string 可选 诊断完成结束日期，格式 YYYY-MM-DD
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-11-20 10:26:46
+     * @UpdateTime: 2026-11-20 10:41:07
+     *
+     * @Return JsonResponse 筛选条件、诊断摘要、平台提及率和问题排名
+     * @Throws ApiException|ValidationException 令牌权限不足、记录越权或筛选参数无效
+     */
+    public function mentions(
+        Request $request,
+        CurrentSite $currentSite,
+        MonitoringDashboardDataService $dashboardData
+    ): JsonResponse {
+        $dashboard = $this->filteredDashboard($request, $currentSite, $dashboardData);
+        $diagnosis = $dashboard['latest_diagnosis'] ?? null;
+
+        return $this->success($request, [
+            'filters' => $dashboard['filters'] ?? [],
+            'diagnosis' => $this->diagnosisMetadata($diagnosis),
+            'summary' => $diagnosis['summary'] ?? null,
+            'platforms' => $diagnosis['platforms'] ?? [],
+            'questions' => $diagnosis['questions'] ?? [],
+        ]);
+    }
+
+    /**
+     * 品牌情绪监测
+     * 返回当前筛选范围内的情绪摘要及各平台正向、中性、负向占比。
+     * @Url [GET] /api/v1/open-platform/sentiment
+     *      登录 是
+     *      run_id integer 可选 诊断记录编号；未传时使用日期范围内最新的已完成记录
+     *      platform string 可选 平台键
+     *      question_id integer 可选 诊断问题编号
+     *      start_date string 可选 诊断完成起始日期，格式 YYYY-MM-DD
+     *      end_date string 可选 诊断完成结束日期，格式 YYYY-MM-DD
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-11-20 10:26:46
+     * @UpdateTime: 2026-11-20 10:41:07
+     *
+     * @Return JsonResponse 筛选条件、诊断摘要和平台情绪占比
+     * @Throws ApiException|ValidationException 令牌权限不足、记录越权或筛选参数无效
+     */
+    public function sentiment(
+        Request $request,
+        CurrentSite $currentSite,
+        MonitoringDashboardDataService $dashboardData
+    ): JsonResponse {
+        $dashboard = $this->filteredDashboard($request, $currentSite, $dashboardData);
+        $diagnosis = $dashboard['latest_diagnosis'] ?? null;
+        $platforms = array_map(static fn (array $platform): array => [
+            'platform_key' => (string) ($platform['platform_key'] ?? ''),
+            'platform' => (string) ($platform['platform'] ?? ''),
+            'total' => (int) ($platform['total'] ?? 0),
+            'positive_rate' => (int) ($platform['positive_rate'] ?? 0),
+            'neutral_rate' => (int) ($platform['neutral_rate'] ?? 0),
+            'negative_rate' => (int) ($platform['negative_rate'] ?? 0),
+        ], (array) ($diagnosis['platforms'] ?? []));
+
+        return $this->success($request, [
+            'filters' => $dashboard['filters'] ?? [],
+            'diagnosis' => $this->diagnosisMetadata($diagnosis),
+            'summary' => isset($diagnosis['summary']['sentiment_rate'])
+                ? ['sentiment_rate' => (int) $diagnosis['summary']['sentiment_rate']]
+                : null,
+            'platforms' => $platforms,
+        ]);
+    }
+
+    /**
+     * AI 引用来源
+     * 返回当前筛选范围内按引用次数排序的去重来源域名及占比。
+     * @Url [GET] /api/v1/open-platform/sources
+     *      登录 是
+     *      run_id integer 可选 诊断记录编号；未传时使用日期范围内最新的已完成记录
+     *      platform string 可选 平台键
+     *      question_id integer 可选 诊断问题编号
+     *      start_date string 可选 诊断完成起始日期，格式 YYYY-MM-DD
+     *      end_date string 可选 诊断完成结束日期，格式 YYYY-MM-DD
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-11-20 10:26:46
+     * @UpdateTime: 2026-11-20 10:41:07
+     *
+     * @Return JsonResponse 筛选条件、诊断摘要和来源列表
+     * @Throws ApiException|ValidationException 令牌权限不足、记录越权或筛选参数无效
+     */
+    public function sources(
+        Request $request,
+        CurrentSite $currentSite,
+        MonitoringDashboardDataService $dashboardData
+    ): JsonResponse {
+        $dashboard = $this->filteredDashboard($request, $currentSite, $dashboardData);
+        $diagnosis = $dashboard['latest_diagnosis'] ?? null;
+
+        return $this->success($request, [
+            'filters' => $dashboard['filters'] ?? [],
+            'diagnosis' => $this->diagnosisMetadata($diagnosis),
+            'items' => $diagnosis['sources'] ?? [],
+        ]);
+    }
+
+    /**
+     * AI 对话记录
+     * 返回当前筛选范围内按时间倒序排列的平台问题与回答。
+     * @Url [GET] /api/v1/open-platform/conversations
+     *      登录 是
+     *      run_id integer 可选 诊断记录编号；未传时使用日期范围内最新的已完成记录
+     *      platform string 可选 平台键
+     *      question_id integer 可选 诊断问题编号
+     *      start_date string 可选 诊断完成起始日期，格式 YYYY-MM-DD
+     *      end_date string 可选 诊断完成结束日期，格式 YYYY-MM-DD
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-11-20 10:26:46
+     * @UpdateTime: 2026-11-20 10:41:07
+     *
+     * @Return JsonResponse 筛选条件、诊断摘要和 AI 对话列表
+     * @Throws ApiException|ValidationException 令牌权限不足、记录越权或筛选参数无效
+     */
+    public function conversations(
+        Request $request,
+        CurrentSite $currentSite,
+        MonitoringDashboardDataService $dashboardData
+    ): JsonResponse {
+        $dashboard = $this->filteredDashboard($request, $currentSite, $dashboardData);
+        $diagnosis = $dashboard['latest_diagnosis'] ?? null;
+
+        return $this->success($request, [
+            'filters' => $dashboard['filters'] ?? [],
+            'diagnosis' => $this->diagnosisMetadata($diagnosis),
+            'items' => $diagnosis['conversations'] ?? [],
+        ]);
+    }
+
+    /**
+     * 作品引用追踪
+     * 返回当前筛选范围内回答引用的作品标题、来源地址、平台和诊断时间。
+     * @Url [GET] /api/v1/open-platform/citations
+     *      登录 是
+     *      run_id integer 可选 诊断记录编号；未传时使用日期范围内最新的已完成记录
+     *      platform string 可选 平台键
+     *      question_id integer 可选 诊断问题编号
+     *      start_date string 可选 诊断完成起始日期，格式 YYYY-MM-DD
+     *      end_date string 可选 诊断完成结束日期，格式 YYYY-MM-DD
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-11-20 10:26:46
+     * @UpdateTime: 2026-11-20 10:41:07
+     *
+     * @Return JsonResponse 筛选条件、诊断摘要和作品引用列表
+     * @Throws ApiException|ValidationException 令牌权限不足、记录越权或筛选参数无效
+     */
+    public function citations(
+        Request $request,
+        CurrentSite $currentSite,
+        MonitoringDashboardDataService $dashboardData
+    ): JsonResponse {
+        $dashboard = $this->filteredDashboard($request, $currentSite, $dashboardData);
+        $diagnosis = $dashboard['latest_diagnosis'] ?? null;
+
+        return $this->success($request, [
+            'filters' => $dashboard['filters'] ?? [],
+            'diagnosis' => $this->diagnosisMetadata($diagnosis),
+            'items' => $diagnosis['citations'] ?? [],
+        ]);
+    }
+
+    /**
+     * @Name: filteredDashboard
+     * @Description: 对开放平台全部诊断分析接口使用一致的授权范围、筛选校验和租户边界。
+     * @Author: cdkay
+     * @CreateTime: 2026-11-20 10:26:46
+     * @UpdateTime: 2026-11-20 10:41:07
+     * @Param: Request $request 当前接口请求
+     * @Param: CurrentSite $currentSite 当前站点上下文
+     * @Param: MonitoringDashboardDataService $dashboardData 监测中心数据服务
+     * @Return array<string,mixed> 当前账号与站点范围内的标准化监测中心数据
+     * @Throws ApiException|ValidationException 记录、问题、平台越权或筛选参数无效
+     */
+    private function filteredDashboard(
+        Request $request,
+        CurrentSite $currentSite,
+        MonitoringDashboardDataService $dashboardData
+    ): array {
         [$application, $admin, $site] = $this->openPlatformContext($request, $currentSite);
         $filters = $this->validateReportFilters($request);
         $dashboard = $dashboardData->build($admin, $site, $filters);
@@ -99,11 +305,32 @@ final class OpenPlatformDataController extends BaseApiController
             }
         }
 
-        return $this->success($request, [
-            'filters' => $dashboard['filters'] ?? [],
-            'diagnosis_records' => $dashboard['diagnosis_records'] ?? [],
-            'report' => $dashboard['latest_diagnosis'] ?? null,
-        ]);
+        return $dashboard;
+    }
+
+    /**
+     * @Name: diagnosisMetadata
+     * @Description: 仅呈现报告所属诊断记录的公开摘要信息，不返回报告其他模块明细。
+     * @Author: cdkay
+     * @CreateTime: 2026-11-20 10:26:46
+     * @UpdateTime: 2026-11-20 10:26:46
+     * @Param: array<string,mixed>|null $diagnosis 当前应用授权范围内的诊断数据
+     * @Return array<string,mixed>|null 诊断记录标识和时间信息，无记录时返回 null
+     * @Throws: 无
+     */
+    private function diagnosisMetadata(?array $diagnosis): ?array
+    {
+        if ($diagnosis === null) {
+            return null;
+        }
+
+        return [
+            'id' => (int) ($diagnosis['id'] ?? 0),
+            'brand' => (string) ($diagnosis['brand'] ?? ''),
+            'status' => (string) ($diagnosis['status'] ?? ''),
+            'created_at' => (string) ($diagnosis['created_at'] ?? ''),
+            'completed_at' => (string) ($diagnosis['completed_at'] ?? ''),
+        ];
     }
 
     /**

@@ -106,6 +106,16 @@ Route::prefix('v1')
                     ->middleware('open-platform.scope:platforms:read');
                 Route::get('questions', [OpenPlatformDataController::class, 'questions'])
                     ->middleware('open-platform.scope:questions:read');
+                Route::get('mentions', [OpenPlatformDataController::class, 'mentions'])
+                    ->middleware('open-platform.scope:mentions:read');
+                Route::get('sentiment', [OpenPlatformDataController::class, 'sentiment'])
+                    ->middleware('open-platform.scope:sentiment:read');
+                Route::get('sources', [OpenPlatformDataController::class, 'sources'])
+                    ->middleware('open-platform.scope:sources:read');
+                Route::get('conversations', [OpenPlatformDataController::class, 'conversations'])
+                    ->middleware('open-platform.scope:conversations:read');
+                Route::get('citations', [OpenPlatformDataController::class, 'citations'])
+                    ->middleware('open-platform.scope:citations:read');
             });
 
         Route::middleware(['throttle:machine-api', 'brand-diagnosis.api-key'])->group(function (): void {
