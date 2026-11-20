@@ -23,6 +23,7 @@ RUN composer install \
     --prefer-dist \
     --classmap-authoritative \
     --no-scripts \
+    --ignore-platform-req=php+ \
     --ignore-platform-req=ext-pcntl
 
 COPY . .
@@ -32,7 +33,7 @@ RUN composer dump-autoload \
     --no-interaction \
     --classmap-authoritative \
     --no-scripts \
- && BROADCAST_CONNECTION=null php artisan package:discover --ansi
+    --ignore-platform-req=php+
 
 FROM ${NODE_IMAGE} AS assets
 
@@ -109,6 +110,8 @@ RUN chmod +x /usr/local/bin/geoflow-entrypoint-prod
 
 COPY --from=vendor /app /var/www/html
 COPY --from=assets /app/public/build /var/www/html/public/build
+
+RUN BROADCAST_CONNECTION=null php artisan package:discover --ansi
 
 ENTRYPOINT ["/usr/local/bin/geoflow-entrypoint-prod"]
 CMD ["php-fpm", "-F"]
