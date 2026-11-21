@@ -98,20 +98,60 @@
             </div>
         </div>
 
+        @if ($canManageDiagnosisModels)
+            <section class="mb-5 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5" aria-labelledby="diagnosis-model-operations-title">
+                <div class="mb-4 flex flex-col gap-1">
+                    <h2 id="diagnosis-model-operations-title" class="text-base font-semibold text-gray-900">诊断模型运维控制</h2>
+                    <p class="text-sm text-gray-600">停用后将拦截后续模型调用，正在进行的单次请求不会中断；启用前需完成接口配置。</p>
+                </div>
+                @if (session('message'))
+                    <div class="mb-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{{ session('message') }}</div>
+                @endif
+                @error('diagnosis_model')
+                    <div class="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{{ $message }}</div>
+                @enderror
+                <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                    @foreach ($models as $model)
+                        <form method="POST" action="{{ route('admin.brand-diagnosis.models.toggle', ['platform' => $model['key']]) }}" class="flex min-h-20 items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2" data-diagnosis-model-toggle-form>
+                            @csrf
+                            <input type="hidden" name="enabled" value="{{ $model['operator_enabled'] ? '1' : '0' }}" data-diagnosis-model-enabled-value>
+                            <div class="min-w-0">
+                                <div class="truncate text-sm font-semibold text-gray-900">{{ $model['name'] }}</div>
+                                <div class="mt-1 text-xs {{ $model['available'] ? 'text-emerald-700' : 'text-slate-500' }}">
+                                    {{ $model['available'] ? '已启用' : ($model['operator_enabled'] ? '接口配置不完整' : '已停用') }}
+                                </div>
+                            </div>
+                            <label class="inline-flex shrink-0 cursor-pointer items-center gap-2 text-xs font-medium text-gray-700" title="{{ $model['configured'] ? '切换模型运维状态' : '补齐接口配置后才能启用' }}">
+                                <input type="checkbox" class="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" data-diagnosis-model-toggle @checked($model['operator_enabled']) @disabled(! $model['configured'] && ! $model['operator_enabled']) aria-label="{{ $model['operator_enabled'] ? '停用' : '启用' }}{{ $model['name'] }}">
+                                {{ $model['operator_enabled'] ? '开关已开' : '开关已关' }}
+                            </label>
+                        </form>
+                    @endforeach
+                </div>
+            </section>
+        @endif
+
         <section class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5" aria-labelledby="brand-diagnosis-form-title">
             <form method="POST" action="{{ route('admin.brand-diagnosis.store') }}" class="flex flex-col gap-4 lg:flex-row lg:items-start" data-brand-diagnosis-form data-reuse-check-url="{{ route('admin.brand-diagnosis.reusable-questions') }}">
                 @csrf
                 <input type="hidden" name="reuse_questions" value="0" data-reuse-questions-field>
                 <div class="min-w-0 flex-1">
                     <label id="brand-diagnosis-form-title" for="brand-name" class="mb-2 block text-sm font-semibold text-gray-900">品牌名称</label>
-                    <div class="flex flex-col gap-3 sm:flex-row">
+                    <div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_180px_auto]">
                         <input id="brand-name" name="brand_name" type="text" value="{{ old('brand_name') }}" class="min-w-0 flex-1 rounded-md border border-slate-200 bg-white text-sm" aria-label="品牌名称">
+                        <select name="diagnosis_mode" class="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-gray-900" aria-label="诊断模式">
+                            <option value="standard" @selected(old('diagnosis_mode', 'standard') === 'standard')>标准诊断（{{ $defaultQuestionCount }} 条）</option>
+                            <option value="deep" @selected(old('diagnosis_mode') === 'deep')>深度诊断（30 条）</option>
+                        </select>
                         <button type="submit" class="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md bg-orange-600 px-5 text-sm font-semibold text-white hover:bg-orange-700">
                             <i data-lucide="search" class="h-4 w-4"></i>
                             搜索一下
                         </button>
                     </div>
                     @error('brand_name')
+                        <p class="mt-2 text-xs font-medium text-red-600">{{ $message }}</p>
+                    @enderror
+                    @error('diagnosis_mode')
                         <p class="mt-2 text-xs font-medium text-red-600">{{ $message }}</p>
                     @enderror
                     <p class="mt-2 text-xs text-gray-500">选择模型后，可生成品牌提及率、提及次数、排名和引用来源报告。</p>
@@ -145,7 +185,7 @@
                                 @else
                                     <div class="flex min-h-6 items-center gap-2 text-gray-400">
                                         <span class="inline-flex h-2 w-2 rounded-full bg-slate-300"></span>
-                                        待接入
+                                        {{ $model['operator_enabled'] ? '配置不完整' : '运维停用' }}
                                     </div>
                                 @endif
                             </div>
@@ -157,7 +197,7 @@
                 <div class="flex flex-wrap items-center gap-4 text-sm text-gray-600">
                     <span class="inline-flex min-h-9 items-center gap-2">
                         <span class="inline-flex h-2 w-2 rounded-full bg-orange-500"></span>
-                        数据来源：<span data-selected-platforms>豆包、DeepSeek、千问、文心一言、元宝</span>
+                        数据来源：<span data-selected-platforms>{{ collect($models)->filter(static fn (array $model): bool => $model['available'])->pluck('name')->implode('、') ?: '暂无可用模型' }}</span>
                     </span>
                 </div>
                 <div class="text-xs text-gray-500">模型限定：豆包、千问、文心一言、DeepSeek、元宝</div>
@@ -858,6 +898,16 @@
                 checkbox.addEventListener('change', renderSelectedPlatforms);
             });
             renderSelectedPlatforms();
+
+            document.querySelectorAll('[data-diagnosis-model-toggle-form]').forEach((form) => {
+                const toggle = form.querySelector('[data-diagnosis-model-toggle]');
+                const enabledValue = form.querySelector('[data-diagnosis-model-enabled-value]');
+                toggle?.addEventListener('change', () => {
+                    if (!enabledValue) return;
+                    enabledValue.value = toggle.checked ? '1' : '0';
+                    form.requestSubmit();
+                });
+            });
 
             document.querySelectorAll('[data-record-toggle]').forEach((button) => {
                 button.addEventListener('click', () => {

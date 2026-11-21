@@ -30,9 +30,9 @@ use App\Http\Controllers\Admin\ImageLibraryController;
 use App\Http\Controllers\Admin\KeywordLibraryController;
 use App\Http\Controllers\Admin\KnowledgeBaseController;
 use App\Http\Controllers\Admin\LegacyController;
-use App\Http\Controllers\Admin\ManualPublishStatController;
 use App\Http\Controllers\Admin\ManagementProductCaseController;
 use App\Http\Controllers\Admin\ManagementToolController;
+use App\Http\Controllers\Admin\ManualPublishStatController;
 use App\Http\Controllers\Admin\MaterialsController;
 use App\Http\Controllers\Admin\McpServerController;
 use App\Http\Controllers\Admin\MediaDistribution\CreditController as MediaDistributionCreditController;
@@ -61,12 +61,12 @@ use App\Http\Controllers\BrandDiagnosisSnapshotController;
 use App\Http\Controllers\MediaSubmissionPreviewController;
 use App\Http\Controllers\MonitoringReportShareController;
 use App\Http\Controllers\ProductCaseController;
-use App\Http\Controllers\Site\SearchOptimizationController;
 use App\Http\Controllers\Site\ArchiveController;
 use App\Http\Controllers\Site\ArticleController as SiteArticleController;
 use App\Http\Controllers\Site\CategoryController as SiteCategoryController;
 use App\Http\Controllers\Site\HomeController;
 use App\Http\Controllers\Site\PageController;
+use App\Http\Controllers\Site\SearchOptimizationController;
 use App\Http\Controllers\Site\WebsiteContentPublicController;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Support\Facades\Auth;
@@ -159,6 +159,10 @@ Route::prefix($adminPrefix)->name('admin.')->middleware(['admin.locale'])->group
         Route::post('monitoring-center/share', [MonitoringCenterController::class, 'share'])->name('monitoring-center.share');
         Route::get('brand-diagnosis', [BrandDiagnosisController::class, 'index'])->name('brand-diagnosis.index');
         Route::post('brand-diagnosis', [BrandDiagnosisController::class, 'store'])->name('brand-diagnosis.store');
+        Route::post('brand-diagnosis/models/{platform}/toggle', [BrandDiagnosisController::class, 'togglePlatform'])
+            ->middleware('admin.super')
+            ->name('brand-diagnosis.models.toggle')
+            ->where('platform', 'doubao|deepseek|qianwen|wenxin|yuanbao');
         Route::get('brand-diagnosis/reusable-questions', [BrandDiagnosisController::class, 'reusableQuestions'])
             ->name('brand-diagnosis.reusable-questions');
         Route::get('brand-diagnosis/open-api', [BrandDiagnosisController::class, 'openApiIndex'])

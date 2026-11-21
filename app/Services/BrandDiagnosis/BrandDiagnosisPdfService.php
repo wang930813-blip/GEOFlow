@@ -39,11 +39,21 @@ class BrandDiagnosisPdfService
 
         $y = self::TOP;
         $y = $this->drawHero($record, $fileName, $data, $y);
-        $y = $this->drawSectionTitle('整体表现', '核心指标按本次采集到的 AI 回答、引用来源和品牌提及记录汇总计算。', $y + 9);
+        $y = $this->drawSectionTitle('整体表现', '推荐率表示有明确品牌位次的有效回答占比；Top1 按位次为 1 计算，Top3/Top5 分别按位次不高于 3/5 计算，分母均为成功回答。', $y + 9);
         $y = $this->drawMetricCards($data['metrics'], $y);
+        $y = $this->drawRankingMetricCards($data['analytics_metrics'], $y + 4);
         $y = $this->drawPlatformCards($data['platforms'], $y + 4);
         $y = $this->drawSectionTitle('AI 可见度分析', '展示本次诊断中竞品和目标品牌在 AI 回答与引用内容中的提及强度。', $y + 8);
         $y = $this->drawVisibility($data, $y);
+        $this->ensureSpace(39, $y);
+        $y = $this->drawSectionTitle('问题维度表现', '按问题类型拆分有效回答、目标品牌提及、推荐位次与平均排名。', $y + 8);
+        $y = $this->drawDimensionRows($data['dimensions'], $y);
+        $this->ensureSpace(39, $y);
+        $y = $this->drawSectionTitle('竞品表现', '竞品指标以全部有效回答为分母，同一回答中的同一竞品只计一次。', $y + 8);
+        $y = $this->drawCompetitorRows($data['analysis_competitors'], $y);
+        $this->ensureSpace(39, $y);
+        $y = $this->drawSectionTitle('信源平台分布', '引用域名按内容平台归类，展示引用次数、占比和覆盖域名数。', $y + 8);
+        $y = $this->drawSourcePlatformRows($data['source_platforms'], $y);
         $y = $this->drawSectionTitle('引用源分析', '引用源代表 AI 回答中可追溯的网页、文章或搜索结果。', $y + 8);
         $y = $this->drawSources($data['sources'], $y);
         $y = $this->drawSectionTitle('AI 问题与对话明细', '展示本次用于诊断的问题、平台回答、提及品牌和引用记录。', $y + 8);
@@ -61,6 +71,7 @@ class BrandDiagnosisPdfService
     private function prepareData(array $record): array
     {
         $metrics = (array) ($record['metrics'] ?? []);
+        $analytics = (array) ($record['analytics'] ?? []);
         $rankings = (array) ($record['rankings'] ?? []);
         $sources = collect(array_slice((array) ($record['sources'] ?? []), 0, 8))
             ->map(function ($source): array {
@@ -93,6 +104,7 @@ class BrandDiagnosisPdfService
                     'label' => (string) ($option['label'] ?? $option['value'] ?? '平台'),
                     'logo_path' => BrandDiagnosisPlatform::logoAbsolutePath($value),
                     'metrics' => (array) ($platformData[$value]['metrics'] ?? []),
+                    'analytics_metrics' => (array) ($platformData[$value]['analytics']['metrics'] ?? []),
                 ];
             })
             ->values()
@@ -112,6 +124,10 @@ class BrandDiagnosisPdfService
                 'mention_count' => (int) ($metrics['mention_count'] ?? 0),
                 'sentiment_rate' => (int) ($metrics['sentiment_rate'] ?? 0),
             ],
+            'analytics_metrics' => (array) ($analytics['metrics'] ?? []),
+            'dimensions' => (array) ($analytics['dimensions'] ?? []),
+            'analysis_competitors' => (array) ($analytics['competitors'] ?? []),
+            'source_platforms' => (array) ($analytics['source_platforms'] ?? []),
             'platform_labels' => $platformOptions->pluck('label')->implode('、') ?: '全部平台',
             'platforms' => $platforms,
             'competitors' => $competitors,
@@ -209,6 +225,49 @@ class BrandDiagnosisPdfService
     }
 
     /**
+     * @Name: drawRankingMetricCards
+     *
+     * @Description: 在 PDF 整体表现区展示推荐率和 Top1/Top3/Top5，百分比分母统一为有效回答数。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-11-20 18:03:19
+     *
+     * @UpdateTime: 2026-11-20 18:15:47
+     *
+     * @Param: array<string,mixed> $metrics 基于成功回答计算的推荐位次指标
+     *
+     * @Param: float $y 指标卡片区域起始纵坐标
+     *
+     * @Return: float 卡片区域底部纵坐标
+     *
+     * @Throws: 无
+     */
+    private function drawRankingMetricCards(array $metrics, float $y): float
+    {
+        $cards = [
+            ['label' => '推荐率', 'key' => 'recommendation_rate', 'count' => 'recommendation_count', 'color' => [5, 150, 105]],
+            ['label' => 'Top1', 'key' => 'top1_rate', 'count' => 'top1_count', 'color' => [217, 119, 6]],
+            ['label' => 'Top3', 'key' => 'top3_rate', 'count' => 'top3_count', 'color' => [79, 70, 229]],
+            ['label' => 'Top5', 'key' => 'top5_rate', 'count' => 'top5_count', 'color' => [225, 29, 72]],
+        ];
+        $gap = 3.0;
+        $cardW = (self::WIDTH - ($gap * 3)) / 4;
+        $cardH = 25.0;
+        $answerCount = (int) ($metrics['answer_count'] ?? 0);
+
+        foreach ($cards as $index => $card) {
+            $x = self::LEFT + (($cardW + $gap) * $index);
+            $this->card($x, $y, $cardW, $cardH);
+            $this->text(number_format((float) ($metrics[$card['key']] ?? 0), 1).'%', $x + 3, $y + 4.2, $cardW - 6, 7, 13, $card['color'], 'B');
+            $this->text($card['label'], $x + 3, $y + 13, $cardW - 6, 4, 7.5, [51, 65, 85], 'B');
+            $this->text(((int) ($metrics[$card['count']] ?? 0)).' / '.$answerCount.' 条有效回答', $x + 3, $y + 18.2, $cardW - 6, 3.5, 5.8, [100, 116, 139]);
+        }
+
+        return $y + $cardH;
+    }
+
+    /**
      * @param  list<array{label:string,metrics:array<string,mixed>}>  $platforms
      */
     private function drawPlatformCards(array $platforms, float $y): float
@@ -219,28 +278,194 @@ class BrandDiagnosisPdfService
 
         $gap = 3.0;
         $cardW = (self::WIDTH - ($gap * 3)) / 4;
-        foreach (array_slice($platforms, 0, 4) as $index => $platform) {
-            $x = self::LEFT + (($cardW + $gap) * $index);
-            $metrics = $platform['metrics'];
-            $this->card($x, $y, $cardW, 20);
-            $labelX = $x + 3;
-            $labelWidth = $cardW - 21;
-            if ($this->drawLogo((string) ($platform['logo_path'] ?? ''), $x + 3, $y + 3.1, 5.4)) {
-                $labelX = $x + 10;
-                $labelWidth = $cardW - 28;
+        $rowHeight = 32.0;
+
+        foreach (array_chunk($platforms, 4) as $platformRow) {
+            $this->ensureSpace($rowHeight, $y);
+            foreach ($platformRow as $index => $platform) {
+                $x = self::LEFT + (($cardW + $gap) * $index);
+                $metrics = $platform['metrics'];
+                $this->card($x, $y, $cardW, 28);
+                $labelX = $x + 3;
+                $labelWidth = $cardW - 21;
+                if ($this->drawLogo((string) ($platform['logo_path'] ?? ''), $x + 3, $y + 3.1, 5.4)) {
+                    $labelX = $x + 10;
+                    $labelWidth = $cardW - 28;
+                }
+                $this->text($this->short((string) $platform['label'], 8), $labelX, $y + 4, $labelWidth, 4, 8, [15, 23, 42], 'B');
+                $this->pill('平台', $x + $cardW - 16, $y + 3.5, 12);
+                $metricW = ($cardW - 6) / 3;
+                $this->text(((int) ($metrics['mention_rate'] ?? 0)).'%', $x + 3, $y + 11, $metricW, 4, 8.2, [234, 88, 12], 'B', 'C');
+                $this->text((string) ((int) ($metrics['mention_count'] ?? 0)), $x + 3 + $metricW, $y + 11, $metricW, 4, 8.2, [15, 23, 42], 'B', 'C');
+                $this->text((string) ($metrics['average_rank'] ?? '0'), $x + 3 + ($metricW * 2), $y + 11, $metricW, 4, 8.2, [15, 23, 42], 'B', 'C');
+                $this->text('提及率', $x + 3, $y + 15.2, $metricW, 3.2, 5.6, [71, 85, 105], '', 'C');
+                $this->text('次数', $x + 3 + $metricW, $y + 15.2, $metricW, 3.2, 5.6, [71, 85, 105], '', 'C');
+                $this->text('排名', $x + 3 + ($metricW * 2), $y + 15.2, $metricW, 3.2, 5.6, [71, 85, 105], '', 'C');
+                $analyticsMetrics = (array) ($platform['analytics_metrics'] ?? []);
+                $rankMetrics = [
+                    ['label' => '推荐', 'key' => 'recommendation_rate'],
+                    ['label' => 'Top1', 'key' => 'top1_rate'],
+                    ['label' => 'Top3', 'key' => 'top3_rate'],
+                    ['label' => 'Top5', 'key' => 'top5_rate'],
+                ];
+                $rankMetricW = ($cardW - 6) / 4;
+                foreach ($rankMetrics as $rankIndex => $rankMetric) {
+                    $rankX = $x + 3 + ($rankMetricW * $rankIndex);
+                    $this->text(number_format((float) ($analyticsMetrics[$rankMetric['key']] ?? 0), 1).'%', $rankX, $y + 20, $rankMetricW, 3.5, 5.8, [15, 23, 42], 'B', 'C');
+                    $this->text($rankMetric['label'], $rankX, $y + 24, $rankMetricW, 3, 5.1, [71, 85, 105], '', 'C');
+                }
             }
-            $this->text($this->short((string) $platform['label'], 8), $labelX, $y + 4, $labelWidth, 4, 8, [15, 23, 42], 'B');
-            $this->pill('平台', $x + $cardW - 16, $y + 3.5, 12);
-            $metricW = ($cardW - 6) / 3;
-            $this->text(((int) ($metrics['mention_rate'] ?? 0)).'%', $x + 3, $y + 11, $metricW, 4, 8.2, [234, 88, 12], 'B', 'C');
-            $this->text((string) ((int) ($metrics['mention_count'] ?? 0)), $x + 3 + $metricW, $y + 11, $metricW, 4, 8.2, [15, 23, 42], 'B', 'C');
-            $this->text((string) ($metrics['average_rank'] ?? '0'), $x + 3 + ($metricW * 2), $y + 11, $metricW, 4, 8.2, [15, 23, 42], 'B', 'C');
-            $this->text('提及率', $x + 3, $y + 15.2, $metricW, 3.2, 5.6, [71, 85, 105], '', 'C');
-            $this->text('次数', $x + 3 + $metricW, $y + 15.2, $metricW, 3.2, 5.6, [71, 85, 105], '', 'C');
-            $this->text('排名', $x + 3 + ($metricW * 2), $y + 15.2, $metricW, 3.2, 5.6, [71, 85, 105], '', 'C');
+            $y += $rowHeight;
         }
 
-        return $y + 20;
+        return $y;
+    }
+
+    /**
+     * @Name: drawDimensionRows
+     *
+     * @Description: 输出问题维度指标表，空间不足时分页并重复表头，避免维度行被截断。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-11-20 18:03:19
+     *
+     * @UpdateTime: 2026-11-20 18:15:47
+     *
+     * @Param: list<array<string,mixed>> $rows 按问题类型聚合的表现数据
+     *
+     * @Param: float $y 表格起始纵坐标
+     *
+     * @Return: float 表格底部纵坐标
+     *
+     * @Throws: 无
+     */
+    private function drawDimensionRows(array $rows, float $y): float
+    {
+        $columns = [34, 15, 17, 20, 20, 15, 15, 15, 23];
+        $labels = ['问题维度', '问题数', '有效回答', '提及率', '推荐率', 'Top1', 'Top3', 'Top5', '平均位次'];
+        $rows = $rows ?: [['dimension' => '暂无有效回答']];
+        $this->tableHeader(self::LEFT, $y, $columns, $labels);
+        $y += 7;
+
+        foreach ($rows as $row) {
+            $this->ensureSpace(8, $y);
+            if ($y === self::TOP) {
+                $this->tableHeader(self::LEFT, $y, $columns, $labels);
+                $y += 7;
+            }
+            $this->tableRow(self::LEFT, $y, $columns, [
+                $this->short((string) ($row['dimension'] ?? '未分类'), 14),
+                (string) (int) ($row['question_count'] ?? 0),
+                (string) (int) ($row['answer_count'] ?? 0),
+                number_format((float) ($row['mention_rate'] ?? 0), 1).'%',
+                number_format((float) ($row['recommendation_rate'] ?? 0), 1).'%',
+                number_format((float) ($row['top1_rate'] ?? 0), 1).'%',
+                number_format((float) ($row['top3_rate'] ?? 0), 1).'%',
+                number_format((float) ($row['top5_rate'] ?? 0), 1).'%',
+                ($row['average_rank'] ?? null) !== null ? number_format((float) $row['average_rank'], 1).' 名' : '—',
+            ]);
+            $y += 7;
+        }
+
+        return $y;
+    }
+
+    /**
+     * @Name: drawCompetitorRows
+     *
+     * @Description: 输出竞品提及覆盖和推荐位次表，竞品指标与总体报告共用有效回答分母。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-11-20 18:03:19
+     *
+     * @UpdateTime: 2026-11-20 18:15:47
+     *
+     * @Param: list<array<string,mixed>> $rows 按回答覆盖排序的竞品表现数据
+     *
+     * @Param: float $y 表格起始纵坐标
+     *
+     * @Return: float 表格底部纵坐标
+     *
+     * @Throws: 无
+     */
+    private function drawCompetitorRows(array $rows, float $y): float
+    {
+        $columns = [40, 18, 18, 23, 16, 16, 16, 27];
+        $labels = ['竞品', '出现回答', '提及次数', '推荐率', 'Top1', 'Top3', 'Top5', '平均位次'];
+        $rows = $rows ?: [['brand' => '本次未识别到竞品']];
+        $this->tableHeader(self::LEFT, $y, $columns, $labels);
+        $y += 7;
+
+        foreach ($rows as $row) {
+            $this->ensureSpace(8, $y);
+            if ($y === self::TOP) {
+                $this->tableHeader(self::LEFT, $y, $columns, $labels);
+                $y += 7;
+            }
+            $this->tableRow(self::LEFT, $y, $columns, [
+                $this->short((string) ($row['brand'] ?? '本次未识别到竞品'), 18),
+                (string) (int) ($row['answer_count'] ?? 0),
+                (string) (int) ($row['mention_count'] ?? 0),
+                number_format((float) ($row['recommendation_rate'] ?? 0), 1).'%',
+                number_format((float) ($row['top1_rate'] ?? 0), 1).'%',
+                number_format((float) ($row['top3_rate'] ?? 0), 1).'%',
+                number_format((float) ($row['top5_rate'] ?? 0), 1).'%',
+                ($row['average_rank'] ?? null) !== null ? number_format((float) $row['average_rank'], 1).' 名' : '—',
+            ]);
+            $y += 7;
+        }
+
+        return $y;
+    }
+
+    /**
+     * @Name: drawSourcePlatformRows
+     *
+     * @Description: 输出域名归类后的信源平台次数、占比、域名覆盖和关联模型列表。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-11-20 18:03:19
+     *
+     * @UpdateTime: 2026-11-20 18:15:47
+     *
+     * @Param: list<array<string,mixed>> $rows 按信源出现次数排序的平台分布数据
+     *
+     * @Param: float $y 表格起始纵坐标
+     *
+     * @Return: float 表格底部纵坐标
+     *
+     * @Throws: 无
+     */
+    private function drawSourcePlatformRows(array $rows, float $y): float
+    {
+        $columns = [34, 20, 19, 24, 18, 59];
+        $labels = ['信源平台', '类别', '出现次数', '信源占比', '覆盖域名', '诊断模型'];
+        $rows = $rows ?: [['platform' => '暂无可归类的信源']];
+        $this->tableHeader(self::LEFT, $y, $columns, $labels);
+        $y += 7;
+
+        foreach ($rows as $row) {
+            $this->ensureSpace(8, $y);
+            if ($y === self::TOP) {
+                $this->tableHeader(self::LEFT, $y, $columns, $labels);
+                $y += 7;
+            }
+            $models = implode('、', (array) ($row['models'] ?? []));
+            $this->tableRow(self::LEFT, $y, $columns, [
+                $this->short((string) ($row['platform'] ?? '暂无可归类的信源'), 14),
+                $this->short((string) ($row['type'] ?? '其他'), 8),
+                (string) (int) ($row['count'] ?? 0),
+                number_format((float) ($row['share'] ?? 0), 1).'%',
+                (string) (int) ($row['domain_count'] ?? 0),
+                $this->short($models !== '' ? $models : '—', 26),
+            ]);
+            $y += 7;
+        }
+
+        return $y;
     }
 
     /**

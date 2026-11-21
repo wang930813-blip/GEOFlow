@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\BrandDiagnosisRun;
+use App\Services\BrandDiagnosis\BrandDiagnosisPlatform;
 use App\Services\BrandDiagnosis\BrandProfileResolver;
 use App\Services\BrandDiagnosis\DoubaoBrandDiagnosisClient;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -45,13 +46,21 @@ class GenerateBrandDiagnosisQuestionsJob implements ShouldQueue
             return;
         }
 
+        $storedProfileMeta = (array) $run->brand_profile_meta;
+        $diagnosisOptions = (array) ($storedProfileMeta['diagnosis_options'] ?? []);
+        $questionCount = min(30, max(1, (int) ($diagnosisOptions['question_count'] ?? config('brand_diagnosis.question_count', 10))));
+        $brandProfileMeta = [];
+        if ($diagnosisOptions !== []) {
+            $brandProfileMeta['diagnosis_options'] = $diagnosisOptions;
+        }
+
         $run->update([
             'status' => 'questions_generating',
             'brand_profile' => null,
             'brand_profile_source' => '',
             'brand_profile_model' => '',
             'brand_profile_status' => '',
-            'brand_profile_meta' => null,
+            'brand_profile_meta' => $brandProfileMeta !== [] ? $brandProfileMeta : null,
             'error_message' => null,
             'started_at' => null,
             'completed_at' => null,
@@ -60,17 +69,28 @@ class GenerateBrandDiagnosisQuestionsJob implements ShouldQueue
         try {
             $brandProfile = app(BrandProfileResolver::class)->resolve($run, (array) $run->platforms);
             if ((string) ($brandProfile['status'] ?? '') !== 'success') {
-                throw new \RuntimeException('未检索到可用品牌介绍，请更换更明确的品牌词后重试。');
+                $reason = trim((string) data_get($brandProfile, 'meta.reason', ''));
+                throw new \RuntimeException($reason !== ''
+                    ? '品牌资料检索失败：'.$reason
+                    : '未检索到可用品牌介绍，请更换更明确的品牌词后重试。');
             }
             $diagnosisClient = app(DoubaoBrandDiagnosisClient::class);
+            $brandProfileMeta = array_merge($brandProfileMeta, (array) ($brandProfile['meta'] ?? []));
+            $planningPlatform = BrandDiagnosisPlatform::normalize(
+                (string) ($brandProfileMeta['platform'] ?? ((array) $run->platforms)[0] ?? BrandDiagnosisPlatform::DOUBAO)
+            );
             $coreTerms = $diagnosisClient->extractBrandCoreTerms(
                 (string) $run->brand_name,
                 (string) $brandProfile['profile'],
-                5
+                5,
+                $planningPlatform
             );
-            $brandProfileMeta = (array) ($brandProfile['meta'] ?? []);
+            $brandProfileMeta['diagnosis_options'] = array_merge(
+                (array) ($brandProfileMeta['diagnosis_options'] ?? []),
+                ['question_count' => $questionCount]
+            );
             $brandProfileMeta['core_terms'] = $coreTerms;
-            $brandProfileMeta['core_terms_model'] = 'doubao';
+            $brandProfileMeta['core_terms_model'] = $planningPlatform;
 
             $run->update([
                 'brand_profile' => $brandProfile['profile'],
@@ -80,12 +100,12 @@ class GenerateBrandDiagnosisQuestionsJob implements ShouldQueue
                 'brand_profile_meta' => $brandProfileMeta,
             ]);
 
-            $questions = $diagnosisClient->generateQuestionPool(
+            $questions = $diagnosisClient->generateQuestionsFromCoreTerms(
                 (string) $run->brand_name,
-                max(1, (int) config('brand_diagnosis.question_count', 6)),
-                (array) $run->platforms,
+                $questionCount,
                 (string) $brandProfile['profile'],
-                $coreTerms
+                $coreTerms,
+                $planningPlatform
             );
 
             $run->questions()->delete();

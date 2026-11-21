@@ -10,6 +10,10 @@ use Throwable;
 
 class DoubaoBrandDiagnosisClient
 {
+    public function __construct(
+        private readonly BrandDiagnosisModelSettings $modelSettings,
+    ) {}
+
     /**
      * @return list<array{question:string,type:string,core_term:string}>
      */
@@ -27,31 +31,33 @@ class DoubaoBrandDiagnosisClient
     {
         $brandName = trim($brandName);
         $count = max(1, $count);
+        $platform = $this->normalizePlatform((string) (array_values($platforms)[0] ?? BrandDiagnosisPlatform::DOUBAO));
         $coreTerms = $this->normalizeBrandCoreTerms($brandCoreTerms, $brandName, 5);
         if ($coreTerms === []) {
-            $coreTerms = $this->extractBrandCoreTerms($brandName, $brandProfile, 5);
+            $coreTerms = $this->extractBrandCoreTerms($brandName, $brandProfile, 5, $platform);
         }
 
-        return $this->generateQuestionsFromCoreTerms($brandName, $count, $brandProfile, $coreTerms);
+        return $this->generateQuestionsFromCoreTerms($brandName, $count, $brandProfile, $coreTerms, $platform);
     }
 
     /**
      * @return list<string>
      */
-    public function extractBrandCoreTerms(string $brandName, string $brandProfile, int $count = 5): array
+    public function extractBrandCoreTerms(string $brandName, string $brandProfile, int $count = 5, string $platform = BrandDiagnosisPlatform::DOUBAO): array
     {
         $brandName = trim($brandName);
         $brandProfile = trim($brandProfile);
         $count = max(1, $count);
+        $platform = $this->normalizePlatform($platform);
         if ($brandProfile === '') {
             throw new RuntimeException('品牌介绍为空，无法提取品牌核心词。');
         }
 
-        $response = $this->postResponses($this->buildBrandCoreTermsPrompt($brandName, $brandProfile, $count), BrandDiagnosisPlatform::DOUBAO, false);
-        $coreTerms = $this->parseBrandCoreTerms($this->extractText($response), $brandName, $count);
+        $response = $this->postResponses($this->buildBrandCoreTermsPrompt($brandName, $brandProfile, $count), $platform, false);
+        $coreTerms = $this->parseBrandCoreTerms($this->extractText($response), $brandName, $count, $platform);
         $coreTerms = $this->ensureBrandSubjectCoreTerm($coreTerms, $brandName, $count);
         if ($coreTerms === []) {
-            throw new RuntimeException('豆包品牌诊断核心词提取为空，请稍后重试。');
+            throw new RuntimeException($this->platformLabel($platform).'品牌诊断核心词提取为空，请稍后重试。');
         }
 
         return $coreTerms;
@@ -61,27 +67,55 @@ class DoubaoBrandDiagnosisClient
      * @param  list<string>  $brandCoreTerms
      * @return list<array{question:string,type:string,core_term:string}>
      */
-    public function generateQuestionsFromCoreTerms(string $brandName, int $count, string $brandProfile, array $brandCoreTerms): array
+    public function generateQuestionsFromCoreTerms(string $brandName, int $count, string $brandProfile, array $brandCoreTerms, string $platform = BrandDiagnosisPlatform::DOUBAO): array
     {
         $brandName = trim($brandName);
         $count = max(1, $count);
+        $platform = $this->normalizePlatform($platform);
         $coreTerms = $this->normalizeBrandCoreTerms($brandCoreTerms, $brandName, 5);
         $coreTerms = $this->ensureBrandSubjectCoreTerm($coreTerms, $brandName, 5);
         if ($coreTerms === []) {
             throw new RuntimeException('品牌诊断核心词为空，无法生成问题。');
         }
 
-        $candidateCount = max($count, $count * max(1, (int) config('brand_diagnosis.question_candidate_multiplier', 2)));
+        $candidateCount = max($count, $count * max(1, (int) config('brand_diagnosis.question_candidate_multiplier', 3)));
         $response = $this->postResponses(
             $this->buildQuestionPrompt($brandName, $candidateCount, $count, $brandProfile, $coreTerms),
-            BrandDiagnosisPlatform::DOUBAO,
+            $platform,
             false
         );
-        $questions = $this->parseQuestions($this->extractText($response));
-        $questions = $this->filteredQuestionSet($questions, $brandName, $coreTerms, $count);
+        $candidatePool = $this->filteredQuestionSet($this->parseQuestions($this->extractText($response), $platform), $brandName, $coreTerms, $count, false);
+        $questions = $this->balanceQuestionSet($candidatePool, $count);
+
+        for ($round = 0; $round < 2 && $this->questionPoolNeedsSupplement($questions, $count); $round++) {
+            $supplementalCount = $this->supplementalQuestionCount($questions, $count);
+            $supplementalResponse = $this->postResponses(
+                $this->buildSupplementalQuestionPrompt($brandName, $supplementalCount, $count, $brandProfile, $coreTerms, $questions),
+                $platform,
+                false
+            );
+            $existingKeys = collect($candidatePool)
+                ->map(fn (array $item): string => $this->normalizedSearchText((string) $item['question']))
+                ->all();
+            $newCandidates = collect($this->parseQuestions($this->extractText($supplementalResponse), $platform))
+                ->reject(fn (array $item): bool => in_array($this->normalizedSearchText((string) $item['question']), $existingKeys, true))
+                ->values()
+                ->all();
+            $supplementalQuestions = $this->filteredQuestionSet($newCandidates, $brandName, $coreTerms, $count, false);
+            $candidatePool = collect($candidatePool)
+                ->concat($supplementalQuestions)
+                ->unique(fn (array $item): string => $this->normalizedSearchText((string) $item['question']))
+                ->values()
+                ->all();
+            $questions = $this->balanceQuestionSet($candidatePool, $count);
+        }
+
+        if ($this->questionPoolNeedsSupplement($questions, $count)) {
+            $questions = $this->filteredQuestionSet($candidatePool, $brandName, $coreTerms, $count, true);
+        }
 
         if (count($questions) < $count) {
-            throw new RuntimeException('豆包品牌诊断问题生成不足，请稍后重试。');
+            throw new RuntimeException($this->platformLabel($platform).'品牌诊断问题生成不足，请调整品牌资料后重试。');
         }
 
         return array_slice($questions, 0, $count);
@@ -131,6 +165,7 @@ class DoubaoBrandDiagnosisClient
                 'platform' => $platform,
                 'response_id' => (string) ($data['id'] ?? ''),
                 'usage' => Arr::get($data, 'usage', []),
+                'retrieval' => $this->extractRetrievalMetadata($data),
                 'mention_extraction' => $mentionExtractionMeta,
             ],
             brandMentions: $brandMentions,
@@ -150,6 +185,7 @@ class DoubaoBrandDiagnosisClient
             'sources' => $this->extractSources($data),
             'raw_response' => $this->cleanExternalValue($data),
             'platform' => $platform,
+            'retrieval' => $this->extractRetrievalMetadata($data),
         ];
     }
 
@@ -226,7 +262,7 @@ class DoubaoBrandDiagnosisClient
             $apiKey = $apiKey !== '' ? $apiKey : (string) config('brand_diagnosis.doubao.api_key', '');
         }
 
-        if (! (bool) config('brand_diagnosis.'.$platform.'.enabled', false)) {
+        if (! $this->modelSettings->isEnabled($platform)) {
             throw new RuntimeException($label.'品牌诊断未启用。');
         }
         if ($baseUrl === '' || $apiKey === '' || $model === '') {
@@ -338,7 +374,7 @@ class DoubaoBrandDiagnosisClient
         $apiKey = (string) config('brand_diagnosis.'.$platform.'.api_key', '');
         $model = (string) config('brand_diagnosis.'.$platform.'.model', '');
 
-        if (! (bool) config('brand_diagnosis.'.$platform.'.enabled', false)) {
+        if (! $this->modelSettings->isEnabled($platform)) {
             throw new RuntimeException($label.' brand diagnosis is disabled.');
         }
         if ($baseUrl === '' || $apiKey === '' || $model === '') {
@@ -400,7 +436,7 @@ class DoubaoBrandDiagnosisClient
         $apiKey = (string) config('brand_diagnosis.'.$platform.'.api_key', '');
         $model = (string) config('brand_diagnosis.'.$platform.'.model', '');
 
-        if (! (bool) config('brand_diagnosis.'.$platform.'.enabled', false)) {
+        if (! $this->modelSettings->isEnabled($platform)) {
             throw new RuntimeException($label.' brand diagnosis is disabled.');
         }
         if ($baseUrl === '' || $apiKey === '' || $model === '') {
@@ -765,7 +801,21 @@ class DoubaoBrandDiagnosisClient
     }
 
     /**
+     * @Name: buildQuestionPrompt
+     *
+     * @Description: 为品牌诊断生成无品牌名的泛类问题，固定三类业务维度并要求以认知资料中的行业词作为锚点。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-11-20 16:24:06
+     *
+     * @UpdateTime: 2026-11-20 16:24:06
+     *
      * @param  list<string>  $brandCoreTerms
+     *
+     * @Return: string 品牌诊断问题生成提示词
+     *
+     * @Throws: 无
      */
     private function buildQuestionPrompt(string $brandName, int $candidateCount, int $finalCount, string $brandProfile, array $brandCoreTerms = []): string
     {
@@ -777,32 +827,75 @@ class DoubaoBrandDiagnosisClient
         $coreTermsText = $coreTerms !== [] ? implode('、', $coreTerms) : '未提供，请先从品牌介绍中提炼。';
 
         return implode("\n", [
-            '请根据下面的品牌介绍和品牌核心词，生成 '.$candidateCount.' 个用户会真实在 AI 或搜索框中输入的品牌诊断候选问题，系统最终只会取 '.$finalCount.' 个。',
-            '最终诊断会生成 '.$finalCount.' 个 AI 问题。',
+            '请根据品牌介绍和品牌核心词，生成 '.$candidateCount.' 个候选问题，供品牌自然可见度诊断筛选，最终保留 '.$finalCount.' 个。',
             '目标品牌：'.$brandName,
             '品牌介绍：'.$brandProfile,
             '品牌核心词：'.$coreTermsText,
-            '请只围绕上面的品牌核心词组合生成自然问题，不要再重新发散到无关行业或固定领域模板。',
-            '生成目标：问题必须帮助评估品牌在 AI 问答平台中的自然曝光、真实讨论、相关对象、市场认知和推荐倾向。',
-            '问题风格要求：',
-            '1. 问题侧重用户真实搜索表达，可以覆盖理解、选择、评价、地域、服务、作品、合作等自然场景，但不要求固定类型、固定比例或固定顺序。',
-            '2. 必须包含 2-3 个短搜索句，长度控制在 8-18 个中文字符，像用户直接搜索时输入的短句，例如“武城哪家煊饼店最好吃”“宴请包间餐厅哪家好”“财务审核工具推荐”。',
-            '3. 允许生成“核心词+哪家好”“核心词推荐”“核心词怎么选”“地域+品类+哪家靠谱”“地域+哪家+品类+最好吃/好用”这类短问。这类问题属于真实搜索表达，不要因为短而剔除。',
-            '4. 问题要像真实用户会问 AI 或搜索框里输入的认知、选择、对比、评价、位置、服务、作品、口碑或合作问题。',
-            '5. 不要套用固定行业模板，不要默认生成某个特定领域的问题。',
-            '6. 每个问题请同时给出 core_term 和 type：core_term 必须优先从“品牌核心词”里选择；type 是问题类型，问题类型由模型自然概括，并根据问题含义生成短标签，不要求固定类型，也不要从固定枚举中选择。',
-            '约束：',
-            '1. 不要生成“'.$brandName.' 是什么品牌”这种单一介绍题。',
-            '2. 不要直接出现目标品牌名称、简称、公司简称或品牌词；诊断要模拟普通用户自然提问，用行业、品类、地域、场景和服务对象来提问，让 AI 自然决定是否提及目标品牌。',
-            '3. 不要预设目标品牌是系统、平台、服务商、公司或门店；如果检索结果显示是个体户、个人品牌、产品、项目或机构，就按真实类型生成。',
-            '4. 不要再联网检索目标品牌，只能依据上面的品牌介绍生成问题。',
-            '5. 不要把核心词原样作为问题，必须补成自然搜索表达。',
-            '6. 每个问题 8-36 个中文字符，适合直接拿去问 AI。',
-            '7. 只输出 JSON 数组，不要 Markdown，不要解释。',
-            'JSON 格式可以是：',
-            '[{"question":"问题文本","core_term":"核心词","type":"问题类型"}]',
-            '或：',
-            '{"analysis":{"industry":"行业","brand_type":"类型","scenario":"场景"},"questions":[{"question":"问题文本","core_term":"核心词","type":"问题类型"}]}',
+            '目标是测量用户没有指定品牌时，平台是否会自然提及目标品牌。问题必须围绕品牌介绍中的真实行业、品类、地域或业务，不得扩写无证据的资质、客户或市场地位。',
+            '只生成以下三个维度，并尽量均衡覆盖：区域榜单、行业实力、业务匹配。',
+            '区域榜单：用户在特定地区寻找该行业或品类的候选品牌、公司或服务方。',
+            '行业实力：用户比较该行业或品类中哪些品牌值得信任、口碑较好或更专业。',
+            '业务匹配：用户描述真实业务需求，寻找适合承接该类需求的品牌或服务方。',
+            '每条问题都必须包含“品牌核心词”中的一个行业或品类锚点；区域维度可以在资料包含地域时使用该地域。',
+            '所有问题都不得包含目标品牌名称、简称、商标、竞品名称，也不得把品牌名改写成问题。',
+            '品牌诊断问“找谁或选哪个品牌”，不问产品参数、价格、型号、续航、维修、清洗、保养、使用感受等产品细节。',
+            '问题必须是普通用户可以直接输入的检索型表达，避免“怎么办、如何解决、为什么”一类泛咨询。',
+            '其中 2-3 条应是 8-18 字的短搜索句，其他问题通常为 15-40 字；不为凑字数添加无关限定。',
+            '每项必须包含 question、core_term、dimension。core_term 必须从给定品牌核心词中选择，dimension 只能是区域榜单、行业实力、业务匹配。',
+            '不要再次联网检索；只根据上方已核验的品牌介绍生成。只输出 JSON，不要 Markdown 或解释。',
+            '{"questions":[{"question":"问题文本","core_term":"品牌核心词","dimension":"区域榜单|行业实力|业务匹配"}]}',
+        ]);
+    }
+
+    /**
+     * @Name: buildSupplementalQuestionPrompt
+     *
+     * @Description: 根据当前问题集的数量、维度缺口和短搜索句缺口生成定向补充问题，避免重写已确认候选。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-11-20 16:24:06
+     *
+     * @UpdateTime: 2026-11-20 16:24:06
+     *
+     * @param: string $brandName 目标品牌名称
+     *
+     * @param: int $supplementalCount 需要补充的问题数
+     *
+     * @param: int $targetCount 目标问题总数
+     *
+     * @param: string $brandProfile 已核验的品牌资料
+     *
+     * @param: list<string> $coreTerms 品牌行业与品类锚点
+     *
+     * @param: list<array{question:string,type:string,core_term:string}> $existingQuestions 当前已保留的问题
+     *
+     * @Return: string 定向补题提示词
+     *
+     * @Throws: 无
+     */
+    private function buildSupplementalQuestionPrompt(string $brandName, int $supplementalCount, int $targetCount, string $brandProfile, array $coreTerms, array $existingQuestions): string
+    {
+        $dimensionCounts = collect($existingQuestions)->countBy('type');
+        $requiredPerDimension = intdiv($targetCount, 3);
+        $dimensionGaps = collect(['区域榜单', '行业实力', '业务匹配'])
+            ->map(static fn (string $dimension): string => $dimension.' '.max(0, $requiredPerDimension - (int) ($dimensionCounts[$dimension] ?? 0)).' 条')
+            ->implode('；');
+        $existingText = collect($existingQuestions)
+            ->map(static fn (array $item): string => '- '.$item['question'].'（'.$item['type'].'）')
+            ->implode("\n");
+
+        return implode("\n", [
+            '请只补充 '.$supplementalCount.' 条新的品牌诊断问题，不要修改或复述已有问题。',
+            '目标品牌：'.$brandName,
+            '品牌介绍：'.$brandProfile,
+            '品牌核心词：'.implode('、', $coreTerms),
+            '已有问题：'.($existingText !== '' ? "\n".$existingText : '无'),
+            '当前维度缺口参考：'.$dimensionGaps,
+            '只生成区域榜单、行业实力、业务匹配三类问题。问题不出现目标品牌或竞品名称，必须包含一个给定行业/品类锚点，排除价格、参数、型号、维修、清洗、保养和泛咨询问题。',
+            '如缺少短搜索句，优先补充自然简短的检索表达；不得用同义改写重复已有问题。',
+            '每项包含 question、core_term、dimension；dimension 只能是区域榜单、行业实力、业务匹配。只输出 JSON。',
+            '{"questions":[{"question":"问题文本","core_term":"品牌核心词","dimension":"区域榜单|行业实力|业务匹配"}]}',
         ]);
     }
 
@@ -1047,7 +1140,7 @@ class DoubaoBrandDiagnosisClient
     /**
      * @return list<array{question:string,type:string,core_term:string}>
      */
-    private function parseQuestions(string $text): array
+    private function parseQuestions(string $text, string $platform = BrandDiagnosisPlatform::DOUBAO): array
     {
         $json = trim($text);
         if (preg_match('/```(?:json)?\s*(.*?)```/is', $json, $matches)) {
@@ -1057,7 +1150,7 @@ class DoubaoBrandDiagnosisClient
         /** @var mixed $decoded */
         $decoded = json_decode($json, true);
         if (! is_array($decoded)) {
-            throw new RuntimeException('豆包品牌诊断问题生成返回格式错误。');
+            throw new RuntimeException($this->platformLabel($platform).'品牌诊断问题生成返回格式错误。');
         }
 
         $items = $decoded;
@@ -1074,7 +1167,7 @@ class DoubaoBrandDiagnosisClient
                 return [
                     'question' => $question,
                     'core_term' => $labeler->coreTerm($question, (string) ($item['core_term'] ?? $item['core_keyword'] ?? $item['keyword'] ?? '')),
-                    'type' => $labeler->questionType($question, (string) ($item['type'] ?? $item['question_type'] ?? '')),
+                    'type' => $labeler->questionType($question, (string) ($item['dimension'] ?? $item['type'] ?? $item['question_type'] ?? '')),
                 ];
             })
             ->filter(static fn (array $item): bool => $item['question'] !== '')
@@ -1086,7 +1179,7 @@ class DoubaoBrandDiagnosisClient
     /**
      * @return list<string>
      */
-    private function parseBrandCoreTerms(string $text, string $brandName, int $count): array
+    private function parseBrandCoreTerms(string $text, string $brandName, int $count, string $platform = BrandDiagnosisPlatform::DOUBAO): array
     {
         $json = trim($text);
         if (preg_match('/```(?:json)?\s*(.*?)```/is', $json, $matches)) {
@@ -1096,7 +1189,7 @@ class DoubaoBrandDiagnosisClient
         /** @var mixed $decoded */
         $decoded = json_decode($json, true);
         if (! is_array($decoded)) {
-            throw new RuntimeException('豆包品牌诊断核心词提取返回格式错误。');
+            throw new RuntimeException($this->platformLabel($platform).'品牌诊断核心词提取返回格式错误。');
         }
 
         $items = $decoded;
@@ -1192,7 +1285,7 @@ class DoubaoBrandDiagnosisClient
      * @param  list<string>  $coreTerms
      * @return list<array{question:string,type:string,core_term:string}>
      */
-    private function filteredQuestionSet(array $questions, string $brandName, array $coreTerms, int $count): array
+    private function filteredQuestionSet(array $questions, string $brandName, array $coreTerms, int $count, bool $allowTemplateFallback = true): array
     {
         $labeler = app(BrandDiagnosisQuestionLabeler::class);
         $seen = [];
@@ -1213,28 +1306,134 @@ class DoubaoBrandDiagnosisClient
             $filtered[] = [
                 'question' => $question,
                 'core_term' => $this->questionCoreTerm($question, (string) ($item['core_term'] ?? ''), $coreTerms),
-                'type' => $labeler->questionType($question, (string) ($item['type'] ?? '')),
+                'type' => $this->normalizeBrandQuestionDimension(
+                    $question,
+                    $labeler->questionType($question, (string) ($item['type'] ?? ''))
+                ),
             ];
         }
 
-        $filtered = $this->ensureShortSearchQuestions($filtered, $coreTerms, $brandName, $count, $seen);
+        if (! $allowTemplateFallback) {
+            return $filtered;
+        }
 
-        foreach ($this->templateQuestionsFromCoreTerms($coreTerms, $brandName, $count, array_keys($seen)) as $item) {
-            if (count($filtered) >= $count) {
+        $selected = $this->balanceQuestionSet($filtered, $count);
+        $selectedKeys = collect($selected)
+            ->map(static fn (array $item): string => $item['question'])
+            ->all();
+        $seen = array_fill_keys(array_map(fn (string $question): string => $this->normalizedSearchText($question), $selectedKeys), true);
+        $selected = $this->ensureShortSearchQuestions($selected, $coreTerms, $brandName, $count, $seen);
+        $templateQuestions = $this->templateQuestionsFromCoreTerms($coreTerms, $brandName, $count, array_keys($seen));
+        $combined = collect($selected)
+            ->concat($templateQuestions)
+            ->concat($filtered)
+            ->unique(fn (array $item): string => $this->normalizedSearchText((string) $item['question']))
+            ->values()
+            ->all();
+
+        return $this->ensureShortSearchQuestions(
+            $this->balanceQuestionSet($combined, $count),
+            $coreTerms,
+            $brandName,
+            $count,
+            $seen
+        );
+    }
+
+    /**
+     * @param  list<array{question:string,type:string,core_term:string}>  $questions
+     * @return list<array{question:string,type:string,core_term:string}>
+     */
+    private function balanceQuestionSet(array $questions, int $count): array
+    {
+        $dimensions = ['区域榜单', '行业实力', '业务匹配'];
+        $baseCount = intdiv($count, count($dimensions));
+        $remainder = $count % count($dimensions);
+        $selected = [];
+        $selectedKeys = [];
+
+        foreach ($dimensions as $index => $dimension) {
+            $targetCount = $baseCount + ($index < $remainder ? 1 : 0);
+            foreach ($questions as $question) {
+                if ($question['type'] !== $dimension || count(array_filter($selected, static fn (array $item): bool => $item['type'] === $dimension)) >= $targetCount) {
+                    continue;
+                }
+
+                $key = $this->normalizedSearchText((string) $question['question']);
+                if ($key === '' || isset($selectedKeys[$key])) {
+                    continue;
+                }
+                $selectedKeys[$key] = true;
+                $selected[] = $question;
+            }
+        }
+
+        foreach ($questions as $question) {
+            if (count($selected) >= $count) {
                 break;
             }
 
-            $key = $this->normalizedSearchText($item['question']);
-            if ($key === '' || isset($seen[$key])) {
+            $key = $this->normalizedSearchText((string) $question['question']);
+            if ($key === '' || isset($selectedKeys[$key])) {
                 continue;
             }
-            $seen[$key] = true;
-            $filtered[] = $item;
+            $selectedKeys[$key] = true;
+            $selected[] = $question;
         }
 
-        $filtered = $this->ensureShortSearchQuestions($filtered, $coreTerms, $brandName, $count, $seen);
+        return array_slice($selected, 0, $count);
+    }
 
-        return array_slice($filtered, 0, $count);
+    /**
+     * @param  list<array{question:string,type:string,core_term:string}>  $questions
+     */
+    private function questionPoolNeedsSupplement(array $questions, int $count): bool
+    {
+        if (count($questions) < $count || $this->shortSearchQuestionCount($questions) < $this->targetShortSearchQuestionCount($count)) {
+            return true;
+        }
+
+        $requiredPerDimension = intdiv($count, 3);
+        $dimensionCounts = collect($questions)->countBy('type');
+
+        foreach (['区域榜单', '行业实力', '业务匹配'] as $dimension) {
+            if ((int) ($dimensionCounts[$dimension] ?? 0) < $requiredPerDimension) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  list<array{question:string,type:string,core_term:string}>  $questions
+     */
+    private function supplementalQuestionCount(array $questions, int $count): int
+    {
+        $missingCount = max(0, $count - count($questions));
+        $requiredPerDimension = intdiv($count, 3);
+        $dimensionCounts = collect($questions)->countBy('type');
+        $missingDimensions = collect(['区域榜单', '行业实力', '业务匹配'])
+            ->sum(static fn (string $dimension): int => max(0, $requiredPerDimension - (int) ($dimensionCounts[$dimension] ?? 0)));
+        $missingShortQuestions = max(0, $this->targetShortSearchQuestionCount($count) - $this->shortSearchQuestionCount($questions));
+
+        return max(1, $missingCount, $missingDimensions, $missingShortQuestions);
+    }
+
+    private function normalizeBrandQuestionDimension(string $question, string $dimension): string
+    {
+        if (in_array($dimension, ['区域榜单', '行业实力', '业务匹配'], true)) {
+            return $dimension;
+        }
+
+        if (preg_match('/(本地|附近|地区|区域|全国|国内|城市|省内|十大|排行|排名|有哪些|哪几家)/u', $question) === 1) {
+            return '区域榜单';
+        }
+        if (preg_match('/(需求|适合|合作|项目|方案|业务|预算|上市|推广|承接)/u', $question) === 1) {
+            return '业务匹配';
+        }
+
+        return '行业实力';
     }
 
     /**
@@ -1266,7 +1465,10 @@ class DoubaoBrandDiagnosisClient
 
             if (count($questions) < $count) {
                 $seen[$key] = true;
-                $questions[] = $item;
+                $questions[] = [
+                    ...$item,
+                    'type' => $this->normalizeBrandQuestionDimension((string) $item['question'], (string) $item['type']),
+                ];
 
                 continue;
             }
@@ -1281,7 +1483,10 @@ class DoubaoBrandDiagnosisClient
                 unset($seen[$removedKey]);
             }
             $seen[$key] = true;
-            $questions[$replaceIndex] = $item;
+            $questions[$replaceIndex] = [
+                ...$item,
+                'type' => $this->normalizeBrandQuestionDimension((string) $item['question'], (string) $item['type']),
+            ];
         }
 
         return array_slice(array_values($questions), 0, $count);
@@ -1357,7 +1562,46 @@ class DoubaoBrandDiagnosisClient
             }
         }
 
-        return true;
+        if (! $this->questionHasCoreTermAnchor($question, $coreTerms)) {
+            return false;
+        }
+
+        if (preg_match('/(多少钱|价格|价位|参数|型号|功率|续航|充电|材质|重量|尺寸|配件|维修|保修|售后|寿命|清洗|保养|使用感受|怎么办|如何解决|为什么)/u', $question) === 1) {
+            return false;
+        }
+
+        return preg_match('/(哪家|哪些|推荐|排行|排名|口碑|评价|实力|专业|靠谱|选择|选哪|服务公司|服务商|机构|团队|找|合作|承接|方案|业务需求|擅长|品牌)/u', $question) === 1;
+    }
+
+    /**
+     * @param  list<string>  $coreTerms
+     */
+    private function questionHasCoreTermAnchor(string $question, array $coreTerms): bool
+    {
+        $normalizedQuestion = $this->normalizedSearchText($question);
+        $suffixes = ['服务公司', '服务商', '公司', '企业', '团队', '机构', '服务', '品牌', '产品', '门店', '餐厅', '行业', '领域', '品类', '店'];
+
+        foreach ($coreTerms as $coreTerm) {
+            $normalizedTerm = $this->normalizedSearchText($coreTerm);
+            if ($normalizedTerm === '' || mb_strlen($normalizedTerm, 'UTF-8') < 2) {
+                continue;
+            }
+            if (str_contains($normalizedQuestion, $normalizedTerm)) {
+                return true;
+            }
+
+            foreach ($suffixes as $suffix) {
+                $normalizedSuffix = $this->normalizedSearchText($suffix);
+                if (str_ends_with($normalizedTerm, $normalizedSuffix)) {
+                    $anchor = mb_substr($normalizedTerm, 0, mb_strlen($normalizedTerm, 'UTF-8') - mb_strlen($normalizedSuffix, 'UTF-8'), 'UTF-8');
+                    if (mb_strlen($anchor, 'UTF-8') >= 2 && str_contains($normalizedQuestion, $anchor)) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -1499,7 +1743,7 @@ class DoubaoBrandDiagnosisClient
         $questions[] = [
             'question' => $question,
             'core_term' => (string) $item['core_term'],
-            'type' => (string) $item['type'],
+            'type' => $this->normalizeBrandQuestionDimension($question, (string) $item['type']),
         ];
 
         return true;
@@ -1881,6 +2125,76 @@ class DoubaoBrandDiagnosisClient
             ->filter(static fn (array $source): bool => trim((string) $source['url']) !== '')
             ->unique(static fn (array $source): string => (string) $source['url'])
             ->all();
+    }
+
+    /**
+     * @Name: extractRetrievalMetadata
+     *
+     * @Description: 从平台原始响应中提取显式搜索工具轮次、查询词和引用数量；平台未返回查询词时保留空列表。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-11-20 16:43:39
+     *
+     * @UpdateTime: 2026-11-20 16:43:39
+     *
+     * @Param: array<string,mixed> $data 平台原始响应
+     *
+     * @Return: array{search_queries:list<string>,search_rounds:int,source_count:int} 可审计的检索摘要
+     *
+     * @Throws: 无
+     */
+    private function extractRetrievalMetadata(array $data): array
+    {
+        $searchCalls = [];
+        $visit = function (array $node) use (&$visit, &$searchCalls): void {
+            $toolName = strtolower(trim((string) (
+                $node['name']
+                ?? data_get($node, 'function.name', '')
+                ?? $node['tool_name']
+                ?? ''
+            )));
+            $type = strtolower(trim((string) ($node['type'] ?? '')));
+            $isSearchCall = (str_contains($type, 'search') && (str_contains($type, 'call') || isset($node['action'])))
+                || str_contains($toolName, 'search');
+
+            if ($isSearchCall) {
+                $queries = data_get($node, 'action.queries', $node['queries'] ?? data_get($node, 'action.query', $node['query'] ?? []));
+                $queries = is_array($queries) ? $queries : [$queries];
+                $searchCalls[] = collect($queries)
+                    ->map(static function (mixed $query): string {
+                        if (is_array($query)) {
+                            $query = $query['query'] ?? $query['q'] ?? $query['search_query'] ?? '';
+                        }
+
+                        return is_scalar($query) ? trim((string) $query) : '';
+                    })
+                    ->filter(static fn (string $query): bool => $query !== '')
+                    ->values()
+                    ->all();
+            }
+
+            foreach ($node as $value) {
+                if (is_array($value)) {
+                    if (array_is_list($value)) {
+                        foreach ($value as $item) {
+                            if (is_array($item)) {
+                                $visit($item);
+                            }
+                        }
+                    } else {
+                        $visit($value);
+                    }
+                }
+            }
+        };
+        $visit($data);
+
+        return [
+            'search_queries' => collect($searchCalls)->flatten()->filter()->unique()->values()->all(),
+            'search_rounds' => count($searchCalls),
+            'source_count' => count($this->extractSources($data)),
+        ];
     }
 
     /**

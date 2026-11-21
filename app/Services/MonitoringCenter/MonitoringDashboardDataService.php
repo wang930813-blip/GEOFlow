@@ -24,6 +24,7 @@ use App\Models\BrandDiagnosisResult;
 use App\Models\BrandDiagnosisRun;
 use App\Models\BrandDiagnosisSource;
 use App\Models\Site;
+use App\Services\BrandDiagnosis\BrandDiagnosisReportAnalytics;
 use App\Services\BrandDiagnosis\BrandDiagnosisPlatform;
 use App\Support\CurrentSite;
 use Illuminate\Database\Eloquent\Builder;
@@ -32,7 +33,8 @@ use Illuminate\Support\Collection;
 final class MonitoringDashboardDataService
 {
     public function __construct(
-        private readonly MonitoringReportDataService $reportDataService
+        private readonly MonitoringReportDataService $reportDataService,
+        private readonly BrandDiagnosisReportAnalytics $diagnosisAnalytics,
     ) {}
 
     /**
@@ -42,7 +44,7 @@ final class MonitoringDashboardDataService
      *
      * @CreateTime: 2026-11-02 17:37:32
      *
-     * @UpdateTime: 2026-11-03 14:50:35
+     * @UpdateTime: 2026-11-21 09:27:35
      *
      * @Param: Admin $admin 当前已认证管理员
      *
@@ -221,7 +223,7 @@ final class MonitoringDashboardDataService
      *
      * @CreateTime: 2026-11-02 17:37:32
      *
-     * @UpdateTime: 2026-11-03 14:59:24
+     * @UpdateTime: 2026-11-21 09:27:35
      *
      * @Param: Site|null $site 当前站点
      *
@@ -314,6 +316,11 @@ final class MonitoringDashboardDataService
             'created_at' => $run->created_at?->format('Y-m-d H:i:s') ?? '',
             'completed_at' => $run->completed_at?->format('Y-m-d H:i:s') ?? '',
             'summary' => $this->summary($results, $selectedQuestions),
+            'advanced_analytics' => $this->diagnosisAnalytics->summarize(
+                $run,
+                $selectedPlatform !== '' ? $selectedPlatform : null,
+                $selectedQuestionId
+            ),
             'platforms' => $this->platforms($results),
             'questions' => $this->questions($selectedQuestions, $selectedPlatform),
             'sources' => $this->sources($results),

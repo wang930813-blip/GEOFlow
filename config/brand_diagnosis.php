@@ -3,6 +3,7 @@
 return [
     'daily_free_limit' => (int) env('BRAND_DIAGNOSIS_DAILY_FREE_LIMIT', 1),
     'question_count' => (int) env('BRAND_DIAGNOSIS_QUESTION_COUNT', 6),
+    'question_candidate_multiplier' => max(1, (int) env('BRAND_DIAGNOSIS_QUESTION_CANDIDATE_MULTIPLIER', 3)),
     'job_timeout' => (int) env('BRAND_DIAGNOSIS_JOB_TIMEOUT', 1200),
 
     'open_api' => [

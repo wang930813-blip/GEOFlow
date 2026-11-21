@@ -7,7 +7,7 @@
  *
  * @Time: 12:11:31
  *
- * @UpdateTime: 2026-11-20 10:41:07
+ * @UpdateTime: 2026-11-21 10:20:09
  *
  * @Author: cdkay
  *
@@ -77,7 +77,7 @@ final class OpenPlatformDataController extends BaseApiController
 
     /**
      * 提及率与排名
-     * 返回当前筛选范围内的品牌提及摘要、平台表现和问题排名。
+     * 返回当前筛选范围内的品牌提及摘要、平台表现、问题排名及推荐率分析。
      * @Url [GET] /api/v1/open-platform/mentions
      *      登录 是
      *      run_id integer 可选 诊断记录编号；未传时使用日期范围内最新的已完成记录
@@ -88,9 +88,9 @@ final class OpenPlatformDataController extends BaseApiController
      *
      * @Author: cdkay
      * @CreateTime: 2026-11-20 10:26:46
-     * @UpdateTime: 2026-11-20 10:41:07
+     * @UpdateTime: 2026-11-21 10:20:09
      *
-     * @Return JsonResponse 筛选条件、诊断摘要、平台提及率和问题排名
+     * @Return JsonResponse 筛选条件、诊断摘要、平台提及率、问题排名及推荐率分析
      * @Throws ApiException|ValidationException 令牌权限不足、记录越权或筛选参数无效
      */
     public function mentions(
@@ -105,6 +105,7 @@ final class OpenPlatformDataController extends BaseApiController
             'filters' => $dashboard['filters'] ?? [],
             'diagnosis' => $this->diagnosisMetadata($diagnosis),
             'summary' => $diagnosis['summary'] ?? null,
+            'advanced_analytics' => $diagnosis['advanced_analytics'] ?? null,
             'platforms' => $diagnosis['platforms'] ?? [],
             'questions' => $diagnosis['questions'] ?? [],
         ]);

@@ -2,17 +2,19 @@
 
 namespace App\Jobs;
 
-use App\Models\BrandDiagnosisRun;
+use App\Models\BrandDiagnosisQuestion;
 use App\Models\BrandDiagnosisResult;
+use App\Models\BrandDiagnosisRun;
 use App\Services\BrandDiagnosis\BrandDiagnosisMetricsCalculator;
 use App\Services\BrandDiagnosis\BrandDiagnosisPlatform;
 use App\Services\BrandDiagnosis\BrandDiagnosisSnapshotPayload;
 use App\Services\BrandDiagnosis\DoubaoBrandDiagnosisClient;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Throwable;
 
-class ProcessBrandDiagnosisJob implements ShouldQueue
+class ProcessBrandDiagnosisJob implements ShouldBeUnique, ShouldQueue
 {
     use Queueable;
 
@@ -20,9 +22,16 @@ class ProcessBrandDiagnosisJob implements ShouldQueue
 
     public int $timeout = 1200;
 
-    public function __construct(public readonly int $runId)
+    public int $uniqueFor = 7200;
+
+    public function __construct(public readonly int $runId, public readonly ?int $questionId = null)
     {
         $this->timeout = max(600, (int) config('brand_diagnosis.job_timeout', 1200));
+    }
+
+    public function uniqueId(): string
+    {
+        return 'brand-diagnosis:'.$this->runId.':'.($this->questionId ?? 'dispatch');
     }
 
     /**
@@ -40,7 +49,6 @@ class ProcessBrandDiagnosisJob implements ShouldQueue
     {
         $run = BrandDiagnosisRun::query()
             ->withoutGlobalScope('current_site')
-            ->with(['questions' => fn ($query) => $query->orderBy('sort_order')])
             ->whereKey($this->runId)
             ->first();
 
@@ -48,133 +56,137 @@ class ProcessBrandDiagnosisJob implements ShouldQueue
             return;
         }
 
-        $run->update([
-            'status' => 'running',
-            'started_at' => $run->started_at ?? now(),
-            'completed_at' => null,
-            'error_message' => null,
-        ]);
+        $platforms = collect((array) $run->platforms)
+            ->map(static fn (string $platform): string => strtolower(trim($platform)))
+            ->filter(static fn (string $platform): bool => BrandDiagnosisPlatform::isSupported($platform))
+            ->unique()
+            ->values()
+            ->all();
+        $questionsQuery = $run->questions()->orderBy('sort_order');
+        if ($this->questionId !== null) {
+            $questionsQuery->whereKey($this->questionId);
+        }
+        $questions = $questionsQuery->get();
 
-        if ($run->questions->isEmpty()) {
+        if ($this->questionId === null) {
             $run->update([
-                'status' => 'failed',
-                'total_questions' => 0,
+                'status' => 'running',
+                'started_at' => $run->started_at ?? now(),
+                'completed_at' => null,
+                'error_message' => null,
+                'total_questions' => $questions->count(),
                 'completed_questions' => 0,
                 'failed_questions' => 0,
-                'error_message' => '请先生成并确认 AI 问题后再开始诊断。',
-                'completed_at' => now(),
             ]);
+
+            if ($questions->isEmpty() || $platforms === []) {
+                $run->update([
+                    'status' => 'failed',
+                    'error_message' => $questions->isEmpty()
+                        ? '请先生成并确认 AI 问题后再开始诊断。'
+                        : '本次诊断没有选择可用模型。',
+                    'completed_at' => now(),
+                ]);
+
+                return;
+            }
+
+            foreach ($questions as $question) {
+                self::dispatch((int) $run->id, (int) $question->id)->onQueue('geoflow');
+            }
 
             return;
         }
 
-        foreach ($run->questions as $question) {
-            foreach ((array) $run->platforms as $platform) {
-                $platform = strtolower(trim((string) $platform));
-                if (! BrandDiagnosisPlatform::isSupported($platform)) {
-                    continue;
+        if ($questions->isEmpty() || $platforms === []) {
+            $this->completeRunIfSettled($run, $platforms);
+
+            return;
+        }
+
+        $question = $questions->first();
+        $question->load(['results' => fn ($query) => $query->whereIn('platform', $platforms)]);
+
+        foreach ($platforms as $platform) {
+            $existingResult = $question->results->firstWhere('platform', $platform);
+            if ($existingResult instanceof BrandDiagnosisResult && (string) $existingResult->status === 'success') {
+                continue;
+            }
+
+            try {
+                $clientResponse = app(DoubaoBrandDiagnosisClient::class)->ask(
+                    (string) $run->brand_name,
+                    (string) $question->question,
+                    $platform
+                );
+
+                $metrics = app(BrandDiagnosisMetricsCalculator::class);
+                $brandMentions = $metrics->normalizeBrandMentions(
+                    $clientResponse->brandMentions,
+                    $clientResponse->answer,
+                    (string) $run->brand_name,
+                    $this->sourceEvidenceText($clientResponse->sources),
+                    (string) $question->question
+                );
+                $targetMention = collect($brandMentions)
+                    ->first(fn (array $mention): bool => $metrics->isSameBrand((string) $mention['brand'], (string) $run->brand_name));
+                $mentionCount = is_array($targetMention) ? (int) $targetMention['mention_count'] : 0;
+                $mentionRank = is_array($targetMention) ? (int) $targetMention['mention_rank'] : 0;
+                $sentiment = is_array($targetMention)
+                    ? (string) $targetMention['sentiment']
+                    : $metrics->classifySentiment($clientResponse->answer);
+                $result = $question->results()->updateOrCreate(
+                    ['platform' => $platform],
+                    [
+                        'site_id' => $this->siteId($run->site_id),
+                        'owner_admin_id' => (int) ($run->owner_admin_id ?? 0) ?: null,
+                        'run_id' => (int) $run->id,
+                        'answer' => $this->cleanExternalText($clientResponse->answer),
+                        'brand_mentioned' => $mentionCount > 0,
+                        'mention_count' => $mentionCount,
+                        'mention_rank' => $mentionRank,
+                        'sentiment' => $sentiment,
+                        'status' => 'success',
+                        'error_message' => null,
+                        'raw_response' => $this->cleanExternalValue($clientResponse->rawResponse),
+                        'meta' => $this->cleanExternalValue($clientResponse->meta),
+                        'checked_at' => now(),
+                    ]
+                );
+
+                $result->sources()->delete();
+                foreach ($clientResponse->sources as $source) {
+                    $result->sources()->create([
+                        'site_id' => $this->siteId($run->site_id),
+                        'owner_admin_id' => (int) ($run->owner_admin_id ?? 0) ?: null,
+                        'run_id' => (int) $run->id,
+                        'question_id' => (int) $question->id,
+                        'result_id' => (int) $result->id,
+                        'platform' => $platform,
+                        'title' => $this->cleanExternalText((string) $source['title']),
+                        'url' => $this->cleanExternalText((string) $source['url']),
+                        'domain' => $this->domainFromUrl($this->cleanExternalText((string) $source['url'])),
+                        'source_type' => $this->cleanExternalText((string) $source['type']),
+                        'meta' => $this->cleanExternalValue((array) ($source['meta'] ?? [])),
+                    ]);
                 }
-
-                try {
-                    $clientResponse = app(DoubaoBrandDiagnosisClient::class)->ask(
-                        (string) $run->brand_name,
-                        (string) $question->question,
-                        $platform
-                    );
-
-                    $metrics = app(BrandDiagnosisMetricsCalculator::class);
-                    $brandMentions = $metrics->normalizeBrandMentions(
-                        $clientResponse->brandMentions,
-                        $clientResponse->answer,
-                        (string) $run->brand_name,
-                        $this->sourceEvidenceText($clientResponse->sources),
-                        (string) $question->question
-                    );
-                    $targetMention = collect($brandMentions)
-                        ->first(fn (array $mention): bool => $metrics->isSameBrand((string) $mention['brand'], (string) $run->brand_name));
-                    $mentionCount = is_array($targetMention)
-                        ? (int) $targetMention['mention_count']
-                        : 0;
-                    $mentionRank = is_array($targetMention)
-                        ? (int) $targetMention['mention_rank']
-                        : 0;
-                    $sentiment = is_array($targetMention)
-                        ? (string) $targetMention['sentiment']
-                        : $metrics->classifySentiment($clientResponse->answer);
-                    $result = $question->results()->updateOrCreate(
-                        ['platform' => $platform],
-                        [
-                            'site_id' => $this->siteId($run->site_id),
-                            'owner_admin_id' => (int) ($run->owner_admin_id ?? 0) ?: null,
-                            'run_id' => (int) $run->id,
-                            'answer' => $this->cleanExternalText($clientResponse->answer),
-                            'brand_mentioned' => $mentionCount > 0,
-                            'mention_count' => $mentionCount,
-                            'mention_rank' => $mentionRank,
-                            'sentiment' => $sentiment,
-                            'status' => 'success',
-                            'error_message' => null,
-                            'raw_response' => $this->cleanExternalValue($clientResponse->rawResponse),
-                            'meta' => $this->cleanExternalValue($clientResponse->meta),
-                            'checked_at' => now(),
-                        ]
-                    );
-
-                    $result->sources()->delete();
-                    foreach ($clientResponse->sources as $source) {
-                        $result->sources()->create([
-                            'site_id' => $this->siteId($run->site_id),
-                            'owner_admin_id' => (int) ($run->owner_admin_id ?? 0) ?: null,
-                            'run_id' => (int) $run->id,
-                            'question_id' => (int) $question->id,
-                            'result_id' => (int) $result->id,
-                            'platform' => $platform,
-                            'title' => $this->cleanExternalText((string) $source['title']),
-                            'url' => $this->cleanExternalText((string) $source['url']),
-                            'domain' => $this->domainFromUrl($this->cleanExternalText((string) $source['url'])),
-                            'source_type' => $this->cleanExternalText((string) $source['type']),
-                            'meta' => $this->cleanExternalValue((array) ($source['meta'] ?? [])),
-                        ]);
-                    }
-                    $this->replaceBrandMentions($result, $brandMentions, (string) $run->brand_name, count($clientResponse->sources));
-                    app(BrandDiagnosisSnapshotPayload::class)->captureIfMissing($result);
-
-                    $question->update(['status' => 'completed']);
-                } catch (Throwable $exception) {
-                    $question->results()->updateOrCreate(
-                        ['platform' => $platform],
-                        [
-                            'site_id' => $this->siteId($run->site_id),
-                            'owner_admin_id' => (int) ($run->owner_admin_id ?? 0) ?: null,
-                            'run_id' => (int) $run->id,
-                            'answer' => null,
-                            'brand_mentioned' => false,
-                            'mention_count' => 0,
-                            'mention_rank' => 0,
-                            'sentiment' => 'neutral',
-                            'status' => 'failed',
-                            'error_message' => $this->cleanExternalText($exception->getMessage()),
-                            'raw_response' => null,
-                            'meta' => ['client' => $platform],
-                            'checked_at' => now(),
-                        ]
-                    );
-                    if ($question->results()->where('status', 'success')->doesntExist()) {
-                        $question->update(['status' => 'failed']);
-                    }
-                }
+                $this->replaceBrandMentions($result, $brandMentions, (string) $run->brand_name, count($clientResponse->sources));
+                app(BrandDiagnosisSnapshotPayload::class)->captureIfMissing($result);
+            } catch (Throwable $exception) {
+                $this->recordPlatformFailure($run, $question, $platform, $exception->getMessage());
             }
         }
+
+        $successfulPlatforms = $question->results()
+            ->whereIn('platform', $platforms)
+            ->where('status', 'success')
+            ->exists();
+        $question->update(['status' => $successfulPlatforms ? 'completed' : 'failed']);
 
         $run->refresh();
         app(BrandDiagnosisMetricsCalculator::class)->refreshRun($run);
         $run->refresh();
-
-        $status = (int) $run->failed_questions >= (int) $run->total_questions ? 'failed' : 'completed';
-        $run->update([
-            'status' => $status,
-            'completed_at' => now(),
-        ]);
+        $this->completeRunIfSettled($run, $platforms);
     }
 
     public function failed(?Throwable $exception): void
@@ -192,10 +204,94 @@ class ProcessBrandDiagnosisJob implements ShouldQueue
         if (! is_string($message) || trim($message) === '') {
             $message = $exception ? class_basename($exception) : '品牌诊断任务执行失败';
         }
+        $message = mb_strimwidth($message, 0, 1000, '...', 'UTF-8');
 
+        if ($this->questionId === null) {
+            $run->update([
+                'status' => 'failed',
+                'error_message' => $message,
+                'completed_at' => now(),
+            ]);
+
+            return;
+        }
+
+        $question = $run->questions()->whereKey($this->questionId)->first();
+        if (! $question) {
+            return;
+        }
+
+        foreach ($platforms = collect((array) $run->platforms)
+            ->map(static fn (string $platform): string => strtolower(trim($platform)))
+            ->filter(static fn (string $platform): bool => BrandDiagnosisPlatform::isSupported($platform))
+            ->unique()
+            ->values()
+            ->all() as $platform) {
+            $this->recordPlatformFailure($run, $question, $platform, $message);
+        }
+
+        $question->update([
+            'status' => $question->results()->whereIn('platform', $platforms)->where('status', 'success')->exists()
+                ? 'completed'
+                : 'failed',
+        ]);
+
+        $run->refresh();
+        app(BrandDiagnosisMetricsCalculator::class)->refreshRun($run);
+        $run->refresh();
+        $this->completeRunIfSettled($run, $platforms);
+    }
+
+    private function recordPlatformFailure(BrandDiagnosisRun $run, BrandDiagnosisQuestion $question, string $platform, string $message): void
+    {
+        $existingResult = $question->results()->where('platform', $platform)->first();
+        if ($existingResult instanceof BrandDiagnosisResult && (string) $existingResult->status === 'success') {
+            return;
+        }
+
+        $question->results()->updateOrCreate(
+            ['platform' => $platform],
+            [
+                'site_id' => $this->siteId($run->site_id),
+                'owner_admin_id' => (int) ($run->owner_admin_id ?? 0) ?: null,
+                'run_id' => (int) $run->id,
+                'answer' => null,
+                'brand_mentioned' => false,
+                'mention_count' => 0,
+                'mention_rank' => 0,
+                'sentiment' => 'neutral',
+                'status' => 'failed',
+                'error_message' => $this->cleanExternalText($message),
+                'raw_response' => null,
+                'meta' => ['client' => $platform],
+                'checked_at' => now(),
+            ]
+        );
+    }
+
+    /**
+     * @param  list<string>  $platforms
+     */
+    private function completeRunIfSettled(BrandDiagnosisRun $run, array $platforms): void
+    {
+        $expectedResults = (int) $run->questions()->count() * count($platforms);
+        if ($expectedResults <= 0) {
+            return;
+        }
+
+        $settledResults = $run->results()
+            ->whereIn('platform', $platforms)
+            ->whereIn('status', ['success', 'failed'])
+            ->count();
+        if ($settledResults < $expectedResults) {
+            return;
+        }
+
+        $run->refresh();
+        app(BrandDiagnosisMetricsCalculator::class)->refreshRun($run);
+        $run->refresh();
         $run->update([
-            'status' => 'failed',
-            'error_message' => mb_strimwidth($this->cleanExternalText($message), 0, 1000, '...', 'UTF-8'),
+            'status' => (int) $run->failed_questions >= (int) $run->total_questions ? 'failed' : 'completed',
             'completed_at' => now(),
         ]);
     }

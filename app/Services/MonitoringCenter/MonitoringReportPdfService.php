@@ -197,7 +197,7 @@ final class MonitoringReportPdfService
      * @Description: 按网页版报告顺序绘制明细，并为多行数据区单独设置行高。
      * @Author: cdkay
      * @CreateTime: 2026-11-16 16:58:09
-     * @UpdateTime: 2026-11-17 15:52:51
+     * @UpdateTime: 2026-11-21 09:35:28
      * @Param TCPDF $pdf 当前 PDF 文档实例
      * @Param array<string,mixed> $dashboard 当前筛选范围内的报告数据
      * @Return void
@@ -212,30 +212,167 @@ final class MonitoringReportPdfService
                 (string) ($platform['key'] ?? '') => (string) ($platform['label'] ?? $platform['key'] ?? ''),
             ])
             ->all();
+        $analytics = (array) ($diagnosis['advanced_analytics'] ?? []);
 
         $this->writeSection(
             $pdf,
-            '03  问题明细',
+            '03  推荐位次表现',
+            $this->rankingSection((array) ($analytics['metrics'] ?? [])),
+            $tocEntries
+        );
+        $this->writeSection(
+            $pdf,
+            '04  问题维度表现',
+            $this->dimensionSection((array) ($analytics['dimensions'] ?? [])),
+            $tocEntries
+        );
+        $this->writeSection(
+            $pdf,
+            '05  竞品表现',
+            $this->competitorSection((array) ($analytics['competitors'] ?? [])),
+            $tocEntries
+        );
+        $this->writeSection(
+            $pdf,
+            '06  信源平台分布',
+            $this->sourcePlatformSection((array) ($analytics['source_platforms'] ?? [])),
+            $tocEntries
+        );
+        $this->writeSection(
+            $pdf,
+            '07  问题明细',
             $this->questionSection((array) ($diagnosis['questions'] ?? []), $platformLabels),
             $tocEntries,
             1.5
         );
         $this->writeSection(
             $pdf,
-            '04  引用来源',
+            '08  引用来源',
             $this->sourceSection((array) ($diagnosis['sources'] ?? [])),
             $tocEntries,
             1.5
         );
         $this->writeSection(
             $pdf,
-            '05  AI 问题与对话明细',
+            '09  AI 问题与对话明细',
             $this->conversationSection((array) ($diagnosis['conversations'] ?? [])),
             $tocEntries,
             1.5
         );
-        $this->writeSection($pdf, '06  作品引用明细', $this->citationSection((array) ($diagnosis['citations'] ?? [])), $tocEntries);
-        $this->writeSection($pdf, '07  诊断记录', $this->historySection((array) ($dashboard['diagnosis_records'] ?? [])), $tocEntries);
+        $this->writeSection($pdf, '10  作品引用明细', $this->citationSection((array) ($diagnosis['citations'] ?? [])), $tocEntries);
+        $this->writeSection($pdf, '11  诊断记录', $this->historySection((array) ($dashboard['diagnosis_records'] ?? [])), $tocEntries);
+    }
+
+    /**
+     * @Name: rankingSection
+     * @Description: 展示推荐率及 Top1、Top3、Top5 命中回答数和占成功回答的百分比。
+     * @Author: cdkay
+     * @CreateTime: 2026-11-21 09:35:28
+     * @UpdateTime: 2026-11-21 09:35:28
+     * @Param array<string,mixed> $metrics 当前筛选范围的排名指标
+     * @Return string 推荐位次表现区 HTML
+     * @Throws \RuntimeException TCPDF 无法绘制排名数据时抛出异常
+     */
+    private function rankingSection(array $metrics): string
+    {
+        $answers = (int) ($metrics['answer_count'] ?? 0);
+        $rows = [];
+        foreach ([
+            ['推荐率', 'recommendation_count', 'recommendation_rate'],
+            ['Top1', 'top1_count', 'top1_rate'],
+            ['Top3', 'top3_count', 'top3_rate'],
+            ['Top5', 'top5_count', 'top5_rate'],
+        ] as [$label, $countKey, $rateKey]) {
+            $rows[] = [
+                $label,
+                (string) (int) ($metrics[$countKey] ?? 0),
+                (string) ($metrics[$rateKey] ?? 0).'% ',
+                (string) $answers,
+            ];
+        }
+
+        return $this->sectionTitle('RECOMMENDATION RANKING', '推荐位次表现', $answers.' 条成功回答')
+            .$this->table(['指标', '命中回答', '占成功回答比例', '成功回答数'], $rows, [24, 22, 28, 26]);
+    }
+
+    /**
+     * @Name: dimensionSection
+     * @Description: 按诊断问题类型展示提及率、推荐率、Top 排名和平均位次。
+     * @Author: cdkay
+     * @CreateTime: 2026-11-21 09:35:28
+     * @UpdateTime: 2026-11-21 09:35:28
+     * @Param list<array<string,mixed>> $dimensions 问题维度聚合数据
+     * @Return string 问题维度表现区 HTML
+     * @Throws \RuntimeException TCPDF 无法绘制维度数据时抛出异常
+     */
+    private function dimensionSection(array $dimensions): string
+    {
+        $rows = array_map(static fn (array $row): array => [
+            (string) ($row['dimension'] ?? '未分类'),
+            (string) ($row['question_count'] ?? 0),
+            (string) ($row['answer_count'] ?? 0),
+            (string) ($row['mention_rate'] ?? 0).'% ',
+            (string) ($row['recommendation_rate'] ?? 0).'% ',
+            (string) ($row['top1_rate'] ?? 0).'% ',
+            (string) ($row['top3_rate'] ?? 0).'% ',
+            (string) ($row['top5_rate'] ?? 0).'% ',
+            isset($row['average_rank']) ? (string) $row['average_rank'].' 名' : '—',
+        ], $dimensions);
+
+        return $this->sectionTitle('QUESTION DIMENSIONS', '问题维度表现', count($dimensions).' 个维度')
+            .$this->table(['问题维度', '问题数', '有效回答', '提及率', '推荐率', 'Top1', 'Top3', 'Top5', '平均位次'], $rows, [17, 9, 11, 10, 10, 8, 8, 8, 19]);
+    }
+
+    /**
+     * @Name: competitorSection
+     * @Description: 展示各竞品覆盖回答数、提及次数、推荐率、Top 排名及平均位次。
+     * @Author: cdkay
+     * @CreateTime: 2026-11-21 09:35:28
+     * @UpdateTime: 2026-11-21 09:35:28
+     * @Param list<array<string,mixed>> $competitors 竞品聚合数据
+     * @Return string 竞品表现区 HTML
+     * @Throws \RuntimeException TCPDF 无法绘制竞品数据时抛出异常
+     */
+    private function competitorSection(array $competitors): string
+    {
+        $rows = array_map(static fn (array $row): array => [
+            (string) ($row['brand'] ?? '未命名竞品'),
+            (string) ($row['answer_count'] ?? 0),
+            (string) ($row['mention_count'] ?? 0),
+            (string) ($row['recommendation_rate'] ?? 0).'% ',
+            (string) ($row['top1_rate'] ?? 0).'% ',
+            (string) ($row['top3_rate'] ?? 0).'% ',
+            (string) ($row['top5_rate'] ?? 0).'% ',
+            isset($row['average_rank']) ? (string) $row['average_rank'].' 名' : '—',
+        ], $competitors);
+
+        return $this->sectionTitle('COMPETITOR PERFORMANCE', '竞品表现', count($competitors).' 个品牌')
+            .$this->table(['竞品', '出现回答', '提及次数', '推荐率', 'Top1', 'Top3', 'Top5', '平均位次'], $rows, [24, 14, 13, 13, 9, 9, 9, 9]);
+    }
+
+    /**
+     * @Name: sourcePlatformSection
+     * @Description: 按内容平台类别汇总信源出现次数、占比、域名覆盖及关联模型。
+     * @Author: cdkay
+     * @CreateTime: 2026-11-21 09:35:28
+     * @UpdateTime: 2026-11-21 09:35:28
+     * @Param list<array<string,mixed>> $platforms 信源平台聚合数据
+     * @Return string 信源平台分布区 HTML
+     * @Throws \RuntimeException TCPDF 无法绘制信源平台数据时抛出异常
+     */
+    private function sourcePlatformSection(array $platforms): string
+    {
+        $rows = array_map(static fn (array $row): array => [
+            (string) ($row['platform'] ?? '其他站点'),
+            (string) ($row['type'] ?? '其他'),
+            (string) ($row['count'] ?? 0),
+            (string) ($row['share'] ?? 0).'% ',
+            (string) ($row['domain_count'] ?? 0),
+            implode('、', (array) ($row['models'] ?? [])) ?: '—',
+        ], $platforms);
+
+        return $this->sectionTitle('CITATION SOURCE PLATFORMS', '信源平台分布', count($platforms).' 个平台')
+            .$this->table(['信源平台', '类别', '出现次数', '信源占比', '覆盖域名数', '关联诊断模型'], $rows, [20, 16, 14, 14, 16, 16]);
     }
 
     /**

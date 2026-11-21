@@ -54,31 +54,58 @@ class BrandProfileResolver
      */
     private function resolveFromWebSearch(string $brandName, array $platforms): array
     {
-        $platform = $this->brandProfileSearchPlatform($platforms);
-        $response = $this->diagnosisClient->generateBrandProfileWithWebSearch($brandName, $platform);
-        $profile = $this->parseProfileText((string) ($response['text'] ?? ''));
-        if (! $this->profileIsUsable($profile)) {
-            throw new BrandProfileNotFoundException('未检索到可用的品牌介绍。');
+        $attempts = [];
+
+        foreach ($this->candidateSearchPlatforms($platforms) as $platform) {
+            try {
+                $response = $this->diagnosisClient->generateBrandProfileWithWebSearch($brandName, $platform);
+                $profile = $this->parseProfileText((string) ($response['text'] ?? ''));
+                if (! $this->profileIsUsable($profile)) {
+                    throw new BrandProfileNotFoundException('未检索到可用的品牌介绍。');
+                }
+
+                return [
+                    'profile' => $profile,
+                    'source' => 'web_search',
+                    'model' => BrandDiagnosisPlatform::label($platform),
+                    'status' => 'success',
+                    'meta' => [
+                        'platform' => $platform,
+                        'sources' => (array) ($response['sources'] ?? []),
+                        'raw_text' => mb_substr((string) ($response['text'] ?? ''), 0, 4000, 'UTF-8'),
+                        'search_attempts' => $attempts,
+                    ],
+                ];
+            } catch (Throwable $exception) {
+                $attempts[] = [
+                    'platform' => $platform,
+                    'status' => 'failed',
+                    'reason' => mb_substr(trim($exception->getMessage()), 0, 500, 'UTF-8'),
+                ];
+            }
         }
 
-        return [
-            'profile' => $profile,
-            'source' => 'web_search',
-            'model' => BrandDiagnosisPlatform::label($platform),
-            'status' => 'success',
-            'meta' => [
-                'platform' => $platform,
-                'sources' => (array) ($response['sources'] ?? []),
-                'raw_text' => mb_substr((string) ($response['text'] ?? ''), 0, 4000, 'UTF-8'),
-            ],
-        ];
+        $reasons = collect($attempts)
+            ->map(fn (array $attempt): string => BrandDiagnosisPlatform::label((string) $attempt['platform']).'：'.(string) $attempt['reason'])
+            ->implode('；');
+
+        throw new BrandProfileNotFoundException($reasons !== '' ? '所选模型均未能检索品牌资料：'.$reasons : '未检索到可用的品牌介绍。');
     }
 
-    private function brandProfileSearchPlatform(array $platforms): string
+    /**
+     * @param  list<string>  $platforms
+     * @return list<string>
+     */
+    private function candidateSearchPlatforms(array $platforms): array
     {
-        unset($platforms);
+        $selectedPlatforms = collect($platforms)
+            ->map(static fn (string $platform): string => BrandDiagnosisPlatform::normalize($platform))
+            ->filter(static fn (string $platform): bool => BrandDiagnosisPlatform::isSupported($platform))
+            ->unique()
+            ->values();
 
-        return BrandDiagnosisPlatform::DOUBAO;
+        return ($selectedPlatforms->isNotEmpty() ? $selectedPlatforms : collect([BrandDiagnosisPlatform::DOUBAO]))
+            ->all();
     }
 
     /**

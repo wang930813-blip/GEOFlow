@@ -1,5 +1,10 @@
 @php
     $metrics = $record['metrics'] ?? ['score' => 0, 'mention_rate' => 0, 'average_rank' => '0', 'mention_count' => 0, 'sentiment_rate' => 0];
+    $analytics = $record['analytics'] ?? [];
+    $analyticsMetrics = $analytics['metrics'] ?? [];
+    $dimensionRows = $analytics['dimensions'] ?? [];
+    $analysisCompetitors = $analytics['competitors'] ?? [];
+    $sourcePlatformRows = $analytics['source_platforms'] ?? [];
     $questions = $record['questions'] ?? [];
     $sources = $record['sources'] ?? [];
     $conversations = $record['conversations'] ?? [];
@@ -15,6 +20,8 @@
     $competitorRows = collect($rankings['mention_count'] ?? [])->reject(static fn ($row) => (bool) ($row['is_target_brand'] ?? false))->take(10)->values();
     $competitorCounts = $competitorRows->map(static fn ($row) => (int) ($row['count'] ?? 0))->all();
     $maxCompetitorCount = max([1, ...$competitorCounts]);
+    $sourcePlatformCounts = collect($sourcePlatformRows)->map(static fn ($row) => (int) ($row['count'] ?? 0))->all();
+    $maxSourcePlatformCount = max([1, ...$sourcePlatformCounts]);
     $widthClasses = ['w-0', 'w-1/12', 'w-2/12', 'w-3/12', 'w-4/12', 'w-5/12', 'w-6/12', 'w-7/12', 'w-8/12', 'w-9/12', 'w-10/12', 'w-11/12', 'w-full'];
     $barWidthClass = static function (int $value, int $max) use ($widthClasses): string {
         if ($value <= 0 || $max <= 0) {
@@ -26,6 +33,10 @@
     $metricCards = [
         ['label' => '品牌得分', 'value' => (string) $metrics['score'], 'suffix' => '/100', 'icon' => 'gauge', 'tone' => 'orange'],
         ['label' => '品牌提及率', 'value' => (string) $metrics['mention_rate'], 'suffix' => '%', 'icon' => 'radio-tower', 'tone' => 'blue'],
+        ['label' => '推荐率', 'value' => number_format((float) ($analyticsMetrics['recommendation_rate'] ?? 0), 1), 'suffix' => '%', 'icon' => 'badge-check', 'tone' => 'emerald', 'count' => (int) ($analyticsMetrics['recommendation_count'] ?? 0), 'total' => (int) ($analyticsMetrics['answer_count'] ?? 0)],
+        ['label' => 'Top1 推荐率', 'value' => number_format((float) ($analyticsMetrics['top1_rate'] ?? 0), 1), 'suffix' => '%', 'icon' => 'trophy', 'tone' => 'amber', 'count' => (int) ($analyticsMetrics['top1_count'] ?? 0), 'total' => (int) ($analyticsMetrics['answer_count'] ?? 0)],
+        ['label' => 'Top3 推荐率', 'value' => number_format((float) ($analyticsMetrics['top3_rate'] ?? 0), 1), 'suffix' => '%', 'icon' => 'medal', 'tone' => 'indigo', 'count' => (int) ($analyticsMetrics['top3_count'] ?? 0), 'total' => (int) ($analyticsMetrics['answer_count'] ?? 0)],
+        ['label' => 'Top5 推荐率', 'value' => number_format((float) ($analyticsMetrics['top5_rate'] ?? 0), 1), 'suffix' => '%', 'icon' => 'list-checks', 'tone' => 'rose', 'count' => (int) ($analyticsMetrics['top5_count'] ?? 0), 'total' => (int) ($analyticsMetrics['answer_count'] ?? 0)],
         ['label' => '平均提及排名', 'value' => (string) $metrics['average_rank'], 'suffix' => '名', 'icon' => 'list-ordered', 'tone' => 'indigo'],
         ['label' => '品牌提及次数', 'value' => (string) $metrics['mention_count'], 'suffix' => '次', 'icon' => 'hash', 'tone' => 'emerald'],
         ['label' => '正面/中性倾向', 'value' => (string) $metrics['sentiment_rate'], 'suffix' => '%', 'icon' => 'smile', 'tone' => 'rose'],
@@ -198,8 +209,11 @@
                 @foreach ([
                     ['href' => '#summary', 'icon' => 'file-text', 'label' => '报告简介'],
                     ['href' => '#performance', 'icon' => 'gauge', 'label' => '整体表现'],
+                    ['href' => '#dimensions', 'icon' => 'layers-3', 'label' => '问题维度表现'],
                     ['href' => '#visibility', 'icon' => 'radar', 'label' => 'AI可见度分析'],
+                    ['href' => '#competitors', 'icon' => 'users-round', 'label' => '竞品表现'],
                     ['href' => '#sentiment', 'icon' => 'smile', 'label' => 'AI舆情分析'],
+                    ['href' => '#source-platforms', 'icon' => 'network', 'label' => '信源平台分布'],
                     ['href' => '#sources', 'icon' => 'link', 'label' => '引用源分析'],
                     ['href' => '#dialogues', 'icon' => 'messages-square', 'label' => 'AI问题与对话明细'],
                     ['href' => '#recommendations', 'icon' => 'sparkles', 'label' => '优化建议'],
@@ -251,7 +265,7 @@
             <section id="performance" data-report-section class="report-section">
                 <div class="mb-4 flex flex-col gap-1">
                     <h2 class="text-xl font-bold text-slate-950">整体表现</h2>
-                    <p class="text-sm text-slate-600">核心指标按本次采集到的 AI 回答、引用来源和品牌提及记录汇总计算。</p>
+                    <p class="text-sm text-slate-600">推荐率表示有明确品牌位次的有效回答占比；Top1 按位次为 1 计算，Top3/Top5 分别按位次不高于 3/5 计算，分母均为成功回答。</p>
                 </div>
                 <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
                     @foreach ($metricCards as $card)
@@ -264,6 +278,9 @@
                                 <span class="pb-1 text-sm font-semibold text-slate-500">{{ $card['suffix'] }}</span>
                             </div>
                             <div class="mt-2 text-sm font-medium text-slate-600">{{ $card['label'] }}</div>
+                            @if (array_key_exists('count', $card))
+                                <div class="mt-1 text-xs text-slate-500">{{ $card['count'] }} / {{ $card['total'] }} 条有效回答</div>
+                            @endif
                         </div>
                     @endforeach
                 </div>
@@ -271,6 +288,7 @@
                     @foreach ($platformOptions as $option)
                         @php
                             $platformMetrics = $platformData[$option['value']]['metrics'] ?? null;
+                            $platformAnalytics = $platformData[$option['value']]['analytics']['metrics'] ?? [];
                         @endphp
                         @if ($platformMetrics)
                             <div class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
@@ -299,9 +317,63 @@
                                         <div class="mt-1 text-xs text-slate-500">平均排名</div>
                                     </div>
                                 </div>
+                                <div class="mt-4 grid grid-cols-4 gap-2 border-t border-slate-100 pt-3 text-center">
+                                    @foreach ([
+                                        ['label' => '推荐率', 'key' => 'recommendation_rate'],
+                                        ['label' => 'Top1', 'key' => 'top1_rate'],
+                                        ['label' => 'Top3', 'key' => 'top3_rate'],
+                                        ['label' => 'Top5', 'key' => 'top5_rate'],
+                                    ] as $rankMetric)
+                                        <div>
+                                            <div class="text-sm font-bold text-slate-900">{{ number_format((float) ($platformAnalytics[$rankMetric['key']] ?? 0), 1) }}%</div>
+                                            <div class="mt-1 text-xs text-slate-500">{{ $rankMetric['label'] }}</div>
+                                        </div>
+                                    @endforeach
+                                </div>
                             </div>
                         @endif
                     @endforeach
+                </div>
+            </section>
+
+            <section id="dimensions" data-report-section class="report-section">
+                <div class="mb-4 flex flex-col gap-1">
+                    <h2 class="text-xl font-bold text-slate-950">问题维度表现</h2>
+                    <p class="text-sm text-slate-600">按诊断问题类型拆分有效回答、品牌提及、推荐位次与平均排名。</p>
+                </div>
+                <div class="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
+                    <table class="w-full min-w-[900px] border-collapse text-left text-sm">
+                        <thead class="bg-slate-50 text-xs font-semibold text-slate-500">
+                            <tr>
+                                <th class="px-4 py-3">问题维度</th>
+                                <th class="px-4 py-3 text-right">问题数</th>
+                                <th class="px-4 py-3 text-right">有效回答</th>
+                                <th class="px-4 py-3 text-right">品牌提及率</th>
+                                <th class="px-4 py-3 text-right">推荐率</th>
+                                <th class="px-4 py-3 text-right">Top1</th>
+                                <th class="px-4 py-3 text-right">Top3</th>
+                                <th class="px-4 py-3 text-right">Top5</th>
+                                <th class="px-4 py-3 text-right">平均位次</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 text-slate-700">
+                            @forelse ($dimensionRows as $row)
+                                <tr>
+                                    <td class="px-4 py-3 font-semibold text-slate-900">{{ $row['dimension'] ?? '未分类' }}</td>
+                                    <td class="px-4 py-3 text-right">{{ (int) ($row['question_count'] ?? 0) }}</td>
+                                    <td class="px-4 py-3 text-right">{{ (int) ($row['answer_count'] ?? 0) }}</td>
+                                    <td class="px-4 py-3 text-right font-semibold">{{ number_format((float) ($row['mention_rate'] ?? 0), 1) }}%</td>
+                                    <td class="px-4 py-3 text-right">{{ number_format((float) ($row['recommendation_rate'] ?? 0), 1) }}%</td>
+                                    <td class="px-4 py-3 text-right">{{ number_format((float) ($row['top1_rate'] ?? 0), 1) }}%</td>
+                                    <td class="px-4 py-3 text-right">{{ number_format((float) ($row['top3_rate'] ?? 0), 1) }}%</td>
+                                    <td class="px-4 py-3 text-right">{{ number_format((float) ($row['top5_rate'] ?? 0), 1) }}%</td>
+                                    <td class="px-4 py-3 text-right">{{ ($row['average_rank'] ?? null) !== null ? number_format((float) $row['average_rank'], 1).' 名' : '—' }}</td>
+                                </tr>
+                            @empty
+                                <tr><td colspan="9" class="px-4 py-10 text-center text-slate-500">暂无有效回答，暂时无法计算问题维度表现</td></tr>
+                            @endforelse
+                        </tbody>
+                    </table>
                 </div>
             </section>
 
@@ -357,6 +429,56 @@
                 </div>
             </section>
 
+            <section id="competitors" data-report-section class="report-section">
+                <div class="mb-4 flex flex-col gap-1">
+                    <h2 class="text-xl font-bold text-slate-950">竞品表现</h2>
+                    <p class="text-sm text-slate-600">竞品指标以全部有效回答为分母；同一答案中同一竞品只计入一次出现。</p>
+                </div>
+                <div class="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
+                    <table class="w-full min-w-[900px] border-collapse text-left text-sm">
+                        <thead class="bg-slate-50 text-xs font-semibold text-slate-500">
+                            <tr>
+                                <th class="px-4 py-3">竞品</th>
+                                <th class="px-4 py-3 text-right">出现回答</th>
+                                <th class="px-4 py-3 text-right">提及次数</th>
+                                <th class="px-4 py-3 text-right">推荐率</th>
+                                <th class="px-4 py-3 text-right">Top1</th>
+                                <th class="px-4 py-3 text-right">Top3</th>
+                                <th class="px-4 py-3 text-right">Top5</th>
+                                <th class="px-4 py-3 text-right">平均位次</th>
+                                <th class="px-4 py-3">出现占比</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 text-slate-700">
+                            @forelse ($analysisCompetitors as $row)
+                                @php
+                                    $competitorAnswers = (int) ($row['answer_count'] ?? 0);
+                                    $competitorWidth = min(100, (int) round(($competitorAnswers / max(1, (int) ($analyticsMetrics['answer_count'] ?? 0))) * 100));
+                                @endphp
+                                <tr>
+                                    <td class="px-4 py-3 font-semibold text-slate-900">{{ $row['brand'] ?? '未命名竞品' }}</td>
+                                    <td class="px-4 py-3 text-right">{{ $competitorAnswers }} / {{ (int) ($analyticsMetrics['answer_count'] ?? 0) }}</td>
+                                    <td class="px-4 py-3 text-right">{{ (int) ($row['mention_count'] ?? 0) }}</td>
+                                    <td class="px-4 py-3 text-right font-semibold">{{ number_format((float) ($row['recommendation_rate'] ?? 0), 1) }}%</td>
+                                    <td class="px-4 py-3 text-right">{{ number_format((float) ($row['top1_rate'] ?? 0), 1) }}%</td>
+                                    <td class="px-4 py-3 text-right">{{ number_format((float) ($row['top3_rate'] ?? 0), 1) }}%</td>
+                                    <td class="px-4 py-3 text-right">{{ number_format((float) ($row['top5_rate'] ?? 0), 1) }}%</td>
+                                    <td class="px-4 py-3 text-right">{{ ($row['average_rank'] ?? null) !== null ? number_format((float) $row['average_rank'], 1).' 名' : '—' }}</td>
+                                    <td class="px-4 py-3">
+                                        <div class="flex min-w-28 items-center gap-2">
+                                            <span class="h-2 flex-1 overflow-hidden rounded-full bg-slate-100"><span class="block h-full rounded-full bg-blue-600" style="width: {{ $competitorWidth }}%"></span></span>
+                                            <span class="w-10 text-right text-xs text-slate-500">{{ number_format((float) ($row['mention_rate'] ?? 0), 1) }}%</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            @empty
+                                <tr><td colspan="9" class="px-4 py-10 text-center text-slate-500">本次有效回答中尚未识别到竞品</td></tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
             <section id="sentiment" data-report-section class="report-section">
                 <div class="mb-4 flex flex-col gap-1">
                     <h2 class="text-xl font-bold text-slate-950">AI舆情分析</h2>
@@ -384,6 +506,38 @@
                             <div class="mt-2 text-3xl font-black text-slate-950">{{ count($sources) }}</div>
                         </div>
                     </div>
+                </div>
+            </section>
+
+            <section id="source-platforms" data-report-section class="report-section">
+                <div class="mb-4 flex flex-col gap-1">
+                    <h2 class="text-xl font-bold text-slate-950">信源平台分布</h2>
+                    <p class="text-sm text-slate-600">按有效回答中出现的去重信源域名归类，展示各内容平台的信源占比。</p>
+                </div>
+                <div class="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                    <div class="grid grid-cols-[minmax(140px,1.1fr)_minmax(180px,2fr)_90px_100px_120px] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs font-semibold text-slate-500 max-md:hidden">
+                        <span>信源平台</span><span>占比</span><span class="text-right">出现次数</span><span class="text-right">覆盖域名</span><span>诊断模型</span>
+                    </div>
+                    @forelse ($sourcePlatformRows as $row)
+                        @php
+                            $sourceWidth = min(100, (int) round(((int) ($row['count'] ?? 0) / $maxSourcePlatformCount) * 100));
+                        @endphp
+                        <div class="grid grid-cols-1 items-center gap-3 border-b border-slate-100 px-5 py-4 last:border-b-0 md:grid-cols-[minmax(140px,1.1fr)_minmax(180px,2fr)_90px_100px_120px] md:gap-4">
+                            <div class="flex items-center gap-2">
+                                <span class="font-semibold text-slate-900">{{ $row['platform'] ?? '其他站点' }}</span>
+                                <span class="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-500">{{ $row['type'] ?? '其他' }}</span>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <span class="h-2 flex-1 overflow-hidden rounded-full bg-slate-100"><span class="block h-full rounded-full bg-emerald-600" style="width: {{ $sourceWidth }}%"></span></span>
+                                <span class="w-12 text-right text-xs font-semibold text-slate-700">{{ number_format((float) ($row['share'] ?? 0), 1) }}%</span>
+                            </div>
+                            <div class="text-sm text-slate-700 md:text-right"><span class="md:hidden">出现次数：</span>{{ (int) ($row['count'] ?? 0) }}</div>
+                            <div class="text-sm text-slate-700 md:text-right"><span class="md:hidden">覆盖域名：</span>{{ (int) ($row['domain_count'] ?? 0) }}</div>
+                            <div class="text-xs text-slate-500">{{ implode('、', (array) ($row['models'] ?? [])) ?: '—' }}</div>
+                        </div>
+                    @empty
+                        <div class="px-5 py-10 text-center text-sm text-slate-500">暂无可归类的信源平台数据</div>
+                    @endforelse
                 </div>
             </section>
 

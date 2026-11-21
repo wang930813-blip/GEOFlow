@@ -53,17 +53,25 @@ class BrandDiagnosisRunService
      *
      * @Param: bool $reuseQuestions 是否复用当前账号的历史问题
      *
+     * @Param: string $diagnosisMode 标准模式或深度模式
+     *
+     * @Param: int|null $questionCount 标准模式的问题数量；复用问题时以历史问题数量为准
+     *
      * @Return: BrandDiagnosisRun 新建的诊断任务
      *
      * @Throws: RuntimeException 品牌名称为空或当前站点未初始化时抛出
      */
-    public function create(Admin $admin, string $brandName, array $platforms, bool $reuseQuestions = false): BrandDiagnosisRun
+    public function create(Admin $admin, string $brandName, array $platforms, bool $reuseQuestions = false, string $diagnosisMode = 'standard', ?int $questionCount = null): BrandDiagnosisRun
     {
         $brandName = trim($brandName);
         if ($brandName === '') {
             throw new RuntimeException('请输入品牌名称。');
         }
 
+        $diagnosisMode = $diagnosisMode === 'deep' ? 'deep' : 'standard';
+        $questionCount = $diagnosisMode === 'deep'
+            ? 30
+            : min(30, max(1, $questionCount ?? (int) config('brand_diagnosis.question_count', 10)));
         $platforms = $this->normalizePlatforms($platforms);
         $siteId = (int) ($this->currentSite->id() ?? 0);
         if ($siteId <= 0) {
@@ -88,7 +96,11 @@ class BrandDiagnosisRunService
                         'brand_profile_source' => (string) ($reusableRun->brand_profile_source ?? ''),
                         'brand_profile_model' => (string) ($reusableRun->brand_profile_model ?? ''),
                         'brand_profile_status' => (string) ($reusableRun->brand_profile_status ?? ''),
-                        'brand_profile_meta' => is_array($reusableRun->brand_profile_meta) ? $reusableRun->brand_profile_meta : null,
+                        'brand_profile_meta' => $this->brandProfileMetaWithDiagnosisOptions(
+                            is_array($reusableRun->brand_profile_meta) ? $reusableRun->brand_profile_meta : null,
+                            $reusableQuestions->count(),
+                            $reusableQuestions->count() === 30 ? 'deep' : 'standard'
+                        ),
                         'platforms' => $platforms,
                         'status' => 'questions_ready',
                         'total_questions' => $reusableQuestions->count(),
@@ -117,12 +129,13 @@ class BrandDiagnosisRunService
             }
         }
 
-        $run = DB::transaction(function () use ($admin, $brandName, $platforms, $siteId, $ownerAdminId): BrandDiagnosisRun {
+        $run = DB::transaction(function () use ($admin, $brandName, $platforms, $siteId, $ownerAdminId, $questionCount, $diagnosisMode): BrandDiagnosisRun {
             return BrandDiagnosisRun::query()->create([
                 'site_id' => $siteId,
                 'owner_admin_id' => $ownerAdminId,
                 'admin_id' => (int) $admin->id,
                 'brand_name' => $brandName,
+                'brand_profile_meta' => $this->brandProfileMetaWithDiagnosisOptions(null, $questionCount, $diagnosisMode),
                 'platforms' => $platforms,
                 'status' => 'questions_generating',
                 'total_questions' => 0,
@@ -157,14 +170,16 @@ class BrandDiagnosisRunService
         }
 
         $platforms = $this->normalizePlatforms($platforms);
+        $questionCount = min(30, max(1, (int) config('brand_diagnosis.question_count', 10)));
 
-        $run = DB::transaction(function () use ($admin, $brandName, $platforms, $apiTaskKey): BrandDiagnosisRun {
+        $run = DB::transaction(function () use ($admin, $brandName, $platforms, $apiTaskKey, $questionCount): BrandDiagnosisRun {
             return BrandDiagnosisRun::query()->create([
                 'site_id' => null,
                 'api_task_key' => $apiTaskKey,
                 'owner_admin_id' => (int) $admin->id,
                 'admin_id' => (int) $admin->id,
                 'brand_name' => $brandName,
+                'brand_profile_meta' => $this->brandProfileMetaWithDiagnosisOptions(null, $questionCount, 'standard'),
                 'platforms' => $platforms,
                 'status' => 'questions_generating',
                 'total_questions' => 0,
@@ -273,6 +288,11 @@ class BrandDiagnosisRunService
                 $lockedRun->update([
                     'platforms' => $selectedPlatforms,
                     'owner_admin_id' => $ownerAdminId,
+                    'brand_profile_meta' => $this->brandProfileMetaWithDiagnosisOptions(
+                        is_array($lockedRun->brand_profile_meta) ? $lockedRun->brand_profile_meta : null,
+                        $normalizedQuestions->count(),
+                        $normalizedQuestions->count() === 30 ? 'deep' : 'standard'
+                    ),
                     'status' => 'running',
                     'total_questions' => $normalizedQuestions->count(),
                     'completed_questions' => 0,
@@ -305,7 +325,11 @@ class BrandDiagnosisRunService
                 'brand_profile_source' => (string) ($lockedRun->brand_profile_source ?? ''),
                 'brand_profile_model' => (string) ($lockedRun->brand_profile_model ?? ''),
                 'brand_profile_status' => (string) ($lockedRun->brand_profile_status ?? ''),
-                'brand_profile_meta' => is_array($lockedRun->brand_profile_meta) ? $lockedRun->brand_profile_meta : null,
+                'brand_profile_meta' => $this->brandProfileMetaWithDiagnosisOptions(
+                    is_array($lockedRun->brand_profile_meta) ? $lockedRun->brand_profile_meta : null,
+                    $normalizedQuestions->count(),
+                    $normalizedQuestions->count() === 30 ? 'deep' : 'standard'
+                ),
                 'platforms' => $selectedPlatforms,
                 'status' => 'running',
                 'total_questions' => $normalizedQuestions->count(),
@@ -373,6 +397,11 @@ class BrandDiagnosisRunService
             $this->updateQuestionsForRun($lockedRun, $normalizedQuestions);
             $lockedRun->update([
                 'status' => 'running',
+                'brand_profile_meta' => $this->brandProfileMetaWithDiagnosisOptions(
+                    is_array($lockedRun->brand_profile_meta) ? $lockedRun->brand_profile_meta : null,
+                    $normalizedQuestions->count(),
+                    $normalizedQuestions->count() === 30 ? 'deep' : 'standard'
+                ),
                 'total_questions' => $normalizedQuestions->count(),
                 'completed_questions' => 0,
                 'failed_questions' => 0,
@@ -615,5 +644,40 @@ class BrandDiagnosisRunService
                 'status' => 'pending',
             ]);
         }
+    }
+
+    /**
+     * @Name: brandProfileMetaWithDiagnosisOptions
+     *
+     * @Description: 在现有品牌资料 JSON 中记录诊断模式与问题数量，确保异步任务使用创建时冻结的设置。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-11-20 16:20:01
+     *
+     * @UpdateTime: 2026-11-20 16:20:01
+     *
+     * @Param: array<string,mixed>|null $meta 现有品牌资料元数据
+     *
+     * @Param: int $questionCount 本次冻结的问题数量
+     *
+     * @Param: string $diagnosisMode 本次诊断模式
+     *
+     * @Return: array<string,mixed> 合并问题数量后的品牌资料元数据
+     *
+     * @Throws: 无
+     */
+    private function brandProfileMetaWithDiagnosisOptions(?array $meta, int $questionCount, string $diagnosisMode): array
+    {
+        $meta ??= [];
+        $meta['diagnosis_options'] = array_merge(
+            (array) ($meta['diagnosis_options'] ?? []),
+            [
+                'mode' => $diagnosisMode === 'deep' ? 'deep' : 'standard',
+                'question_count' => min(30, max(1, $questionCount)),
+            ]
+        );
+
+        return $meta;
     }
 }

@@ -6,9 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Models\Admin;
 use App\Models\BrandDiagnosisRun;
 use App\Services\BrandDiagnosis\BrandDiagnosisLimitExceededException;
+use App\Services\BrandDiagnosis\BrandDiagnosisModelSettings;
 use App\Services\BrandDiagnosis\BrandDiagnosisPdfService;
 use App\Services\BrandDiagnosis\BrandDiagnosisPlatform;
 use App\Services\BrandDiagnosis\BrandDiagnosisQuestionLabeler;
+use App\Services\BrandDiagnosis\BrandDiagnosisReportAnalytics;
 use App\Services\BrandDiagnosis\BrandDiagnosisRunService;
 use App\Services\BrandDiagnosis\BrandDiagnosisSnapshotPayload;
 use App\Services\BrandDiagnosis\BrandEntityResolver;
@@ -34,7 +36,9 @@ class BrandDiagnosisController extends Controller
         private readonly BrandDiagnosisRunService $runService,
         private readonly BrandDiagnosisPdfService $pdfService,
         private readonly BrandDiagnosisSnapshotPayload $snapshotPayload,
-        private readonly BrandEntityResolver $brandEntityResolver
+        private readonly BrandEntityResolver $brandEntityResolver,
+        private readonly BrandDiagnosisModelSettings $modelSettings,
+        private readonly BrandDiagnosisReportAnalytics $reportAnalytics
     ) {}
 
     public function index(Request $request): View
@@ -49,6 +53,8 @@ class BrandDiagnosisController extends Controller
             'activeMenu' => 'brand_diagnosis',
             'adminSiteName' => AdminWeb::siteName(),
             'models' => $this->models(),
+            'canManageDiagnosisModels' => auth('admin')->user()?->isSuperAdmin() === true,
+            'defaultQuestionCount' => min(30, max(1, (int) config('brand_diagnosis.question_count', 10))),
             'questions' => $activeRecord['questions'] ?? $this->questions(),
             'mentionRateRanking' => $this->mentionRateRanking($activeRecord),
             'mentionCountRanking' => $this->mentionCountRanking($activeRecord),
@@ -97,6 +103,7 @@ class BrandDiagnosisController extends Controller
             'brand_name' => ['required', 'string', 'max:120'],
             'platforms' => ['nullable', 'array'],
             'platforms.*' => ['string', BrandDiagnosisPlatform::validationRule()],
+            'diagnosis_mode' => ['required', 'string', 'in:standard,deep'],
             'reuse_questions' => ['nullable', 'boolean'],
         ], [
             'brand_name.required' => '请输入品牌名称',
@@ -113,7 +120,8 @@ class BrandDiagnosisController extends Controller
                 $admin,
                 (string) $payload['brand_name'],
                 (array) ($payload['platforms'] ?? ['doubao']),
-                $request->boolean('reuse_questions')
+                $request->boolean('reuse_questions'),
+                (string) $payload['diagnosis_mode']
             );
         } catch (BrandDiagnosisLimitExceededException $exception) {
             return back()->withErrors(['brand_name' => $exception->getMessage()])->withInput();
@@ -124,6 +132,52 @@ class BrandDiagnosisController extends Controller
         return redirect()
             ->route('admin.brand-diagnosis.index')
             ->with('message', 'AI 问题生成任务已创建，问题生成后请确认诊断。');
+    }
+
+    /**
+     * @Name: togglePlatform
+     *
+     * @Description: 仅允许超级管理员修改全局诊断模型开关；开启前检查接口配置，避免向用户开放无法调用的模型。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-11-20 16:43:39
+     *
+     * @UpdateTime: 2026-11-20 16:43:39
+     *
+     * @Param: Request $request 包含启用状态的后台请求
+     *
+     * @Param: string $platform 诊断模型平台标识
+     *
+     * @Return: RedirectResponse 返回诊断工作台并提示保存结果
+     *
+     * @Throws: 403 当前管理员不是超级管理员时抛出
+     *
+     * @Throws: ValidationException 启用状态无效时抛出
+     */
+    public function togglePlatform(Request $request, string $platform): RedirectResponse
+    {
+        $admin = auth('admin')->user();
+        abort_unless($admin instanceof Admin && $admin->isSuperAdmin(), 403);
+
+        $payload = $request->validate([
+            'enabled' => ['required', 'boolean'],
+        ]);
+        $enabled = filter_var($payload['enabled'], FILTER_VALIDATE_BOOLEAN);
+
+        if ($enabled && ! $this->modelSettings->isConfigured($platform)) {
+            return back()->withErrors([
+                'diagnosis_model' => BrandDiagnosisPlatform::label($platform).'接口配置不完整，无法启用。',
+            ]);
+        }
+
+        try {
+            $this->modelSettings->setEnabled($platform, $enabled);
+        } catch (Throwable $exception) {
+            return back()->withErrors(['diagnosis_model' => $exception->getMessage()]);
+        }
+
+        return back()->with('message', BrandDiagnosisPlatform::label($platform).($enabled ? '已启用。' : '已停用。'));
     }
 
     public function reusableQuestions(Request $request): JsonResponse
@@ -218,17 +272,29 @@ class BrandDiagnosisController extends Controller
     }
 
     /**
-     * @return list<array{name:string,key:string,initial:string,color:string,logo:string,desc:string,deep:bool,available:bool}>
+     * @return list<array{name:string,key:string,initial:string,color:string,logo:string,desc:string,deep:bool,available:bool,operator_enabled:bool,configured:bool}>
      */
     private function models(): array
     {
-        return [
+        $models = [
             ['name' => '豆包', 'key' => 'doubao', 'initial' => '豆', 'color' => 'bg-blue-600', 'logo' => BrandDiagnosisPlatform::logoUrl('doubao'), 'desc' => '网页问答', 'deep' => true, 'available' => true],
             ['name' => 'DeepSeek', 'key' => 'deepseek', 'initial' => 'DS', 'color' => 'bg-indigo-600', 'logo' => BrandDiagnosisPlatform::logoUrl('deepseek'), 'desc' => '深度推理', 'deep' => true, 'available' => true],
             ['name' => '千问', 'key' => 'qianwen', 'initial' => '千', 'color' => 'bg-violet-600', 'logo' => BrandDiagnosisPlatform::logoUrl('qianwen'), 'desc' => '通义问答', 'deep' => true, 'available' => true],
             ['name' => '文心一言', 'key' => 'wenxin', 'initial' => '文', 'color' => 'bg-emerald-600', 'logo' => BrandDiagnosisPlatform::logoUrl('wenxin'), 'desc' => '千帆搜索', 'deep' => false, 'available' => true],
             ['name' => '元宝', 'key' => 'yuanbao', 'initial' => '元', 'color' => 'bg-red-600', 'logo' => BrandDiagnosisPlatform::logoUrl('yuanbao'), 'desc' => '混元模型', 'deep' => false, 'available' => true],
         ];
+
+        return array_map(function (array $model): array {
+            $operatorEnabled = $this->modelSettings->isEnabled($model['key']);
+            $configured = $this->modelSettings->isConfigured($model['key']);
+
+            return [
+                ...$model,
+                'operator_enabled' => $operatorEnabled,
+                'configured' => $configured,
+                'available' => $operatorEnabled && $configured,
+            ];
+        }, $models);
     }
 
     /**
@@ -550,6 +616,7 @@ class BrandDiagnosisController extends Controller
             'error_summary' => $this->recordErrorSummary($errorMessage, $resultErrors),
             'result_errors' => $resultErrors,
             'metrics' => $allPlatformData['metrics'],
+            'analytics' => $allPlatformData['analytics'],
             'questions' => $questions,
             'sources' => $allPlatformData['sources'],
             'conversations' => $allPlatformData['conversations'],
@@ -989,6 +1056,13 @@ class BrandDiagnosisController extends Controller
     /**
      * @return array<string,array{
      *   metrics:array{score:int,mention_rate:int,average_rank:string,mention_count:int,sentiment_rate:int},
+     *   analytics:array{
+     *     metrics:array<string,int|float>,
+     *     dimensions:list<array<string,mixed>>,
+     *     competitors:list<array<string,mixed>>,
+     *     source_platforms:list<array<string,mixed>>,
+     *     source_occurrences:int
+     *   },
      *   rankings:array{
      *     mention_rate:list<array{brand:string,rate:int,is_target_brand:bool}>,
      *     mention_count:list<array{brand:string,count:int,is_target_brand:bool}>,
@@ -1010,6 +1084,7 @@ class BrandDiagnosisController extends Controller
         $data = [
             'all' => [
                 'metrics' => $this->platformMetrics($run),
+                'analytics' => $this->reportAnalytics->summarize($run),
                 'rankings' => $this->brandRankings($run),
                 'sources' => $this->sourceRows($run),
                 'conversations' => $this->conversationRows($run),
@@ -1019,6 +1094,7 @@ class BrandDiagnosisController extends Controller
         foreach ($platforms as $platform) {
             $data[$platform] = [
                 'metrics' => $this->platformMetrics($run, $platform),
+                'analytics' => $this->reportAnalytics->summarize($run, $platform),
                 'rankings' => $this->brandRankings($run, $platform),
                 'sources' => $this->sourceRows($run, $platform),
                 'conversations' => $this->conversationRows($run, $platform),
