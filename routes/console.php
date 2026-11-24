@@ -23,6 +23,11 @@ Schedule::command('horizon:snapshot')->everyFiveMinutes();
 Schedule::command('geoflow:schedule-tasks')->everyMinute();
 
 /**
+ * 品牌监测计划：每分钟扫描到期计划并同步诊断执行状态。
+ */
+Schedule::command('brand-monitoring:run-due --limit=50')->everyMinute()->withoutOverlapping();
+
+/**
  * 分发媒体订单同步：定时刷新第三方未完成订单状态。
  */
 Schedule::command('media-distribution:sync-submissions --limit=100')->everyThirtyMinutes()->withoutOverlapping();

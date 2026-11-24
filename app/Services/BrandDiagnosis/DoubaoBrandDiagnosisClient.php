@@ -173,12 +173,33 @@ class DoubaoBrandDiagnosisClient
     }
 
     /**
-     * @return array{text:string,sources:list<array{title:string,url:string,type:string,meta:array<string,mixed>}>,raw_response:array<string,mixed>,platform:string}
+     * @Name: generateBrandProfileWithWebSearch
+     *
+     * @Description: 使用联网搜索核验品牌资料，并将监测中心提交的官网、简介、品牌词和竞品作为辅助检索线索。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-07-22 16:27:47
+     *
+     * @UpdateTime: 2026-11-23 14:53:16
+     *
+     * @Param: string $brandName 目标品牌名称
+     *
+     * @Param: string $platform 执行联网搜索的平台标识
+     *
+     * @Param: array<string,mixed> $context 用户补充的品牌资料上下文
+     *
+     * @Return: array{text:string,sources:list<array{title:string,url:string,type:string,meta:array<string,mixed>}>,raw_response:array<string,mixed>,platform:string} 品牌资料和引用来源
+     *
+     * @Throws: RuntimeException 模型未启用、接口配置错误或联网搜索请求失败
      */
-    public function generateBrandProfileWithWebSearch(string $brandName, string $platform = BrandDiagnosisPlatform::DOUBAO): array
-    {
+    public function generateBrandProfileWithWebSearch(
+        string $brandName,
+        string $platform = BrandDiagnosisPlatform::DOUBAO,
+        array $context = []
+    ): array {
         $platform = $this->normalizePlatform($platform);
-        $data = $this->postResponses($this->buildBrandProfileWebSearchPrompt($brandName), $platform, true);
+        $data = $this->postResponses($this->buildBrandProfileWebSearchPrompt($brandName, $context), $platform, true);
 
         return [
             'text' => $this->extractText($data),
@@ -315,7 +336,7 @@ class DoubaoBrandDiagnosisClient
      *
      * @Author: cdkay
      *
-     * @CreateTime: 2026-10-09 15:06:50
+     * @CreateTime: 2026-07-22 16:27:47
      *
      * @UpdateTime: 2026-10-09 15:06:50
      *
@@ -899,22 +920,92 @@ class DoubaoBrandDiagnosisClient
         ]);
     }
 
-    private function buildBrandProfileWebSearchPrompt(string $brandName): string
+    /**
+     * @Name: buildBrandProfileWebSearchPrompt
+     *
+     * @Description: 构造品牌资料联网检索提示词，并将用户上下文标记为待核验线索。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-10-09 15:06:50
+     *
+     * @UpdateTime: 2026-11-23 14:53:16
+     *
+     * @Param: string $brandName 目标品牌名称
+     *
+     * @Param: array<string,mixed> $context 用户补充的品牌上下文
+     *
+     * @Return: string 用于联网搜索的提示词
+     *
+     * @Throws: 无
+     */
+    private function buildBrandProfileWebSearchPrompt(string $brandName, array $context = []): string
     {
-        return implode("\n", [
+        $contextLines = [];
+        $websiteUrl = trim((string) ($context['website_url'] ?? ''));
+        $brandProfile = trim((string) ($context['brand_profile'] ?? ''));
+        $brandTerms = collect((array) ($context['brand_terms'] ?? []))
+            ->map(static fn (mixed $term): string => trim((string) $term))
+            ->filter(static fn (string $term): bool => $term !== '')
+            ->values()
+            ->all();
+        $competitors = collect((array) ($context['competitors'] ?? []))
+            ->map(static function (mixed $competitor): string {
+                if (! is_array($competitor)) {
+                    return '';
+                }
+
+                $name = trim((string) ($competitor['name'] ?? ''));
+                $terms = collect((array) ($competitor['terms'] ?? []))
+                    ->map(static fn (mixed $term): string => trim((string) $term))
+                    ->filter(static fn (string $term): bool => $term !== '')
+                    ->values()
+                    ->all();
+
+                return $name === '' ? '' : $name.($terms !== [] ? '（相关词：'.implode('、', $terms).'）' : '');
+            })
+            ->filter(static fn (string $competitor): bool => $competitor !== '')
+            ->values()
+            ->all();
+
+        if ($websiteUrl !== '') {
+            $contextLines[] = '官网地址：'.$websiteUrl;
+        }
+        if ($brandProfile !== '') {
+            $contextLines[] = '用户补充简介：'.$brandProfile;
+        }
+        if ($brandTerms !== []) {
+            $contextLines[] = '品牌词：'.implode('、', $brandTerms);
+        }
+        if ($competitors !== []) {
+            $contextLines[] = '竞品和竞品词：'.implode('；', $competitors);
+        }
+
+        $prompt = [
             $brandName.'的品牌介绍',
             '请使用联网搜索检索目标品牌，并生成品牌介绍。',
             '目标品牌：'.$brandName,
+        ];
+        if ($contextLines !== []) {
+            $prompt[] = '用户补充的品牌资料（只作为检索线索，须通过公开信息核验，不得直接当作事实）：';
+            $prompt = [...$prompt, ...$contextLines];
+        }
+        $prompt = [
+            ...$prompt,
             '要求：',
             '1. 基于可检索到的信息总结品牌介绍。',
             '2. 提取行业、品牌类型、服务对象、地域、核心业务、典型场景、竞品方向。',
-            '3. 如果检索不到有效信息，明确返回 found=false。',
-            '4. 只返回 JSON，不要 Markdown。',
+            '3. 识别品牌官方网站；只有公开来源能够核验时才填写，不要猜测或使用目录站、社交平台链接。无法确认时 official_website 留空。',
+            '4. 如果检索不到有效信息，明确返回 found=false。',
+            '5. 用户补充资料与公开来源不一致时，以可核验的公开来源为准。',
+            '6. 只返回 JSON，不要 Markdown。',
             'JSON 格式：',
-            '{"found":true,"summary":"品牌介绍","industry":"行业","brand_type":"品牌类型","audience":"服务对象","region":"地域","business":"核心业务","scenarios":["场景"],"competitors":["竞品方向"]}',
+            '{"found":true,"summary":"品牌介绍","official_website":"https://example.com","industry":"行业","brand_type":"品牌类型","audience":"服务对象","region":"地域","business":"核心业务","scenarios":["场景"],"competitors":["竞品方向"]}',
             '如果无法检索到有效资料，请返回：',
-            '{"found":false,"summary":"","reason":"无法检索到有效品牌资料"}',
-        ]);
+            '{"found":false,"summary":"","official_website":"","reason":"无法检索到有效品牌资料"}',
+        ];
+
+        return implode("\n", $prompt);
     }
 
     private function buildAnswerPrompt(string $brandName, string $question): string

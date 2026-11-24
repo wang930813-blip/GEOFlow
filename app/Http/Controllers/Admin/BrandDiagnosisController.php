@@ -965,6 +965,7 @@ class BrandDiagnosisController extends Controller
     {
         return match ($status) {
             'pending' => '排队中',
+            'brand_profile_resolving' => '识别品牌资料中',
             'questions_generating' => '生成问题中',
             'questions_ready' => '待确认诊断',
             'awaiting_confirmation' => '待确认诊断',

@@ -24,6 +24,8 @@ use App\Http\Controllers\Api\V1\McpVideoGenerationController;
 use App\Http\Controllers\Api\V1\MediaResourceController;
 use App\Http\Controllers\Api\V1\MediaSubmissionController;
 use App\Http\Controllers\Api\V1\MonitorAuthController;
+use App\Http\Controllers\Api\V1\MonitorBrandDiagnosisController;
+use App\Http\Controllers\Api\V1\MonitorBrandMonitoringController;
 use App\Http\Controllers\Api\V1\MonitoringDashboardController;
 use App\Http\Controllers\Api\V1\MonitoringReportPdfController;
 use App\Http\Controllers\Api\V1\MonitorMediaPublishingController;
@@ -70,6 +72,35 @@ Route::prefix('v1')
                     ->whereNumber('article');
                 Route::get('dashboard', [MonitoringDashboardController::class, 'index']);
                 Route::get('report/pdf', [MonitoringReportPdfController::class, 'show']);
+                Route::get('brand-diagnosis', [MonitorBrandDiagnosisController::class, 'index']);
+                Route::get('brand-diagnosis/options', [MonitorBrandDiagnosisController::class, 'options']);
+                Route::post('brand-diagnosis', [MonitorBrandDiagnosisController::class, 'store'])
+                    ->middleware('throttle:mcp-paid-write');
+                Route::get('brand-diagnosis/{run}', [MonitorBrandDiagnosisController::class, 'show'])
+                    ->whereNumber('run');
+                Route::post('brand-diagnosis/{run}/confirm', [MonitorBrandDiagnosisController::class, 'confirm'])
+                    ->whereNumber('run')
+                    ->middleware('throttle:mcp-paid-write');
+                Route::get('brand-monitoring', [MonitorBrandMonitoringController::class, 'index']);
+                Route::post('brand-monitoring/suggestions', [MonitorBrandMonitoringController::class, 'suggestions'])
+                    ->middleware('throttle:6,1');
+                Route::post('brand-monitoring', [MonitorBrandMonitoringController::class, 'store'])
+                    ->middleware('throttle:mcp-paid-write');
+                Route::get('brand-monitoring/{plan}', [MonitorBrandMonitoringController::class, 'show'])
+                    ->whereNumber('plan');
+                Route::put('brand-monitoring/{plan}', [MonitorBrandMonitoringController::class, 'update'])
+                    ->whereNumber('plan');
+                Route::delete('brand-monitoring/{plan}', [MonitorBrandMonitoringController::class, 'destroy'])
+                    ->whereNumber('plan');
+                Route::post('brand-monitoring/{plan}/pause', [MonitorBrandMonitoringController::class, 'pause'])
+                    ->whereNumber('plan');
+                Route::post('brand-monitoring/{plan}/resume', [MonitorBrandMonitoringController::class, 'resume'])
+                    ->whereNumber('plan');
+                Route::post('brand-monitoring/{plan}/duplicate', [MonitorBrandMonitoringController::class, 'duplicate'])
+                    ->whereNumber('plan');
+                Route::post('brand-monitoring/{plan}/run', [MonitorBrandMonitoringController::class, 'runNow'])
+                    ->whereNumber('plan')
+                    ->middleware('throttle:mcp-paid-write');
                 Route::get('open-platform/apps', [MonitorOpenPlatformApplicationController::class, 'index']);
                 Route::post('open-platform/apps', [MonitorOpenPlatformApplicationController::class, 'store']);
                 Route::patch('open-platform/apps/{application}', [MonitorOpenPlatformApplicationController::class, 'update'])

@@ -1,5 +1,16 @@
 <?php
 
+/**
+ * Created by Codex.
+ * @Date: 2026-11-23
+ * @Time: 14:53:16
+ * @Author: cdkay
+ * @Email: network@iyuanma.net
+ *
+ * @File： GenerateBrandDiagnosisQuestionsJob.php
+ * @Description: 异步检索品牌资料并生成诊断问题草稿。
+ */
+
 namespace App\Jobs;
 
 use App\Models\BrandDiagnosisRun;
@@ -35,6 +46,23 @@ class GenerateBrandDiagnosisQuestionsJob implements ShouldQueue
         ];
     }
 
+    /**
+     * @Name: handle
+     *
+     * @Description: 检索并解析品牌资料，结合用户提供的官网、品牌词和竞品上下文生成可编辑诊断问题。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-11-23 11:21:41
+     *
+     * @UpdateTime: 2026-11-23 14:53:16
+     *
+     * @Param: 无
+     *
+     * @Return: void 更新任务状态并保存生成的问题
+     *
+     * @Throws: 无 所有异常均转换为诊断任务失败状态
+     */
     public function handle(): void
     {
         $run = BrandDiagnosisRun::query()
@@ -48,14 +76,18 @@ class GenerateBrandDiagnosisQuestionsJob implements ShouldQueue
 
         $storedProfileMeta = (array) $run->brand_profile_meta;
         $diagnosisOptions = (array) ($storedProfileMeta['diagnosis_options'] ?? []);
+        $brandContext = (array) ($storedProfileMeta['brand_context'] ?? []);
         $questionCount = min(30, max(1, (int) ($diagnosisOptions['question_count'] ?? config('brand_diagnosis.question_count', 10))));
         $brandProfileMeta = [];
         if ($diagnosisOptions !== []) {
             $brandProfileMeta['diagnosis_options'] = $diagnosisOptions;
         }
+        if ($brandContext !== []) {
+            $brandProfileMeta['brand_context'] = $brandContext;
+        }
 
         $run->update([
-            'status' => 'questions_generating',
+            'status' => 'brand_profile_resolving',
             'brand_profile' => null,
             'brand_profile_source' => '',
             'brand_profile_model' => '',
@@ -76,34 +108,52 @@ class GenerateBrandDiagnosisQuestionsJob implements ShouldQueue
             }
             $diagnosisClient = app(DoubaoBrandDiagnosisClient::class);
             $brandProfileMeta = array_merge($brandProfileMeta, (array) ($brandProfile['meta'] ?? []));
-            $planningPlatform = BrandDiagnosisPlatform::normalize(
-                (string) ($brandProfileMeta['platform'] ?? ((array) $run->platforms)[0] ?? BrandDiagnosisPlatform::DOUBAO)
-            );
-            $coreTerms = $diagnosisClient->extractBrandCoreTerms(
-                (string) $run->brand_name,
-                (string) $brandProfile['profile'],
-                5,
-                $planningPlatform
-            );
-            $brandProfileMeta['diagnosis_options'] = array_merge(
-                (array) ($brandProfileMeta['diagnosis_options'] ?? []),
-                ['question_count' => $questionCount]
-            );
-            $brandProfileMeta['core_terms'] = $coreTerms;
-            $brandProfileMeta['core_terms_model'] = $planningPlatform;
-
+            $brandContext['website_url'] = trim((string) ($brandContext['website_url'] ?? ''))
+                ?: trim((string) ($brandProfile['website_url'] ?? ''));
+            $brandProfileMeta['brand_context'] = $brandContext;
             $run->update([
+                'status' => 'questions_generating',
                 'brand_profile' => $brandProfile['profile'],
                 'brand_profile_source' => $brandProfile['source'],
                 'brand_profile_model' => $brandProfile['model'],
                 'brand_profile_status' => $brandProfile['status'],
                 'brand_profile_meta' => $brandProfileMeta,
             ]);
+            $planningPlatform = BrandDiagnosisPlatform::normalize(
+                (string) ($brandProfileMeta['platform'] ?? ((array) $run->platforms)[0] ?? BrandDiagnosisPlatform::DOUBAO)
+            );
+            $questionProfile = $this->questionProfile((string) $brandProfile['profile'], $brandContext);
+            $coreTerms = collect((array) ($brandContext['brand_terms'] ?? []))
+                ->map(static fn (mixed $term): string => trim((string) $term))
+                ->filter(static fn (string $term): bool => $term !== '')
+                ->unique()
+                ->take(5)
+                ->values()
+                ->all();
+            if ($coreTerms === []) {
+                $coreTerms = $diagnosisClient->extractBrandCoreTerms(
+                    (string) $run->brand_name,
+                    $questionProfile,
+                    5,
+                    $planningPlatform
+                );
+            }
+            if ((array) ($brandContext['brand_terms'] ?? []) === []) {
+                $brandContext['brand_terms'] = $coreTerms;
+            }
+            $brandProfileMeta['brand_context'] = $brandContext;
+            $brandProfileMeta['diagnosis_options'] = array_merge(
+                (array) ($brandProfileMeta['diagnosis_options'] ?? []),
+                ['question_count' => $questionCount]
+            );
+            $brandProfileMeta['core_terms'] = $coreTerms;
+            $brandProfileMeta['core_terms_model'] = $planningPlatform;
+            $run->update(['brand_profile_meta' => $brandProfileMeta]);
 
             $questions = $diagnosisClient->generateQuestionsFromCoreTerms(
                 (string) $run->brand_name,
                 $questionCount,
-                (string) $brandProfile['profile'],
+                $questionProfile,
                 $coreTerms,
                 $planningPlatform
             );
@@ -168,5 +218,72 @@ class GenerateBrandDiagnosisQuestionsJob implements ShouldQueue
             'error_message' => mb_strimwidth($message, 0, 1000, '...', 'UTF-8'),
             'completed_at' => now(),
         ]);
+    }
+
+    /**
+     * @Name: questionProfile
+     *
+     * @Description: 将手动维护的品牌简介、官网、品牌词和竞品附加到已检索资料，作为问题生成上下文。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-11-23 11:21:41
+     *
+     * @UpdateTime: 2026-11-23 12:02:31
+     *
+     * @Param: string $profile 在线检索得到的品牌资料
+     *
+     * @Param: array<string,mixed> $context 用户维护的品牌上下文
+     *
+     * @Return: string 用于提取品牌词和生成问题的资料文本
+     *
+     * @Throws: 无
+     */
+    private function questionProfile(string $profile, array $context): string
+    {
+        $lines = [];
+        $websiteUrl = trim((string) ($context['website_url'] ?? ''));
+        $description = trim((string) ($context['brand_profile'] ?? ''));
+        $brandTerms = collect((array) ($context['brand_terms'] ?? []))
+            ->map(static fn (mixed $term): string => trim((string) $term))
+            ->filter(static fn (string $term): bool => $term !== '')
+            ->values()
+            ->all();
+        $competitors = collect((array) ($context['competitors'] ?? []))
+            ->map(static function (mixed $competitor): string {
+                if (! is_array($competitor)) {
+                    return '';
+                }
+
+                $name = trim((string) ($competitor['name'] ?? ''));
+                $terms = collect((array) ($competitor['terms'] ?? []))
+                    ->map(static fn (mixed $term): string => trim((string) $term))
+                    ->filter(static fn (string $term): bool => $term !== '')
+                    ->values()
+                    ->all();
+                if ($name === '') {
+                    return '';
+                }
+
+                return $name.($terms !== [] ? '（相关词：'.implode('、', $terms).'）' : '');
+            })
+            ->filter(static fn (string $competitor): bool => $competitor !== '')
+            ->values()
+            ->all();
+
+        if ($websiteUrl !== '') {
+            $lines[] = '品牌官网：'.$websiteUrl;
+        }
+        if ($description !== '') {
+            $lines[] = '用户补充品牌简介：'.$description;
+        }
+        if ($brandTerms !== []) {
+            $lines[] = '用户指定品牌核心词：'.implode('、', $brandTerms);
+        }
+        if ($competitors !== []) {
+            $lines[] = '竞品参考：'.implode('；', $competitors);
+        }
+
+        return $lines === [] ? $profile : $profile."\n\n用户补充的品牌诊断上下文：\n".implode("\n", $lines);
     }
 }

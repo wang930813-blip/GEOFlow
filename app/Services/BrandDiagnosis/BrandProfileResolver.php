@@ -1,5 +1,16 @@
 <?php
 
+/**
+ * Created by Codex.
+ * @Date: 2026-11-23
+ * @Time: 14:53:16
+ * @Author: cdkay
+ * @Email: network@iyuanma.net
+ *
+ * @File： BrandProfileResolver.php
+ * @Description: 联网核验品牌资料并提取品牌简介和官方网站地址。
+ */
+
 namespace App\Services\BrandDiagnosis;
 
 use App\Models\BrandDiagnosisRun;
@@ -14,8 +25,23 @@ class BrandProfileResolver
     ) {}
 
     /**
-     * @param  list<string>  $platforms
-     * @return array{profile:string,source:string,model:string,status:string,meta:array<string,mixed>}
+     * @Name: resolve
+     *
+     * @Description: 检索并整理品牌公开资料，将监测中心补充的品牌上下文作为检索线索。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-07-22 16:27:47
+     *
+     * @UpdateTime: 2026-11-23 14:53:16
+     *
+     * @Param: BrandDiagnosisRun $run 当前品牌诊断任务
+     *
+     * @Param: list<string> $platforms 本次可用于资料检索的平台
+     *
+     * @Return: array{profile:string,website_url:string,source:string,model:string,status:string,meta:array<string,mixed>} 品牌资料及检索元数据
+     *
+     * @Throws: RuntimeException 品牌名称为空
      */
     public function resolve(BrandDiagnosisRun $run, array $platforms = []): array
     {
@@ -25,18 +51,32 @@ class BrandProfileResolver
         }
 
         try {
-            return $this->resolveFromWebSearch($brandName, $platforms);
+            $context = (array) data_get($run->brand_profile_meta, 'brand_context', []);
+
+            return $this->resolveFromWebSearch($brandName, $platforms, $context);
         } catch (Throwable $exception) {
             return $this->unavailableProfile($brandName, $exception->getMessage());
         }
     }
 
     /**
-     * Strict variant used by lookup previews. Provider and verification failures
-     * are allowed to reach the caller so they can be mapped to public API errors.
+     * @Name: resolveStrict
      *
-     * @param  list<string>  $platforms
-     * @return array{profile:string,source:string,model:string,status:string,meta:array<string,mixed>}
+     * @Description: 严格检索品牌资料并向调用方透传模型和验证异常，用于公开 API 错误映射。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-09-09 16:56:52
+     *
+     * @UpdateTime: 2026-11-23 14:53:16
+     *
+     * @Param: BrandDiagnosisRun $run 当前品牌诊断任务
+     *
+     * @Param: list<string> $platforms 本次可用于资料检索的平台
+     *
+     * @Return: array{profile:string,website_url:string,source:string,model:string,status:string,meta:array<string,mixed>} 品牌资料及检索元数据
+     *
+     * @Throws: BrandProfileNotFoundException 未检索到可用品牌资料
      */
     public function resolveStrict(BrandDiagnosisRun $run, array $platforms = []): array
     {
@@ -45,27 +85,50 @@ class BrandProfileResolver
             throw new BrandProfileNotFoundException('品牌词不能为空');
         }
 
-        return $this->resolveFromWebSearch($brandName, $platforms);
+        $context = (array) data_get($run->brand_profile_meta, 'brand_context', []);
+
+        return $this->resolveFromWebSearch($brandName, $platforms, $context);
     }
 
     /**
-     * @param  list<string>  $platforms
-     * @return array{profile:string,source:string,model:string,status:string,meta:array<string,mixed>}
+     * @Name: resolveFromWebSearch
+     *
+     * @Description: 逐个平台联网搜索品牌资料，并记录检索失败原因及公开来源。
+     *
+     * @Author: cdkay
+     *
+     * @CreateTime: 2026-07-22 16:27:47
+     *
+     * @UpdateTime: 2026-11-23 14:53:16
+     *
+     * @Param: string $brandName 目标品牌名称
+     *
+     * @Param: list<string> $platforms 可用于联网检索的平台
+     *
+     * @Param: array<string,mixed> $context 用户补充的官网、简介、品牌词和竞品资料
+     *
+     * @Return: array{profile:string,website_url:string,source:string,model:string,status:string,meta:array<string,mixed>} 品牌资料及检索元数据
+     *
+     * @Throws: BrandProfileNotFoundException 所选平台均未能检索到可用品牌资料
      */
-    private function resolveFromWebSearch(string $brandName, array $platforms): array
+    private function resolveFromWebSearch(string $brandName, array $platforms, array $context = []): array
     {
         $attempts = [];
 
         foreach ($this->candidateSearchPlatforms($platforms) as $platform) {
             try {
-                $response = $this->diagnosisClient->generateBrandProfileWithWebSearch($brandName, $platform);
-                $profile = $this->parseProfileText((string) ($response['text'] ?? ''));
+                $response = $this->diagnosisClient->generateBrandProfileWithWebSearch($brandName, $platform, $context);
+                $parsedProfile = $this->parseProfileText((string) ($response['text'] ?? ''));
+                $profile = $parsedProfile['profile'];
                 if (! $this->profileIsUsable($profile)) {
                     throw new BrandProfileNotFoundException('未检索到可用的品牌介绍。');
                 }
 
                 return [
                     'profile' => $profile,
+                    'website_url' => $this->normalizeWebsiteUrl(
+                        trim((string) ($context['website_url'] ?? '')) ?: $parsedProfile['website_url']
+                    ),
                     'source' => 'web_search',
                     'model' => BrandDiagnosisPlatform::label($platform),
                     'status' => 'success',
@@ -109,12 +172,13 @@ class BrandProfileResolver
     }
 
     /**
-     * @return array{profile:string,source:string,model:string,status:string,meta:array<string,mixed>}
+     * @return array{profile:string,website_url:string,source:string,model:string,status:string,meta:array<string,mixed>}
      */
     private function unavailableProfile(string $brandName, string $reason): array
     {
         return [
             'profile' => '未检索到可用品牌介绍。目标品牌：'.$brandName,
+            'website_url' => '',
             'source' => 'unavailable',
             'model' => '',
             'status' => 'fallback',
@@ -124,22 +188,37 @@ class BrandProfileResolver
         ];
     }
 
-    private function parseProfileText(string $text): string
+    /**
+     * @Name: parseProfileText
+     * @Description: 解析联网模型返回的 JSON，清理品牌简介并提取经过格式校验的官方网站地址。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-11-23 14:53:16
+     * @UpdateTime: 2026-11-23 14:53:16
+     *
+     * @Param: string $text 模型返回的品牌资料文本
+     * @Return: array{profile:string,website_url:string} 清理后的品牌简介和官方网站地址
+     * @Throws: 无 非 JSON 文本按简介处理，无法校验的网址置空
+     */
+    private function parseProfileText(string $text): array
     {
         $text = $this->stripCodeFence($text);
         if ($text === '') {
-            return '';
+            return ['profile' => '', 'website_url' => ''];
         }
 
         $decoded = json_decode($text, true);
         if (! is_array($decoded)) {
-            return $this->profileIsUsable($text) ? mb_substr($this->normalizeText($text), 0, 1600, 'UTF-8') : '';
+            return [
+                'profile' => $this->profileIsUsable($text) ? mb_substr($this->normalizeText($text), 0, 1600, 'UTF-8') : '',
+                'website_url' => '',
+            ];
         }
 
         $found = Arr::get($decoded, 'found', true);
         $summary = $this->normalizeText((string) (Arr::get($decoded, 'summary', Arr::get($decoded, 'profile', Arr::get($decoded, 'introduction', '')))));
         if ($found === false && $summary === '') {
-            return '';
+            return ['profile' => '', 'website_url' => ''];
         }
 
         $lines = [];
@@ -164,7 +243,49 @@ class BrandProfileResolver
 
         $profile = $this->normalizeText(implode("\n", $lines));
 
-        return $this->profileIsUsable($profile) ? mb_substr($profile, 0, 1600, 'UTF-8') : '';
+        return [
+            'profile' => $this->profileIsUsable($profile) ? mb_substr($profile, 0, 1600, 'UTF-8') : '',
+            'website_url' => $this->normalizeWebsiteUrl((string) Arr::get($decoded, 'official_website', Arr::get($decoded, 'website_url', ''))),
+        ];
+    }
+
+    /**
+     * @Name: normalizeWebsiteUrl
+     * @Description: 仅允许绝对 HTTP 或 HTTPS 网站地址，拒绝凭证、脚本协议和无效主机名。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-11-23 14:53:16
+     * @UpdateTime: 2026-11-23 14:53:16
+     *
+     * @Param: string $websiteUrl 模型返回或用户提供的网站地址
+     * @Return: string 可安全展示的规范化网站地址，无效时返回空字符串
+     * @Throws: 无
+     */
+    private function normalizeWebsiteUrl(string $websiteUrl): string
+    {
+        $websiteUrl = trim(rtrim($websiteUrl, '.,;:)]}'));
+        if ($websiteUrl === '') {
+            return '';
+        }
+
+        if (! preg_match('~^https?://~i', $websiteUrl)) {
+            $websiteUrl = 'https://'.$websiteUrl;
+        }
+
+        if (filter_var($websiteUrl, FILTER_VALIDATE_URL) === false) {
+            return '';
+        }
+
+        $parts = parse_url($websiteUrl);
+        if (! is_array($parts)
+            || ! in_array(strtolower((string) ($parts['scheme'] ?? '')), ['http', 'https'], true)
+            || trim((string) ($parts['host'] ?? '')) === ''
+            || isset($parts['user'])
+            || isset($parts['pass'])) {
+            return '';
+        }
+
+        return $websiteUrl;
     }
 
     private function stripCodeFence(string $text): string

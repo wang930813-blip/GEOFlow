@@ -37,13 +37,13 @@ class BrandDiagnosisRunService
     /**
      * @Name: create
      *
-     * @Description: 在当前站点创建品牌诊断任务；超管切换客户账号后将任务及问题归属到所选站点账号。
+     * @Description: 在当前站点创建品牌诊断任务并保存可选品牌上下文；超管切换客户账号后按所选站点账号归属。
      *
      * @Author: cdkay
      *
      * @CreateTime: 2026-11-03 11:20:14
      *
-     * @UpdateTime: 2026-11-03 11:37:29
+     * @UpdateTime: 2026-11-23 12:02:31
      *
      * @Param: Admin $admin 实际执行操作的管理员
      *
@@ -57,12 +57,21 @@ class BrandDiagnosisRunService
      *
      * @Param: int|null $questionCount 标准模式的问题数量；复用问题时以历史问题数量为准
      *
+     * @Param: array<string,mixed> $brandContext 可选的官网、品牌词、简介和竞品上下文
+     *
      * @Return: BrandDiagnosisRun 新建的诊断任务
      *
      * @Throws: RuntimeException 品牌名称为空或当前站点未初始化时抛出
      */
-    public function create(Admin $admin, string $brandName, array $platforms, bool $reuseQuestions = false, string $diagnosisMode = 'standard', ?int $questionCount = null): BrandDiagnosisRun
-    {
+    public function create(
+        Admin $admin,
+        string $brandName,
+        array $platforms,
+        bool $reuseQuestions = false,
+        string $diagnosisMode = 'standard',
+        ?int $questionCount = null,
+        array $brandContext = []
+    ): BrandDiagnosisRun {
         $brandName = trim($brandName);
         if ($brandName === '') {
             throw new RuntimeException('请输入品牌名称。');
@@ -129,13 +138,18 @@ class BrandDiagnosisRunService
             }
         }
 
-        $run = DB::transaction(function () use ($admin, $brandName, $platforms, $siteId, $ownerAdminId, $questionCount, $diagnosisMode): BrandDiagnosisRun {
+        $brandProfileMeta = $this->brandProfileMetaWithDiagnosisOptions(null, $questionCount, $diagnosisMode);
+        if ($brandContext !== []) {
+            $brandProfileMeta['brand_context'] = $brandContext;
+        }
+
+        $run = DB::transaction(function () use ($admin, $brandName, $platforms, $siteId, $ownerAdminId, $brandProfileMeta): BrandDiagnosisRun {
             return BrandDiagnosisRun::query()->create([
                 'site_id' => $siteId,
                 'owner_admin_id' => $ownerAdminId,
                 'admin_id' => (int) $admin->id,
                 'brand_name' => $brandName,
-                'brand_profile_meta' => $this->brandProfileMetaWithDiagnosisOptions(null, $questionCount, $diagnosisMode),
+                'brand_profile_meta' => $brandProfileMeta,
                 'platforms' => $platforms,
                 'status' => 'questions_generating',
                 'total_questions' => 0,
@@ -230,7 +244,7 @@ class BrandDiagnosisRunService
      *
      * @CreateTime: 2026-11-03 11:20:14
      *
-     * @UpdateTime: 2026-11-03 11:37:29
+     * @UpdateTime: 2026-11-23 12:02:31
      *
      * @Param: Admin $admin 实际执行操作的管理员
      *
@@ -279,6 +293,11 @@ class BrandDiagnosisRunService
                 throw new RuntimeException('请至少保留一个 AI 问题。');
             }
 
+            $storedDiagnosisMode = (string) data_get($lockedRun->brand_profile_meta, 'diagnosis_options.mode', '');
+            $diagnosisMode = in_array($storedDiagnosisMode, ['standard', 'deep'], true)
+                ? $storedDiagnosisMode
+                : ($normalizedQuestions->count() === 30 ? 'deep' : 'standard');
+
             // 管理后台确认时使用用户本次重新选择的模型；MCP 旧协议未传模型时才保留原模型列表。
             $selectedPlatforms = $this->normalizePlatforms($platforms ?? (array) $lockedRun->platforms);
             $decision = $this->usagePolicy->reserve($admin, (int) $lockedRun->site_id);
@@ -291,7 +310,7 @@ class BrandDiagnosisRunService
                     'brand_profile_meta' => $this->brandProfileMetaWithDiagnosisOptions(
                         is_array($lockedRun->brand_profile_meta) ? $lockedRun->brand_profile_meta : null,
                         $normalizedQuestions->count(),
-                        $normalizedQuestions->count() === 30 ? 'deep' : 'standard'
+                        $diagnosisMode
                     ),
                     'status' => 'running',
                     'total_questions' => $normalizedQuestions->count(),
@@ -328,7 +347,7 @@ class BrandDiagnosisRunService
                 'brand_profile_meta' => $this->brandProfileMetaWithDiagnosisOptions(
                     is_array($lockedRun->brand_profile_meta) ? $lockedRun->brand_profile_meta : null,
                     $normalizedQuestions->count(),
-                    $normalizedQuestions->count() === 30 ? 'deep' : 'standard'
+                    $diagnosisMode
                 ),
                 'platforms' => $selectedPlatforms,
                 'status' => 'running',
