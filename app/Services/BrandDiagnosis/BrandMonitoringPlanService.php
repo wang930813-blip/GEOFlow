@@ -262,7 +262,7 @@ final class BrandMonitoringPlanService
      *
      * @CreateTime: 2026-11-23 10:03:04
      *
-     * @UpdateTime: 2026-11-23 17:34:12
+     * @UpdateTime: 2026-11-24 11:42:45
      *
      * @Param: Admin $admin 当前监测中心账号
      *
@@ -274,34 +274,37 @@ final class BrandMonitoringPlanService
      *
      * @Return array<string,mixed> 更新后的监测计划
      *
-     * @Throws: RuntimeException 计划不存在、周期配置无效或模型已关闭
+     * @Throws: RuntimeException 计划不存在、处于运行状态、周期配置无效或模型已关闭
      */
     public function update(Admin $admin, Site $site, int $planId, array $data): array
     {
-        $plan = $this->planForSite($site, $planId);
-        $this->assertPlatformsAvailable((array) $data['platforms']);
-        $questions = $this->normalizeQuestions((array) $data['questions']);
-        $isUnchangedLegacyQuestionCount = $plan->diagnosis_mode === 'standard'
-            && (string) $data['diagnosis_mode'] === 'standard'
-            && count($this->normalizeQuestions((array) $plan->questions)) === 10
-            && count($questions) === 10;
-        $this->assertQuestionCount((string) $data['diagnosis_mode'], $questions, $isUnchangedLegacyQuestionCount);
+        return DB::transaction(function () use ($admin, $site, $planId, $data): array {
+            $plan = $this->planForSite($site, $planId, true);
+            $this->assertPlanNotActive($plan, '编辑');
+            $this->assertPlatformsAvailable((array) $data['platforms']);
+            $questions = $this->normalizeQuestions((array) $data['questions']);
+            $isUnchangedLegacyQuestionCount = $plan->diagnosis_mode === 'standard'
+                && (string) $data['diagnosis_mode'] === 'standard'
+                && count($this->normalizeQuestions((array) $plan->questions)) === 10
+                && count($questions) === 10;
+            $this->assertQuestionCount((string) $data['diagnosis_mode'], $questions, $isUnchangedLegacyQuestionCount);
 
-        $attributes = $this->planAttributes($admin, $site, $data);
-        unset($attributes['site_id'], $attributes['owner_admin_id'], $attributes['admin_id'], $attributes['status']);
-        $plan->fill($attributes);
-        $plan->last_error = null;
-        $canSchedule = in_array($plan->status, ['active', 'completed'], true);
-        $nextRun = $canSchedule ? $this->scheduleCalculator->nextOccurrence($plan) : null;
-        if ($plan->status === 'active' && ! ($nextRun instanceof CarbonImmutable)) {
-            $plan->status = 'completed';
-        } elseif ($plan->status === 'completed' && $nextRun instanceof CarbonImmutable) {
-            $plan->status = 'active';
-        }
-        $plan->next_run_at = $nextRun;
-        $plan->save();
+            $attributes = $this->planAttributes($admin, $site, $data);
+            unset($attributes['site_id'], $attributes['owner_admin_id'], $attributes['admin_id'], $attributes['status']);
+            $plan->fill($attributes);
+            $plan->last_error = null;
+            $canSchedule = in_array($plan->status, ['active', 'completed'], true);
+            $nextRun = $canSchedule ? $this->scheduleCalculator->nextOccurrence($plan) : null;
+            if ($plan->status === 'active' && ! ($nextRun instanceof CarbonImmutable)) {
+                $plan->status = 'completed';
+            } elseif ($plan->status === 'completed' && $nextRun instanceof CarbonImmutable) {
+                $plan->status = 'active';
+            }
+            $plan->next_run_at = $nextRun;
+            $plan->save();
 
-        return $this->presentPlan($plan->refresh()->load(['executions.diagnosisRun']), true);
+            return $this->presentPlan($plan->refresh()->load(['executions.diagnosisRun']), true);
+        });
     }
 
     /**
@@ -419,7 +422,7 @@ final class BrandMonitoringPlanService
      *
      * @CreateTime: 2026-11-23 10:03:04
      *
-     * @UpdateTime: 2026-11-23 10:03:04
+     * @UpdateTime: 2026-11-24 11:42:45
      *
      * @Param: Site $site 当前站点
      *
@@ -427,12 +430,15 @@ final class BrandMonitoringPlanService
      *
      * @Return void 删除完成
      *
-     * @Throws: RuntimeException 计划不存在
+     * @Throws: RuntimeException 计划不存在或处于运行状态
      */
     public function delete(Site $site, int $planId): void
     {
-        $plan = $this->planForSite($site, $planId);
-        $plan->delete();
+        DB::transaction(function () use ($site, $planId): void {
+            $plan = $this->planForSite($site, $planId, true);
+            $this->assertPlanNotActive($plan, '删除');
+            $plan->delete();
+        });
     }
 
     /**
@@ -444,7 +450,7 @@ final class BrandMonitoringPlanService
      *
      * @CreateTime: 2026-11-23 10:03:04
      *
-     * @UpdateTime: 2026-11-23 10:03:04
+     * @UpdateTime: 2026-11-24 11:46:30
      *
      * @Param: Admin $admin 当前监测中心账号
      *
@@ -454,12 +460,12 @@ final class BrandMonitoringPlanService
      *
      * @Return array<string,mixed> 新建执行记录与品牌诊断进度
      *
-     * @Throws: RuntimeException 计划未配置完成、模型不可用、已有诊断运行中或额度不足
+     * @Throws: RuntimeException 计划正在运行、计划未配置完成、模型不可用、已有诊断运行中或额度不足
      */
     public function runNow(Admin $admin, Site $site, int $planId): array
     {
         $plan = $this->planForSite($site, $planId);
-        $execution = $this->startRun($plan, $admin, true, CarbonImmutable::now((string) config('app.timezone')));
+        $execution = $this->startRun($plan, $admin, true, CarbonImmutable::now((string) config('app.timezone')), true);
 
         return $execution->load('diagnosisRun') instanceof BrandMonitoringPlanRun
             ? $this->presentExecution($execution->refresh()->load('diagnosisRun'))
@@ -475,7 +481,7 @@ final class BrandMonitoringPlanService
      *
      * @CreateTime: 2026-11-23 10:03:04
      *
-     * @UpdateTime: 2026-11-23 10:50:42
+     * @UpdateTime: 2026-11-24 09:27:35
      *
      * @Param: int $limit 本次扫描计划上限
      *
@@ -501,14 +507,17 @@ final class BrandMonitoringPlanService
                 $site = Site::query()->find((int) $plan->site_id);
                 $ownerAdminId = (int) ($plan->owner_admin_id ?? 0);
                 $admin = $ownerAdminId > 0 ? Admin::query()->find($ownerAdminId) : null;
-                if (
-                    ! $site instanceof Site
-                    || ! $admin instanceof Admin
-                    || (int) $admin->status !== 1
-                    || (string) $site->status !== 'active'
-                    || (int) $site->owner_admin_id !== $ownerAdminId
-                ) {
-                    $plan->update(['status' => 'paused', 'next_run_at' => null, 'last_error' => '计划所属账号或站点不可用。']);
+                $unavailableReason = ! $site instanceof Site
+                    ? '计划所属站点不存在。'
+                    : (! $admin instanceof Admin || (string) $admin->status !== 'active'
+                        ? '计划所属账号不存在或已停用。'
+                        : ((string) $site->status !== 'active'
+                            ? '计划所属站点已停用。'
+                            : ((int) $site->owner_admin_id !== $ownerAdminId
+                                ? '计划所属账号与站点归属不一致。'
+                                : null)));
+                if ($unavailableReason !== null) {
+                    $plan->update(['status' => 'paused', 'next_run_at' => null, 'last_error' => $unavailableReason]);
 
                     continue;
                 }
@@ -636,7 +645,7 @@ final class BrandMonitoringPlanService
      *
      * @CreateTime: 2026-11-23 10:03:04
      *
-     * @UpdateTime: 2026-11-23 17:34:12
+     * @UpdateTime: 2026-11-24 11:46:30
      *
      * @Param: BrandMonitoringPlan $plan 监测计划
      *
@@ -646,19 +655,24 @@ final class BrandMonitoringPlanService
      *
      * @Param: CarbonInterface $scheduledFor 本轮计划时间或手动触发时间
      *
+     * @Param: bool $rejectActivePlan 是否拒绝运行中的计划
+     *
      * @Return BrandMonitoringPlanRun 新一轮诊断执行记录
      *
-     * @Throws: RuntimeException 模型不可用、计划暂停、诊断正在运行或额度不足
+     * @Throws: RuntimeException 模型不可用、计划暂停、计划运行中、诊断正在运行或额度不足
      */
-    private function startRun(BrandMonitoringPlan $plan, Admin $admin, bool $manual, CarbonInterface $scheduledFor): BrandMonitoringPlanRun
+    private function startRun(BrandMonitoringPlan $plan, Admin $admin, bool $manual, CarbonInterface $scheduledFor, bool $rejectActivePlan = false): BrandMonitoringPlanRun
     {
-        $execution = DB::transaction(function () use ($plan, $admin, $manual, $scheduledFor): BrandMonitoringPlanRun {
+        $execution = DB::transaction(function () use ($plan, $admin, $manual, $scheduledFor, $rejectActivePlan): BrandMonitoringPlanRun {
             $lockedPlan = BrandMonitoringPlan::query()->lockForUpdate()->find((int) $plan->id);
             if (! $lockedPlan instanceof BrandMonitoringPlan) {
                 throw new RuntimeException('监测计划不存在或已删除。');
             }
             if (! $manual && $lockedPlan->status !== 'active') {
                 throw new RuntimeException('监测计划已暂停。');
+            }
+            if ($rejectActivePlan) {
+                $this->assertPlanNotActive($lockedPlan, '立即执行');
             }
             if ($this->hasInFlightExecution($lockedPlan)) {
                 if (! $manual) {
@@ -800,7 +814,7 @@ final class BrandMonitoringPlanService
      *
      * @CreateTime: 2026-11-23 10:03:04
      *
-     * @UpdateTime: 2026-11-23 10:50:42
+     * @UpdateTime: 2026-11-24 11:46:30
      *
      * @Param: Site $site 当前站点
      *
@@ -810,17 +824,38 @@ final class BrandMonitoringPlanService
      *
      * @Throws: RuntimeException 计划不存在或跨站点
      */
-    private function planForSite(Site $site, int $planId): BrandMonitoringPlan
+    private function planForSite(Site $site, int $planId, bool $lockForUpdate = false): BrandMonitoringPlan
     {
-        $plan = BrandMonitoringPlan::query()
+        $query = BrandMonitoringPlan::query()
             ->where('site_id', (int) $site->id)
-            ->where('owner_admin_id', (int) $site->owner_admin_id)
-            ->find($planId);
+            ->where('owner_admin_id', (int) $site->owner_admin_id);
+        if ($lockForUpdate) {
+            $query->lockForUpdate();
+        }
+        $plan = $query->find($planId);
         if (! $plan instanceof BrandMonitoringPlan) {
             throw new RuntimeException('监测计划不存在或无权访问。');
         }
 
         return $plan;
+    }
+
+    /**
+     * @Name: assertPlanNotActive
+     * @Description: 阻止运行中的计划执行需要先暂停的手动变更操作，保持周期配置与调度状态一致。
+     * @Author: cdkay
+     * @CreateTime: 2026-11-24 11:39:24
+     * @UpdateTime: 2026-11-24 11:42:45
+     * @Param: BrandMonitoringPlan $plan 当前站点监测计划
+     * @Param: string $action 被禁止的操作名称
+     * @Return void 计划不在运行时正常返回
+     * @Throws: RuntimeException 计划处于运行状态
+     */
+    private function assertPlanNotActive(BrandMonitoringPlan $plan, string $action): void
+    {
+        if ($plan->status === 'active') {
+            throw new RuntimeException("运行中的计划不允许{$action}，请先暂停计划。");
+        }
     }
 
     /**
@@ -1039,7 +1074,7 @@ final class BrandMonitoringPlanService
      *
      * @CreateTime: 2026-11-23 10:03:04
      *
-     * @UpdateTime: 2026-11-23 10:03:04
+     * @UpdateTime: 2026-11-24 10:30:57
      *
      * @Param: BrandMonitoringPlan $plan 监测计划
      *
@@ -1073,8 +1108,8 @@ final class BrandMonitoringPlanService
             'weekdays' => (array) $plan->weekdays,
             'month_day' => $plan->month_day !== null ? (int) $plan->month_day : null,
             'period_mode' => (string) $plan->period_mode,
-            'starts_on' => (string) $plan->starts_on,
-            'ends_on' => (string) ($plan->ends_on ?? ''),
+            'starts_on' => $plan->starts_on?->format('Y-m-d') ?? '',
+            'ends_on' => $plan->ends_on?->format('Y-m-d') ?? '',
             'status' => (string) $plan->status,
             'next_run_at' => $plan->next_run_at?->toIso8601String(),
             'last_run_at' => $plan->last_run_at?->toIso8601String(),

@@ -187,7 +187,7 @@ final class MonitorBrandMonitoringController extends BaseApiController
 
     /**
      * 更新品牌监测计划
-     * 更新计划未来使用的品牌资料、问题集、模型和执行周期。
+     * 更新计划未来使用的品牌资料、问题集、模型和执行周期；运行中的计划须先暂停。
      *
      * @Url [PUT] /api/v1/monitor/brand-monitoring/{plan}
      *      登录 是
@@ -198,11 +198,11 @@ final class MonitorBrandMonitoringController extends BaseApiController
      *
      * @CreateTime: 2026-11-23 10:17:20
      *
-     * @UpdateTime: 2026-11-23 10:17:20
+     * @UpdateTime: 2026-11-24 11:42:45
      *
      * @Return JsonResponse 更新后的监测计划
      *
-     * @Throws ApiException|ValidationException 计划不存在、配置无效或模型不可用
+     * @Throws ApiException|ValidationException 计划不存在、处于运行状态、配置无效或模型不可用
      */
     public function update(Request $request, int $plan, BrandMonitoringPlanService $plans): JsonResponse
     {
@@ -289,7 +289,7 @@ final class MonitorBrandMonitoringController extends BaseApiController
 
     /**
      * 立即执行品牌监测计划
-     * 使用当前计划固定的问题集创建一次新的品牌诊断并按现有规则扣减额度。
+     * 使用当前计划固定的问题集创建一次新的品牌诊断并按现有规则扣减额度；运行中的计划须先暂停。
      *
      * @Url [POST] /api/v1/monitor/brand-monitoring/{plan}/run
      *      登录 是
@@ -299,11 +299,11 @@ final class MonitorBrandMonitoringController extends BaseApiController
      *
      * @CreateTime: 2026-11-23 10:17:20
      *
-     * @UpdateTime: 2026-11-23 10:17:20
+     * @UpdateTime: 2026-11-24 11:42:45
      *
      * @Return JsonResponse 本轮执行记录及品牌诊断任务状态
      *
-     * @Throws ApiException 计划正在运行、模型不可用或诊断额度不足
+     * @Throws ApiException 计划处于运行状态、已有诊断任务在运行、模型不可用或诊断额度不足
      */
     public function runNow(Request $request, int $plan, BrandMonitoringPlanService $plans): JsonResponse
     {
@@ -314,7 +314,7 @@ final class MonitorBrandMonitoringController extends BaseApiController
 
     /**
      * 删除品牌监测计划
-     * 软删除当前站点计划并保留关联的品牌诊断报告。
+     * 软删除当前站点计划并保留关联的品牌诊断报告；运行中的计划须先暂停。
      *
      * @Url [DELETE] /api/v1/monitor/brand-monitoring/{plan}
      *      登录 是
@@ -324,11 +324,11 @@ final class MonitorBrandMonitoringController extends BaseApiController
      *
      * @CreateTime: 2026-11-23 10:17:20
      *
-     * @UpdateTime: 2026-11-23 10:17:20
+     * @UpdateTime: 2026-11-24 11:42:45
      *
      * @Return JsonResponse 删除完成标记
      *
-     * @Throws ApiException 计划不存在或不属于当前站点
+     * @Throws ApiException 计划不存在、不属于当前站点或处于运行状态
      */
     public function destroy(Request $request, int $plan, BrandMonitoringPlanService $plans): JsonResponse
     {
