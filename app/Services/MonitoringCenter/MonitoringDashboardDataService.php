@@ -364,14 +364,14 @@ final class MonitoringDashboardDataService
 
     /**
      * @Name: summary
-     * @Description: 按当前选择的平台和问题重算诊断卡片指标，不混入未筛选的结果。
+     * @Description: 按当前诊断筛选范围计算提及表现，并按全部成功回答汇总舆情分布。
      *
      * @Author: cdkay
      * @CreateTime: 2026-11-03 14:59:24
-     * @UpdateTime: 2026-11-03 14:59:24
+     * @UpdateTime: 2026-11-25 18:19:32
      * @Param: Collection<int,BrandDiagnosisResult> $results 当前筛选后的结果
      * @Param: Collection<int,BrandDiagnosisQuestion> $questions 当前诊断的问题
-     * @Return: array<string,int|float> 当前筛选条件下的诊断指标
+     * @Return: array<string,int|float|array<string,int|null>> 当前筛选条件下的诊断指标
      * @Throws: 无
      */
     private function summary(Collection $results, Collection $questions): array
@@ -380,23 +380,27 @@ final class MonitoringDashboardDataService
         $targetMentions = $successfulResults
             ->flatMap(fn (BrandDiagnosisResult $result): Collection => $result->brandMentions)
             ->filter(fn (BrandDiagnosisBrandMention $mention): bool => (bool) $mention->is_target_brand);
-        $totalResults = max(1, $successfulResults->count());
+        $successfulAnswerCount = $successfulResults->count();
+        $totalResults = max(1, $successfulAnswerCount);
 
         if ($targetMentions->isEmpty()) {
             $targetResults = $successfulResults->where('brand_mentioned', true);
             $mentionRate = (int) round($targetResults->count() * 100 / $totalResults);
             $mentionCount = (int) $targetResults->sum('mention_count');
             $averageRank = (float) ($targetResults->where('mention_rank', '>', 0)->avg('mention_rank') ?: 0);
-            $sentimentRate = $targetResults->isNotEmpty()
-                ? (int) round($targetResults->whereIn('sentiment', ['positive', 'neutral'])->count() * 100 / $targetResults->count())
-                : 0;
+            $sentimentRows = $targetResults;
         } else {
             $mentionedResultCount = $targetMentions->pluck('result_id')->filter()->unique()->count();
             $mentionRate = (int) round($mentionedResultCount * 100 / $totalResults);
             $mentionCount = (int) $targetMentions->sum('mention_count');
             $averageRank = (float) ($targetMentions->where('mention_rank', '>', 0)->avg('mention_rank') ?: 0);
-            $sentimentRate = (int) round($targetMentions->whereIn('sentiment', ['positive', 'neutral'])->count() * 100 / $targetMentions->count());
+            $sentimentRows = $targetMentions;
         }
+
+        // 品牌得分使用目标品牌提及的情绪，报告舆情分布使用筛选后的全部成功回答。
+        $sentimentRate = $sentimentRows->isNotEmpty()
+            ? (int) round($sentimentRows->whereIn('sentiment', ['positive', 'neutral'])->count() * 100 / $sentimentRows->count())
+            : 0;
 
         $rankScore = $averageRank > 0 ? max(0, 100 - (($averageRank - 1) * 5)) : 0;
         $brandScore = (int) min(100, round(
@@ -412,9 +416,37 @@ final class MonitoringDashboardDataService
             'average_rank' => round($averageRank, 2),
             'mention_count' => $mentionCount,
             'sentiment_rate' => $sentimentRate,
+            'sentiment_breakdown' => $this->sentimentBreakdown($successfulResults),
+            'successful_answer_count' => $successfulAnswerCount,
             'total_questions' => $questions->count(),
             'completed_questions' => $successfulResults->pluck('question_id')->filter()->unique()->count(),
         ];
+    }
+
+    /**
+     * @Name: sentimentBreakdown
+     * @Description: 根据成功回答的原始分类计数计算占比，每一类仅在计算完成后取整。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-11-25 18:19:32
+     * @UpdateTime: 2026-11-25 18:19:32
+     *
+     * @Param: Collection<int,BrandDiagnosisResult> $successfulResults 当前范围内的成功回答
+     * @Return: array{positive:int|null,neutral:int|null,negative:int|null} 三类舆情占比，无成功回答时返回空值
+     */
+    private function sentimentBreakdown(Collection $successfulResults): array
+    {
+        $total = $successfulResults->count();
+        $counts = $successfulResults->countBy('sentiment');
+        $breakdown = [];
+
+        foreach (['positive', 'neutral', 'negative'] as $sentiment) {
+            $breakdown[$sentiment] = $total > 0
+                ? (int) round($counts->get($sentiment, 0) * 100 / $total)
+                : null;
+        }
+
+        return $breakdown;
     }
 
     /**
@@ -424,7 +456,7 @@ final class MonitoringDashboardDataService
      *
      * @CreateTime: 2026-11-02 17:37:32
      *
-     * @UpdateTime: 2026-11-02 18:05:28
+     * @UpdateTime: 2026-11-25 18:19:32
      *
      * @Param: Collection<int,BrandDiagnosisResult> $results 诊断结果
      *
@@ -446,6 +478,7 @@ final class MonitoringDashboardDataService
                     ? $mentions->pluck('result_id')->filter()->unique()->count()
                     : $platformResults->where('brand_mentioned', true)->count();
                 $ranked = $mentions->pluck('mention_rank')->filter(fn ($rank): bool => (int) $rank > 0);
+                $sentiment = $this->sentimentBreakdown($platformResults);
 
                 return [
                     'platform_key' => $platform,
@@ -454,15 +487,9 @@ final class MonitoringDashboardDataService
                     'mentioned' => $mentionedResultCount,
                     'mention_rate' => $total > 0 ? (int) round($mentionedResultCount * 100 / $total) : 0,
                     'average_rank' => $ranked->isNotEmpty() ? round((float) $ranked->avg(), 2) : 0,
-                    'positive_rate' => $total > 0
-                        ? (int) round($platformResults->where('sentiment', 'positive')->count() * 100 / $total)
-                        : 0,
-                    'neutral_rate' => $total > 0
-                        ? (int) round($platformResults->where('sentiment', 'neutral')->count() * 100 / $total)
-                        : 0,
-                    'negative_rate' => $total > 0
-                        ? (int) round($platformResults->where('sentiment', 'negative')->count() * 100 / $total)
-                        : 0,
+                    'positive_rate' => $sentiment['positive'],
+                    'neutral_rate' => $sentiment['neutral'],
+                    'negative_rate' => $sentiment['negative'],
                 ];
             })
             ->sortByDesc('total')

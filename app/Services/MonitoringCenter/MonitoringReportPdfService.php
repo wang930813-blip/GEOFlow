@@ -152,10 +152,10 @@ final class MonitoringReportPdfService
 
     /**
      * @Name: writeOverview
-     * @Description: 绘制网页版整体表现章节、五项矢量指标卡和六项诊断摘要。
+     * @Description: 绘制整体表现卡片、三类舆情占比及诊断摘要。
      * @Author: cdkay
      * @CreateTime: 2026-11-16 17:39:08
-     * @UpdateTime: 2026-11-17 10:34:30
+     * @UpdateTime: 2026-11-25 18:19:32
      * @Param TCPDF $pdf 当前 PDF 文档实例
      * @Param array<string,mixed> $dashboard 当前筛选范围内的报告数据
      * @Return void
@@ -166,6 +166,7 @@ final class MonitoringReportPdfService
         $diagnosis = (array) ($dashboard['latest_diagnosis'] ?? []);
         $summary = (array) ($diagnosis['summary'] ?? []);
         $completedQuestions = (int) ($summary['completed_questions'] ?? 0);
+        $successfulAnswers = (int) ($summary['successful_answer_count'] ?? 0);
         $totalQuestions = (int) ($summary['total_questions'] ?? 0);
 
         $pdf->writeHTML($this->sectionTitle(
@@ -179,13 +180,19 @@ final class MonitoringReportPdfService
             ['label' => '品牌提及率', 'value' => (string) ($summary['mention_rate'] ?? 0), 'suffix' => '%', 'icon' => 'target', 'color' => [52, 121, 223], 'background' => [235, 243, 255]],
             ['label' => '平均提及排名', 'value' => (string) ($summary['average_rank'] ?? 0), 'suffix' => '名', 'icon' => 'rank', 'color' => [107, 91, 211], 'background' => [242, 239, 255]],
             ['label' => '品牌提及次数', 'value' => (string) ($summary['mention_count'] ?? 0), 'suffix' => '次', 'icon' => 'count', 'color' => [206, 134, 28], 'background' => [255, 246, 228]],
-            ['label' => '正向/中性倾向', 'value' => (string) ($summary['sentiment_rate'] ?? 0), 'suffix' => '%', 'icon' => 'sentiment', 'color' => [22, 139, 155], 'background' => [230, 249, 251]],
+            [
+                'label' => '舆情分布',
+                'breakdown' => (array) ($summary['sentiment_breakdown'] ?? []),
+                'icon' => 'sentiment',
+                'color' => [22, 139, 155],
+                'background' => [230, 249, 251],
+            ],
         ]);
 
         $pdf->writeHTML($this->summaryDetails([
             ['诊断状态', ($diagnosis['status'] ?? '') === 'completed' ? '已完成' : (string) ($diagnosis['status'] ?? '未完成')],
             ['诊断问题', $totalQuestions.' 条'],
-            ['成功回答', $completedQuestions.' 条'],
+            ['成功回答', $successfulAnswers.' 条'],
             ['监测平台', count((array) ($diagnosis['platforms'] ?? [])).' 个'],
             ['引用来源', count((array) ($diagnosis['sources'] ?? [])).' 条'],
             ['作品引用', count((array) ($diagnosis['citations'] ?? [])).' 条'],
@@ -604,12 +611,12 @@ final class MonitoringReportPdfService
 
     /**
      * @Name: writeMetrics
-     * @Description: 以留白充足的卡片呈现核心指标，并按网页版语义绘制彩色矢量图标。
+     * @Description: 绘制指标卡和矢量图标，舆情卡内按行展示各类别占比。
      * @Author: cdkay
      * @CreateTime: 2026-11-16 16:16:41
-     * @UpdateTime: 2026-11-17 14:16:10
+     * @UpdateTime: 2026-11-25 18:10:56
      * @Param TCPDF $pdf 当前 PDF 文档实例
-     * @Param list<array{label:string,value:string,suffix:string,icon:string,color:array{int,int,int},background:array{int,int,int}}> $metrics 核心指标
+     * @Param list<array{label:string,value?:string,suffix?:string,breakdown?:array<string,int|null>,icon:string,color:array{int,int,int},background:array{int,int,int}}> $metrics 核心指标
      * @Return void
      * @Throws \RuntimeException TCPDF 无法处理指标内容时抛出异常
      */
@@ -638,6 +645,28 @@ final class MonitoringReportPdfService
             $pdf->SetFillColor($background[0], $background[1], $background[2]);
             $pdf->RoundedRect($x + 6, $top + 7, 13, 13, 2, '1111', 'F');
             $this->drawMetricIcon($pdf, (string) $metric['icon'], $x + 12.5, $top + 13.5, $color);
+
+            if (isset($metric['breakdown'])) {
+                $pdf->SetFont('cid0cs', '', 14);
+                $pdf->SetTextColor(83, 102, 91);
+                $pdf->SetXY($x + 22, $top + 10);
+                $pdf->Cell($cardWidth - 26, 7, $metric['label'], 0, 0, 'L');
+
+                // 三行使用相同的起点和右对齐边界，无有效数据时保留各类别标签。
+                $innerWidth = $cardWidth - 12;
+                $rowY = $top + 24;
+                foreach (['positive' => '正向', 'neutral' => '中性', 'negative' => '负向'] as $key => $label) {
+                    $rate = $metric['breakdown'][$key] ?? null;
+                    $pdf->SetTextColor(83, 102, 91);
+                    $pdf->SetXY($x + 6, $rowY);
+                    $pdf->Cell($innerWidth / 2, 8, $label, 0, 0, 'L');
+                    $pdf->SetTextColor(30, 73, 48);
+                    $pdf->Cell($innerWidth / 2, 8, $rate === null ? '—' : $rate.'%', 0, 0, 'R');
+                    $rowY += 10;
+                }
+
+                continue;
+            }
 
             $pdf->SetFont('cid0cs', '', 31);
             $pdf->SetTextColor($color[0], $color[1], $color[2]);
