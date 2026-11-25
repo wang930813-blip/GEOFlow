@@ -523,7 +523,7 @@
                         @endif
                         @if($isSuperAdmin && ($currentSiteAccountScopeEnabled ?? false) && $currentSite && (int) ($currentSite->owner_admin_id ?? 0) > 0 && (int) $currentSite->owner_admin_id !== (int) $currentAdmin->id)
                             <div class="border-b border-gray-100 px-2 py-2">
-                                <form method="POST" action="{{ route('admin.monitor.open') }}">
+                                <form method="POST" action="{{ route('admin.monitor.open') }}" target="_blank" rel="noopener">
                                     @csrf
                                     <button type="submit" class="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm font-medium text-gray-800 hover:bg-gray-100">
                                         <i data-lucide="activity" class="h-4 w-4 shrink-0"></i>
