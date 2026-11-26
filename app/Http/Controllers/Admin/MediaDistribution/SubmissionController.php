@@ -3,11 +3,12 @@
 namespace App\Http\Controllers\Admin\MediaDistribution;
 
 use App\Http\Controllers\Controller;
+use App\Models\Admin;
 use App\Models\Article;
 use App\Models\MediaResource;
 use App\Models\MediaSubmission;
-use App\Services\MediaDistribution\MediaSubmissionService;
 use App\Services\MediaDistribution\AdminCreditService;
+use App\Services\MediaDistribution\MediaSubmissionService;
 use App\Support\AdminWeb;
 use App\Support\CurrentSite;
 use App\Support\MediaDistribution\MediaPlatform;
@@ -15,6 +16,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
+use RuntimeException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
 
@@ -24,9 +26,10 @@ class SubmissionController extends Controller
     {
         $admin = auth('admin')->user();
         $isSuperAdmin = (bool) $admin?->isSuperAdmin();
-        $siteId = app(CurrentSite::class)->id();
-        $account = ($siteId !== null && $admin !== null)
-            ? app(AdminCreditService::class)->accountForAdmin((int) $admin->id, (int) $siteId)
+        $currentSite = app(CurrentSite::class);
+        $siteId = $currentSite->id();
+        $account = ($siteId !== null && $admin instanceof Admin)
+            ? app(AdminCreditService::class)->accountForAdmin($this->postingAccountId($admin, $currentSite), $siteId)
             : null;
 
         $submissions = MediaSubmission::query()
@@ -170,7 +173,14 @@ class SubmissionController extends Controller
         $resource = MediaResource::query()->whereKey((int) $payload['media_resource_id'])->firstOrFail();
 
         try {
-            $submissions->submit($article, $resource, auth('admin')->user(), trim((string) ($payload['remark'] ?? '')));
+            $operator = auth('admin')->user();
+            $submissions->submit(
+                $article,
+                $resource,
+                $operator,
+                trim((string) ($payload['remark'] ?? '')),
+                billingAdmin: $this->postingAccount($operator, app(CurrentSite::class)),
+            );
         } catch (Throwable $e) {
             return back()->withErrors($e->getMessage())->withInput();
         }
@@ -208,6 +218,14 @@ class SubmissionController extends Controller
             ->whereIn('id', $articleIds)
             ->get()
             ->keyBy('id');
+        $operator = auth('admin')->user();
+        try {
+            $billingAdmin = $this->postingAccount($operator, app(CurrentSite::class));
+        } catch (RuntimeException $e) {
+            return back()->withErrors($e->getMessage())->withInput();
+        }
+
+        $remark = trim((string) ($payload['remark'] ?? ''));
         $created = 0;
         $errors = [];
         foreach ($articleIds as $articleId) {
@@ -223,7 +241,7 @@ class SubmissionController extends Controller
                         throw new \RuntimeException('媒体不存在: #'.$resourceId);
                     }
 
-                    $submissions->submit($article, $resource, auth('admin')->user(), trim((string) ($payload['remark'] ?? '')));
+                    $submissions->submit($article, $resource, $operator, $remark, billingAdmin: $billingAdmin);
                     $created++;
                 } catch (Throwable $e) {
                     $errors[] = '#'.$articleId.' / 媒体#'.$resourceId.' '.$e->getMessage();
@@ -238,6 +256,49 @@ class SubmissionController extends Controller
         return redirect()
             ->route('admin.media-distribution.submissions.index')
             ->with('message', '批量投稿已提交 '.$created.' 个订单'.($errors !== [] ? '，失败 '.count($errors).' 个' : ''));
+    }
+
+    /**
+     * @Name: postingAccountId
+     * @Description: 超管使用已授权的当前站点所属账号结算，普通管理员使用自己的账号。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-11-26 11:31:56
+     * @UpdateTime: 2026-11-26 11:31:56
+     *
+     * @Param: Admin $operator 实际投稿的管理员
+     * @Param: CurrentSite $currentSite 当前已授权的站点上下文
+     * @Return: int 负责结算的账号编号
+     */
+    private function postingAccountId(Admin $operator, CurrentSite $currentSite): int
+    {
+        return $operator->isSuperAdmin()
+            ? ($currentSite->ownerAdminId() ?? (int) $operator->id)
+            : (int) $operator->id;
+    }
+
+    /**
+     * @Name: postingAccount
+     * @Description: 读取代投结算账号，客户账号不可用时中止投稿。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-11-26 11:31:56
+     * @UpdateTime: 2026-11-26 11:31:56
+     *
+     * @Param: Admin $operator 实际投稿的管理员
+     * @Param: CurrentSite $currentSite 当前已授权的站点上下文
+     * @Return: Admin 负责结算的账号
+     * @Throws: RuntimeException 客户账号不存在或已停用
+     */
+    private function postingAccount(Admin $operator, CurrentSite $currentSite): Admin
+    {
+        $accountId = $this->postingAccountId($operator, $currentSite);
+        if ($accountId === (int) $operator->id) {
+            return $operator;
+        }
+
+        return Admin::query()->where('status', 'active')->find($accountId)
+            ?? throw new RuntimeException('当前站点所属账号不可用');
     }
 
     public function show(int $submission, MediaSubmissionService $submissions): View

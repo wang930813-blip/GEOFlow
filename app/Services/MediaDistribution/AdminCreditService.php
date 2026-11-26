@@ -1,5 +1,16 @@
 <?php
 
+/**
+ * Created by Codex.
+ * @Date: 2026-11-26
+ * @Time: 11:22:14
+ * @Author: cdkay
+ * @Email: network@iyuanma.net
+ *
+ * @File： AdminCreditService.php
+ * @Description: 管理账号媒资积分余额和收支流水。
+ */
+
 namespace App\Services\MediaDistribution;
 
 use App\Models\AdminCreditAccount;
@@ -99,6 +110,21 @@ class AdminCreditService
         });
     }
 
+    /**
+     * @Name: refundForSubmission
+     * @Description: 锁定积分账户后核对订单流水，按实际扣分一次性退回积分。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-11-26 11:22:14
+     * @UpdateTime: 2026-11-26 11:22:14
+     *
+     * @Param: MediaSubmission $submission 需要退款的投稿订单
+     * @Param: int $adminId 原扣分账号编号
+     * @Param: int|null $operatorAdminId 执行退款的管理员编号
+     * @Param: string $remark 退款流水备注
+     * @Return: AdminCreditAccount 当前积分账户
+     * @Throws: \Illuminate\Database\QueryException 积分账户或流水读写失败
+     */
     public function refundForSubmission(
         MediaSubmission $submission,
         int $adminId,
@@ -106,23 +132,33 @@ class AdminCreditService
         string $remark = '媒体投稿失败退回'
     ): AdminCreditAccount {
         return DB::transaction(function () use ($submission, $adminId, $operatorAdminId, $remark): AdminCreditAccount {
-            if (AdminCreditLedger::query()
+            $siteId = (int) $submission->site_id;
+            $submissionId = (int) $submission->id;
+            // 先锁定账户，再读取扣分和退款流水，避免并发退款重复入账。
+            $account = $this->lockedAccount($adminId, $siteId);
+            $submissionLedger = AdminCreditLedger::query()
                 ->where('admin_id', $adminId)
-                ->where('submission_id', (int) $submission->id)
-                ->where('type', 'refund')
-                ->exists()) {
-                return $this->lockedAccount($adminId, (int) $submission->site_id);
+                ->where('site_id', $siteId)
+                ->where('submission_id', $submissionId);
+
+            if ((clone $submissionLedger)->where('type', 'refund')->exists()) {
+                return $account;
             }
 
-            $siteId = (int) $submission->site_id;
-            $account = $this->lockedAccount($adminId, $siteId);
-            $amountCents = $this->moneyToCents($submission->points_amount);
+            // 订单标价不代表已付款，按对应账户的实际扣分流水确定退款金额。
+            $amountCents = -$this->moneyToCents(
+                $submissionLedger->where('type', 'deduct')->where('amount', '<', 0)->sum('amount')
+            );
+            if ($amountCents <= 0) {
+                return $account;
+            }
+
             $account->forceFill([
                 'balance' => $this->centsToMoney($this->moneyToCents($account->balance) + $amountCents),
                 'total_consumed' => $this->centsToMoney(max(0, $this->moneyToCents($account->total_consumed) - $amountCents)),
             ])->save();
 
-            $this->ledger($adminId, $siteId, (int) $submission->id, 'refund', $amountCents, $account, $operatorAdminId, $remark);
+            $this->ledger($adminId, $siteId, $submissionId, 'refund', $amountCents, $account, $operatorAdminId, $remark);
 
             return $account;
         });

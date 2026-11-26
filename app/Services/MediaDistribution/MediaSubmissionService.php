@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Created by 开发工具.
+ * Created by Codex.
  *
  * @Date: 2026-07-18
  *
@@ -40,12 +40,30 @@ class MediaSubmissionService
         private readonly MediaSubmissionHtmlSanitizer $htmlSanitizer,
     ) {}
 
+    /**
+     * @Name: submit
+     * @Description: 按订单所属账号校验规格与积分，提交第三方订单并记录实际操作人。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-11-26 11:31:56
+     * @UpdateTime: 2026-11-26 11:31:56
+     *
+     * @Param: Article $article 待投稿文章
+     * @Param: MediaResource $resource 投稿媒体
+     * @Param: Admin $admin 实际投稿的管理员
+     * @Param: string $remark 投稿备注
+     * @Param: int|null $mcpTokenId 投稿使用的 MCP 密钥编号
+     * @Param: Admin|null $billingAdmin 后台代投时负责结算的客户账号
+     * @Return: MediaSubmission 投稿订单
+     * @Throws: RuntimeException 投稿条件不满足、积分不足或媒体提交失败
+     */
     public function submit(
         Article $article,
         MediaResource $resource,
         Admin $admin,
         string $remark = '',
         ?int $mcpTokenId = null,
+        ?Admin $billingAdmin = null,
     ): MediaSubmission {
         if ($article->site_id === null || (int) $article->site_id <= 0) {
             throw new RuntimeException('文章缺少站点归属');
@@ -57,26 +75,31 @@ class MediaSubmissionService
             throw new RuntimeException('文章内容不能为空');
         }
 
-        $this->quotaService->assertSubscriptionActive((int) $admin->id, (int) $article->site_id, $admin);
+        $billingAdmin ??= $admin;
+        $billingAdminId = (int) $billingAdmin->id;
+        $operatorId = (int) $admin->id;
+        $siteId = (int) $article->site_id;
+        $this->quotaService->assertSubscriptionActive($billingAdminId, $siteId, $billingAdmin);
 
-        $salePrice = $this->salePriceForSite($resource, (int) $article->site_id);
-        $usesUnlimitedCredits = $this->usesUnlimitedCredits($admin, (int) $article->site_id);
+        // 代投沿用客户自己的积分规格，管理员编号仅用于记录实际操作人。
+        $salePrice = $this->salePriceForSite($resource, $siteId);
+        $usesUnlimitedCredits = $this->usesUnlimitedCredits($billingAdmin, $siteId);
         if (! $usesUnlimitedCredits) {
-            $this->credits->ensureSufficient((int) $admin->id, (int) $article->site_id, $salePrice);
+            $this->credits->ensureSufficient($billingAdminId, $siteId, $salePrice);
         }
 
-        $submission = DB::transaction(function () use ($article, $resource, $admin, $remark, $salePrice, $mcpTokenId): MediaSubmission {
+        $submission = DB::transaction(function () use ($article, $resource, $billingAdminId, $operatorId, $siteId, $remark, $salePrice, $mcpTokenId): MediaSubmission {
             $platformId = (int) ($resource->platform_id ?: MediaPlatform::CEYING_MEDIA_1);
 
             return MediaSubmission::query()->create([
-                'site_id' => (int) $article->site_id,
-                'owner_admin_id' => (int) $admin->id,
+                'site_id' => $siteId,
+                'owner_admin_id' => $billingAdminId,
                 'mcp_token_id' => $mcpTokenId,
                 'article_id' => (int) $article->id,
                 'media_resource_id' => (int) $resource->id,
                 'platform_id' => $platformId,
                 'source_type' => (string) $resource->source_type,
-                'agent_order_sn' => $this->agentOrderSn($platformId, (int) $article->site_id),
+                'agent_order_sn' => $this->agentOrderSn($platformId, $siteId),
                 'preview_token' => Str::random(48),
                 'title_snapshot' => (string) $article->title,
                 'content_snapshot' => $this->htmlSanitizer->sanitize((string) $article->content),
@@ -85,14 +108,14 @@ class MediaSubmissionService
                 'points_amount' => $salePrice,
                 'status' => 'submitting',
                 'remark' => $remark,
-                'submitted_by_admin_id' => (int) $admin->id,
+                'submitted_by_admin_id' => $operatorId,
             ]);
         });
 
         $deducted = false;
         try {
             if (! $usesUnlimitedCredits) {
-                $this->credits->deductForSubmission($submission, (int) $admin->id, (int) $admin->id);
+                $this->credits->deductForSubmission($submission, $billingAdminId, $operatorId);
                 $deducted = true;
             }
             $response = $this->clients
@@ -109,7 +132,7 @@ class MediaSubmissionService
             ])->save();
         } catch (\Throwable $e) {
             if ($deducted) {
-                $this->credits->refundForSubmission($submission, (int) $admin->id, (int) $admin->id);
+                $this->credits->refundForSubmission($submission, $billingAdminId, $operatorId);
             }
             $submission->forceFill([
                 'status' => 'failed',
@@ -117,6 +140,11 @@ class MediaSubmissionService
             ])->save();
 
             throw $e;
+        }
+
+        // 已扣分但平台未返回订单号时，订单已标为提交失败，退回原账户的实扣积分。
+        if ($deducted && $orderNid === '') {
+            $this->credits->refundForSubmission($submission, $billingAdminId, $operatorId);
         }
 
         return $submission;

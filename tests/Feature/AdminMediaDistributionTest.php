@@ -17,6 +17,7 @@ use App\Models\Site;
 use App\Models\SiteCreditAccount;
 use App\Models\SiteCreditLedger;
 use App\Models\SiteSetting;
+use App\Services\MediaDistribution\AdminCreditService;
 use App\Services\MediaDistribution\MediaResourceSyncService;
 use App\Support\MediaDistribution\MediaPlatform;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
@@ -981,6 +982,106 @@ class AdminMediaDistributionTest extends TestCase
         $submission->refresh();
         $this->assertSame('published', $submission->status);
         $this->assertSame('https://example.com/published.html', $submission->published_url);
+    }
+
+    /**
+     * @Name: superAdminPostsUsingCurrentCustomerCredits
+     * @Description: 验证后台切换客户站点后的单笔和批量投稿扣减客户积分，积分不足时禁止投稿，取消时退款。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-11-26 11:33:54
+     * @UpdateTime: 2026-11-26 11:33:54
+     *
+     * @Return: void
+     */
+    #[\PHPUnit\Framework\Attributes\Test]
+    public function superAdminPostsUsingCurrentCustomerCredits(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+        [$operator] = $this->createAdminWithSite('media_delegate_operator', 'super_admin');
+        [$customer, $site] = $this->createAdminWithSite('media_delegate_customer', 'direct_admin');
+        [$article, $resource] = $this->createArticleAndResource($site, 'delegated-media-first');
+        [$secondArticle] = $this->createArticleAndResource($site, 'delegated-media-second');
+        $article->forceFill(['owner_admin_id' => $customer->id])->save();
+        $secondArticle->forceFill(['owner_admin_id' => $customer->id])->save();
+        $customerAccount = $this->grantAdminCredits($customer, $site, '200.00');
+        $operatorAccount = $this->grantAdminCredits($operator, $site, '500.00');
+
+        Http::fake([
+            '*/api/media/send' => Http::sequence()
+                ->push(['code' => 1, 'data' => ['order_nid' => 'delegated-first']], 200)
+                ->push(['code' => 1, 'data' => ['order_nid' => 'delegated-second']], 200)
+                ->push(['code' => 1, 'data' => []], 200),
+            '*/api/media/cancel_order' => Http::response(['code' => 1, 'data' => []]),
+        ]);
+        $submissionsIndex = route('admin.media-distribution.submissions.index');
+
+        $this->actingAs($operator, 'admin')
+            ->from($submissionsIndex)
+            ->post(route('admin.sites.switch'), ['site_id' => $site->id])
+            ->assertRedirect($submissionsIndex);
+
+        $this->get($submissionsIndex)
+            ->assertOk()
+            ->assertViewHas('account', fn (AdminCreditAccount $account): bool => $account->is($customerAccount));
+
+        $this->post(route('admin.media-distribution.submissions.store'), [
+            'article_id' => $article->id,
+            'media_resource_id' => $resource->id,
+        ])->assertRedirect($submissionsIndex)->assertSessionHasNoErrors();
+
+        $this->post(route('admin.media-distribution.submissions.bulk-store'), [
+            'article_ids' => [$secondArticle->id],
+            'media_resource_ids' => [$resource->id],
+        ])->assertRedirect($submissionsIndex)->assertSessionHasNoErrors();
+
+        $this->assertSame('24.00', $customerAccount->fresh()->balance);
+        foreach ([$article, $secondArticle] as $submittedArticle) {
+            $submission = MediaSubmission::query()->where('article_id', $submittedArticle->id)->firstOrFail();
+            $this->assertSame($customer->id, $submission->owner_admin_id);
+            $this->assertSame($operator->id, $submission->submitted_by_admin_id);
+            $this->assertDatabaseHas('admin_credit_ledger', [
+                'admin_id' => $customer->id,
+                'site_id' => $site->id,
+                'submission_id' => $submission->id,
+                'operator_admin_id' => $operator->id,
+                'type' => 'deduct',
+                'amount' => '-88.00',
+            ]);
+        }
+
+        $this->from($submissionsIndex)->post(route('admin.media-distribution.submissions.store'), [
+            'article_id' => $article->id,
+            'media_resource_id' => $resource->id,
+        ])->assertRedirect($submissionsIndex)->assertSessionHasErrors();
+        $this->assertCount(2, Http::recorded(
+            static fn ($request): bool => str_ends_with($request->url(), '/api/media/send')
+        ));
+
+        $this->post(route('admin.media-distribution.submissions.cancel', ['submission' => $submission->id]), [
+            'reason' => '撤回投稿',
+        ])->assertRedirect(route('admin.media-distribution.submissions.show', ['submission' => $submission->id]));
+
+        $this->assertSame('112.00', $customerAccount->fresh()->balance);
+        $this->assertDatabaseHas('admin_credit_ledger', [
+            'admin_id' => $customer->id,
+            'submission_id' => $submission->id,
+            'type' => 'refund',
+            'amount' => '88.00',
+        ]);
+
+        $this->post(route('admin.media-distribution.submissions.store'), [
+            'article_id' => $secondArticle->id,
+            'media_resource_id' => $resource->id,
+        ])->assertRedirect($submissionsIndex);
+        $this->assertDatabaseHas('media_submissions', [
+            'article_id' => $secondArticle->id,
+            'owner_admin_id' => $customer->id,
+            'status' => 'failed',
+        ]);
+        $this->assertSame('112.00', $customerAccount->fresh()->balance);
+        $this->assertSame('88.00', $customerAccount->fresh()->total_consumed);
+        $this->assertSame('500.00', $operatorAccount->fresh()->balance);
     }
 
     public function test_media_submission_deducts_account_credits_independently_per_site_user(): void
@@ -2612,10 +2713,10 @@ class AdminMediaDistributionTest extends TestCase
         AdminCreditAccount::query()->create([
             'admin_id' => (int) $admin->id,
             'site_id' => (int) $site->id,
-            'balance' => '12.00',
+            'balance' => '100.00',
             'frozen_balance' => '0.00',
             'total_granted' => '100.00',
-            'total_consumed' => '88.00',
+            'total_consumed' => '0.00',
         ]);
         $submission = MediaSubmission::query()->create([
             'site_id' => $site->id,
@@ -2632,6 +2733,9 @@ class AdminMediaDistributionTest extends TestCase
             'status' => 'submitted',
             'submitted_by_admin_id' => (int) $admin->id,
         ]);
+        app(AdminCreditService::class)->deductForSubmission($submission, (int) $admin->id, (int) $admin->id);
+        $submission->forceFill(['points_amount' => '90.00'])->save();
+
         Http::fake([
             '*/api/media/cancel_order' => Http::response(['code' => 1, 'msg' => 'cancelled', 'data' => []]),
             '*/api/media/order_info' => Http::response([
@@ -2653,6 +2757,11 @@ class AdminMediaDistributionTest extends TestCase
             ->where('site_id', (int) $site->id)
             ->value('balance'));
         $this->assertSame(1, AdminCreditLedger::query()->where('submission_id', $submission->id)->where('type', 'refund')->count());
+        $this->assertDatabaseHas('admin_credit_ledger', [
+            'submission_id' => $submission->id,
+            'type' => 'refund',
+            'amount' => '88.00',
+        ]);
 
         $submission->forceFill(['status' => 'submitted'])->save();
         $this->actingAs($admin, 'admin')
@@ -2665,6 +2774,27 @@ class AdminMediaDistributionTest extends TestCase
             ->where('site_id', (int) $site->id)
             ->value('balance'));
         $this->assertSame(1, AdminCreditLedger::query()->where('submission_id', $submission->id)->where('type', 'refund')->count());
+
+        // 未扣分的投稿可正常同步拒稿状态，账户余额和流水保持不变。
+        $unpaidSubmission = $submission->replicate()->forceFill([
+            'external_order_nid' => 'unpaid-rejected-order',
+            'status' => 'submitted',
+        ]);
+        $unpaidSubmission->save();
+
+        $this->actingAs($admin, 'admin')
+            ->withSession(['current_site_id' => $site->id])
+            ->post(route('admin.media-distribution.submissions.sync', ['submission' => $unpaidSubmission->id]))
+            ->assertRedirect(route('admin.media-distribution.submissions.show', ['submission' => $unpaidSubmission->id]));
+
+        $this->assertSame('rejected', $unpaidSubmission->fresh()->status);
+        $this->assertDatabaseHas('admin_credit_accounts', [
+            'admin_id' => $admin->id,
+            'site_id' => $site->id,
+            'balance' => '100.00',
+            'total_consumed' => '0.00',
+        ]);
+        $this->assertDatabaseMissing('admin_credit_ledger', ['submission_id' => $unpaidSubmission->id]);
     }
 
     public function test_chaojimeijie_sync_status_and_appeal_use_agent_order_sn(): void
@@ -2688,10 +2818,10 @@ class AdminMediaDistributionTest extends TestCase
         AdminCreditAccount::query()->create([
             'admin_id' => (int) $admin->id,
             'site_id' => (int) $site->id,
-            'balance' => '12.00',
+            'balance' => '100.00',
             'frozen_balance' => '0.00',
             'total_granted' => '100.00',
-            'total_consumed' => '88.00',
+            'total_consumed' => '0.00',
         ]);
         $submission = MediaSubmission::query()->create([
             'site_id' => $site->id,
@@ -2711,6 +2841,7 @@ class AdminMediaDistributionTest extends TestCase
             'status' => 'submitted',
             'submitted_by_admin_id' => (int) $admin->id,
         ]);
+        app(AdminCreditService::class)->deductForSubmission($submission, (int) $admin->id, (int) $admin->id);
 
         Http::fake([
             '*/media/order/query*' => function ($request) {
