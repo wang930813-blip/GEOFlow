@@ -22,6 +22,32 @@ class AdminMonitoringCenterPageTest extends TestCase
 {
     use RefreshDatabase;
 
+    /**
+     * @Name: monitorEntryShowsForbiddenForAgentAccount
+     * @Description: 验证超管尝试进入代理账号的监测中心时，后台按权限拒绝渲染网页。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-11-26 20:39:04
+     * @UpdateTime: 2026-11-26 20:39:04
+     *
+     * @Return: void
+     */
+    #[\PHPUnit\Framework\Attributes\Test]
+    public function monitorEntryShowsForbiddenForAgentAccount(): void
+    {
+        $this->withoutMiddleware(ValidateCsrfToken::class);
+        $superAdmin = $this->createAdmin('monitor_entry_super_admin');
+        $superAdmin->forceFill(['role' => 'super_admin'])->save();
+        [$agent, $site] = $this->createAdminWithSite('monitor_entry_agent');
+        $agent->forceFill(['role' => 'agent_admin'])->save();
+
+        $this->actingAs($superAdmin, 'admin')
+            ->withSession(['current_site_id' => (int) $site->id, 'current_site_account_scope' => true])
+            ->post(route('admin.monitor.open'))
+            ->assertForbidden()
+            ->assertSee('代理账号无法直接进入监测中心，请切换到客户账号后再进入');
+    }
+
     public function test_monitoring_report_renderer_uses_readable_utf8_page_titles(): void
     {
         $renderer = app(MonitoringReportRenderer::class);

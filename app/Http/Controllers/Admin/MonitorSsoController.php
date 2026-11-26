@@ -13,6 +13,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Exceptions\ApiException;
 use App\Http\Controllers\Controller;
 use App\Models\Admin;
 use App\Services\MonitoringCenter\MonitorUserAuthService;
@@ -27,11 +28,11 @@ final class MonitorSsoController extends Controller
      * @Description: 签发所选客户的一次性登录码并返回不缓存的监测中心认证桥接页。
      * @Author: cdkay
      * @CreateTime: 2026-11-17 17:48:44
-     * @UpdateTime: 2026-11-17 17:53:00
+     * @UpdateTime: 2026-11-26 20:39:04
      * @Param: MonitorUserAuthService $authService 监测中心认证服务
      * @Param: CurrentSite $currentSite 当前站点与账号上下文
      * @Return: Response 自动登录桥接页
-     * @Throws: ApiException 后台管理员无权限或当前客户站点不可用
+     * @Throws: \Symfony\Component\HttpKernel\Exception\HttpException 后台管理员无权限或当前客户账号、站点不可用
      */
     public function open(
         MonitorUserAuthService $authService,
@@ -40,7 +41,12 @@ final class MonitorSsoController extends Controller
         $admin = Auth::guard('admin')->user();
         abort_unless($admin instanceof Admin && $admin->isSuperAdmin(), 403);
 
-        $code = $authService->issueAdminSsoCode($admin, $currentSite);
+        try {
+            $code = $authService->issueAdminSsoCode($admin, $currentSite);
+        } catch (ApiException $exception) {
+            // 后台入口由网页异常处理器渲染，显式保留认证服务返回的 HTTP 状态。
+            abort($exception->getHttpStatus(), $exception->getMessage());
+        }
 
         return response()
             ->view('monitor.sso', ['code' => $code])

@@ -156,7 +156,7 @@ final class MonitorUserAuthService
      * @Description: 为已显式切换客户站点的超级管理员创建短时一次性监测中心登录码。
      * @Author: cdkay
      * @CreateTime: 2026-11-17 17:48:44
-     * @UpdateTime: 2026-11-17 17:53:00
+     * @UpdateTime: 2026-11-26 20:39:04
      * @Param: Admin $operator 当前后台管理员
      * @Param: CurrentSite $currentSite 当前站点及账号上下文
      * @Return: string 90 秒有效的一次性登录码
@@ -185,6 +185,10 @@ final class MonitorUserAuthService
             ->whereKey($ownerAdminId)
             ->where('status', 'active')
             ->first();
+
+        if ($site instanceof Site && $admin instanceof Admin && $admin->isAgentAdmin()) {
+            throw new ApiException('monitor_sso_forbidden', '代理账号无法直接进入监测中心，请切换到客户账号后再进入', 403);
+        }
 
         if (! $site instanceof Site
             || ! $admin instanceof Admin
