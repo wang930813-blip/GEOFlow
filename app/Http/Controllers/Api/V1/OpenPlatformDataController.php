@@ -39,7 +39,7 @@ final class OpenPlatformDataController extends BaseApiController
 {
     /**
      * 报告数据
-     * 返回与新版监测中心报告导出相同筛选范围内的摘要、平台、问题、来源、对话及作品引用数据。
+     * 返回与新版监测中心报告导出相同筛选范围内的摘要、平台、问题、来源、对话及作品引用数据。每条对话的正文和来源数组分别返回。
      *
      * @Url [GET] /api/v1/open-platform/report
      *      登录 是
@@ -55,7 +55,7 @@ final class OpenPlatformDataController extends BaseApiController
      *
      * @CreateTime: 2026-11-19 12:11:31
      *
-     * @UpdateTime: 2026-11-20 10:41:07
+     * @UpdateTime: 2026-11-26 17:33:08
      *
      * @Return JsonResponse 筛选条件、诊断记录摘要和完整报告明细
      *
@@ -190,7 +190,7 @@ final class OpenPlatformDataController extends BaseApiController
 
     /**
      * AI 对话记录
-     * 返回当前筛选范围内按时间倒序排列的平台问题与回答。
+     * 返回当前筛选范围内按时间倒序排列的平台问题与回答。每条回答使用 answer 字符串及独立的 sources 数组。
      * @Url [GET] /api/v1/open-platform/conversations
      *      登录 是
      *      run_id integer 可选 诊断记录编号；未传时使用日期范围内最新的已完成记录
@@ -201,9 +201,9 @@ final class OpenPlatformDataController extends BaseApiController
      *
      * @Author: cdkay
      * @CreateTime: 2026-11-20 10:26:46
-     * @UpdateTime: 2026-11-20 10:41:07
+     * @UpdateTime: 2026-11-26 17:33:08
      *
-     * @Return JsonResponse 筛选条件、诊断摘要和 AI 对话列表
+     * @Return JsonResponse 筛选条件、诊断摘要和含各条回答来源的 AI 对话列表
      * @Throws ApiException|ValidationException 令牌权限不足、记录越权或筛选参数无效
      */
     public function conversations(

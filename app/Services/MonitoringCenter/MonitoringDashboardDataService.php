@@ -29,6 +29,7 @@ use App\Services\BrandDiagnosis\BrandDiagnosisPlatform;
 use App\Support\CurrentSite;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 
 final class MonitoringDashboardDataService
 {
@@ -606,13 +607,13 @@ final class MonitoringDashboardDataService
     }
 
     /**
-     * 输出当前筛选的问题和平台对应的对话记录。
+     * 输出当前筛选的问题和平台对应的对话记录，分别返回正文和本条回答的来源。
      *
      * @Author: cdkay
      *
      * @CreateTime: 2026-11-02 17:37:32
      *
-     * @UpdateTime: 2026-11-03 14:59:24
+     * @UpdateTime: 2026-11-26 17:33:08
      *
      * @Param: Collection<int,BrandDiagnosisQuestion> $questions 当前诊断的问题
      *
@@ -638,12 +639,45 @@ final class MonitoringDashboardDataService
                         'time' => $result->checked_at?->format('Y-m-d H:i') ?? $result->created_at?->format('Y-m-d H:i') ?? '',
                         'rate' => $result->brand_mentioned ? 100 : 0,
                         'answer' => strip_tags((string) $result->answer),
+                        'sources' => $this->conversationSources($result),
                     ];
                 });
             })
             ->sortByDesc('time')
             ->values()
             ->take(100)
+            ->all();
+    }
+
+    /**
+     * @Name: conversationSources
+     * @Description: 从当前回答已加载的引用记录中返回绝对网页链接，按完整地址去重并保持采集顺序。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-11-26 17:33:08
+     * @UpdateTime: 2026-11-26 17:33:08
+     *
+     * @Param: BrandDiagnosisResult $result 当前平台的单条回答
+     * @Return: list<array{title:string,url:string,domain:string,type:string}> 当前回答的来源，缺少可用链接时返回空数组
+     * @Throws: 无
+     */
+    private function conversationSources(BrandDiagnosisResult $result): array
+    {
+        return $result->sources
+            ->sortBy('id')
+            ->map(static function (BrandDiagnosisSource $source): array {
+                $url = trim((string) $source->url);
+
+                return [
+                    'title' => trim((string) $source->title) ?: $url,
+                    'url' => $url,
+                    'domain' => trim((string) $source->domain) ?: (string) parse_url($url, PHP_URL_HOST),
+                    'type' => trim((string) $source->source_type),
+                ];
+            })
+            ->filter(static fn (array $source): bool => Str::isUrl($source['url'], ['http', 'https']))
+            ->uniqueStrict('url')
+            ->values()
             ->all();
     }
 

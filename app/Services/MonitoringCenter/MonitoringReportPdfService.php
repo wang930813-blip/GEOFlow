@@ -880,10 +880,10 @@ final class MonitoringReportPdfService
 
     /**
      * @Name: conversationSection
-     * @Description: 逐条绘制平台回答、问题、回答状态、提及率和完整回答文本。
+     * @Description: 逐条绘制平台回答、问题、回答状态、提及率及当前回答的引用链接。
      * @Author: cdkay
      * @CreateTime: 2026-11-16 16:16:41
-     * @UpdateTime: 2026-11-17 15:53:52
+     * @UpdateTime: 2026-11-26 17:33:08
      * @Param list<array<string,mixed>> $conversations AI 平台回答记录
      * @Return string 对话明细区 HTML
      * @Throws \RuntimeException TCPDF 无法处理回答内容时抛出异常
@@ -896,6 +896,14 @@ final class MonitoringReportPdfService
             $answer = trim((string) ($conversation['answer'] ?? '')) ?: '未记录回答内容。';
             $answer = str_replace(['**', '__', '~~', '`'], '', $answer);
             $answer = nl2br($this->escape($answer), false);
+            $sourceLinks = [];
+            foreach ($conversation['sources'] ?? [] as $source) {
+                $url = $this->safeUrl((string) ($source['url'] ?? ''));
+                if ($url !== '') {
+                    $label = (string) ($source['title'] ?? '') ?: $url;
+                    $sourceLinks[] = '<a href="'.$this->escape($url).'">'.$this->escape($label).'</a>';
+                }
+            }
             $html .= '<table width="100%" border="0" cellpadding="0" cellspacing="0">'
                 .'<tr><td width="0.5%" bgcolor="#20a85d"></td><td width="1.5%" bgcolor="#fbfdfb"></td><td width="98%" cellpadding="11" bgcolor="#fbfdfb">'
                 .'<font color="#187a46" size="14"><b>'.$this->escape((string) ($conversation['platform'] ?? '未知平台'))
@@ -907,7 +915,14 @@ final class MonitoringReportPdfService
                 .'<br /><br />'
                 .'</td></tr>'
                 .'<tr><td width="0.5%" bgcolor="#20a85d"></td><td width="1.5%" bgcolor="#ffffff"></td><td width="98%" cellpadding="11" bgcolor="#ffffff">'
-                .'<font color="#42564a" size="16">'.$answer.'</font></td></tr></table><br /><br />';
+                .'<font color="#42564a" size="16">'.$answer.'</font></td></tr>';
+
+            if ($sourceLinks !== []) {
+                $html .= '<tr><td width="0.5%" bgcolor="#20a85d"></td><td width="1.5%" bgcolor="#ffffff"></td><td width="98%" cellpadding="11" bgcolor="#ffffff">'
+                    .'<font color="#187a46" size="14"><b>引用来源</b><br />'.implode('<br />', $sourceLinks).'</font></td></tr>';
+            }
+
+            $html .= '</table><br /><br />';
         }
 
         return $html;
