@@ -140,7 +140,7 @@ class AdminSiteContextTest extends TestCase
             'password' => 'secret-123',
             'email' => 'alpha-user@example.com',
             'display_name' => 'Alpha User',
-            'role' => 'admin',
+            'role' => 'agent_admin',
             'status' => 'active',
         ]);
         $secondOwner = Admin::query()->create([
@@ -148,7 +148,7 @@ class AdminSiteContextTest extends TestCase
             'password' => 'secret-123',
             'email' => 'beta-user@example.com',
             'display_name' => 'Beta User',
-            'role' => 'admin',
+            'role' => 'direct_admin',
             'status' => 'active',
         ]);
 
@@ -166,8 +166,8 @@ class AdminSiteContextTest extends TestCase
         $this->actingAs($superAdmin, 'admin')
             ->get(route('admin.dashboard'))
             ->assertOk()
-            ->assertSee('Alpha User - 默认站点')
-            ->assertSee('Beta User - 默认站点')
+            ->assertSee('【代理账号】Alpha User - 默认站点')
+            ->assertSee('【直客账号】Beta User - 默认站点')
             ->assertDontSee('alpha_user - 默认站点')
             ->assertDontSee('beta_user - 默认站点');
     }

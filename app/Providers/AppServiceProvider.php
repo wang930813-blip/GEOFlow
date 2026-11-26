@@ -104,6 +104,18 @@ class AppServiceProvider extends ServiceProvider
         });
     }
 
+    /**
+     * @Name: availableSitesForAdmin
+     * @Description: 查询账号可切换的站点，并预加载站点所属账号的显示名称和角色。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-11-26 20:44:06
+     * @UpdateTime: 2026-11-26 20:44:06
+     *
+     * @Param: Admin $admin 当前登录账号
+     * @Return: \Illuminate\Database\Eloquent\Collection 可切换站点列表
+     * @Throws: \Illuminate\Database\QueryException 站点或所属账号查询失败
+     */
     private function availableSitesForAdmin(Admin $admin)
     {
         $columns = ['sites.id', 'sites.name', 'sites.status', 'sites.owner_admin_id'];
@@ -111,13 +123,13 @@ class AppServiceProvider extends ServiceProvider
         return $admin->isSuperAdmin()
             ? Site::query()
                 ->select($columns)
-                ->with('owner:id,username,display_name')
+                ->with('owner:id,username,display_name,role')
                 ->where('status', 'active')
                 ->orderBy('id')
                 ->get()
             : $admin->sites()
                 ->select($columns)
-                ->with('owner:id,username,display_name')
+                ->with('owner:id,username,display_name,role')
                 ->where('sites.status', 'active')
                 ->orderBy('sites.id')
                 ->get();

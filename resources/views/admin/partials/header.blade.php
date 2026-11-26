@@ -510,8 +510,19 @@
                                     >
                                         @foreach ($availableSites as $site)
                                             @php
-                                                $siteOwnerName = trim((string) ($site->owner?->display_name ?: $site->owner?->username ?: ''));
-                                                $siteOptionLabel = $siteOwnerName !== '' ? $siteOwnerName.' - '.$site->name : $site->name;
+                                                $siteOwner = $site->owner;
+                                                $siteOwnerType = match (true) {
+                                                    $siteOwner?->isSuperAdmin() => __('admin.header.super_admin'),
+                                                    $siteOwner?->isAgentAdmin() => '代理账号',
+                                                    $siteOwner?->isDirectAdmin() => '直客账号',
+                                                    $siteOwner?->isSiteUser() => '站点用户',
+                                                    $siteOwner !== null => __('admin.header.admin'),
+                                                    $site->owner_admin_id !== null => '账号不可用',
+                                                    default => '平台站点',
+                                                };
+                                                $siteOwnerName = trim((string) ($siteOwner?->display_name ?: $siteOwner?->username ?: ''));
+                                                $siteDisplayName = $siteOwnerName !== '' ? $siteOwnerName.' - '.$site->name : $site->name;
+                                                $siteOptionLabel = '【'.$siteOwnerType.'】'.$siteDisplayName;
                                             @endphp
                                             <option value="{{ $site->id }}" title="{{ $siteOptionLabel }}" @selected((int) $currentSite->id === (int) $site->id)>
                                                 {{ $siteOptionLabel }}
