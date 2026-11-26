@@ -1,5 +1,16 @@
 <?php
 
+/**
+ * Created by Codex.
+ * @Date: 2026-11-26
+ * @Time: 18:51:44
+ * @Author: cdkay
+ * @Email: network@iyuanma.net
+ *
+ * @File： MonitoringReportDataService.php
+ * @Description: 汇总企业和行业监测报告，并按调用场景读取搜索明细。
+ */
+
 namespace App\Services\MonitoringCenter;
 
 use App\Models\Admin;
@@ -60,9 +71,20 @@ class MonitoringReportDataService
     ];
 
     /**
-     * @return array<string,mixed>
+     * @Name: enterpriseReport
+     * @Description: 生成企业报告，只有需要展示历史搜索明细时才构造完整明细和筛选项。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-11-26 18:51:44
+     * @UpdateTime: 2026-11-26 18:51:44
+     *
+     * @Param: Admin $admin 报告所属账号
+     * @Param: Site|null $site 当前授权站点
+     * @Param: bool $includeSearchRows 是否读取历史搜索明细
+     * @Return: array<string,mixed> 企业报告的数据与摘要
+     * @Throws: \Illuminate\Database\QueryException 报告数据读取失败
      */
-    public function enterpriseReport(Admin $admin, ?Site $site = null): array
+    public function enterpriseReport(Admin $admin, ?Site $site = null, bool $includeSearchRows = true): array
     {
         $context = $this->resolveContext($admin, $site);
         $companyName = $this->resolveCompanyName($context);
@@ -70,13 +92,17 @@ class MonitoringReportDataService
             $context,
             $this->latestBrandDiagnosisMentionRates($context)
         );
-        $dynamicSearchRows = $this->searchRows($context, $companyName);
         $isXueshuyiBrand = $this->isXueshuyiBrand($companyName);
-        $xueshuyiStaticSearchRows = $isXueshuyiBrand ? $this->xueshuyiStaticSearchRows() : [];
-        $searchRows = [...$xueshuyiStaticSearchRows, ...$dynamicSearchRows];
+        // 大盘仍用全量计数生成摘要，历史回答只在原有报告入口加载。
+        $staticSearchCount = $isXueshuyiBrand ? count(VirtualSearchReportSnapshots::all()) : 0;
+        $searchRows = [];
+        if ($includeSearchRows) {
+            $staticSearchRows = $isXueshuyiBrand ? $this->xueshuyiStaticSearchRows() : [];
+            $searchRows = [...$staticSearchRows, ...$this->searchRows($context, $companyName)];
+        }
         $searchReportCount = (int) $this->scope(BrandDiagnosisResult::query(), $context)
             ->where('status', 'success')
-            ->count() + count($xueshuyiStaticSearchRows);
+            ->count() + $staticSearchCount;
         $distillationWords = $this->distillationWords($context);
         $platformCount = $this->distinctPlatforms($context)->count();
         $articleTrend = $this->articleTrend($context);
@@ -95,10 +121,10 @@ class MonitoringReportDataService
             'model_collection' => $modelCollection,
             'metrics' => $this->hasActualSummaryData($summary) ? $this->enterpriseMetrics($context, $modelCollection, $platformCount) : [],
             'distillation_words' => $distillationWords,
-            'platform_filters' => $this->platformFilters($searchRows),
+            'platform_filters' => $includeSearchRows ? $this->platformFilters($searchRows) : [],
             'trend' => $articleTrend,
             'search_rows' => $searchRows,
-            'has_xueshuyi_static_search_rows' => $isXueshuyiBrand,
+            'has_xueshuyi_static_search_rows' => $includeSearchRows && $isXueshuyiBrand,
         ];
 
         return $this->sanitizeReportPayload($report);

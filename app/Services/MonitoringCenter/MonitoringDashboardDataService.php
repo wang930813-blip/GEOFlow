@@ -39,13 +39,13 @@ final class MonitoringDashboardDataService
     ) {}
 
     /**
-     * 获取新版监测中心所需的全部只读数据。
+     * 获取新版监测中心的报告摘要及当前筛选的诊断明细。
      *
      * @Author: cdkay
      *
      * @CreateTime: 2026-11-02 17:37:32
      *
-     * @UpdateTime: 2026-11-21 09:27:35
+     * @UpdateTime: 2026-11-26 18:51:44
      *
      * @Param: Admin $admin 当前已认证管理员
      *
@@ -60,7 +60,7 @@ final class MonitoringDashboardDataService
     public function build(Admin $admin, ?Site $site = null, array $filters = []): array
     {
         $site = $this->resolveSite($admin, $site);
-        $enterprise = $this->reportDataService->enterpriseReport($admin, $site);
+        $enterprise = $this->reportDataService->enterpriseReport($admin, $site, includeSearchRows: false);
         $industry = $this->reportDataService->industryReport($admin, $site);
         $ownerAdminId = $this->ownerAdminId($admin, $site);
         $startDate = is_string($filters['start_date'] ?? null) ? $filters['start_date'] : null;

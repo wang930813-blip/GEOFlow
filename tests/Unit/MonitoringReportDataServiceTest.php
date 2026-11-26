@@ -18,6 +18,7 @@ use App\Models\KeywordLibrary;
 use App\Models\KeywordQuestionVariant;
 use App\Models\KnowledgeBase;
 use App\Models\Site;
+use App\Services\MonitoringCenter\MonitoringDashboardDataService;
 use App\Services\MonitoringCenter\MonitoringReportDataService;
 use App\Support\CurrentSite;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -120,6 +121,16 @@ class MonitoringReportDataServiceTest extends TestCase
         $this->assertStringNotContainsString('其他公司问题不应出现', $flatJson);
         $this->assertStringNotContainsString('其他竞品', $flatJson);
         $this->assertStringNotContainsString('其他文章', $flatJson);
+
+        $dashboard = app(MonitoringDashboardDataService::class)->build($admin, $site);
+        $this->assertSame($report['summary'], $dashboard['enterprise']['summary']);
+        $this->assertSame([], $dashboard['enterprise']['search_rows']);
+        $this->assertSame([], $dashboard['enterprise']['platform_filters']);
+        $this->assertCount(1, $dashboard['diagnosis_records']);
+        $this->assertSame(
+            $current['question']->question,
+            $dashboard['latest_diagnosis']['conversations'][0]['question']
+        );
     }
 
     public function test_model_collection_adds_latest_diagnosis_mention_display_rate_by_platform(): void
