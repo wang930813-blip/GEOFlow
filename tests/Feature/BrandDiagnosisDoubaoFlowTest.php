@@ -435,13 +435,26 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
     public function test_yuanbao_uses_tokenhub_chat_completions_endpoint(): void
     {
         config()->set('brand_diagnosis.yuanbao.base_url', 'https://tokenhub.tencentmaas.com/v1');
+        config()->set('brand_diagnosis.yuanbao.web_search_timeout', 150);
 
+        $reply = $this->chatCompletionBrandMentionAnswerResponse('yuanbao-answer', 'Yuanbao answer mentions Acme AI.');
+        $reply['choices'][0]['message']['search_results'] = [
+            [
+                'index' => 1,
+                'url' => 'https://yuanbao.example.com/source',
+                'name' => 'Yuanbao source article',
+            ],
+        ];
+        $reply['usage']['tool_usage'] = ['web_search_call' => 1];
+
+        $requestTimeout = null;
         Http::preventStrayRequests();
         Http::fake([
-            'https://tokenhub.tencentmaas.com/v1/chat/completions' => Http::response(
-                $this->chatCompletionBrandMentionAnswerResponse('yuanbao-answer', 'Yuanbao answer mentions Acme AI.'),
-                200
-            ),
+            'https://tokenhub.tencentmaas.com/v1/chat/completions' => function ($request, array $options) use ($reply, &$requestTimeout) {
+                $requestTimeout = $options['timeout'] ?? null;
+
+                return Http::response($reply);
+            },
         ]);
 
         $response = app(DoubaoBrandDiagnosisClient::class)
@@ -449,6 +462,10 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
 
         $this->assertSame('Yuanbao answer mentions Acme AI.', $response->answer);
         $this->assertSame('yuanbao', $response->meta['platform'] ?? null);
+        $this->assertSame('Yuanbao source article', $response->sources[0]['title'] ?? null);
+        $this->assertSame('https://yuanbao.example.com/source', $response->sources[0]['url'] ?? null);
+        $this->assertSame(1, $response->meta['retrieval']['search_rounds'] ?? null);
+        $this->assertSame(150, $requestTimeout);
 
         Http::assertSent(function ($request): bool {
             $payload = $request->data();
@@ -457,6 +474,8 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
                 && $request->hasHeader('Authorization', 'Bearer test-yuanbao-key')
                 && ($payload['model'] ?? null) === 'hy3'
                 && ($payload['stream'] ?? null) === false
+                && ($payload['web_search_options'] ?? null) === ['enable' => true]
+                && ($payload['reasoning_effort'] ?? null) === 'low'
                 && isset($payload['messages'][0]['content'])
                 && ! isset($payload['input'])
                 && ! isset($payload['tools']);
@@ -1912,6 +1931,7 @@ class BrandDiagnosisDoubaoFlowTest extends TestCase
             ->ask('Acme AI', 'Which AI brand service is reliable?', 'wenxin');
 
         $this->assertSame('Wenxin streamed answer mentions Acme AI.', $response->answer);
+        $this->assertJson((string) data_get($response->rawResponse, 'choices.0.message.content'));
         $this->assertSame('https://wenxin.example.com/source', $response->sources[0]['url'] ?? '');
         $this->assertTrue($streamOption);
 
@@ -3506,9 +3526,9 @@ JSON,
                             'role' => 'assistant',
                             'content' => '正在搜索',
                         ],
+                        'delta_tag' => 'search_status',
                     ],
                 ],
-                'delta_tag' => 'search_status',
             ],
             [
                 'id' => 'chatcmpl-wenxin-stream',

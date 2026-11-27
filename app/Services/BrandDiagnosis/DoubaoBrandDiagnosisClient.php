@@ -482,10 +482,14 @@ class DoubaoBrandDiagnosisClient
         }
         $expectsStream = $withWebSearch && $platform === BrandDiagnosisPlatform::WENXIN;
 
+        // TokenHub 联网问答可能执行多轮检索，单独配置整次请求的超时。
+        $timeout = $withWebSearch && $platform === BrandDiagnosisPlatform::YUANBAO
+            ? (int) config('brand_diagnosis.yuanbao.web_search_timeout', 150)
+            : (int) config('brand_diagnosis.'.$platform.'.timeout', 60);
         $request = Http::withToken($apiKey)
             ->asJson()
             ->connectTimeout(max(1, (int) config('brand_diagnosis.'.$platform.'.connect_timeout', 10)))
-            ->timeout(max(10, (int) config('brand_diagnosis.'.$platform.'.timeout', 60)));
+            ->timeout(max(10, $timeout));
 
         $request = $expectsStream
             ? $request->accept('text/event-stream')->withOptions(['stream' => true])
@@ -509,12 +513,29 @@ class DoubaoBrandDiagnosisClient
     }
 
     /**
+     * @Name: withChatCompletionsWebSearchPayload
+     * @Description: 按平台协议开启搜索，元宝使用低推理强度控制联网问答延迟。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-11-27 14:17:31
+     * @UpdateTime: 2026-11-27 14:22:31
+     *
+     * @Param: array<string,mixed> $payload 对话请求体
+     * @Param: string $platform 平台标识
+     * @Return: array<string,mixed> 添加搜索参数后的请求体
+     * @Throws: 无
+     *
      * @param  array<string,mixed>  $payload
      * @return array<string,mixed>
      */
     private function withChatCompletionsWebSearchPayload(array $payload, string $platform): array
     {
         $platform = $this->normalizePlatform($platform);
+
+        if ($platform === BrandDiagnosisPlatform::YUANBAO) {
+            $payload['web_search_options'] = ['enable' => true];
+            $payload['reasoning_effort'] = 'low';
+        }
 
         if ($platform === BrandDiagnosisPlatform::QIANWEN) {
             $payload['enable_search'] = true;
@@ -675,6 +696,17 @@ class DoubaoBrandDiagnosisClient
     }
 
     /**
+     * @Name: normalizeChatCompletionsStreamChunks
+     * @Description: 合并流式回答和搜索溯源，并过滤千帆在事件层或选项层返回的搜索进度。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-11-27 12:15:36
+     * @UpdateTime: 2026-11-27 12:15:36
+     *
+     * @Param: list<array<string,mixed>> $chunks 已解析的流式事件
+     * @Return: array<string,mixed> 合并后的回答、引用和用量
+     * @Throws: 无
+     *
      * @param  list<array<string,mixed>>  $chunks
      * @return array<string,mixed>
      */
@@ -714,7 +746,8 @@ class DoubaoBrandDiagnosisClient
             }
 
             foreach ((array) ($chunk['choices'] ?? []) as $choice) {
-                if (! is_array($choice)) {
+                // 千帆也会在 choices 中标记搜索进度，这类文本不应拼入回答。
+                if (! is_array($choice) || ($choice['delta_tag'] ?? '') === 'search_status') {
                     continue;
                 }
 
@@ -2215,6 +2248,7 @@ class DoubaoBrandDiagnosisClient
         return collect($sources)
             ->filter(static fn (array $source): bool => trim((string) $source['url']) !== '')
             ->unique(static fn (array $source): string => (string) $source['url'])
+            ->values()
             ->all();
     }
 
@@ -2227,7 +2261,7 @@ class DoubaoBrandDiagnosisClient
      *
      * @CreateTime: 2026-11-20 16:43:39
      *
-     * @UpdateTime: 2026-11-20 16:43:39
+     * @UpdateTime: 2026-11-27 14:17:31
      *
      * @Param: array<string,mixed> $data 平台原始响应
      *
@@ -2283,35 +2317,49 @@ class DoubaoBrandDiagnosisClient
 
         return [
             'search_queries' => collect($searchCalls)->flatten()->filter()->unique()->values()->all(),
-            'search_rounds' => count($searchCalls),
+            'search_rounds' => max(0, (int) data_get($data, 'usage.tool_usage.web_search_call', count($searchCalls))),
             'source_count' => count($this->extractSources($data)),
         ];
     }
 
     /**
+     * @Name: collectSourcesFromArray
+     * @Description: 递归提取带链接的引用，兼容搜索结果以 name 返回标题的协议。
+     *
+     * @Author: cdkay
+     * @CreateTime: 2026-11-27 14:17:31
+     * @UpdateTime: 2026-11-27 14:17:31
+     *
+     * @Param: array<string,mixed> $node 当前响应节点
+     * @Param: list<array{title:string,url:string,type:string,meta:array<string,mixed>}> $sources 已提取的引用
+     * @Param: bool $isSearchResult 当前节点是否为 search_results 中的条目
+     * @Return: void 引用写入传入的数组
+     * @Throws: 无
+     *
      * @param  array<string,mixed>  $node
      * @param  list<array{title:string,url:string,type:string,meta:array<string,mixed>}>  $sources
      */
-    private function collectSourcesFromArray(array $node, array &$sources): void
+    private function collectSourcesFromArray(array $node, array &$sources, bool $isSearchResult = false): void
     {
         $type = $this->cleanExternalText((string) ($node['type'] ?? $node['source_type'] ?? ''));
         $url = $this->cleanExternalText((string) ($node['url'] ?? $node['link'] ?? ''));
         $isKnownSource = in_array($type, ['url_citation', 'web_search_result', 'citation', 'search_result'], true);
-        if ($url !== '' && ($isKnownSource || isset($node['title']) || isset($node['snippet']))) {
+        if ($url !== '' && ($isSearchResult || $isKnownSource || isset($node['title']) || isset($node['snippet']))) {
+            $title = $node['title'] ?? ($isSearchResult ? ($node['name'] ?? $url) : $url);
             $sources[] = [
-                'title' => $this->cleanExternalText((string) ($node['title'] ?? $url)),
+                'title' => $this->cleanExternalText((string) $title),
                 'url' => $url,
                 'type' => $type !== '' ? $type : 'web_search_result',
                 'meta' => $this->cleanExternalValue($node),
             ];
         }
 
-        foreach ($node as $value) {
+        foreach ($node as $key => $value) {
             if (is_array($value)) {
                 if (array_is_list($value)) {
                     foreach ($value as $item) {
                         if (is_array($item)) {
-                            $this->collectSourcesFromArray($item, $sources);
+                            $this->collectSourcesFromArray($item, $sources, $key === 'search_results');
                         }
                     }
                 } else {

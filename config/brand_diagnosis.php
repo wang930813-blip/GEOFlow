@@ -82,6 +82,7 @@ return [
         'api_key' => (string) env('BRAND_DIAGNOSIS_YUANBAO_API_KEY', ''),
         'model' => (string) env('BRAND_DIAGNOSIS_YUANBAO_MODEL', 'hy3'),
         'timeout' => (int) env('BRAND_DIAGNOSIS_YUANBAO_TIMEOUT', 60),
+        'web_search_timeout' => (int) env('BRAND_DIAGNOSIS_YUANBAO_WEB_SEARCH_TIMEOUT', 150),
         'connect_timeout' => (int) env('BRAND_DIAGNOSIS_YUANBAO_CONNECT_TIMEOUT', 10),
         'max_keywords' => (int) env('BRAND_DIAGNOSIS_YUANBAO_WEB_SEARCH_MAX_KEYWORDS', 5),
     ],
